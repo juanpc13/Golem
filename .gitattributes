@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux containers: CRLF breaks bash.
+# Force LF on checkout no matter the clone's autocrlf setting.
+*.sh text eol=lf
+Dockerfile text eol=lf

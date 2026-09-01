@@ -1,4 +1,4 @@
-namespace GolemHost;
+namespace GolemHost.Domain;
 
 // The golem's domain: plain POCOs. Their public methods are the DSL verbs.
 // Only transitions (assign, complete, fail) reach the journal — never the pose.

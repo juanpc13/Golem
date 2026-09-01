@@ -14,7 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="panel.html" CopyToOutputDirectory="PreserveNewest" />
+    <!-- TargetPath keeps it flat in the output: ControlPanel reads it as "panel.html" -->
+    <None Include="Panel\panel.html" CopyToOutputDirectory="PreserveNewest" TargetPath="panel.html" />
   </ItemGroup>
 
 </Project>

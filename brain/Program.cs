@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Choreography.Theater;
-using GolemHost;
+using GolemHost.Domain;
+using GolemHost.Membrane;
+using GolemHost.Panel;
 using Puppeteer;
 
 // GolemHost: the first golem. A Puppeteer 2 actor with a FILESYSTEM journal

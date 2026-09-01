@@ -3,7 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 
-namespace GolemHost;
+namespace GolemHost.Panel;
 
 // One journal event as the panel sees it. Kind: "command" (journaled),
 // "runtime" (ephemeral, never journaled), "info" (lifecycle).

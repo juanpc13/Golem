@@ -1,4 +1,4 @@
-namespace GolemHost;
+namespace GolemHost.Domain;
 
 // One journaled task: where to go and how it ended.
 public class Mission
