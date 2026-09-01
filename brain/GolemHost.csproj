@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Choreography.dll (PerformanceV2) ships INSIDE this package.
+         The FileSystem backend is part of the core: no adapter needed. -->
+    <PackageReference Include="Ncubo.Puppeteer" Version="2.0.1-beta.10017-portable.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="panel.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

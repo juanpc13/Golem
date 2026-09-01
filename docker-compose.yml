@@ -1,0 +1,37 @@
+# Golem — sim in kiosk mode: turtlesim + rosbridge start on their own, no desktop.
+# Bring up:  docker compose up -d --build
+# Watch:     http://localhost:6080/vnc.html?autoconnect=true&resize=scale
+#            (the TurtleSim window IS the screen, scaled to the browser)
+# Drive:     http://localhost:6080/control.html  (demo panel)
+# Membrane:  ws://localhost:9090  (rosbridge: topics/services/actions as JSON)
+services:
+  sim:
+    build: ./sim
+    image: golem-sim:kiosk
+    container_name: golem-sim
+    ports:
+      - "6080:80"    # noVNC: the sim window in the browser
+      - "9090:9090"  # rosbridge (the membrane)
+    shm_size: 512m
+    security_opt:
+      - seccomp=unconfined
+    restart: unless-stopped
+
+  # The brain: GolemHost (.NET 9 + Puppeteer 2). One golem per turtle.
+  # Its journal lives in ./journal on the host — inspectable, and it outlives the container.
+  # RULE: one writer per journal — never run the local brain and this one at the same time.
+  brain:
+    build: ./brain
+    container_name: golem-brain
+    ports:
+      - "8081:8080"  # debug panel: operations + live journal feed
+    environment:
+      - ROSBRIDGE_URL=ws://sim:9090
+      - JOURNAL_PATH=/golem/journal
+      - TURTLE=turtle1
+      - PANEL_PORT=8080
+    volumes:
+      - ./journal:/golem/journal
+    depends_on:
+      - sim
+    restart: unless-stopped
