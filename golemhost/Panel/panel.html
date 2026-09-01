@@ -59,7 +59,8 @@
 </head>
 <body>
 <header>
-  <h1>🐢 <span id="who">turtle1</span> — golem panel</h1>
+  <h1>🐢 <span id="who">blue</span> — golem panel</h1>
+  <span class="badge">drives <b id="turtle">–</b></span>
   <span class="badge">journal entry <b id="entry">–</b></span>
   <span class="badge">missions <b id="pending">–</b> pending / <b id="total">–</b> total</span>
   <span class="badge">pose <b id="pose">–</b> <span style="opacity:.7">(ephemeral)</span></span>
@@ -215,7 +216,8 @@ function drawMap() {
 async function poll() {
   try {
     const s = await (await fetch('/state')).json();
-    document.getElementById('who').textContent = s.turtle;
+    document.getElementById('who').textContent = s.golem;
+    document.getElementById('turtle').textContent = s.turtle;
     document.getElementById('entry').textContent = s.entry;
     document.getElementById('pending').textContent = s.pending;
     document.getElementById('total').textContent = s.total;

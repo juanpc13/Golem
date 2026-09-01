@@ -2,7 +2,7 @@
 # Bring up:  docker compose up -d --build
 # Watch:     http://localhost:6080/vnc.html?autoconnect=true&resize=scale
 #            (the TurtleSim window IS the screen, scaled to the browser)
-# Drive:     http://localhost:6080/control.html  (demo panel)
+# Operate:   http://localhost:8081  (blue-golem's panel: missions, queries, journal feed)
 # Membrane:  ws://localhost:9090  (rosbridge: topics/services/actions as JSON)
 services:
   sim:
@@ -17,17 +17,19 @@ services:
       - seccomp=unconfined
     restart: unless-stopped
 
-  # The brain: GolemHost (.NET 9 + Puppeteer 2). One golem per turtle.
+  # blue-golem: the first golem (GolemHost, .NET 9 + Puppeteer 2). One golem per turtle.
+  # GOLEM is its identity (names the journal); TURTLE is the body it drives (ROS topics).
   # Its journal lives in ./journal on the host — inspectable, and it outlives the container.
-  # RULE: one writer per journal — never run the local brain and this one at the same time.
-  brain:
-    build: ./brain
-    container_name: golem-brain
+  # RULE: one writer per journal — never run a local GolemHost and this one at the same time.
+  blue-golem:
+    build: ./golemhost
+    container_name: blue-golem
     ports:
       - "8081:8080"  # debug panel: operations + live journal feed
     environment:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
+      - GOLEM=blue
       - TURTLE=turtle1
       - PANEL_PORT=8080
     volumes:

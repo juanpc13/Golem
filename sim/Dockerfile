@@ -17,9 +17,6 @@ COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh /golem/kiosk.sh
 # The entrypoint copies /root/.config into the user's home on every boot,
 # so the openbox config is planted in /root and arrives on its own.
 COPY kiosk/rc.xml /root/.config/openbox/rc.xml
-# Demo panel: websockify serves /usr/lib/novnc as the web root
-# => http://localhost:6080/control.html
-COPY kiosk/control.html /usr/lib/novnc/control.html
 
 # The turtlesim window has a fixed size (500x500): the VNC screen measures
 # exactly that, and openbox strips the decorations => the window IS the screen.

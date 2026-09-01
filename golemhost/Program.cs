@@ -15,7 +15,8 @@ using Puppeteer;
 string journalPath = Environment.GetEnvironmentVariable("JOURNAL_PATH")
                      ?? Path.Combine(AppContext.BaseDirectory, "journal");
 string rosbridgeUrl = Environment.GetEnvironmentVariable("ROSBRIDGE_URL") ?? "ws://localhost:9090";
-string turtle = Environment.GetEnvironmentVariable("TURTLE") ?? "turtle1";
+string golem = Environment.GetEnvironmentVariable("GOLEM") ?? "blue";     // who I am (names the journal)
+string turtle = Environment.GetEnvironmentVariable("TURTLE") ?? "turtle1"; // which body I drive (ROS topics)
 int panelPort = int.Parse(Environment.GetEnvironmentVariable("PANEL_PORT") ?? "8080");
 
 using var shutdown = new CancellationTokenSource();
@@ -23,14 +24,14 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
 var ct = shutdown.Token;
 
 // --- The brain: Puppeteer 2 with an on-disk journal. No SQL, no transport. ---
-var perf = new PerformanceV2(turtle, typeof(Golem).Assembly);
+var perf = new PerformanceV2(golem, typeof(Golem).Assembly);
 perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
 perf.Start(); // rehydration from the journal happens here
 
 var perfGate = new object(); // one writer, one gate: the loop and the panel share the actor
 
-Console.WriteLine($"[golem {turtle}] journal at {journalPath}");
-Console.WriteLine($"[golem {turtle}] rehydrated at entry {perf.CurrentEntryId}");
+Console.WriteLine($"[golem {golem}] journal at {journalPath}");
+Console.WriteLine($"[golem {golem}] rehydrated at entry {perf.CurrentEntryId}");
 
 // --- The membrane (created early so the panel can read the pose). ---
 await using var ros = new Rosbridge(rosbridgeUrl, turtle);
@@ -39,7 +40,7 @@ await using var ros = new Rosbridge(rosbridgeUrl, turtle);
 ControlPanel panel = null;
 panel = new ControlPanel(panelPort, AssignMission, StateJson, ResetEverything, AdHocQuery);
 panel.Start(ct);
-Console.WriteLine($"[golem {turtle}] panel listening on :{panelPort}");
+Console.WriteLine($"[golem {golem}] panel listening on :{panelPort}");
 
 panel.Broadcast(new PanelEvent(perf.CurrentEntryId, "info", "",
     $"golem awake — rehydrated at entry {perf.CurrentEntryId}", DateTime.UtcNow));
@@ -50,11 +51,11 @@ if (perf.CurrentEntryId == 0)
     long entry;
     lock (perfGate) { perf.PerformCmd("g = Golem();"); entry = perf.CurrentEntryId; }
     panel.Broadcast(new PanelEvent(entry, "command", "g = Golem();", "the golem is born", DateTime.UtcNow));
-    Console.WriteLine($"[golem {turtle}] born with an empty mission list (entry {entry}) — awaiting orders");
+    Console.WriteLine($"[golem {golem}] born with an empty mission list (entry {entry}) — awaiting orders");
 }
 else
 {
-    Console.WriteLine($"[golem {turtle}] pending missions on wake-up: {QryInt("{ print g.Pending() 'value'; }")}");
+    Console.WriteLine($"[golem {golem}] pending missions on wake-up: {QryInt("{ print g.Pending() 'value'; }")}");
 }
 
 await ros.ConnectAsync(ct);
@@ -73,7 +74,7 @@ while (!ct.IsCancellationRequested)
 
     double targetX = QryDouble("{ print g.NextX() 'value'; }");
     double targetY = QryDouble("{ print g.NextY() 'value'; }");
-    Console.WriteLine($"[golem {turtle}] mission {id}: go to ({targetX:0.0}, {targetY:0.0})");
+    Console.WriteLine($"[golem {golem}] mission {id}: go to ({targetX:0.0}, {targetY:0.0})");
     panel.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
         $"mission {id} started — driving to ({targetX:0.0}, {targetY:0.0})", DateTime.UtcNow));
 
@@ -89,7 +90,7 @@ while (!ct.IsCancellationRequested)
                 .PerformCommand();
             entry = perf.CurrentEntryId;
         }
-        Console.WriteLine($"[golem {turtle}] mission {id} COMPLETED and journaled (entry {entry})");
+        Console.WriteLine($"[golem {golem}] mission {id} COMPLETED and journaled (entry {entry})");
         panel.Broadcast(new PanelEvent(entry, "command", $"g.Complete({id});",
             $"mission {id} completed", DateTime.UtcNow));
     }
@@ -103,14 +104,14 @@ while (!ct.IsCancellationRequested)
                 .PerformCommand();
             entry = perf.CurrentEntryId;
         }
-        Console.WriteLine($"[golem {turtle}] mission {id} FAILED by timeout, journaled (entry {entry})");
+        Console.WriteLine($"[golem {golem}] mission {id} FAILED by timeout, journaled (entry {entry})");
         panel.Broadcast(new PanelEvent(entry, "command", $"g.Fail({id}, 'timeout');",
             $"mission {id} failed", DateTime.UtcNow));
     }
 }
 
 perf.Dispose();
-Console.WriteLine($"[golem {turtle}] clean shutdown at entry {perf.CurrentEntryId}");
+Console.WriteLine($"[golem {golem}] clean shutdown at entry {perf.CurrentEntryId}");
 return;
 
 // Panel callback: queue a mission — journaled, then announced on the feed.
@@ -140,7 +141,7 @@ PanelEvent ResetEverything()
     var e = new PanelEvent(perf.CurrentEntryId, "info", "",
         "reset requested — wiping the journal and restarting the golem", DateTime.UtcNow);
     panel.Broadcast(e);
-    Console.WriteLine($"[golem {turtle}] RESET requested from the panel");
+    Console.WriteLine($"[golem {golem}] RESET requested from the panel");
 
     _ = Task.Run(async () =>
     {
@@ -157,11 +158,11 @@ PanelEvent ResetEverything()
 
         lock (perfGate) { perf.Dispose(); }
 
-        string actorDir = Path.Combine(journalPath, turtle);
+        string actorDir = Path.Combine(journalPath, golem);
         if (Directory.Exists(actorDir))
             Directory.Delete(actorDir, recursive: true);
 
-        Console.WriteLine($"[golem {turtle}] journal wiped ({actorDir}) — exiting for a fresh start");
+        Console.WriteLine($"[golem {golem}] journal wiped ({actorDir}) — exiting for a fresh start");
         Environment.Exit(0);
     });
 
@@ -205,6 +206,7 @@ string StateJson()
     var pose = ros.LatestPose;
     return JsonSerializer.Serialize(new
     {
+        golem,
         turtle,
         entry,
         pending,
