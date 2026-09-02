@@ -17,18 +17,23 @@ services:
       - seccomp=unconfined
     restart: unless-stopped
 
-  # The golems (GolemHost, .NET 9 + Puppeteer 2). One golem per turtle, all from
-  # the same image — only the environment differs. GOLEM is the identity (names
-  # the journal); TURTLE is the body it drives (ROS topics); the golem spawns its
-  # body if the world doesn't have it yet, and signs its trail with PEN_RGB.
+  # The golems (GolemHost, ASP.NET controllers on :8080 inside). One golem per
+  # turtle, all from the same image — only the environment differs. GOLEM is the
+  # identity (names the journal); TURTLE is the body it drives (ROS topics); the
+  # golem spawns its body if the world lacks it, and signs its trail with PEN_RGB.
   # Journals live in ./journal on the host — inspectable, they outlive containers.
   # RULE: one writer per journal — never point two processes at the same GOLEM.
+  #
+  # Tells travel container-to-container over the HttpBroker wire (after the
+  # bingo's PhoneToPhone): TELL_ROUTES maps each tell topic to the peer that
+  # subscribes it (acks travel back over the same table), and TELL_DONE_TO=<peer>
+  # makes a golem tell that peer every point it visits.
   blue-golem:
     build: ./golemhost
     image: golemhost
     container_name: blue-golem
     ports:
-      - "8081:8080"  # blue's debug panel
+      - "8081:8080"  # blue's endpoints + panel
     environment:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
@@ -37,6 +42,8 @@ services:
       - SPAWN_AT=5.5,5.5
       - PEN_RGB=10,25,120  # deep navy: plain blue vanishes on turtlesim's blue canvas
       - PANEL_PORT=8080
+      # tells TO red go to red; acks for tells addressed to ME return to red (the teller)
+      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080
     volumes:
       - ./journal:/golem/journal
     depends_on:
@@ -48,7 +55,7 @@ services:
     image: golemhost
     container_name: red-golem
     ports:
-      - "8082:8080"  # red's debug panel
+      - "8082:8080"  # red's endpoints + panel
     environment:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
@@ -57,6 +64,9 @@ services:
       - SPAWN_AT=2.5,2.5
       - PEN_RGB=230,70,70
       - PANEL_PORT=8080
+      # tells TO blue go to blue; acks for tells addressed to ME return to blue
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080
+      - TELL_DONE_TO=blue  # red tells blue every visited point
     volumes:
       - ./journal:/golem/journal
     depends_on:

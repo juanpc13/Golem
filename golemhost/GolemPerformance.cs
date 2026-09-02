@@ -26,15 +26,34 @@ internal sealed class GolemPerformance : PerformanceV2
         BornThisBoot = true;
     }
 
-    protected override void OnHydrated()
+    // The substrate's per-record hook (StageHook.OnRecordWritten): fires for every
+    // journal entry THIS process writes — including engine-side writes our call
+    // sites never see (the tell sentence, its ack, a Told uptake's perform). The
+    // panel uses it so the live feed never silently skips an entry id.
+    internal void WatchJournal(Action<long, byte[]> onRecordWritten)
     {
-        Birth();
+        hook.OnRecordWritten = (entryId, wire) => onRecordWritten(entryId, wire);
     }
 
-    private void Birth()
+    // Durable read of the journal's wire records after an entry — the same public
+    // seam a replication catch-up uses. The panel warms its define/template cache
+    // from it so action rows can name the template they invoke.
+    internal List<Puppeteer.EventSourcing.DB.JournalWireRecord> ReadJournalAfter(long afterEntryId)
+    {
+        var records = new List<Puppeteer.EventSourcing.DB.JournalWireRecord>();
+        hook.ReadJournalRecordsAfter(afterEntryId, records);
+        return records;
+    }
+
+    protected override void OnHydrated()
+    {
+        Init();
+    }
+
+    private void Init()
     {
         PerformCmd(@"
-            upgrade('birth') {
+            upgrade('init') {
                 g = Golem();
             };
         ");

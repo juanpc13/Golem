@@ -8,9 +8,10 @@ using Puppeteer;
 
 // GolemHost bootstrap. The pieces:
 //   Domain       — plain puppets (Golem, Mission): the DSL verbs.
-//   Membrane     — rosbridge websocket: ephemeral telemetry in, cmd_vel out.
-//   Panel        — HTTP debug surface: operations in, live journal feed out.
-//   Choreography — the wiring: upgrade birth, serial Dispatch, mission loop.
+//   Membrane     — rosbridge websocket (telemetry) + HttpBroker (tell wire).
+//   Panel        — the page + the SSE feed behind it.
+//   Controllers  — the actor's endpoints: assign/state/query/reset/events/tell.
+//   Choreography — the wiring: upgrade birth, serial Dispatch, tells, mission loop.
 // The journal is the only truth; if this process dies, it rehydrates and resumes.
 
 string journalPath = Environment.GetEnvironmentVariable("JOURNAL_PATH")
@@ -19,6 +20,8 @@ string rosbridgeUrl = Environment.GetEnvironmentVariable("ROSBRIDGE_URL") ?? "ws
 string golem = Environment.GetEnvironmentVariable("GOLEM") ?? "blue";     // who I am (names the journal)
 string turtle = Environment.GetEnvironmentVariable("TURTLE") ?? "turtle1"; // which body I drive (ROS topics)
 int panelPort = int.Parse(Environment.GetEnvironmentVariable("PANEL_PORT") ?? "8080");
+string tellRoutes = Environment.GetEnvironmentVariable("TELL_ROUTES");     // topic=http://peer,... (the wire's route table)
+string tellDoneTo = Environment.GetEnvironmentVariable("TELL_DONE_TO");    // peer golem to echo visited points to
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
@@ -34,29 +37,36 @@ perf.Start(); // rehydration + upgrade chain happen here
 Console.WriteLine($"[golem {golem}] journal at {journalPath}");
 Console.WriteLine($"[golem {golem}] rehydrated at entry {perf.CurrentEntryId}");
 
-await using var ros = new Rosbridge(rosbridgeUrl, turtle);
+var ros = new Rosbridge(rosbridgeUrl, turtle);
+var feed = new PanelFeed();
+var wire = new HttpBroker(golem, HttpBroker.ParseRoutes(tellRoutes));
+var flow = new GolemChoreography(perf, ros, feed, wire, golem, turtle, tellDoneTo, journalPath);
 
-// --- The panel, wired to the choreography by closure. ---
-GolemChoreography flow = null;
-ControlPanel panel = null;
-panel = new ControlPanel(panelPort,
-    (x, y) => flow.OrderMission(x, y),
-    () => flow.StateJson(),
-    ResetEverything,
-    script => flow.AdHocQuery(script));
-panel.Start(ct);
-Console.WriteLine($"[golem {golem}] panel listening on :{panelPort}");
+// --- The controllers: the actor's endpoints. ---
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls($"http://*:{panelPort}");
+builder.Logging.SetMinimumLevel(LogLevel.Warning);
+builder.Services.AddControllers();
+builder.Services.AddSingleton(flow);
+builder.Services.AddSingleton(feed);
+builder.Services.AddSingleton(wire);
 
-panel.Broadcast(new PanelEvent(perf.CurrentEntryId, "info", "",
+var app = builder.Build();
+app.MapControllers();
+app.Lifetime.ApplicationStopping.Register(() => shutdown.Cancel());
+
+await app.StartAsync();
+Console.WriteLine($"[golem {golem}] controllers listening on :{panelPort}");
+
+feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "info", "",
     $"golem awake — rehydrated at entry {perf.CurrentEntryId}", DateTime.UtcNow));
 
-// --- The choreography: birth by upgrade, then the serial dispatch. ---
-flow = new GolemChoreography(perf, ros, panel, golem, turtle);
+// --- The choreography: announce birth, wire dispatch + tells. ---
 flow.Awaken();
 
 // --- The membrane: connect, ensure my body exists, then bind telemetry. ---
 await ros.ConnectAsync(ct);
-panel.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
     $"membrane connected to {rosbridgeUrl}", DateTime.UtcNow));
 
 // Spawn is idempotent by refusal: if the turtle already exists, turtlesim
@@ -81,7 +91,7 @@ if (penRgb != null)
         width = (byte)3, off = (byte)0
     }, ct);
 }
-panel.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
     $"body {turtle} ensured in the world (spawn at {spawnAt[0]},{spawnAt[1]}; pen {penRgb ?? "default"})",
     DateTime.UtcNow));
 
@@ -94,45 +104,7 @@ try
 }
 catch (OperationCanceledException) { }
 
+await ros.DisposeAsync();
 perf.Dispose();
+await app.StopAsync();
 Console.WriteLine($"[golem {golem}] clean shutdown at entry {perf.CurrentEntryId}");
-return;
-
-// Panel callback: wipe this golem's journal and restart from scratch.
-// A live actor holds its journal files open, so the honest reset is:
-// stop the actor, delete its journal folder, reset the world, and exit —
-// Docker's restart policy brings the process back, which rehydrates at
-// entry 0 and is reborn by the upgrade. Reset reuses the resurrection machinery.
-PanelEvent ResetEverything()
-{
-    var e = new PanelEvent(perf.CurrentEntryId, "info", "",
-        "reset requested — wiping the journal and restarting the golem", DateTime.UtcNow);
-    panel.Broadcast(e);
-    Console.WriteLine($"[golem {golem}] RESET requested from the panel");
-
-    _ = Task.Run(async () =>
-    {
-        await Task.Delay(1000); // let the HTTP response and the SSE frame leave
-
-        try
-        {
-            await ros.DriveAsync(0, 0, CancellationToken.None);
-            await ros.CallServiceAsync($"/{turtle}/teleport_absolute",
-                new { x = 5.544445, y = 5.544445, theta = 0.0 }, CancellationToken.None);
-            await ros.CallServiceAsync("/clear", null, CancellationToken.None);
-        }
-        catch { /* world reset is best-effort; the journal wipe is the point */ }
-
-        // No graceful shutdown here on purpose: cancelling would race Main to exit
-        // before the wipe. On Linux the unlink works with the files still open,
-        // and Exit tears the process down right after.
-        string actorDir = Path.Combine(journalPath, golem);
-        if (Directory.Exists(actorDir))
-            Directory.Delete(actorDir, recursive: true);
-
-        Console.WriteLine($"[golem {golem}] journal wiped ({actorDir}) — exiting for a fresh start");
-        Environment.Exit(0);
-    });
-
-    return e;
-}

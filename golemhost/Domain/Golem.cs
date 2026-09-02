@@ -6,20 +6,37 @@ public class Golem
 {
     private readonly List<Mission> missions = new();
 
-    public Mission Assign(double x, double y)
+    // A mission is born with its handle. Journaling the id at Assign is what lets a
+    // Reaction correlate "this mission was ordered" with "this same mission completed".
+    public Mission Assign(int id, double x, double y)
     {
-        var mission = new Mission(missions.Count + 1, x, y);
+        if (missions.Any(m => m.Id == id))
+            throw new InvalidOperationException($"mission {id} already exists");
+        var mission = new Mission(id, x, y);
         missions.Add(mission);
         return mission;
     }
 
-    public void Complete(int id) => Find(id).Status = "completed";
+    // A mission ordered by a peer's tell carries no handle: it takes the next one.
+    public Mission Assign(double x, double y) => Assign(NextHandle(), x, y);
 
-    public void Fail(int id, string reason)
+    public int NextHandle() => missions.Count == 0 ? 1 : missions.Max(m => m.Id) + 1;
+
+    // Verbs a Reaction observes must yield a value: the reaction resolver reads the
+    // journaled call as an expression and cannot see void methods.
+    public Mission Complete(int id)
+    {
+        var mission = Find(id);
+        mission.Status = "completed";
+        return mission;
+    }
+
+    public Mission Fail(int id, string reason)
     {
         var mission = Find(id);
         mission.Status = "failed";
         mission.Reason = reason;
+        return mission;
     }
 
     public int NextId()
