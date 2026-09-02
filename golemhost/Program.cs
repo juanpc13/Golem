@@ -62,6 +62,35 @@ await ros.ConnectAsync(ct);
 panel.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
     $"membrane connected to {rosbridgeUrl}", DateTime.UtcNow));
 
+// Ensure my body exists in the shared world. Spawn is idempotent by refusal:
+// if the turtle is already there, turtlesim rejects the spawn and we simply
+// drive the existing one. Then sign the world with this golem's pen color.
+var spawnAt = (Environment.GetEnvironmentVariable("SPAWN_AT") ?? "5.5,5.5")
+    .Split(',', StringSplitOptions.TrimEntries);
+await ros.CallServiceAsync("/spawn", new
+{
+    x = double.Parse(spawnAt[0], System.Globalization.CultureInfo.InvariantCulture),
+    y = double.Parse(spawnAt[1], System.Globalization.CultureInfo.InvariantCulture),
+    theta = 0.0,
+    name = turtle
+}, ct);
+
+string penRgb = Environment.GetEnvironmentVariable("PEN_RGB");
+if (penRgb != null)
+{
+    var rgb = penRgb.Split(',', StringSplitOptions.TrimEntries);
+    await ros.CallServiceAsync($"/{turtle}/set_pen", new
+    {
+        r = byte.Parse(rgb[0]), g = byte.Parse(rgb[1]), b = byte.Parse(rgb[2]),
+        width = (byte)3, off = (byte)0
+    }, ct);
+}
+panel.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+    $"body {turtle} ensured in the world (spawn at {spawnAt[0]},{spawnAt[1]}; pen {penRgb ?? "default"})",
+    DateTime.UtcNow));
+
+await ros.BindAsync(ct); // subscribe once the body is guaranteed to exist
+
 // --- The mission loop. ---
 while (!ct.IsCancellationRequested)
 {

@@ -43,10 +43,17 @@ public sealed class Rosbridge : IAsyncDisposable
             }
         }
 
+        Console.WriteLine($"[membrane] connected to {url}");
+    }
+
+    // Bind AFTER the body exists: subscribing to a topic that is not there yet
+    // leaves rosbridge unable to infer its type. We also declare it explicitly.
+    public async Task BindAsync(CancellationToken ct)
+    {
         await SendAsync(new { op = "advertise", topic = $"/{turtle}/cmd_vel", type = "geometry_msgs/Twist" }, ct);
-        await SendAsync(new { op = "subscribe", topic = $"/{turtle}/pose", throttle_rate = 100 }, ct);
+        await SendAsync(new { op = "subscribe", topic = $"/{turtle}/pose", type = "turtlesim/Pose", throttle_rate = 100 }, ct);
         reader = Task.Run(() => ReadLoopAsync(readerCts.Token), CancellationToken.None);
-        Console.WriteLine($"[membrane] connected to {url}, listening on /{turtle}/pose");
+        Console.WriteLine($"[membrane] listening on /{turtle}/pose");
     }
 
     public Task CallServiceAsync(string service, object args, CancellationToken ct) =>

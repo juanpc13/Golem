@@ -2,7 +2,7 @@
 # Bring up:  docker compose up -d --build
 # Watch:     http://localhost:6080/vnc.html?autoconnect=true&resize=scale
 #            (the TurtleSim window IS the screen, scaled to the browser)
-# Operate:   http://localhost:8081  (blue-golem's panel: missions, queries, journal feed)
+# Operate:   http://localhost:8081 (blue-golem) · http://localhost:8082 (red-golem)
 # Membrane:  ws://localhost:9090  (rosbridge: topics/services/actions as JSON)
 services:
   sim:
@@ -17,20 +17,45 @@ services:
       - seccomp=unconfined
     restart: unless-stopped
 
-  # blue-golem: the first golem (GolemHost, .NET 9 + Puppeteer 2). One golem per turtle.
-  # GOLEM is its identity (names the journal); TURTLE is the body it drives (ROS topics).
-  # Its journal lives in ./journal on the host — inspectable, and it outlives the container.
-  # RULE: one writer per journal — never run a local GolemHost and this one at the same time.
+  # The golems (GolemHost, .NET 9 + Puppeteer 2). One golem per turtle, all from
+  # the same image — only the environment differs. GOLEM is the identity (names
+  # the journal); TURTLE is the body it drives (ROS topics); the golem spawns its
+  # body if the world doesn't have it yet, and signs its trail with PEN_RGB.
+  # Journals live in ./journal on the host — inspectable, they outlive containers.
+  # RULE: one writer per journal — never point two processes at the same GOLEM.
   blue-golem:
     build: ./golemhost
+    image: golemhost
     container_name: blue-golem
     ports:
-      - "8081:8080"  # debug panel: operations + live journal feed
+      - "8081:8080"  # blue's debug panel
     environment:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
       - GOLEM=blue
       - TURTLE=turtle1
+      - SPAWN_AT=5.5,5.5
+      - PEN_RGB=10,25,120  # deep navy: plain blue vanishes on turtlesim's blue canvas
+      - PANEL_PORT=8080
+    volumes:
+      - ./journal:/golem/journal
+    depends_on:
+      - sim
+    restart: unless-stopped
+
+  red-golem:
+    build: ./golemhost
+    image: golemhost
+    container_name: red-golem
+    ports:
+      - "8082:8080"  # red's debug panel
+    environment:
+      - ROSBRIDGE_URL=ws://sim:9090
+      - JOURNAL_PATH=/golem/journal
+      - GOLEM=red
+      - TURTLE=turtle2
+      - SPAWN_AT=2.5,2.5
+      - PEN_RGB=230,70,70
       - PANEL_PORT=8080
     volumes:
       - ./journal:/golem/journal

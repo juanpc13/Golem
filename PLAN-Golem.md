@@ -37,7 +37,7 @@ Un mundo compartido, N tortugas (vía `spawn`), un golem por tortuga. En el nave
 - **F0** ✅ — compose arriba, turtlesim visible en el navegador (kiosko + panel `/control.html`).
 - **F1** ✅ — membrana validada: rosbridge por websocket JSON (advertise/publish/subscribe).
 - **F2** ✅ — `cerebro/` (GolemHost, .NET 9): PerformanceV2 + journal FileSystem en `./journal`, misiones journaleadas, controlador ir-a-(x,y). Verificado local (Windows) y en contenedor; el journal escrito en Windows rehidrata en el Ubuntu del contenedor sin cambios.
-- **F3** — fallo definido (timeout ya journalea `Fallar`) + ruta alterna + segunda tortuga con su golem y journal propios + tell entre golems (LoopbackBroker → transporte real).
+- **F3** 🔶 — **segunda tortuga ✅**: `red-golem` gobierna `turtle2` desde la misma imagen (solo cambia el environment). El golem se asegura su propio cuerpo (`/spawn` idempotente por rechazo) y firma el mundo con su pluma (`PEN_RGB`); journal propio en `journal/red/`, panel en :8082. Pendiente de F3: `tell` entre golems (ojo: `LoopbackBroker` no cruza contenedores — hará falta broker compartido) y ruta alterna ante fallo.
 - **F4** ✅ (adelantada) — `docker kill` a media misión 2: rehidrató en entry 8, despertó con 3 pendientes y retomó la misión desde donde la tortuga quedó. El journal es el cerebro.
 - **Panel de depuración** ✅ — el brain expone :8081: encargar misiones (clic en el minimapa / Assign / patrol) y feed SSE en vivo del journal — cada commit con su entry id, distinguiendo lo journaleado (sólido) de lo runtime que nunca toca el journal (punteado). Emitido por el único escritor en el momento del commit.
 
