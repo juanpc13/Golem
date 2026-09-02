@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Golem Panel — turtle1</title>
+<title>Golem Panel</title>
 <style>
   :root {
     --bg:#141621; --surface:#1c1f2f; --ink:#e5e7f2; --muted:#9aa0ba; --line:#3a3f5c;
@@ -219,6 +219,7 @@ async function poll() {
     const s = await (await fetch('/state')).json();
     document.getElementById('who').textContent = s.golem;
     document.getElementById('dot').style.background = s.golem; // color names double as identity
+    document.title = `Golem Panel — ${s.golem}`;
     document.getElementById('turtle').textContent = s.turtle;
     document.getElementById('entry').textContent = s.entry;
     document.getElementById('pending').textContent = s.pending;

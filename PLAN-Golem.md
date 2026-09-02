@@ -41,6 +41,12 @@ Un mundo compartido, N tortugas (vía `spawn`), un golem por tortuga. En el nave
 - **F4** ✅ (adelantada) — `docker kill` a media misión 2: rehidrató en entry 8, despertó con 3 pendientes y retomó la misión desde donde la tortuga quedó. El journal es el cerebro.
 - **Panel de depuración** ✅ — el brain expone :8081: encargar misiones (clic en el minimapa / Assign / patrol) y feed SSE en vivo del journal — cada commit con su entry id, distinguiendo lo journaleado (sólido) de lo runtime que nunca toca el journal (punteado). Emitido por el único escritor en el momento del commit.
 
+## Patrones del training-lab aplicados (guías de repos/Skills)
+
+- **Upgrade/Hidratación** (estilo LottoPerformance, versión moderna): `GolemPerformance : PerformanceV2` con `OnHydrated()` que performa la cadena de upgrades (`upgrade('birth') { g = Golem(); };`) en cada arranque — los ya aplicados se saltan en silencio, los nuevos corren y journalean. El propio framework lo documenta: `OnFirstHydration` es el hook legacy (LottoAPI); código nuevo = `OnHydrated` + sentencias `upgrade`. Para evolucionar al golem se agregan `Upgrade_From_X_To_Y()` — nunca se edita un upgrade ya publicado (la firma del cuerpo se valida).
+- **Consume & Dispatch** (guía `puppeteer-consume-and-dispatch`): toda escritura fluye por UN Dispatch serial (`CreateDispatch(MaxParallelism=1)` + `On<MissionOrdered/Succeeded/Failed>` + `ConsumeFrom(BrokerInputSource(InProcessBroker, "<golem>-ops"))`). El panel y el mission loop son PRODUCTORES al topic; los handlers tipados son el único lugar donde se performa. Encolado ≠ commiteado: el journal sigue siendo la única verdad. Cuando llegue el tell entre golems, el mismo Dispatch consume del broker compartido — solo se agrega otro ConsumeFrom (el merge).
+- **Namespace Choreography** (`GolemHost.Choreography`): la orquestación salió de Program (que quedó en puro bootstrap) a `GolemChoreography` — upgrade de nacimiento, wiring del dispatch, mission loop, queries del panel.
+
 ## Bootstrap mínimo que quedó probado
 
 ```csharp
