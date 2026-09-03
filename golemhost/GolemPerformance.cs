@@ -39,16 +39,22 @@ internal sealed class GolemPerformance : PerformanceV2
         return records;
     }
 
-    // The releases: the golem is born, then learns its body. The body's properties are
-    // the golem's own knowledge (like the hitbox will be): its cruise speed in world
-    // units per second, and how long it pauses at a point a peer told it about — so it
-    // can answer "how long until I am done" by itself. Every golem runs this same chain.
+    // The release chain. Today it is one release: the golem is born with its body — its
+    // cruise speed in world units per second, and how long it pauses at a point a peer
+    // told it about (the follower's lead-keeping). Both are the golem's own knowledge,
+    // like the hitbox will be, so it can answer "how long until I am done" by itself.
+    // Every golem runs this same chain. RULE: an applied release is never edited (the
+    // engine guards its body signature) — once golems live in the field, evolve them by
+    // APPENDING the next release below; collapsing into init was possible only while
+    // every journal was disposable.
     protected override void OnHydrated()
     {
         Actor.Using(@"
-            upgrade('init')    { g = Golem(); }
-            upgrade('body_v1') { g.Embody(2.0); }
-            upgrade('pace_v1') { g.Pace(6); }
+            upgrade('init') {
+                g = Golem();
+                g.Embody(2.0);
+                g.Pace(6);
+            }
         ")
         .PerformCommand();
     }

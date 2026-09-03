@@ -25,9 +25,11 @@ public class MissionAcceptanceTests
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
         perf.Actor.Using(@"
-            upgrade('init')    { g = Golem(); }
-            upgrade('body_v1') { g.Embody(2.0); }
-            upgrade('pace_v1') { g.Pace(6); }
+            upgrade('init') {
+                g = Golem();
+                g.Embody(2.0);
+                g.Pace(6);
+            }
         ")
         .PerformCommand();
     }
