@@ -24,6 +24,21 @@ internal sealed class GolemPerformance : PerformanceV2
         BornThisBoot = true;
     }
 
+    // The operator wants to see EVERYTHING the journal receives — defines, actions,
+    // literal scripts, tells, acks, verdicts — so the panel taps the framework's
+    // StageHook: every record as it is written (live), and the whole journal at boot.
+    internal void WatchJournal(Action<long, byte[]> onRecordWritten)
+    {
+        hook.OnRecordWritten = (entryId, wire) => onRecordWritten(entryId, wire);
+    }
+
+    internal List<Puppeteer.EventSourcing.DB.JournalWireRecord> ReadJournalAfter(long afterEntryId)
+    {
+        var records = new List<Puppeteer.EventSourcing.DB.JournalWireRecord>();
+        hook.ReadJournalRecordsAfter(afterEntryId, records);
+        return records;
+    }
+
     // The releases: the golem is born, then learns its body. The body's properties are
     // the golem's own knowledge (like the hitbox will be): its cruise speed in world
     // units per second, and how long it pauses at a point a peer told it about — so it

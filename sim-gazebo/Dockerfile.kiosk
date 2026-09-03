@@ -1,0 +1,24 @@
+# Gazebo Fortress in kiosk mode: the same VNC base as the turtlesim sim; the GUI is the screen.
+# Software rendering on an Xvfb display mirrored by x11vnc (see kiosk/kiosk.sh for why not Xvnc).
+FROM tiryoh/ros2-desktop-vnc:humble
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ros-humble-ros-gz \
+      openbox \
+      wmctrl \
+      x11-xserver-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb x11vnc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh /golem/kiosk.sh
+COPY kiosk/rc.xml /root/.config/openbox/rc.xml
+COPY worlds/ /worlds/
+
+# The session (xstartup) launches our kiosk; noVNC is pointed at x11vnc's port instead of Xvnc's.
+RUN chmod +x /golem/kiosk.sh \
+    && sed -i 's|^mate-session$|exec bash /golem/kiosk.sh|' /entrypoint.sh \
+    && sed -i 's|websockify --web=/usr/lib/novnc 80 localhost:5901|websockify --web=/usr/lib/novnc 80 localhost:5902|' /entrypoint.sh \
+    && grep -q '/golem/kiosk.sh' /entrypoint.sh \
+    && grep -q 'localhost:5902' /entrypoint.sh

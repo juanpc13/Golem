@@ -50,9 +50,9 @@ if (tellDoneTo != null && !wire.CanRoute($"tell-{tellDoneTo}"))
 
 flow = new GolemChoreography(perf, ros, navigator, feed, wire, golem, turtle, tellDoneTo, journalPath);
 flow.DefineReactions();
-perf.OutputTarget(new PanelSink(feed));
 
 perf.Start(); // rehydration + release chain + the .Cue() reactions come alive here
+new JournalTap(perf, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands
 Console.WriteLine($"[golem {golem}] journal at {journalPath}");
 Console.WriteLine($"[golem {golem}] rehydrated at entry {perf.CurrentEntryId}");
 

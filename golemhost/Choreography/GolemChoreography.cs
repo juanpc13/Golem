@@ -13,7 +13,8 @@ namespace GolemHost.Choreography;
 // navigator (the body's locomotion, behind a seam) and reports its verdict to a Saga
 // keyed by mission id — every write goes through the actor, guarded by a domain
 // Check, and the journal stays the only truth.
-// Speech (tells) and the panel's projections are Reactions on the golem's own journal.
+// Speech (tells) is a Reaction on the golem's own journal; the panel's journal lane is the
+// journal itself, tapped record by record (Panel/JournalTap).
 public sealed class GolemChoreography
 {
     private readonly GolemPerformance perf;
@@ -51,67 +52,10 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     public void DefineReactions()
     {
-        feed.Broadcast(new PanelEvent(1, "command", "release chain",
-            "{\"command\":\"upgrade('init') { g = Golem(); }\"}", DateTime.UtcNow));
-
         bindings.Bind(golem, $"tell-{golem}");
         if (tellDoneTo != null)
             bindings.Bind(tellDoneTo, $"tell-{tellDoneTo}");
         perf.UseTellTransport(new BrokerTellTransport(wire, bindings, golem));
-
-        // The panel's journal lane: one view per journaled fact, projected with print
-        // and pushed to the PanelSink (a projection, never the journal's storage).
-        // Reactions observe V2 Actions (define + invocation): a literal script (no
-        // @params, e.g. the release chain) is NOT observable here.
-        perf.Actor.Reactions.DefineReaction("Assigned")
-            .Cue().Company().WithSharedHydration()
-            .Seek("Assigned")
-                .OnMatch(@"
-                    [_:Golem].Assign($mission, $x, $y)
-                ")
-            .Program.Emit(@"
-                print 'g.Assign(' + @mission + ', ' + @x + ', ' + @y + ');' 'command', @mission 'mission', @x 'x', @y 'y';
-            ");
-
-        perf.Actor.Reactions.DefineReaction("Taken")
-            .Cue().Company().WithSharedHydration()
-            .Seek("Taken")
-                .OnMatch(@"
-                    [_:Golem].Take($x, $y)
-                ")
-            .Program.Emit(@"
-                print 'g.Take(' + @x + ', ' + @y + ');' 'command', @x 'x', @y 'y';
-            ");
-
-        perf.Actor.Reactions.DefineReaction("Completed")
-            .Cue().Company().WithSharedHydration()
-            .Seek("Completed")
-                .OnMatch(@"
-                    [_:Golem].Complete($mission)
-                ")
-            .Program.Emit(@"
-                print 'g.Complete(' + @mission + ');' 'command', @mission 'mission';
-            ");
-
-        perf.Actor.Reactions.DefineReaction("Failed")
-            .Cue().Company().WithSharedHydration()
-            .Seek("Failed")
-                .OnMatch(@"
-                    [_:Golem].Fail($mission, $reason)
-                ")
-            .Program.Emit(@"
-                print 'g.Fail(' + @mission + ', ""' + @reason + '"");' 'command', @mission 'mission', @reason 'reason';
-            ");
-
-        perf.Actor.Reactions.DefineReaction("Retired")
-            .Cue().Company().WithSharedHydration()
-            .Seek("Retired")
-                .OnMatch(@"
-                    [_:Golem].Retire($reason)
-                ")
-            .Program.Emit(@"
-                print 'g.Retire(""' + @reason + '"");' 'command', @reason 'reason';
-            ");
 
         if (tellDoneTo == null) return;
 
@@ -139,20 +83,6 @@ public sealed class GolemChoreography
             .Causation.Continue($@"
                 g.Announce(@missionId);
                 tell PointVisited with @x, @y to {tellDoneTo} once 'visited-' + @missionId;
-            ");
-
-        // (The entry the reaction writes — Announce + tell — is NOT observable by other
-        // view reactions in this build: a view on [_:Golem].Announce never fires, silently.
-        // The ack below is the visible mark of the round trip.)
-        // The peer heard us: its ack is journaled on OUR side — project it too.
-        perf.Actor.Reactions.DefineReaction("Acked")
-            .Cue().Company().WithSharedHydration()
-            .Seek("Acked")
-                .OnMatch($@"
-                    tell ack $id from {tellDoneTo}
-                ")
-            .Program.Emit($@"
-                print 'tell ack ""' + @id + '"" from {tellDoneTo};' 'command', @id 'tell';
             ");
     }
 

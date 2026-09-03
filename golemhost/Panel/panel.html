@@ -124,9 +124,10 @@
     <h2>Journal — live</h2>
     <ul id="feed"></ul>
     <p class="hint" style="margin-top:8px">
-      Every row is a journaled command, as the journal wrote it, with the entry it landed on.
-      A view reaction per fact (Assigned, Taken, Completed, Failed, Retired, Acked — the tag at the
-      right) projects it here; the release chain (entry 1) is announced by the host.
+      Everything the journal receives, record by record, as it lands: the release chain, each
+      <code>define action</code> (the template), each action (the template with its arguments), the
+      tells, the acks and the verdicts. The tag at the right is the record kind. At boot the whole
+      diary is replayed here first.
     </p>
 
     <h2 style="margin-top:20px">Runtime events</h2>
@@ -158,10 +159,10 @@ function row(e) {
   const target = journaled ? feed : events;
   const li = document.createElement('li');
   li.className = e.Kind + ' flash';
-  // a journaled row carries the command as the journal wrote it; the fact name is only a tag
+  // a journaled row IS the statement as the journal holds it; the tag says what kind of record it was
   let script = e.Script || '', note = e.Note;
   if (journaled) {
-    try { const doc = JSON.parse(e.Note); if (doc.command) { script = doc.command; note = e.Script; } } catch {}
+    try { const doc = JSON.parse(e.Note); note = doc.kind + (doc.actionId ? ' ' + doc.actionId : ''); } catch {}
   }
   li.innerHTML = `<span class="entry">${journaled ? '#' + e.Entry : '·'}</span>` +
                  `<span class="script">${script}</span>` +
@@ -171,12 +172,11 @@ function row(e) {
   if (journaled) paintFact(e);
 }
 
-// The map follows the journal: an Assigned or Taken fact places a target marker.
+// The map follows the journal: an Assign or Take record places a target marker.
 function paintFact(e) {
   let doc;
   try { doc = JSON.parse(e.Note); } catch { return; }
-  if (e.Script === 'Assigned' || e.Script === 'Taken')
-    targets.push({x: doc.x, y: doc.y, at: Date.now()});
+  if (doc.x !== null && doc.x !== undefined) targets.push({x: doc.x, y: doc.y, at: Date.now()});
 }
 
 const es = new EventSource('/events');
