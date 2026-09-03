@@ -172,7 +172,7 @@ function row(e) {
   if (journaled) paintFact(e);
 }
 
-// The map follows the journal: an Assign or Take record places a target marker.
+// The map follows the journal: an Assign or AssignTold record places a target marker.
 function paintFact(e) {
   let doc;
   try { doc = JSON.parse(e.Note); } catch { return; }

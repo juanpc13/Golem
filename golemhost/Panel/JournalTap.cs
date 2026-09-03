@@ -142,12 +142,12 @@ internal sealed class JournalTap
         return parts;
     }
 
-    // A point the map can mark: Assign(id, x, y) or Take(x, y).
+    // A point the map can mark: Assign(id, x, y) or AssignTold(x, y).
     private static (double?, double?) PointOf(string call)
     {
         var assign = Regex.Match(call, @"g\.Assign\(\s*[^,]+,\s*(?<x>[-0-9.]+)\s*,\s*(?<y>[-0-9.]+)\s*\)");
-        var take = Regex.Match(call, @"g\.Take\(\s*(?<x>[-0-9.]+)\s*,\s*(?<y>[-0-9.]+)\s*\)");
-        var m = assign.Success ? assign : take.Success ? take : null;
+        var told = Regex.Match(call, @"g\.AssignTold\(\s*(?<x>[-0-9.]+)\s*,\s*(?<y>[-0-9.]+)\s*\)");
+        var m = assign.Success ? assign : told.Success ? told : null;
         if (m == null) return (null, null);
         return (double.Parse(m.Groups["x"].Value, System.Globalization.CultureInfo.InvariantCulture),
                 double.Parse(m.Groups["y"].Value, System.Globalization.CultureInfo.InvariantCulture));

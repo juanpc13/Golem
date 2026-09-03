@@ -153,12 +153,12 @@ public sealed class GolemChoreography
         dispatch.ConsumeFrom(new BrokerInputSource(ops, topic), Route);
 
         // Uptake: whatever point a peer visited becomes a mission of MY own — the
-        // hearer's verb (Take mints the handle inside), one journaled perform per tell.
+        // hearer's verb (AssignTold mints the handle inside), one journaled perform per tell.
         // Only plain @params here: a nested call as an argument faults the reaction matcher.
         toldListener = perf
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
-                .Command("g.Take(@x, @y);")
+                .Command("g.AssignTold(@x, @y);")
             .Start();
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
             $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));

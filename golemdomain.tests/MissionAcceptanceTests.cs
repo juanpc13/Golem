@@ -81,15 +81,15 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
-    public void APointToldByAPeer_IsTakenUp_WithItsOwnHandle_AndRemembersItWasTold()
+    public void APointToldByAPeer_IsAssignedTold_WithItsOwnHandle()
     {
         Assign(1, 3.0, 4.0);
 
-        Take(8.5, 2.5);
+        AssignTold(8.5, 2.5);
 
         Assert.AreEqual(2, Int("g.Total()"));
-        Assert.IsTrue(Bool("g.Knows(2)"), "the taken point got handle 2");
-        Assert.IsTrue(Bool("g.WasTold(2)"), "a taken point is a told point");
+        Assert.IsTrue(Bool("g.Knows(2)"), "the told point got handle 2");
+        Assert.IsTrue(Bool("g.WasTold(2)"), "an AssignTold mission remembers it was told");
         Assert.AreEqual(3, Int("g.NextHandle()"));
     }
 
@@ -97,7 +97,7 @@ public class MissionAcceptanceTests
     public void TheRoadLeft_RunsThroughEveryPendingPoint_InOrder_AndTheTimeCountsTheHolds()
     {
         Assign(1, 8.0, 5.0);   // 6 units from (2,5)
-        Take(8.0, 9.0);        // then 4 more, and a told point: one hold
+        AssignTold(8.0, 9.0);        // then 4 more, and a told point: one hold
         Assign(3, 2.0, 9.0);   // then 6 more
         long entriesBefore = perf.CurrentEntryId;
 
@@ -132,7 +132,7 @@ public class MissionAcceptanceTests
     public void TheRoute_IsAnsweredWithNoParameters_AtTheBodysOwnSpeedAndPauses()
     {
         Assign(1, 8.0, 5.0);
-        Take(8.0, 9.0);        // 4 units after the first point, and a told point: one pause
+        AssignTold(8.0, 9.0);        // 4 units after the first point, and a told point: one pause
         Assign(3, 2.0, 9.0);   // 6 more
 
         Assert.AreEqual(2.0, Double("g.Speed()"), 0.001, "the body release");
@@ -228,9 +228,9 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    private void Take(double x, double y) =>
+    private void AssignTold(double x, double y) =>
         perf.Actor.Using(@"
-            g.Take(@x, @y);
+            g.AssignTold(@x, @y);
         ")
         .WithParameters(p => {
             p["x", typeof(double)] = x;

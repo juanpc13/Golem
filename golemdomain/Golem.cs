@@ -44,8 +44,8 @@ internal sealed class Golem
     /// <summary>Entrusts a mission under its handle. A repeated or spent handle is a caller bug.</summary>
     internal int Assign(int id, double x, double y) => Entrust(id, x, y, told: false);
 
-    /// <summary>Takes up a point a peer says it visited, as a mission of its own.</summary>
-    internal int Take(double x, double y) => Entrust(NextHandle(), x, y, told: true);
+    /// <summary>Assigns itself a point a peer says it visited — a told mission, with a handle of its own.</summary>
+    internal int AssignTold(double x, double y) => Entrust(NextHandle(), x, y, told: true);
 
     internal int Complete(int id)
     {
