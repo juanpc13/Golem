@@ -14,18 +14,18 @@ public class MissionAcceptanceTests
     private PerformanceV2 perf;
 
     [TestInitialize]
-    public void AGolemIsBornWithItsWorld()
+    public void AGolemIsBorn()
     {
+        // The DSL renders numbers into the journal with the current culture: pin it.
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        // One actor and one store per test: the in-memory store is shared by name.
         string name = "golem-under-test-" + Guid.NewGuid().ToString("N");
         perf = new PerformanceV2(name, GolemDomain.Assembly);
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
         perf.Actor.Using(@"
-            upgrade('init')     { g = Golem(); }
-            upgrade('world_v1') { g.Inhabit(11.08, 0.6); }
-            upgrade('rock_v1')  { g.PlaceRock(7.5, 4.5, 1.0); }
+            upgrade('init') { g = Golem(); }
         ")
         .PerformCommand();
     }
@@ -59,54 +59,22 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
-    public void AnAlternateRoute_KeepsTheOrderedPointOnRecord_AndAimsAtTheNewOne()
+    public void AFailedMission_KeepsItsReason_AndIsNoLongerPending()
     {
-        Assign(1, 15.0, 5.0);
+        Assign(1, 3.0, 4.0);
 
         perf.Actor.Using(@"
-            g.Reroute(@id, @x, @y, @reason);
+            g.Fail(@id, @reason);
         ")
         .WithParameters(p => {
             p["id",     typeof(int)]    = 1;
-            p["x",      typeof(double)] = 10.48;
-            p["y",      typeof(double)] = 5.0;
-            p["reason", typeof(string)] = "target unreachable";
+            p["reason", typeof(string)] = "stuck against a wall";
         })
         .PerformCommand();
 
-        Assert.AreEqual(1, Int("g.Reroutes(1)"));
-        Assert.AreEqual(10.48, Double("g.NextX()"), 0.001);
-        Assert.IsTrue(Bool("g.IsPending(1)"), "a rerouted mission is still to be done");
-    }
-
-    [TestMethod]
-    public void TheWorld_RefusesToStandInsideTheRock_AndOffersTheNearestPointOutside()
-    {
-        Assert.IsFalse(Bool("g.CanStandAt(7.5, 4.5)"));
-        Assert.IsTrue(Bool("g.CanStandAt(2.0, 2.0)"));
-        Assert.IsFalse(Bool("g.CanStandAt(15.0, 5.0)"), "outside the walls");
-
-        double altX = Double("g.NearestStandableX(7.5, 4.5)");
-        Assert.IsTrue(Bool($"g.CanStandAt({altX.ToString(CultureInfo.InvariantCulture)}, 4.5)"),
-            "the nearest standable point is standable");
-    }
-
-    [TestMethod]
-    public void RetiringLetsGoOfEveryMission_ButNeverReusesAHandle()
-    {
-        Assign(1, 3.0, 4.0);
-        Assign(2, 5.0, 6.0);
-
-        perf.Actor.Using(@"
-            g.Retire(@reason);
-        ")
-        .WithParameters(p => {
-            p["reason", typeof(string)] = "the test is over";
-        })
-        .PerformCommand();
-
-        Assert.AreEqual(0, Int("g.Total()"));
-        Assert.AreEqual(3, Int("g.NextHandle()"), "a spent handle is never minted again: the idempotency keys hang on it");
+        Assert.IsFalse(Bool("g.IsPending(1)"));
+        Assert.IsFalse(Bool("g.HasPendingMission()"));
+        Assert.AreEqual("failed", Text("g.StatusOf(1)"));
     }
 
     [TestMethod]
@@ -126,6 +94,24 @@ public class MissionAcceptanceTests
         Assert.AreEqual(2, Int("g.Total()"));
         Assert.IsTrue(Bool("g.Knows(2)"), "the taken point got handle 2");
         Assert.AreEqual(3, Int("g.NextHandle()"));
+    }
+
+    [TestMethod]
+    public void RetiringLetsGoOfEveryMission_ButNeverReusesAHandle()
+    {
+        Assign(1, 3.0, 4.0);
+        Assign(2, 5.0, 6.0);
+
+        perf.Actor.Using(@"
+            g.Retire(@reason);
+        ")
+        .WithParameters(p => {
+            p["reason", typeof(string)] = "the test is over";
+        })
+        .PerformCommand();
+
+        Assert.AreEqual(0, Int("g.Total()"));
+        Assert.AreEqual(3, Int("g.NextHandle()"), "a spent handle is never minted again: the idempotency keys hang on it");
     }
 
     // ---- helpers: the same perform shapes the host uses ----
@@ -185,5 +171,16 @@ public class MissionAcceptanceTests
         })
         .PerformQuery();
         return rented["value"].GetValue<bool>();
+    }
+
+    private string Text(string expression)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using($"@value = {expression};")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "value", typeof(string)] = default;
+        })
+        .PerformQuery();
+        return rented["value"].GetValue<string>();
     }
 }

@@ -46,10 +46,6 @@ public class GolemController : Controller
             if (g.HasPendingMission()) {
                 print g.NextId() 'nextId', g.NextX() 'nextX', g.NextY() 'nextY';
             }
-            print g.WorldSize() 'worldSize', g.WallMargin() 'wallMargin', g.HasRock() 'hasRock';
-            if (g.HasRock()) {
-                print g.RockX() 'rockX', g.RockY() 'rockY', g.RockRadius() 'rockR';
-            }
         ")
         .PerformQuery();
 }

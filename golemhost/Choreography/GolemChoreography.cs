@@ -8,8 +8,8 @@ using Puppeteer;
 
 namespace GolemHost.Choreography;
 
-// The golem's choreography. The mission loop perceives the world (ROS telemetry),
-// decides, and reports outcomes to a Saga keyed by mission id — every write goes
+// The golem's choreography. The mission loop perceives the body (ROS telemetry),
+// drives, and reports outcomes to a Saga keyed by mission id — every write goes
 // through the actor, guarded by a domain Check, and the journal stays the only truth.
 // Speech (tells) and the panel's projections are Reactions on the golem's own journal.
 public sealed class GolemChoreography
@@ -52,8 +52,8 @@ public sealed class GolemChoreography
 
         // The panel's journal lane: one view per journaled fact, projected with print
         // and pushed to the PanelSink (a projection, never the journal's storage).
-        // Reactions observe V2 Actions (define + invocation): the release chain is a literal
-        // script and is NOT observable here — the panel reads the world from /state instead.
+        // Reactions observe V2 Actions (define + invocation): a literal script (no
+        // @params, e.g. the release chain) is NOT observable here.
         perf.Actor.Reactions.DefineReaction("Assigned")
             .Cue().Company().WithSharedHydration()
             .Seek("Assigned")
@@ -94,21 +94,11 @@ public sealed class GolemChoreography
                 print @mission 'mission', @reason 'reason';
             ");
 
-        perf.Actor.Reactions.DefineReaction("Rerouted")
-            .Cue().Company().WithSharedHydration()
-            .Seek("Rerouted")
-                .OnMatch(@"
-                    [_:Golem].Reroute($mission, $x, $y, $reason)
-                ")
-            .Program.Emit(@"
-                print @mission 'mission', @x 'x', @y 'y', @reason 'reason';
-            ");
-
         perf.Actor.Reactions.DefineReaction("Retired")
             .Cue().Company().WithSharedHydration()
             .Seek("Retired")
                 .OnMatch(@"
-                [_:Golem].Retire($reason)
+                    [_:Golem].Retire($reason)
                 ")
             .Program.Emit(@"
                 print @reason 'reason';
@@ -207,25 +197,6 @@ public sealed class GolemChoreography
                     })
                     .PerformCheckThenCommand();
                     Settle(refused, $"mission {m.Id} failed: {m.Reason}");
-                })
-            .On<MissionRerouted>(m => m.Id.ToString(CultureInfo.InvariantCulture))
-                .Task("reroute", (actor, m) =>
-                {
-                    string refused = actor.Using(
-                        @"
-                            Check(g.Knows(@id) && g.IsPending(@id) && g.Reroutes(@id) == 0) Error 'mission already took its alternate route';
-                        ",
-                        @"
-                            g.Reroute(@id, @x, @y, @reason);
-                        ")
-                    .WithParameters(p => {
-                        p["id",     typeof(int)]    = m.Id;
-                        p["x",      typeof(double)] = m.X;
-                        p["y",      typeof(double)] = m.Y;
-                        p["reason", typeof(string)] = m.Reason;
-                    })
-                    .PerformCheckThenCommand();
-                    Settle(refused, $"mission {m.Id} takes an alternate route — {m.Reason}");
                 });
 
         dispatch.ConsumeFrom(new BrokerInputSource(ops, topic), Route);
@@ -254,7 +225,6 @@ public sealed class GolemChoreography
         {
             "succeeded" => MissionSucceeded.TypeId,
             "failed"    => MissionFailed.TypeId,
-            "rerouted"  => MissionRerouted.TypeId,
             "retired"   => GolemRetired.TypeId,
             _           => -1
         };
@@ -276,7 +246,7 @@ public sealed class GolemChoreography
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"refused — {refused}", DateTime.UtcNow));
     }
 
-    // The operator asks the golem to let go of every mission: the world is put back
+    // The operator asks the golem to let go of every mission: the body is put back
     // (ephemeral) and the forgetting is journaled through the same ops surface.
     public async Task LetGoAsync()
     {
@@ -294,7 +264,10 @@ public sealed class GolemChoreography
     }
 
     // ------------------------------------------------------------------
-    // The mission loop: perceive -> decide -> produce -> act.
+    // The mission loop: perceive -> drive -> produce the outcome.
+    // Failure is defined here for now (turtlesim never fails on its own): the body
+    // stalls against a wall, or the run times out. Whether the golem should know
+    // its world (walls, obstacles, alternate routes) is an open design question.
     // ------------------------------------------------------------------
     private enum Outcome { Arrived, Stalled, Timeout }
 
@@ -309,77 +282,30 @@ public sealed class GolemChoreography
                 continue;
             }
 
-            // A target the body cannot stand on (outside the walls, inside the rock) is
-            // unreachable — the alternate route is decided before burning the timeout.
-            if (plan.Reroutes == 0 && !CanStandAt(plan.X, plan.Y))
-            {
-                var alt = NearestStandable(plan.X, plan.Y);
-                await RerouteAsync(plan.Id, alt.X, alt.Y, "target unreachable", plan.Reroutes, ct);
-                continue;
-            }
-
-            string via = plan.Reroutes > 0 ? " (alternate route)" : "";
-            Console.WriteLine($"[golem {golem}] mission {plan.Id}: go to ({plan.X:0.0}, {plan.Y:0.0}){via}");
+            Console.WriteLine($"[golem {golem}] mission {plan.Id}: go to ({plan.X:0.0}, {plan.Y:0.0})");
             feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-                $"mission {plan.Id} started — driving to ({plan.X:0.0}, {plan.Y:0.0}){via}", DateTime.UtcNow));
+                $"mission {plan.Id} started — driving to ({plan.X:0.0}, {plan.Y:0.0})", DateTime.UtcNow));
 
-            Outcome outcome = Outcome.Arrived;
-            var here = ros.LatestPose;
-            if (here != null)
-            {
-                var detour = Detour(here.X, here.Y, plan.X, plan.Y);
-                if (detour.Crosses)
-                {
-                    Console.WriteLine($"[golem {golem}] mission {plan.Id}: the run crosses the rock — detour via ({detour.X:0.0}, {detour.Y:0.0})");
-                    feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-                        $"mission {plan.Id}: the run crosses the rock — detour via ({detour.X:0.0}, {detour.Y:0.0})", DateTime.UtcNow));
-                    outcome = await GoToAsync(detour.X, detour.Y, ct);
-                }
-            }
-            if (outcome == Outcome.Arrived)
-                outcome = await GoToAsync(plan.X, plan.Y, ct);
+            Outcome outcome = await GoToAsync(plan.X, plan.Y, ct);
             if (ct.IsCancellationRequested) break;
 
             string key = $"{golem}:mission:{plan.Id}";
-            if (outcome == Outcome.Arrived)
+            switch (outcome)
             {
-                Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
-            }
-            else if (outcome == Outcome.Stalled && plan.Reroutes == 0)
-            {
-                var alt = NearestStandable(plan.X, plan.Y);
-                if (Math.Abs(alt.X - plan.X) > 0.01 || Math.Abs(alt.Y - plan.Y) > 0.01)
-                {
-                    await RerouteAsync(plan.Id, alt.X, alt.Y, "stalled against a wall", plan.Reroutes, ct);
-                    continue;
-                }
-                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "stuck against a wall"));
-            }
-            else if (outcome == Outcome.Stalled)
-            {
-                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "stuck again after the alternate route"));
-            }
-            else
-            {
-                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "timeout"));
+                case Outcome.Arrived:
+                    Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
+                    break;
+                case Outcome.Stalled:
+                    Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "stuck against a wall"));
+                    break;
+                default:
+                    Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "timeout"));
+                    break;
             }
 
             if (!await WaitUntilSettledAsync(plan.Id, ct))
                 await Task.Delay(TimeSpan.FromSeconds(2), ct); // never re-drive on a timeout; back off and re-read
         }
-    }
-
-    private async Task RerouteAsync(int id, double altX, double altY, string reason, int reroutesBefore, CancellationToken ct)
-    {
-        Console.WriteLine($"[golem {golem}] mission {id}: {reason} — alternate route to ({altX:0.0}, {altY:0.0})");
-        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-            $"mission {id}: {reason} — choosing the alternate route ({altX:0.0}, {altY:0.0})", DateTime.UtcNow));
-        Produce("rerouted", $"{golem}:mission:{id}:reroute:{reroutesBefore + 1}",
-            MissionRerouted.Payload(id, altX, altY, reason));
-
-        var start = DateTime.UtcNow;
-        while (Reroutes(id) == reroutesBefore && DateTime.UtcNow - start < TimeSpan.FromSeconds(5) && !ct.IsCancellationRequested)
-            await Task.Delay(100, ct);
     }
 
     // Settled = the journal moved past this mission (completed/failed) — or a timeout.
@@ -402,7 +328,7 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     // Typed reads: Out parameters through the rent-lease (never parsing print).
     // ------------------------------------------------------------------
-    private (bool Has, int Id, double X, double Y, int Reroutes) ReadPlan()
+    private (bool Has, int Id, double X, double Y) ReadPlan()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
@@ -411,86 +337,17 @@ public sealed class GolemChoreography
                 @id = g.NextId();
                 @x = g.NextX();
                 @y = g.NextY();
-                @reroutes = g.Reroutes(g.NextId());
             }
         ")
         .WithParameters(rented, p => {
-            p[Parameter.Out, "has",      typeof(bool)]   = default;
-            p[Parameter.Out, "id",       typeof(int)]    = default;
-            p[Parameter.Out, "x",        typeof(double)] = default;
-            p[Parameter.Out, "y",        typeof(double)] = default;
-            p[Parameter.Out, "reroutes", typeof(int)]    = default;
+            p[Parameter.Out, "has", typeof(bool)]   = default;
+            p[Parameter.Out, "id",  typeof(int)]    = default;
+            p[Parameter.Out, "x",   typeof(double)] = default;
+            p[Parameter.Out, "y",   typeof(double)] = default;
         })
         .PerformQuery();
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
-                rented["x"].GetValue<double>(), rented["y"].GetValue<double>(), rented["reroutes"].GetValue<int>());
-    }
-
-    private bool CanStandAt(double x, double y)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using(@"
-            @ok = g.CanStandAt(@x, @y);
-        ")
-        .WithParameters(rented, p => {
-            p["x", typeof(double)]                = x;
-            p["y", typeof(double)]                = y;
-            p[Parameter.Out, "ok", typeof(bool)]  = default;
-        })
-        .PerformQuery();
-        return rented["ok"].GetValue<bool>();
-    }
-
-    private (double X, double Y) NearestStandable(double x, double y)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using(@"
-            @ax = g.NearestStandableX(@x, @y);
-            @ay = g.NearestStandableY(@x, @y);
-        ")
-        .WithParameters(rented, p => {
-            p["x", typeof(double)]                  = x;
-            p["y", typeof(double)]                  = y;
-            p[Parameter.Out, "ax", typeof(double)]  = default;
-            p[Parameter.Out, "ay", typeof(double)]  = default;
-        })
-        .PerformQuery();
-        return (rented["ax"].GetValue<double>(), rented["ay"].GetValue<double>());
-    }
-
-    private (bool Crosses, double X, double Y) Detour(double fromX, double fromY, double toX, double toY)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using(@"
-            @crosses = g.RunCrossesRock(@fx, @fy, @tx, @ty);
-            @wx = g.DetourX(@fx, @fy, @tx, @ty);
-            @wy = g.DetourY(@fx, @fy, @tx, @ty);
-        ")
-        .WithParameters(rented, p => {
-            p["fx", typeof(double)]                      = fromX;
-            p["fy", typeof(double)]                      = fromY;
-            p["tx", typeof(double)]                      = toX;
-            p["ty", typeof(double)]                      = toY;
-            p[Parameter.Out, "crosses", typeof(bool)]    = default;
-            p[Parameter.Out, "wx",      typeof(double)]  = default;
-            p[Parameter.Out, "wy",      typeof(double)]  = default;
-        })
-        .PerformQuery();
-        return (rented["crosses"].GetValue<bool>(), rented["wx"].GetValue<double>(), rented["wy"].GetValue<double>());
-    }
-
-    private int Reroutes(int id)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using(@"
-            @n = g.Reroutes(@id);
-        ")
-        .WithParameters(rented, p => {
-            p["id", typeof(int)]                 = id;
-            p[Parameter.Out, "n", typeof(int)]   = default;
-        })
-        .PerformQuery();
-        return rented["n"].GetValue<int>();
+                rented["x"].GetValue<double>(), rented["y"].GetValue<double>());
     }
 
     private bool IsSettled(int id)

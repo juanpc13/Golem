@@ -24,15 +24,12 @@ internal sealed class GolemPerformance : PerformanceV2
         BornThisBoot = true;
     }
 
-    // The releases: the golem is born, is given its world, and the world gets its rock.
-    // The world is the golem's own knowledge — turtlesim has no physics — and every
-    // golem runs this same script, so all of them share one world.
+    // The releases: the golem is born. (Its knowledge of the world — walls, obstacles,
+    // alternate routes — is deliberately NOT here yet; that design is still open.)
     protected override void OnHydrated()
     {
         Actor.Using(@"
-            upgrade('init')     { g = Golem(); }
-            upgrade('world_v1') { g.Inhabit(11.08, 0.6); }
-            upgrade('rock_v1')  { g.PlaceRock(7.5, 4.5, 1.0); }
+            upgrade('init') { g = Golem(); }
         ")
         .PerformCommand();
     }

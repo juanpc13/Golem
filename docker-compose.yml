@@ -21,8 +21,6 @@ services:
   # turtle, all from the same image — only the environment differs. GOLEM is the
   # identity (names the journal); TURTLE is the body it drives (ROS topics); the
   # golem spawns its body if the world lacks it, and signs its trail with PEN_RGB.
-  # The world (walls, margin, rock) is the golem's own knowledge, released through
-  # its upgrade chain — every golem runs the same chain, so they share one world.
   # Journals live in ./journal on the host — inspectable, they outlive containers.
   # RULE: one writer per journal — never point two processes at the same GOLEM.
   #
