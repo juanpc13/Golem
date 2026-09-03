@@ -13,6 +13,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The pure domain lives in its own assembly: sinks and hosts see it, it sees nothing of them. -->
+    <ProjectReference Include="..\golemdomain\Golem.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- TargetPath keeps it flat in the output: the root endpoint serves it as "panel.html" -->
     <None Include="Panel\panel.html" CopyToOutputDirectory="PreserveNewest" TargetPath="panel.html" />
   </ItemGroup>

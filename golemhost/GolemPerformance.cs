@@ -3,16 +3,14 @@ using Choreography.Theater;
 
 namespace GolemHost;
 
-// The golem's Performance, LottoPerformance-style: initialization is versioned
-// INSIDE the actor via hydration hooks, not guarded by the host.
-//
-// OnHydrated runs after every hydration (first and every restart) and performs
-// the upgrade chain: already-applied upgrades are skipped silently, new ones run
-// and journal. To evolve the golem, append Upgrade_From_X_To_Y() methods here —
-// never edit an upgrade that already shipped (its body signature is validated).
+// The golem's Performance. Initialization is versioned INSIDE the actor through the
+// hydration hooks (hosting-environments guide, "Seed / migration idiom"): OnHydrated
+// runs after every hydration and issues the release chain; applied releases skip,
+// new ones run and journal. To evolve the golem, append the next release below —
+// never edit an applied one (its body signature is guarded).
 internal sealed class GolemPerformance : PerformanceV2
 {
-    // True only on the boot where the journal was brand-new (the framework calls
+    // True only on the boot where the journal was brand-new (the framework raises
     // OnFirstHydration exactly then). Used for the panel's birth announcement.
     internal bool BornThisBoot { get; private set; }
 
@@ -26,36 +24,16 @@ internal sealed class GolemPerformance : PerformanceV2
         BornThisBoot = true;
     }
 
-    // The substrate's per-record hook (StageHook.OnRecordWritten): fires for every
-    // journal entry THIS process writes — including engine-side writes our call
-    // sites never see (the tell sentence, its ack, a Told uptake's perform). The
-    // panel uses it so the live feed never silently skips an entry id.
-    internal void WatchJournal(Action<long, byte[]> onRecordWritten)
-    {
-        hook.OnRecordWritten = (entryId, wire) => onRecordWritten(entryId, wire);
-    }
-
-    // Durable read of the journal's wire records after an entry — the same public
-    // seam a replication catch-up uses. The panel warms its define/template cache
-    // from it so action rows can name the template they invoke.
-    internal List<Puppeteer.EventSourcing.DB.JournalWireRecord> ReadJournalAfter(long afterEntryId)
-    {
-        var records = new List<Puppeteer.EventSourcing.DB.JournalWireRecord>();
-        hook.ReadJournalRecordsAfter(afterEntryId, records);
-        return records;
-    }
-
+    // The releases: the golem is born, is given its world, and the world gets its rock.
+    // The world is the golem's own knowledge — turtlesim has no physics — and every
+    // golem runs this same script, so all of them share one world.
     protected override void OnHydrated()
     {
-        Init();
-    }
-
-    private void Init()
-    {
-        PerformCmd(@"
-            upgrade('init') {
-                g = Golem();
-            };
-        ");
+        Actor.Using(@"
+            upgrade('init')     { g = Golem(); }
+            upgrade('world_v1') { g.Inhabit(11.08, 0.6); }
+            upgrade('rock_v1')  { g.PlaceRock(7.5, 4.5, 1.0); }
+        ")
+        .PerformCommand();
     }
 }

@@ -26,7 +26,7 @@
   .card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; }
 
   /* operations */
-  #map { display:block; width:100%; aspect-ratio:1; background:#4556e8; border-radius:8px;
+  #map { display:block; width:100%; aspect-ratio:1; border-radius:8px;
          cursor:crosshair; border:1px solid var(--line); }
   .ops { display:flex; flex-direction:column; gap:10px; }
   .row { display:flex; gap:8px; }
@@ -38,6 +38,13 @@
   button.danger { background:#4a2430; color:#f0b9b9; border:1px solid #7a3a44; }
   button.danger:active { background:#6a3040; }
   .hint { font-size:12px; color:var(--muted); margin:0; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; font-size:11.5px; color:var(--muted); }
+  .legend span::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px;
+                         margin-right:5px; vertical-align:-1px; }
+  .legend .world::before { background:#4556e8; }
+  .legend .reach::before { background:transparent; border:1px dashed #c8d0ff; }
+  .legend .fail::before { background:#3a1a22; border:1px solid #7a3a44; }
+  .legend .rock::before { background:#6b6b78; border-radius:50%; }
 
   /* journal feed */
   #feed, #events { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;
@@ -47,8 +54,8 @@
   #feed li, #events li { display:flex; gap:10px; align-items:baseline; padding:7px 10px;
              border-radius:8px; background:var(--surface); border:1px solid var(--line); }
   .entry { color:var(--clay); min-width:52px; font-weight:600; }
-  .script { color:var(--ink); }
-  .note { color:var(--muted); margin-left:auto; text-align:right; }
+  .script { color:var(--ink); min-width:90px; }
+  .note { color:var(--muted); margin-left:auto; text-align:right; word-break:break-all; }
   li.runtime { border-style:dashed; opacity:0.75; }
   li.runtime .entry { color:var(--muted); font-weight:400; }
   li.info .entry { color:var(--ros); }
@@ -71,11 +78,19 @@
   <section>
     <h2>Operations</h2>
     <div class="card ops">
-      <canvas id="map" width="240" height="240" title="click to send the turtle there"></canvas>
-      <p class="hint">Click the map to queue a mission — the world is 11.08 × 11.08.</p>
+      <canvas id="map" width="260" height="260" title="click to send the turtle there"></canvas>
+      <div class="legend">
+        <span class="world">the world</span>
+        <span class="reach">standable (wall margin)</span>
+        <span class="rock">the rock (no target, no run through it)</span>
+        <span class="fail">failure zone → alternate route</span>
+      </div>
+      <p class="hint">Click inside the world to entrust a mission. Click the dark zone to order an
+      impossible target and watch the golem journal its alternate route — the map paints the
+      route the journal says it took.</p>
       <div class="row">
-        <input id="x" type="number" step="0.5" min="0.5" max="10.5" value="5.5">
-        <input id="y" type="number" step="0.5" min="0.5" max="10.5" value="5.5">
+        <input id="x" type="number" step="0.5" value="5.5">
+        <input id="y" type="number" step="0.5" value="5.5">
         <button id="assign">Assign</button>
       </div>
       <div class="row">
@@ -83,10 +98,10 @@
         <button id="center">Go center</button>
       </div>
       <div class="row">
-        <button id="reset" class="danger">Reset everything</button>
+        <button id="reset" class="danger">Let go of everything</button>
       </div>
-      <p class="hint">Reset wipes this golem's journal, clears the world, and restarts
-      the brain — it comes back at entry 0 and seeds again.</p>
+      <p class="hint">The golem lets go of every mission — journaled as <code>g.Retire()</code>,
+      nothing is erased — and the world is put back (turtle to the center, trails cleared).</p>
     </div>
   </section>
 
@@ -101,8 +116,8 @@
       <div class="row" id="presets">
         <button data-q="g.Pending()">Pending()</button>
         <button data-q="g.Total()">Total()</button>
-        <button data-q="g.NextId()">NextId()</button>
-        <button data-q="{ print g.NextX() 'x'; print g.NextY() 'y'; }">Next target</button>
+        <button data-q="g.HasPendingMission()">HasPendingMission()</button>
+        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextX() 'x', g.NextY() 'y'; } }">Next target</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <p class="hint">Queries read the golem's in-memory state and never touch the journal.
@@ -113,7 +128,9 @@
     <h2>Journal — live</h2>
     <ul id="feed"></ul>
     <p class="hint" style="margin-top:8px">
-      Every row is a journaled command, with the entry the journal reached at commit time.
+      Every row is a journaled fact, projected by one of the golem's view reactions
+      (Assigned, Taken, Completed, Failed, Rerouted, Retired, Acked)
+      with the entry that triggered it.
     </p>
 
     <h2 style="margin-top:20px">Runtime events</h2>
@@ -125,14 +142,24 @@
 </main>
 
 <script>
-const WORLD = 11.08;
+// The world comes from /state — the golem's own knowledge, released through its
+// upgrade chain — so what the map paints as "failure zone" is exactly where it reroutes.
+let WORLD = 11.08, MARGIN = 0.6, ROCK = null;
+const PAD = 2.5;                   // world units of "outside" painted around the world
 const feed = document.getElementById('feed');
+const events = document.getElementById('events');
 const map = document.getElementById('map');
 const mctx = map.getContext('2d');
 let lastPose = null;
-let targets = [];
+let targets = [];                  // {x, y, at, alt?: {x, y}} — alt comes from the journal's Rerouted rows
+const missions = new Map();        // mission id -> its target marker
 
-const events = document.getElementById('events');
+// world <-> canvas (world y grows upward; canvas y grows downward)
+const span = () => WORLD + 2 * PAD;
+const toPx = (wx) => (wx + PAD) / span() * map.width;
+const toPy = (wy) => (1 - (wy + PAD) / span()) * map.height;
+const toWx = (px) => px / map.width * span() - PAD;
+const toWy = (py) => (1 - py / map.height) * span() - PAD;
 
 function row(e) {
   const journaled = e.Kind === 'command';
@@ -144,16 +171,31 @@ function row(e) {
                  `<span class="note">${e.Note}</span>`;
   target.appendChild(li);
   target.scrollTop = target.scrollHeight;
+  if (journaled) paintFact(e);
+}
+
+// The map follows the journal: an Assigned fact places a marker, a Rerouted fact
+// draws the alternate route from the ordered point to the new one.
+function paintFact(e) {
+  let doc;
+  try { doc = JSON.parse(e.Note); } catch { return; }
+  if (e.Script === 'Assigned' || e.Script === 'Taken') {
+    const t = {x: doc.x, y: doc.y, at: Date.now()};
+    targets.push(t);
+    if (doc.mission !== undefined) missions.set(doc.mission, t);
+  } else if (e.Script === 'Rerouted') {
+    const t = missions.get(doc.mission) || [...targets].reverse().find(t => !t.alt);
+    if (t) { t.alt = {x: doc.x, y: doc.y}; t.at = Date.now(); }
+  }
 }
 
 const es = new EventSource('/events');
 es.onmessage = (m) => row(JSON.parse(m.data));
 // on (re)connect the server replays its history — start from clean lists
-// so a brain restart (e.g. after Reset) doesn't duplicate rows
-es.onopen = () => { feed.innerHTML = ''; events.innerHTML = ''; };
+// so a golem restart doesn't duplicate rows
+es.onopen = () => { feed.innerHTML = ''; events.innerHTML = ''; targets = []; missions.clear(); };
 
 async function assign(x, y) {
-  targets.push({x, y, at: Date.now()});
   await fetch(`/assign?x=${x}&y=${y}`, {method: 'POST'});
 }
 
@@ -163,13 +205,14 @@ document.getElementById('center').onclick = () => assign(5.5, 5.5);
 document.getElementById('patrol').onclick = async () => {
   for (const [x, y] of [[8,3],[8,8],[3,8],[3,3]]) await assign(x, y);
 };
+
 async function runQuery(script) {
   const out = document.getElementById('qout');
   out.textContent = '…';
   try {
     const r = await fetch('/query', {method: 'POST', body: script});
     out.textContent = script + '\n→ ' + await r.text();
-  } catch (e) { out.textContent = 'brain unreachable: ' + e; }
+  } catch (e) { out.textContent = 'golem unreachable: ' + e; }
 }
 document.getElementById('run').onclick = () => runQuery(document.getElementById('q').value);
 document.getElementById('q').addEventListener('keydown', (e) => {
@@ -180,31 +223,60 @@ document.querySelectorAll('#presets button').forEach(b => {
 });
 
 document.getElementById('reset').onclick = async () => {
-  if (!confirm('Wipe the journal and restart the golem from entry 0?')) return;
-  targets = [];
+  if (!confirm('Let go of every mission (journaled as Retire) and put the world back?')) return;
   await fetch('/reset', {method: 'POST'});
 };
+
 map.addEventListener('click', (ev) => {
   const r = map.getBoundingClientRect();
-  const x = (ev.clientX - r.left) / r.width * WORLD;
-  const y = (1 - (ev.clientY - r.top) / r.height) * WORLD; // world y grows upward
+  const x = toWx((ev.clientX - r.left) / r.width * map.width);
+  const y = toWy((ev.clientY - r.top) / r.height * map.height);
   assign(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
 });
 
 function drawMap() {
   const w = map.width, h = map.height;
-  mctx.clearRect(0, 0, w, h);
-  // recent targets
+  // failure zone: everything outside the world
+  mctx.fillStyle = '#3a1a22';
+  mctx.fillRect(0, 0, w, h);
+  // the world
+  const x0 = toPx(0), y0 = toPy(WORLD), side = toPx(WORLD) - toPx(0);
+  mctx.fillStyle = '#4556e8';
+  mctx.fillRect(x0, y0, side, side);
+  // the standable zone: a wall margin inside the world
+  const m = MARGIN / span() * w;
+  mctx.setLineDash([4, 3]);
+  mctx.strokeStyle = 'rgba(200,208,255,0.75)';
+  mctx.lineWidth = 1;
+  mctx.strokeRect(x0 + m, y0 + m, side - 2 * m, side - 2 * m);
+  mctx.setLineDash([]);
+  // the rock: an obstacle only the golems know about
+  if (ROCK) {
+    const rpx = toPx(ROCK.x), rpy = toPy(ROCK.y), rr = ROCK.r / span() * w;
+    mctx.fillStyle = '#6b6b78';
+    mctx.beginPath(); mctx.arc(rpx, rpy, rr, 0, 7); mctx.fill();
+    mctx.setLineDash([3, 3]);
+    mctx.strokeStyle = 'rgba(200,208,255,0.6)';
+    mctx.beginPath(); mctx.arc(rpx, rpy, (ROCK.r + MARGIN) / span() * w, 0, 7); mctx.stroke();
+    mctx.setLineDash([]);
+  }
+  // recent targets, and the alternate route the journal recorded for them
   const now = Date.now();
   targets = targets.filter(t => now - t.at < 60000);
   for (const t of targets) {
-    const px = t.x / WORLD * w, py = (1 - t.y / WORLD) * h;
+    const px = toPx(t.x), py = toPy(t.y);
     mctx.strokeStyle = 'rgba(223,165,99,0.9)';
     mctx.beginPath(); mctx.arc(px, py, 5, 0, 7); mctx.stroke();
+    if (t.alt) {
+      mctx.setLineDash([2, 3]);
+      mctx.beginPath(); mctx.moveTo(px, py); mctx.lineTo(toPx(t.alt.x), toPy(t.alt.y)); mctx.stroke();
+      mctx.setLineDash([]);
+      mctx.beginPath(); mctx.arc(toPx(t.alt.x), toPy(t.alt.y), 4, 0, 7); mctx.stroke();
+    }
   }
   // the turtle
   if (lastPose) {
-    const px = lastPose.x / WORLD * w, py = (1 - lastPose.y / WORLD) * h;
+    const px = toPx(lastPose.x), py = toPy(lastPose.y);
     mctx.fillStyle = '#e5e7f2';
     mctx.beginPath(); mctx.arc(px, py, 4, 0, 7); mctx.fill();
     mctx.strokeStyle = '#e5e7f2';
@@ -214,23 +286,30 @@ function drawMap() {
   }
 }
 
+// /state is the golem's mission board (one PerformQuery); /body is host telemetry.
 async function poll() {
   try {
-    const s = await (await fetch('/state')).json();
-    document.getElementById('who').textContent = s.golem;
-    document.getElementById('dot').style.background = s.golem; // color names double as identity
-    document.title = `Golem Panel — ${s.golem}`;
-    document.getElementById('turtle').textContent = s.turtle;
-    document.getElementById('entry').textContent = s.entry;
+    const [s, b] = await Promise.all([
+      (await fetch('/state')).json(),
+      (await fetch('/body')).json()
+    ]);
+    WORLD = s.worldSize; MARGIN = s.wallMargin;
+    ROCK = s.hasRock ? {x: s.rockX, y: s.rockY, r: s.rockR} : null;
     document.getElementById('pending').textContent = s.pending;
     document.getElementById('total').textContent = s.total;
-    if (s.pose) {
-      lastPose = s.pose;
+
+    document.getElementById('who').textContent = b.golem;
+    document.getElementById('dot').style.background = b.golem; // color names double as identity
+    document.title = `Golem Panel — ${b.golem}`;
+    document.getElementById('turtle').textContent = b.turtle;
+    document.getElementById('entry').textContent = b.entry;
+    if (b.pose) {
+      lastPose = b.pose;
       document.getElementById('pose').textContent =
-        `${s.pose.x.toFixed(2)}, ${s.pose.y.toFixed(2)}, θ ${s.pose.theta.toFixed(2)}`;
+        `${b.pose.x.toFixed(2)}, ${b.pose.y.toFixed(2)}, θ ${b.pose.theta.toFixed(2)}`;
     }
     drawMap();
-  } catch { /* brain restarting — EventSource reconnects on its own */ }
+  } catch { /* golem restarting — EventSource reconnects on its own */ }
   setTimeout(poll, 500);
 }
 poll();

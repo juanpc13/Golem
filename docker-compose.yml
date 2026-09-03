@@ -21,15 +21,20 @@ services:
   # turtle, all from the same image — only the environment differs. GOLEM is the
   # identity (names the journal); TURTLE is the body it drives (ROS topics); the
   # golem spawns its body if the world lacks it, and signs its trail with PEN_RGB.
+  # The world (walls, margin, rock) is the golem's own knowledge, released through
+  # its upgrade chain — every golem runs the same chain, so they share one world.
   # Journals live in ./journal on the host — inspectable, they outlive containers.
   # RULE: one writer per journal — never point two processes at the same GOLEM.
   #
-  # Tells travel container-to-container over the HttpBroker wire (after the
-  # bingo's PhoneToPhone): TELL_ROUTES maps each tell topic to the peer that
-  # subscribes it (acks travel back over the same table), and TELL_DONE_TO=<peer>
-  # makes a golem tell that peer every point it visits.
+  # Tells travel container-to-container over the HttpBroker wire: TELL_ROUTES maps
+  # each tell topic to the peer that subscribes it (acks travel back on
+  # <topic>.acks over the same table), and TELL_DONE_TO=<peer> makes a golem tell
+  # that peer every point it visits. Only ONE direction of TELL_DONE_TO between two
+  # golems — a told mission is journaled like any other and would echo back forever.
   blue-golem:
-    build: ./golemhost
+    build:
+      context: .
+      dockerfile: golemhost/Dockerfile
     image: golemhost
     container_name: blue-golem
     ports:
@@ -44,6 +49,7 @@ services:
       - PANEL_PORT=8080
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller)
       - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080
+      - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
     depends_on:
@@ -51,7 +57,9 @@ services:
     restart: unless-stopped
 
   red-golem:
-    build: ./golemhost
+    build:
+      context: .
+      dockerfile: golemhost/Dockerfile
     image: golemhost
     container_name: red-golem
     ports:
@@ -66,6 +74,7 @@ services:
       - PANEL_PORT=8080
       # tells TO blue go to blue; acks for tells addressed to ME return to blue
       - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080
+      - TELL_RETRY_SECONDS=30
       - TELL_DONE_TO=blue  # red tells blue every visited point
     volumes:
       - ./journal:/golem/journal

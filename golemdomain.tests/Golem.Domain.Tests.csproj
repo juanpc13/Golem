@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Acceptance tests: enter through the perform, exercise the domain against a real
+       journaled actor (in-memory storage), assert typed values read back via Out. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
+    <PackageReference Include="Ncubo.Puppeteer" Version="2.0.1-beta.10017-portable.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\golemdomain\Golem.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

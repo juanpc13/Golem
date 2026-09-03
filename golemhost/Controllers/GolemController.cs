@@ -1,73 +1,55 @@
-using System.Text.Json;
-using GolemHost.Choreography;
-using GolemHost.Panel;
+using Choreography.Theater;
 using Microsoft.AspNetCore.Mvc;
+using Puppeteer;
 
 namespace GolemHost.Controllers;
 
-// The golem's own endpoints — the actor is managed through controllers, the
-// way every API in the house works. Routes match what the panel page calls.
+// The golem's own verbs, as endpoints (output-and-controller guide): C# validates
+// the inputs, the actor is reused, the request values become @params, and the
+// perform's print output IS the response — no DTO, no re-serialization.
 public class GolemController : Controller
 {
-    private readonly GolemChoreography flow;
-    private readonly PanelFeed feed;
+    private readonly PerformanceV2 perf;
 
-    public GolemController(GolemChoreography flow, PanelFeed feed)
+    public GolemController(PerformanceV2 perf)
     {
-        this.flow = flow;
-        this.feed = feed;
+        this.perf = perf;
     }
 
-    [HttpGet("/")]
-    public IActionResult Panel() =>
-        PhysicalFile(Path.Combine(AppContext.BaseDirectory, "panel.html"), "text/html; charset=utf-8");
-
+    // Entrust a mission. The handle is minted at the actor (Eval) and frozen into the
+    // journaled arguments, so the Reaction that echoes visited points can correlate on it.
     [HttpPost("assign")]
-    public IActionResult Assign([FromQuery] double x, [FromQuery] double y) =>
-        Content(JsonSerializer.Serialize(flow.OrderMission(x, y)), "application/json");
+    public IActionResult AssignMission([FromQuery] double x, [FromQuery] double y)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y)) return BadRequest("x and y must be finite numbers");
+
+        perf.Actor.Using(@"
+            g.Assign(@id, @x, @y);
+        ")
+        .WithParameters(p => {
+            p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
+            p["x", typeof(double)]               = x;
+            p["y", typeof(double)]               = y;
+        })
+        .PerformCommand();
+
+        return Content(Board(), "application/json");
+    }
 
     [HttpGet("state")]
-    public IActionResult State() =>
-        Content(flow.StateJson(), "application/json");
+    public IActionResult MissionBoard() => Content(Board(), "application/json");
 
-    [HttpPost("query")]
-    public async Task<IActionResult> Query()
-    {
-        using var reader = new StreamReader(Request.Body);
-        string script = await reader.ReadToEndAsync();
-        return Content(flow.AdHocQuery(script), "application/json");
-    }
-
-    [HttpPost("reset")]
-    public IActionResult Reset() =>
-        Content(JsonSerializer.Serialize(flow.ResetEverything()), "application/json");
-
-    // The live journal feed: recent history replayed, then server-sent events.
-    [HttpGet("events")]
-    public async Task Events(CancellationToken ct)
-    {
-        Response.ContentType = "text/event-stream";
-        Response.Headers.CacheControl = "no-cache";
-
-        var (replay, live, ticket) = feed.Attach();
-        using (ticket)
-        {
-            foreach (var e in replay)
-                await WriteEventAsync(e, ct);
-            await Response.Body.FlushAsync(ct);
-
-            try
-            {
-                await foreach (var e in live.ReadAllAsync(ct))
-                    await WriteEventAsync(e, ct);
+    // One query, one document: the board the panel paints from.
+    private string Board() =>
+        perf.Actor.Using(@"
+            print g.Pending() 'pending', g.Total() 'total', g.HasPendingMission() 'hasNext';
+            if (g.HasPendingMission()) {
+                print g.NextId() 'nextId', g.NextX() 'nextX', g.NextY() 'nextY';
             }
-            catch (OperationCanceledException) { }
-        }
-    }
-
-    private async Task WriteEventAsync(PanelEvent e, CancellationToken ct)
-    {
-        await Response.WriteAsync("data: " + JsonSerializer.Serialize(e) + "\n\n", ct);
-        await Response.Body.FlushAsync(ct);
-    }
+            print g.WorldSize() 'worldSize', g.WallMargin() 'wallMargin', g.HasRock() 'hasRock';
+            if (g.HasRock()) {
+                print g.RockX() 'rockX', g.RockY() 'rockY', g.RockRadius() 'rockR';
+            }
+        ")
+        .PerformQuery();
 }

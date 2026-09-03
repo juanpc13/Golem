@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The pure domain: plain C# puppets, no Puppeteer, no ASP.NET, no I/O.
+       Hosts reference it; it references nothing (domain-modeling guide E38). -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GolemHost.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

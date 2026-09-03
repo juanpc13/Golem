@@ -3,29 +3,10 @@ using Choreography.Dispatch;
 
 namespace GolemHost.Choreography;
 
-// The golem's ops wire (consume-and-dispatch guide): raw[0] carries the TypeId
-// tag, the rest is the payload. The tag and the layout are OURS — the framework
-// only assumes "a message with some arguments". Wire() builds what Deserialize parses.
-
-public sealed class MissionOrdered : IDispatchMessage
-{
-    public static int TypeId => 'O';
-    public double X { get; private init; }
-    public double Y { get; private init; }
-
-    public static IDispatchMessage Deserialize(string raw)
-    {
-        var xy = raw[1..].Split(',');
-        return new MissionOrdered
-        {
-            X = double.Parse(xy[0], CultureInfo.InvariantCulture),
-            Y = double.Parse(xy[1], CultureInfo.InvariantCulture)
-        };
-    }
-
-    public static string Wire(double x, double y) =>
-        $"{(char)TypeId}{x.ToString(CultureInfo.InvariantCulture)},{y.ToString(CultureInfo.InvariantCulture)}";
-}
+// The golem's ops messages (consume-and-dispatch guide). Producers emit a bare
+// payload plus a "kind" header; the InputRouting at the boundary prepends the
+// TypeId tag — so the wire layout is decided in exactly one place. Deserialize
+// parses raw[1..] (raw[0] is the tag).
 
 public sealed class MissionSucceeded : IDispatchMessage
 {
@@ -35,7 +16,7 @@ public sealed class MissionSucceeded : IDispatchMessage
     public static IDispatchMessage Deserialize(string raw) =>
         new MissionSucceeded { Id = int.Parse(raw[1..], CultureInfo.InvariantCulture) };
 
-    public static string Wire(int id) => $"{(char)TypeId}{id}";
+    public static string Payload(int id) => id.ToString(CultureInfo.InvariantCulture);
 }
 
 public sealed class MissionFailed : IDispatchMessage
@@ -46,13 +27,49 @@ public sealed class MissionFailed : IDispatchMessage
 
     public static IDispatchMessage Deserialize(string raw)
     {
-        int sep = raw.IndexOf('|');
+        int bar = raw.IndexOf('|');
         return new MissionFailed
         {
-            Id = int.Parse(raw[1..sep], CultureInfo.InvariantCulture),
-            Reason = raw[(sep + 1)..]
+            Id = int.Parse(raw[1..bar], CultureInfo.InvariantCulture),
+            Reason = raw[(bar + 1)..]
         };
     }
 
-    public static string Wire(int id, string reason) => $"{(char)TypeId}{id}|{reason}";
+    public static string Payload(int id, string reason) => $"{id}|{reason}";
+}
+
+public sealed class MissionRerouted : IDispatchMessage
+{
+    public static int TypeId => 'R';
+    public int Id { get; private init; }
+    public double X { get; private init; }
+    public double Y { get; private init; }
+    public string Reason { get; private init; } = "";
+
+    public static IDispatchMessage Deserialize(string raw)
+    {
+        int bar = raw.IndexOf('|');
+        var head = raw[1..bar].Split(',');
+        return new MissionRerouted
+        {
+            Id = int.Parse(head[0], CultureInfo.InvariantCulture),
+            X = double.Parse(head[1], CultureInfo.InvariantCulture),
+            Y = double.Parse(head[2], CultureInfo.InvariantCulture),
+            Reason = raw[(bar + 1)..]
+        };
+    }
+
+    public static string Payload(int id, double x, double y, string reason) =>
+        $"{id},{x.ToString(CultureInfo.InvariantCulture)},{y.ToString(CultureInfo.InvariantCulture)}|{reason}";
+}
+
+// The operator asked the golem to let go of every mission.
+public sealed class GolemRetired : IDispatchMessage
+{
+    public static int TypeId => 'X';
+    public string Reason { get; private init; } = "";
+
+    public static IDispatchMessage Deserialize(string raw) => new GolemRetired { Reason = raw[1..] };
+
+    public static string Payload(string reason) => reason;
 }

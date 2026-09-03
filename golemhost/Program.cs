@@ -6,12 +6,17 @@ using GolemHost.Membrane;
 using GolemHost.Panel;
 using Puppeteer;
 
-// GolemHost bootstrap. The pieces:
-//   Domain       — plain puppets (Golem, Mission): the DSL verbs.
-//   Membrane     — rosbridge websocket (telemetry) + HttpBroker (tell wire).
-//   Panel        — the page + the SSE feed behind it.
-//   Controllers  — the actor's endpoints: assign/state/query/reset/events/tell.
-//   Choreography — the wiring: upgrade birth, serial Dispatch, tells, mission loop.
+// The DSL renders numbers into the journal with the current culture: pin it, or a
+// Spanish-locale host would journal 11,08 and rehydrate Inhabit with four arguments.
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+
+// GolemHost bootstrap — the carátula around one actor. The pieces:
+//   golemdomain/   — plain puppets (Golem, Mission, World, Rock): the DSL verbs.
+//   Membrane       — rosbridge websocket (telemetry) + HttpBroker (tell wire).
+//   Panel          — the page, the SSE feed, and the sink the golem's projections push to.
+//   Controllers    — the actor's endpoints (GolemController) and the operator's (OperatorController).
+//   Choreography   — reactions (views, speech), the ops Saga, the mission loop.
 // The journal is the only truth; if this process dies, it rehydrates and resumes.
 
 string journalPath = Environment.GetEnvironmentVariable("JOURNAL_PATH")
@@ -22,34 +27,42 @@ string turtle = Environment.GetEnvironmentVariable("TURTLE") ?? "turtle1"; // wh
 int panelPort = int.Parse(Environment.GetEnvironmentVariable("PANEL_PORT") ?? "8080");
 string tellRoutes = Environment.GetEnvironmentVariable("TELL_ROUTES");     // topic=http://peer,... (the wire's route table)
 string tellDoneTo = Environment.GetEnvironmentVariable("TELL_DONE_TO");    // peer golem to echo visited points to
+var tellRetry = TimeSpan.FromSeconds(int.Parse(Environment.GetEnvironmentVariable("TELL_RETRY_SECONDS") ?? "30"));
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
 var ct = shutdown.Token;
 
-// --- The actor: Puppeteer 2 with an on-disk journal. No SQL, no transport.
-//     GolemPerformance owns its initialization: OnHydrated performs the upgrade
-//     chain during Start (LottoPerformance-style versioned hydration). ---
-var perf = new GolemPerformance(golem, typeof(Golem).Assembly);
+// --- The actor. Storage first; then the tell transport and every Reaction, because
+//     Start is what arms them and runs the release chain (OnHydrated). ---
+var perf = new GolemPerformance(golem, GolemDomain.Assembly);
 perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
-perf.Start(); // rehydration + upgrade chain happen here
-
-Console.WriteLine($"[golem {golem}] journal at {journalPath}");
-Console.WriteLine($"[golem {golem}] rehydrated at entry {perf.CurrentEntryId}");
 
 var ros = new Rosbridge(rosbridgeUrl, turtle);
 var feed = new PanelFeed();
-var wire = new HttpBroker(golem, HttpBroker.ParseRoutes(tellRoutes));
-var flow = new GolemChoreography(perf, ros, feed, wire, golem, turtle, tellDoneTo, journalPath);
+var wire = new HttpBroker(golem, HttpBroker.ParseRoutes(tellRoutes), tellRetry);
+if (tellDoneTo != null && !wire.CanRoute($"tell-{tellDoneTo}"))
+    throw new InvalidOperationException($"TELL_ROUTES lacks 'tell-{tellDoneTo}' — tells to '{tellDoneTo}' would have nowhere to go");
 
-// --- The controllers: the actor's endpoints. ---
+var flow = new GolemChoreography(perf, ros, feed, wire, golem, turtle, tellDoneTo);
+flow.DefineReactions();
+perf.OutputTarget(new PanelSink(feed));
+
+perf.Start(); // rehydration + release chain + the .Cue() reactions come alive here
+Console.WriteLine($"[golem {golem}] journal at {journalPath}");
+Console.WriteLine($"[golem {golem}] rehydrated at entry {perf.CurrentEntryId}");
+
+// --- The controllers: the actor's endpoints and the operator's. ---
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls($"http://*:{panelPort}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddControllers();
+builder.Services.AddSingleton<PerformanceV2>(perf);
 builder.Services.AddSingleton(flow);
 builder.Services.AddSingleton(feed);
 builder.Services.AddSingleton(wire);
+builder.Services.AddSingleton(ros);
+builder.Services.AddSingleton(new GolemIdentity(golem, turtle));
 
 var app = builder.Build();
 app.MapControllers();
@@ -61,7 +74,7 @@ Console.WriteLine($"[golem {golem}] controllers listening on :{panelPort}");
 feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "info", "",
     $"golem awake — rehydrated at entry {perf.CurrentEntryId}", DateTime.UtcNow));
 
-// --- The choreography: announce birth, wire dispatch + tells. ---
+// --- The choreography: the ops Saga and the tell uptake. ---
 flow.Awaken();
 
 // --- The membrane: connect, ensure my body exists, then bind telemetry. ---

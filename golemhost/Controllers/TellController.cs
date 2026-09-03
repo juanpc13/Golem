@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace GolemHost.Controllers;
 
-// The receiving side of the HttpBroker wire (after VeladaApp's PhoneToPhone):
-// a peer golem POSTs one broker record here; Deliver fans it out to whoever
-// subscribed the topic locally (the tell uptake, the ack handler).
+// The receiving side of the HttpBroker wire: a peer golem POSTs one broker record;
+// Deliver fans it out to whoever subscribed the topic locally. A 2xx means a
+// consumer took it — otherwise the origin keeps retrying and the gap stays visible.
 public class TellController : Controller
 {
     private readonly HttpBroker wire;
@@ -15,14 +15,13 @@ public class TellController : Controller
         this.wire = wire;
     }
 
-    public sealed record Frame(string Topic, string Key, Dictionary<string, string> Headers, string Value);
-
     [HttpPost("tell")]
-    public IActionResult Receive([FromBody] Frame frame)
+    public IActionResult HearFromPeer([FromBody] Frame frame)
     {
         if (frame == null || string.IsNullOrWhiteSpace(frame.Topic))
             return BadRequest("a record needs at least a topic");
-        wire.Deliver(frame.Topic, frame.Key, frame.Headers, frame.Value);
-        return Ok();
+        return wire.Deliver(frame.Topic, frame.Key, frame.Headers, frame.Value)
+            ? Ok()
+            : StatusCode(503, $"no consumer took '{frame.Topic}' yet");
     }
 }

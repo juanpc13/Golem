@@ -1,18 +1,17 @@
-using System.Text.Json;
+using System.Globalization;
 using Choreography.Input;
 using Choreography.Told;
 using Choreography.Transport.Brokered;
-using GolemHost.Domain;
 using GolemHost.Membrane;
 using GolemHost.Panel;
+using Puppeteer;
 
 namespace GolemHost.Choreography;
 
-// The golem's choreography. Every WRITE flows through one serial Dispatch
-// (consume-and-dispatch pattern): the controllers and the mission loop are
-// producers on an in-process ops topic; the typed handlers are the only place
-// a command is performed. Accepted (queued on the topic) is not committed
-// (journaled) — the journal remains the only truth.
+// The golem's choreography. The mission loop perceives the world (ROS telemetry),
+// decides, and reports outcomes to a Saga keyed by mission id — every write goes
+// through the actor, guarded by a domain Check, and the journal stays the only truth.
+// Speech (tells) and the panel's projections are Reactions on the golem's own journal.
 public sealed class GolemChoreography
 {
     private readonly GolemPerformance perf;
@@ -22,13 +21,13 @@ public sealed class GolemChoreography
     private readonly string golem;
     private readonly string turtle;
     private readonly string tellDoneTo;
-    private readonly string journalPath;
     private readonly InProcessBroker ops = new();
     private readonly string topic;
+    private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
 
     internal GolemChoreography(GolemPerformance perf, Rosbridge ros, PanelFeed feed, HttpBroker wire,
-                               string golem, string turtle, string tellDoneTo, string journalPath)
+                               string golem, string turtle, string tellDoneTo)
     {
         this.perf = perf;
         this.ros = ros;
@@ -37,345 +36,488 @@ public sealed class GolemChoreography
         this.golem = golem;
         this.turtle = turtle;
         this.tellDoneTo = tellDoneTo;
-        this.journalPath = journalPath;
         topic = $"{golem}-ops";
     }
 
-    // The birth itself already happened inside perf.Start(): GolemPerformance's
-    // OnHydrated performed the upgrade chain (LottoPerformance-style). Here we
-    // only announce it and wire the dispatch + the tell layer.
-    public void Awaken()
+    // ------------------------------------------------------------------
+    // BEFORE perf.Start(): the tell transport and every Reaction. Start is
+    // what arms a .Cue() reaction in continuous mode.
+    // ------------------------------------------------------------------
+    public void DefineReactions()
     {
-        feed.Broadcast(perf.BornThisBoot
-            ? new PanelEvent(perf.CurrentEntryId, "command", "upgrade('init') { g = Golem(); };",
-                "the golem is born — first hydration ran the upgrade chain", DateTime.UtcNow)
-            : new PanelEvent(perf.CurrentEntryId, "info", "",
-                "upgrade chain no-op — this golem was already born", DateTime.UtcNow));
-        Console.WriteLine(perf.BornThisBoot
-            ? $"[golem {golem}] born by upgrade('init') (entry {perf.CurrentEntryId})"
-            : $"[golem {golem}] upgrade chain no-op — awake at entry {perf.CurrentEntryId}");
-
-        perf.CreateDispatch(o => o.MaxParallelism = 1) // one golem, one serial command flow
-            .On<MissionOrdered>((actor, m) =>
-            {
-                // The handler mints the mission's handle (serial dispatch: no races) so the
-                // journaled Assign carries the id a Reaction can later correlate on.
-                int id = QryInt("{ print g.NextHandle() 'value'; }");
-                Narrated(() => actor
-                        .Using("g.Assign(@id, @x, @y);")
-                        .WithParameters(p =>
-                        {
-                            p.UserParameter("id", id);
-                            p.UserParameter("x", m.X);
-                            p.UserParameter("y", m.Y);
-                        })
-                        .PerformCommand(),
-                    entry => new PanelEvent(entry, "command",
-                        $"g.Assign({id}, {m.X:0.0}, {m.Y:0.0});",
-                        $"mission {id} queued for ({m.X:0.0}, {m.Y:0.0})", DateTime.UtcNow));
-            })
-            .On<MissionSucceeded>((actor, m) =>
-            {
-                // One fact, one statement: the mission is completed. Its point already
-                // lives in the journal (the Assign) — the tell reaction reads it from there.
-                Narrated(() => actor
-                        .Using("g.Complete(@id);")
-                        .WithParameters(p => p.UserParameter("id", m.Id))
-                        .PerformCommand(),
-                    entry => new PanelEvent(entry, "command",
-                        $"g.Complete({m.Id});", $"mission {m.Id} completed", DateTime.UtcNow));
-                Console.WriteLine($"[golem {golem}] mission {m.Id} COMPLETED and journaled (entry {perf.CurrentEntryId})");
-            })
-            .On<MissionFailed>((actor, m) =>
-            {
-                Narrated(() => actor
-                        .Using("g.Fail(@id, @reason);")
-                        .WithParameters(p =>
-                        {
-                            p.UserParameter("id", m.Id);
-                            p.UserParameter("reason", m.Reason);
-                        })
-                        .PerformCommand(),
-                    entry => new PanelEvent(entry, "command",
-                        $"g.Fail({m.Id}, '{m.Reason}');", $"mission {m.Id} failed: {m.Reason}", DateTime.UtcNow));
-                Console.WriteLine($"[golem {golem}] mission {m.Id} FAILED ({m.Reason}), journaled (entry {perf.CurrentEntryId})");
-            })
-            .ConsumeFrom(
-                new BrokerInputSource(ops, topic),
-                signal => new DispatchCommand(signal.Id, signal.Value)); // producers pre-tag the value
-
-        // The journal watch feeds the panel's journal lane with EVERY entry written —
-        // ours and the engine's (tell, ack, Told uptake). In V2 a parametric command
-        // is a define (template) entry the first time plus an action (args) entry per
-        // invocation; the wire frame is peeked (debug-grade) so each row names the
-        // template it invokes and its arguments. The grace delay batches a command's
-        // entries so they flush together, in entry order.
-        WarmTemplateCache();
-        perf.WatchJournal((entryId, wire) =>
-        {
-            lock (pendingWrites) pendingWrites.Add((entryId, wire));
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(600);
-                FlushEngineWrites();
-            });
-        });
-
-        EnableTells();
-    }
-
-    // Defines seen so far (actionId -> template body): a later action row can
-    // say WHICH template it invokes. Warmed from the journal at boot so templates
-    // defined in earlier lives of this golem resolve too.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> templates = new();
-
-    // Engine writes wait out a grace period, then flush IN ENTRY ORDER: a define
-    // always precedes the action that invokes it, so the template cache is warm
-    // by the time the action row is rendered, and the feed reads chronologically.
-    private readonly List<(long EntryId, byte[] Wire)> pendingWrites = new();
-
-    private void FlushEngineWrites()
-    {
-        (long EntryId, byte[] Wire)[] batch;
-        lock (pendingWrites)
-        {
-            batch = pendingWrites.OrderBy(p => p.EntryId).ToArray();
-            pendingWrites.Clear();
-        }
-        foreach (var (entryId, wire) in batch)
-        {
-            feed.Broadcast(DescribeEngineWrite(entryId, wire));
-        }
-    }
-
-    private void WarmTemplateCache()
-    {
-        foreach (var record in perf.ReadJournalAfter(0))
-            if (JournalPeek.TryDescribe(record.Record, out var peek) && peek.Kind == "define")
-                templates[peek.ActionId] = TemplateBody(peek.Text);
-    }
-
-    private PanelEvent DescribeEngineWrite(long entryId, byte[] wire)
-    {
-        if (!JournalPeek.TryDescribe(wire, out var peek))
-            return new PanelEvent(entryId, "command", "", "unreadable frame", DateTime.UtcNow);
-
-        switch (peek.Kind)
-        {
-            case "define":
-                templates[peek.ActionId] = TemplateBody(peek.Text);
-                return new PanelEvent(entryId, "command", JournalPeek.OneLine(peek.Text),
-                    $"define #{peek.ActionId} — the template (script)", DateTime.UtcNow);
-            case "action":
-                string template = templates.TryGetValue(peek.ActionId, out var body) ? body : $"action #{peek.ActionId}";
-                string expose = peek.ExposeData == null ? "" : $" · expose {JournalPeek.OneLine(peek.ExposeData, 60)}";
-                return new PanelEvent(entryId, "command", $"{template} ← args {JournalPeek.OneLine(peek.Text, 80)}",
-                    $"action #{peek.ActionId}{expose}", DateTime.UtcNow);
-            default:
-                return new PanelEvent(entryId, "command", JournalPeek.OneLine(peek.Text),
-                    "script", DateTime.UtcNow);
-        }
-    }
-
-    // "define action 7 (x, y) as g.Assign(x, y); end;" -> "g.Assign(x, y);"
-    private static string TemplateBody(string defineSentence)
-    {
-        string flat = JournalPeek.OneLine(defineSentence, 400);
-        int asAt = flat.IndexOf(" as ", StringComparison.Ordinal);
-        string body = asAt >= 0 ? flat[(asAt + 4)..] : flat;
-        body = body.TrimEnd();
-        if (body.EndsWith("end;", StringComparison.Ordinal)) body = body[..^4].TrimEnd();
-        return JournalPeek.OneLine(body, 90);
-    }
-
-    // Perform, then narrate on the RUNTIME lane. The journal lane is fed only by
-    // the journal watch, so it shows exactly what was written (define, action, script)
-    // — never our paraphrase of it.
-    private void Narrated(Action perform, Func<long, PanelEvent> row)
-    {
-        perform();
-        feed.Broadcast(row(perf.CurrentEntryId) with { Kind = "runtime" });
-    }
-
-    // Cross-golem speech over the HttpBroker wire (after the bingo's PhoneToPhone):
-    // the binding table maps the ADDRESSEE role to a topic, the route table maps
-    // the topic to the peer container. The DSL never names the transport.
-    private void EnableTells()
-    {
-        var bindings = new TellBindingTable();
         bindings.Bind(golem, $"tell-{golem}");
         if (tellDoneTo != null)
             bindings.Bind(tellDoneTo, $"tell-{tellDoneTo}");
-
         perf.UseTellTransport(new BrokerTellTransport(wire, bindings, golem));
 
-        // Uptake: whatever point a peer visited becomes a mission of MY own —
-        // the hearer's verb, one journaled perform per tell.
+        // The panel's journal lane: one view per journaled fact, projected with print
+        // and pushed to the PanelSink (a projection, never the journal's storage).
+        // Reactions observe V2 Actions (define + invocation): the release chain is a literal
+        // script and is NOT observable here — the panel reads the world from /state instead.
+        perf.Actor.Reactions.DefineReaction("Assigned")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Assigned")
+                .OnMatch(@"
+                    [_:Golem].Assign($mission, $x, $y)
+                ")
+            .Program.Emit(@"
+                print @mission 'mission', @x 'x', @y 'y';
+            ");
+
+        perf.Actor.Reactions.DefineReaction("Taken")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Taken")
+                .OnMatch(@"
+                    [_:Golem].Take($x, $y)
+                ")
+            .Program.Emit(@"
+                print @x 'x', @y 'y';
+            ");
+
+        perf.Actor.Reactions.DefineReaction("Completed")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Completed")
+                .OnMatch(@"
+                    [_:Golem].Complete($mission)
+                ")
+            .Program.Emit(@"
+                print @mission 'mission';
+            ");
+
+        perf.Actor.Reactions.DefineReaction("Failed")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Failed")
+                .OnMatch(@"
+                    [_:Golem].Fail($mission, $reason)
+                ")
+            .Program.Emit(@"
+                print @mission 'mission', @reason 'reason';
+            ");
+
+        perf.Actor.Reactions.DefineReaction("Rerouted")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Rerouted")
+                .OnMatch(@"
+                    [_:Golem].Reroute($mission, $x, $y, $reason)
+                ")
+            .Program.Emit(@"
+                print @mission 'mission', @x 'x', @y 'y', @reason 'reason';
+            ");
+
+        perf.Actor.Reactions.DefineReaction("Retired")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Retired")
+                .OnMatch(@"
+                [_:Golem].Retire($reason)
+                ")
+            .Program.Emit(@"
+                print @reason 'reason';
+            ");
+
+        if (tellDoneTo == null) return;
+
+        // Speech is a Reaction, never a command: "this mission was ordered" (Assign,
+        // capturing its point) closed by "this SAME mission completed" (Complete,
+        // unifying on $missionId). The body is just the tell.
+        perf.Actor.Reactions.DefineReaction("echo-visited-point")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Ordered").One()
+                .OnMatch(@"
+                    [_:Golem].Assign($missionId, $x, $y)
+                ")
+            .ThenSeek("Done").One()
+                .OnMatch(@"
+                    [_:Golem].Complete($missionId)
+                ")
+            .Causation.Continue($@"
+                tell PointVisited with @x, @y to {tellDoneTo} once 'visited-' + @missionId;
+            ");
+
+        // The peer heard us: its ack is journaled on OUR side — project it too.
+        perf.Actor.Reactions.DefineReaction("Acked")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Acked")
+                .OnMatch($@"
+                    tell ack $id from {tellDoneTo}
+                ")
+            .Program.Emit(@"
+                print @id 'tell';
+            ");
+    }
+
+    // ------------------------------------------------------------------
+    // AFTER perf.Start(): announce, wire the ops Saga, take up tells.
+    // ------------------------------------------------------------------
+    public void Awaken()
+    {
+        feed.Broadcast(perf.BornThisBoot
+            ? new PanelEvent(perf.CurrentEntryId, "info", "", "the golem is born — first hydration ran the release chain", DateTime.UtcNow)
+            : new PanelEvent(perf.CurrentEntryId, "info", "", "release chain no-op — this golem was already born", DateTime.UtcNow));
+        Console.WriteLine(perf.BornThisBoot
+            ? $"[golem {golem}] born by the release chain (entry {perf.CurrentEntryId})"
+            : $"[golem {golem}] release chain no-op — awake at entry {perf.CurrentEntryId}");
+
+        // The loop's outcomes are steps of ONE run per mission: a Saga keyed by mission
+        // id serializes them per key; a domain Check on each step is the real guard
+        // against a redelivered or repeated outcome. Letting go is an independent command.
+        var dispatch = perf.CreateDispatch();
+
+        dispatch.On<GolemRetired>((actor, m) =>
+        {
+            actor.Using(@"
+                g.Retire(@reason);
+            ")
+            .WithParameters(p => {
+                p["reason", typeof(string)] = m.Reason;
+            })
+            .PerformCommand();
+            Console.WriteLine($"[golem {golem}] let go of every mission (entry {perf.CurrentEntryId})");
+        });
+
+        perf.DefineSaga("Mission")
+            .On<MissionSucceeded>(m => m.Id.ToString(CultureInfo.InvariantCulture))
+                .Task("complete", (actor, m) =>
+                {
+                    string refused = actor.Using(
+                        @"
+                            Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
+                        ",
+                        @"
+                            g.Complete(@id);
+                        ")
+                    .WithParameters(p => {
+                        p["id", typeof(int)] = m.Id;
+                    })
+                    .PerformCheckThenCommand();
+                    Settle(refused, $"mission {m.Id} completed");
+                })
+            .On<MissionFailed>(m => m.Id.ToString(CultureInfo.InvariantCulture))
+                .Task("fail", (actor, m) =>
+                {
+                    string refused = actor.Using(
+                        @"
+                            Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
+                        ",
+                        @"
+                            g.Fail(@id, @reason);
+                        ")
+                    .WithParameters(p => {
+                        p["id",     typeof(int)]    = m.Id;
+                        p["reason", typeof(string)] = m.Reason;
+                    })
+                    .PerformCheckThenCommand();
+                    Settle(refused, $"mission {m.Id} failed: {m.Reason}");
+                })
+            .On<MissionRerouted>(m => m.Id.ToString(CultureInfo.InvariantCulture))
+                .Task("reroute", (actor, m) =>
+                {
+                    string refused = actor.Using(
+                        @"
+                            Check(g.Knows(@id) && g.IsPending(@id) && g.Reroutes(@id) == 0) Error 'mission already took its alternate route';
+                        ",
+                        @"
+                            g.Reroute(@id, @x, @y, @reason);
+                        ")
+                    .WithParameters(p => {
+                        p["id",     typeof(int)]    = m.Id;
+                        p["x",      typeof(double)] = m.X;
+                        p["y",      typeof(double)] = m.Y;
+                        p["reason", typeof(string)] = m.Reason;
+                    })
+                    .PerformCheckThenCommand();
+                    Settle(refused, $"mission {m.Id} takes an alternate route — {m.Reason}");
+                });
+
+        dispatch.ConsumeFrom(new BrokerInputSource(ops, topic), Route);
+
+        // Uptake: whatever point a peer visited becomes a mission of MY own — the
+        // hearer's verb (Take mints the handle inside), one journaled perform per tell.
+        // Only plain @params here: a nested call as an argument faults the reaction matcher.
         toldListener = perf
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
-                .Command("g.Assign(@x, @y);")
+                .Command("g.Take(@x, @y);")
             .Start();
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
             $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
         Console.WriteLine($"[golem {golem}] listening for tells on topic 'tell-{golem}'");
-
         if (tellDoneTo != null)
-        {
-            // tell is reaction-only, and the reaction is a correlated chain: "this mission
-            // was ordered" (Assign, capturing its point) closed by "this SAME mission
-            // completed" (Complete, unifying on $missionId). The body is just the tell —
-            // the point travels as captures, straight from the journaled Assign.
-            perf.Actor.Reactions.DefineReaction("echo-visited-point")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Ordered").One()
-                    .OnMatch("[_:Golem].Assign($missionId, $x, $y)")
-                .ThenSeek("Done").One()
-                    .OnMatch("[_:Golem].Complete($missionId)")
-                .Causation.Continue($"tell PointVisited with @x, @y to {tellDoneTo} once 'visited-' + @missionId;");
-
-            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-                $"on every completed mission I will tell '{tellDoneTo}' the visited point", DateTime.UtcNow));
             Console.WriteLine($"[golem {golem}] will tell '{tellDoneTo}' every visited point");
-
-            // The .Cue() continuous push loop holds the calling thread — run it on
-            // its own task so the boot sequence (membrane, spawn, mission loop)
-            // can proceed.
-            _ = Task.Run(() =>
-            {
-                try { perf.Actor.Reactions.Execute(); }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[golem {golem}] reactions loop ended: {ex.Message}");
-                }
-            });
-        }
     }
 
-    // Producer side — a controller orders a mission. Accepted, not yet committed:
-    // the journaled g.Assign arrives on the feed when the dispatch handler commits.
-    public PanelEvent OrderMission(double x, double y)
+    // The boundary of the ops surface: the producer's "kind" header becomes the
+    // dispatch tag here, and anything unknown is dropped (null).
+    private static DispatchCommand? Route(InputSignal signal)
     {
-        Produce(MissionOrdered.Wire(x, y));
-        var e = new PanelEvent(perf.CurrentEntryId, "runtime", "",
-            $"mission ordered for ({x:0.0}, {y:0.0}) — queued to dispatch", DateTime.UtcNow);
-        feed.Broadcast(e);
-        return e;
-    }
-
-    // Wipe this golem's journal and restart from scratch. A live actor holds its
-    // journal files open, so the honest reset is: reset the world, delete the
-    // journal folder (Linux unlinks happily under open handles), and exit —
-    // Docker's restart policy brings the process back, reborn by the upgrade.
-    public PanelEvent ResetEverything()
-    {
-        var e = new PanelEvent(perf.CurrentEntryId, "info", "",
-            "reset requested — wiping the journal and restarting the golem", DateTime.UtcNow);
-        feed.Broadcast(e);
-        Console.WriteLine($"[golem {golem}] RESET requested from the panel");
-
-        _ = Task.Run(async () =>
+        if (!signal.Headers.TryGetValue("kind", out string kind)) return null;
+        int tag = kind switch
         {
-            await Task.Delay(1000); // let the HTTP response and the SSE frame leave
-
-            try
-            {
-                await ros.DriveAsync(0, 0, CancellationToken.None);
-                await ros.CallServiceAsync($"/{turtle}/teleport_absolute",
-                    new { x = 5.544445, y = 5.544445, theta = 0.0 }, CancellationToken.None);
-                await ros.CallServiceAsync("/clear", null, CancellationToken.None);
-            }
-            catch { /* world reset is best-effort; the journal wipe is the point */ }
-
-            string actorDir = Path.Combine(journalPath, golem);
-            if (Directory.Exists(actorDir))
-                Directory.Delete(actorDir, recursive: true);
-
-            Console.WriteLine($"[golem {golem}] journal wiped ({actorDir}) — exiting for a fresh start");
-            Environment.Exit(0);
-        });
-
-        return e;
+            "succeeded" => MissionSucceeded.TypeId,
+            "failed"    => MissionFailed.TypeId,
+            "rerouted"  => MissionRerouted.TypeId,
+            "retired"   => GolemRetired.TypeId,
+            _           => -1
+        };
+        return tag < 0 ? null : new DispatchCommand(signal.Id, (char)tag + signal.Value);
     }
 
-    // The mission loop: perceive -> decide -> produce to dispatch -> act.
+    private void Produce(string kind, string idempotencyId, string payload) =>
+        ops.ProduceAsync(topic, idempotencyId, new Dictionary<string, string> { ["kind"] = kind }, payload)
+           .GetAwaiter().GetResult();
+
+    private void Settle(string refused, string done)
+    {
+        if (refused == "")
+        {
+            Console.WriteLine($"[golem {golem}] {done} (entry {perf.CurrentEntryId})");
+            return;
+        }
+        Console.WriteLine($"[golem {golem}] refused: {refused}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"refused — {refused}", DateTime.UtcNow));
+    }
+
+    // The operator asks the golem to let go of every mission: the world is put back
+    // (ephemeral) and the forgetting is journaled through the same ops surface.
+    public async Task LetGoAsync()
+    {
+        try
+        {
+            await ros.DriveAsync(0, 0, CancellationToken.None);
+            await ros.CallServiceAsync($"/{turtle}/teleport_absolute",
+                new { x = 5.544445, y = 5.544445, theta = 0.0 }, CancellationToken.None);
+            await ros.CallServiceAsync("/clear", null, CancellationToken.None);
+        }
+        catch { /* the world reset is best-effort; the journaled fact is the point */ }
+
+        Produce("retired", $"{golem}:retire:{DateTime.UtcNow.Ticks}", GolemRetired.Payload("operator reset from the panel"));
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", "letting go of every mission", DateTime.UtcNow));
+    }
+
+    // ------------------------------------------------------------------
+    // The mission loop: perceive -> decide -> produce -> act.
+    // ------------------------------------------------------------------
+    private enum Outcome { Arrived, Stalled, Timeout }
+
     public async Task RunAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            int id = QryInt("{ print g.NextId() 'value'; }");
-            if (id < 0)
+            var plan = ReadPlan();
+            if (!plan.Has)
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), ct);
                 continue;
             }
 
-            double targetX = QryDouble("{ print g.NextX() 'value'; }");
-            double targetY = QryDouble("{ print g.NextY() 'value'; }");
-            Console.WriteLine($"[golem {golem}] mission {id}: go to ({targetX:0.0}, {targetY:0.0})");
-            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-                $"mission {id} started — driving to ({targetX:0.0}, {targetY:0.0})", DateTime.UtcNow));
+            // A target the body cannot stand on (outside the walls, inside the rock) is
+            // unreachable — the alternate route is decided before burning the timeout.
+            if (plan.Reroutes == 0 && !CanStandAt(plan.X, plan.Y))
+            {
+                var alt = NearestStandable(plan.X, plan.Y);
+                await RerouteAsync(plan.Id, alt.X, alt.Y, "target unreachable", plan.Reroutes, ct);
+                continue;
+            }
 
-            bool arrived = await GoToAsync(targetX, targetY, ct);
+            string via = plan.Reroutes > 0 ? " (alternate route)" : "";
+            Console.WriteLine($"[golem {golem}] mission {plan.Id}: go to ({plan.X:0.0}, {plan.Y:0.0}){via}");
+            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+                $"mission {plan.Id} started — driving to ({plan.X:0.0}, {plan.Y:0.0}){via}", DateTime.UtcNow));
+
+            Outcome outcome = Outcome.Arrived;
+            var here = ros.LatestPose;
+            if (here != null)
+            {
+                var detour = Detour(here.X, here.Y, plan.X, plan.Y);
+                if (detour.Crosses)
+                {
+                    Console.WriteLine($"[golem {golem}] mission {plan.Id}: the run crosses the rock — detour via ({detour.X:0.0}, {detour.Y:0.0})");
+                    feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+                        $"mission {plan.Id}: the run crosses the rock — detour via ({detour.X:0.0}, {detour.Y:0.0})", DateTime.UtcNow));
+                    outcome = await GoToAsync(detour.X, detour.Y, ct);
+                }
+            }
+            if (outcome == Outcome.Arrived)
+                outcome = await GoToAsync(plan.X, plan.Y, ct);
             if (ct.IsCancellationRequested) break;
 
-            Produce(arrived ? MissionSucceeded.Wire(id) : MissionFailed.Wire(id, "timeout"));
-            await WaitUntilSettledAsync(id, ct); // don't re-drive before the handler commits
+            string key = $"{golem}:mission:{plan.Id}";
+            if (outcome == Outcome.Arrived)
+            {
+                Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
+            }
+            else if (outcome == Outcome.Stalled && plan.Reroutes == 0)
+            {
+                var alt = NearestStandable(plan.X, plan.Y);
+                if (Math.Abs(alt.X - plan.X) > 0.01 || Math.Abs(alt.Y - plan.Y) > 0.01)
+                {
+                    await RerouteAsync(plan.Id, alt.X, alt.Y, "stalled against a wall", plan.Reroutes, ct);
+                    continue;
+                }
+                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "stuck against a wall"));
+            }
+            else if (outcome == Outcome.Stalled)
+            {
+                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "stuck again after the alternate route"));
+            }
+            else
+            {
+                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "timeout"));
+            }
+
+            if (!await WaitUntilSettledAsync(plan.Id, ct))
+                await Task.Delay(TimeSpan.FromSeconds(2), ct); // never re-drive on a timeout; back off and re-read
         }
     }
 
-    public string StateJson()
+    private async Task RerouteAsync(int id, double altX, double altY, string reason, int reroutesBefore, CancellationToken ct)
     {
-        var pose = ros.LatestPose;
-        return JsonSerializer.Serialize(new
-        {
-            golem,
-            turtle,
-            entry = perf.CurrentEntryId,
-            pending = QryInt("{ print g.Pending() 'value'; }"),
-            total = QryInt("{ print g.Total() 'value'; }"),
-            pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta }
-        });
+        Console.WriteLine($"[golem {golem}] mission {id}: {reason} — alternate route to ({altX:0.0}, {altY:0.0})");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+            $"mission {id}: {reason} — choosing the alternate route ({altX:0.0}, {altY:0.0})", DateTime.UtcNow));
+        Produce("rerouted", $"{golem}:mission:{id}:reroute:{reroutesBefore + 1}",
+            MissionRerouted.Payload(id, altX, altY, reason));
+
+        var start = DateTime.UtcNow;
+        while (Reroutes(id) == reroutesBefore && DateTime.UtcNow - start < TimeSpan.FromSeconds(5) && !ct.IsCancellationRequested)
+            await Task.Delay(100, ct);
     }
 
-    // Ad-hoc PerformQry against in-memory state. Queries never touch the journal —
-    // but they are not sandboxed: keep them read-only by discipline.
-    public string AdHocQuery(string script)
-    {
-        script = script.Trim();
-        if (script.Length == 0)
-            return JsonSerializer.Serialize(new { error = "empty query" });
-        if (!script.StartsWith("{"))
-            script = "{ print " + script.TrimEnd(';') + " 'value'; }";
-        try
-        {
-            return perf.PerformQry(script);
-        }
-        catch (Exception ex)
-        {
-            return JsonSerializer.Serialize(new { error = ex.Message });
-        }
-    }
-
-    private void Produce(string taggedMessage) =>
-        ops.ProduceAsync(topic, Guid.NewGuid().ToString("N"), null, taggedMessage)
-           .GetAwaiter().GetResult();
-
-    private async Task WaitUntilSettledAsync(int id, CancellationToken ct)
+    // Settled = the journal moved past this mission (completed/failed) — or a timeout.
+    private async Task<bool> WaitUntilSettledAsync(int id, CancellationToken ct)
     {
         var start = DateTime.UtcNow;
-        while (QryInt("{ print g.NextId() 'value'; }") == id
-               && DateTime.UtcNow - start < TimeSpan.FromSeconds(5)
-               && !ct.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
+            if (IsSettled(id)) return true;
+            if (DateTime.UtcNow - start > TimeSpan.FromSeconds(5))
+            {
+                Console.WriteLine($"[golem {golem}] mission {id} not settled yet — backing off");
+                return false;
+            }
             await Task.Delay(100, ct);
         }
+        return false;
     }
 
-    // Simple controller: turn towards the target, advance, arrive at < 0.25 units.
-    private async Task<bool> GoToAsync(double targetX, double targetY, CancellationToken ct)
+    // ------------------------------------------------------------------
+    // Typed reads: Out parameters through the rent-lease (never parsing print).
+    // ------------------------------------------------------------------
+    private (bool Has, int Id, double X, double Y, int Reroutes) ReadPlan()
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @has = g.HasPendingMission();
+            if (g.HasPendingMission()) {
+                @id = g.NextId();
+                @x = g.NextX();
+                @y = g.NextY();
+                @reroutes = g.Reroutes(g.NextId());
+            }
+        ")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "has",      typeof(bool)]   = default;
+            p[Parameter.Out, "id",       typeof(int)]    = default;
+            p[Parameter.Out, "x",        typeof(double)] = default;
+            p[Parameter.Out, "y",        typeof(double)] = default;
+            p[Parameter.Out, "reroutes", typeof(int)]    = default;
+        })
+        .PerformQuery();
+        return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
+                rented["x"].GetValue<double>(), rented["y"].GetValue<double>(), rented["reroutes"].GetValue<int>());
+    }
+
+    private bool CanStandAt(double x, double y)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @ok = g.CanStandAt(@x, @y);
+        ")
+        .WithParameters(rented, p => {
+            p["x", typeof(double)]                = x;
+            p["y", typeof(double)]                = y;
+            p[Parameter.Out, "ok", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["ok"].GetValue<bool>();
+    }
+
+    private (double X, double Y) NearestStandable(double x, double y)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @ax = g.NearestStandableX(@x, @y);
+            @ay = g.NearestStandableY(@x, @y);
+        ")
+        .WithParameters(rented, p => {
+            p["x", typeof(double)]                  = x;
+            p["y", typeof(double)]                  = y;
+            p[Parameter.Out, "ax", typeof(double)]  = default;
+            p[Parameter.Out, "ay", typeof(double)]  = default;
+        })
+        .PerformQuery();
+        return (rented["ax"].GetValue<double>(), rented["ay"].GetValue<double>());
+    }
+
+    private (bool Crosses, double X, double Y) Detour(double fromX, double fromY, double toX, double toY)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @crosses = g.RunCrossesRock(@fx, @fy, @tx, @ty);
+            @wx = g.DetourX(@fx, @fy, @tx, @ty);
+            @wy = g.DetourY(@fx, @fy, @tx, @ty);
+        ")
+        .WithParameters(rented, p => {
+            p["fx", typeof(double)]                      = fromX;
+            p["fy", typeof(double)]                      = fromY;
+            p["tx", typeof(double)]                      = toX;
+            p["ty", typeof(double)]                      = toY;
+            p[Parameter.Out, "crosses", typeof(bool)]    = default;
+            p[Parameter.Out, "wx",      typeof(double)]  = default;
+            p[Parameter.Out, "wy",      typeof(double)]  = default;
+        })
+        .PerformQuery();
+        return (rented["crosses"].GetValue<bool>(), rented["wx"].GetValue<double>(), rented["wy"].GetValue<double>());
+    }
+
+    private int Reroutes(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @n = g.Reroutes(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                 = id;
+            p[Parameter.Out, "n", typeof(int)]   = default;
+        })
+        .PerformQuery();
+        return rented["n"].GetValue<int>();
+    }
+
+    private bool IsSettled(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @settled = g.HasPendingMission() == false || g.NextId() != @id;
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                       = id;
+            p[Parameter.Out, "settled", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["settled"].GetValue<bool>();
+    }
+
+    // ------------------------------------------------------------------
+    // The body: a simple controller against ROS telemetry. Stall detection: if
+    // the distance stops improving for 3 s while we push, the body is against a
+    // wall — no point in waiting out the whole timeout.
+    // ------------------------------------------------------------------
+    private async Task<Outcome> GoToAsync(double targetX, double targetY, CancellationToken ct)
     {
         var start = DateTime.UtcNow;
+        double bestDistance = double.MaxValue;
+        var lastImprovement = DateTime.UtcNow;
+
         while (DateTime.UtcNow - start < TimeSpan.FromSeconds(90) && !ct.IsCancellationRequested)
         {
             var pose = ros.LatestPose;
@@ -386,7 +528,18 @@ public sealed class GolemChoreography
             if (distance < 0.25)
             {
                 await ros.DriveAsync(0, 0, ct);
-                return true;
+                return Outcome.Arrived;
+            }
+
+            if (distance < bestDistance - 0.05)
+            {
+                bestDistance = distance;
+                lastImprovement = DateTime.UtcNow;
+            }
+            else if (DateTime.UtcNow - lastImprovement > TimeSpan.FromSeconds(3))
+            {
+                await ros.DriveAsync(0, 0, ct);
+                return Outcome.Stalled;
             }
 
             double heading = Math.Atan2(dy, dx);
@@ -399,7 +552,7 @@ public sealed class GolemChoreography
         }
         if (!ct.IsCancellationRequested)
             await ros.DriveAsync(0, 0, ct);
-        return false;
+        return Outcome.Timeout;
     }
 
     private static double NormalizeAngle(double a)
@@ -408,10 +561,4 @@ public sealed class GolemChoreography
         while (a < -Math.PI) a += 2 * Math.PI;
         return a;
     }
-
-    private int QryInt(string script) =>
-        JsonDocument.Parse(perf.PerformQry(script)).RootElement.GetProperty("value").GetInt32();
-
-    private double QryDouble(string script) =>
-        JsonDocument.Parse(perf.PerformQry(script)).RootElement.GetProperty("value").GetDouble();
 }

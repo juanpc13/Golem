@@ -2,3 +2,6 @@ bin/
 obj/
 .vs/
 journal/
+
+# archived, incompatible journals (renamed aside on a breaking change)
+journal-legacy-*/
