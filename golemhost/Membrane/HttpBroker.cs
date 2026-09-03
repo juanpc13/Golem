@@ -59,6 +59,25 @@ public sealed class HttpBroker : IMessageBroker
 
     public bool CanRoute(string topic) => routes.ContainsKey(topic) || local.ContainsKey(topic);
 
+    // The distinct peers behind the route table — whoever this golem talks to.
+    public IReadOnlyCollection<Uri> Peers => routes.Values.Distinct().ToArray();
+
+    // Operator lever: ask a peer to reset itself too (best effort, short timeout).
+    public async Task<bool> AskPeerAsync(Uri peer, string relativePath)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            using var answer = await Wire.PostAsync(new Uri(peer, relativePath), null, cts.Token);
+            return answer.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[wire {whoAmI}] {peer} did not take {relativePath}: {ex.Message}");
+            return false;
+        }
+    }
+
     public async Task ProduceAsync(string topic, string key,
         IReadOnlyDictionary<string, string> headers, string value,
         CancellationToken cancellationToken = default)

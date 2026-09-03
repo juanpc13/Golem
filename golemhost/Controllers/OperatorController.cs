@@ -73,6 +73,15 @@ public class OperatorController : Controller
         return Accepted();
     }
 
+    // The hard reset: wipe the journal(s) and reboot reborn. cascade=true (the panel) resets
+    // the peers too; a peer asked by another golem gets cascade=false.
+    [HttpPost("reset-everything")]
+    public async Task<IActionResult> ResetEverything([FromQuery] bool cascade = true)
+    {
+        await flow.ResetEverythingAsync(cascade);
+        return Accepted();
+    }
+
     // The live feed: recent history replayed, then server-sent events.
     [HttpGet("events")]
     public async Task Events(CancellationToken ct)

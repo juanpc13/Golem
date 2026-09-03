@@ -15,15 +15,18 @@ public sealed class TurtlesimNavigator : INavigator
     private const double Progress = 0.05;       // an improvement smaller than this is noise
 
     private readonly Rosbridge ros;
+    private readonly Func<double> cruiseSpeed;   // the golem's declared body speed (a journaled property)
 
-    public TurtlesimNavigator(Rosbridge ros)
+    public TurtlesimNavigator(Rosbridge ros, Func<double> cruiseSpeed)
     {
         this.ros = ros;
+        this.cruiseSpeed = cruiseSpeed;
     }
 
     public async Task<Outcome> GoToAsync(double targetX, double targetY, CancellationToken ct)
     {
         var start = DateTime.UtcNow;
+        double cruise = cruiseSpeed();
         double bestDistance = double.MaxValue;
         var lastImprovement = DateTime.UtcNow;
 
@@ -54,7 +57,7 @@ public sealed class TurtlesimNavigator : INavigator
             double heading = Math.Atan2(dy, dx);
             double deviation = NormalizeAngle(heading - pose.Theta);
             double angular = Math.Clamp(4.0 * deviation, -4.0, 4.0);
-            double linear = Math.Abs(deviation) < 0.4 ? Math.Min(2.0, 1.5 * distance) : 0.0;
+            double linear = Math.Abs(deviation) < 0.4 ? Math.Min(cruise, 1.5 * distance) : 0.0;
 
             await ros.DriveAsync(linear, angular, ct);
             await Task.Delay(100, ct);

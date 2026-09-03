@@ -47,7 +47,7 @@
   #feed li, #events li { display:flex; gap:10px; align-items:baseline; padding:7px 10px;
              border-radius:8px; background:var(--surface); border:1px solid var(--line); }
   .entry { color:var(--clay); min-width:52px; font-weight:600; }
-  .script { color:var(--ink); min-width:90px; }
+  .script { color:var(--ink); }
   .note { color:var(--muted); margin-left:auto; text-align:right; word-break:break-all; }
   li.runtime { border-style:dashed; opacity:0.75; }
   li.runtime .entry { color:var(--muted); font-weight:400; }
@@ -65,6 +65,7 @@
   <span class="badge">journal entry <b id="entry">–</b></span>
   <span class="badge">missions <b id="pending">–</b> pending / <b id="total">–</b> total</span>
   <span class="badge">pose <b id="pose">–</b> <span style="opacity:.7">(ephemeral)</span></span>
+  <span class="badge">route left <b id="left">–</b> · eta <b id="eta">–</b> · <b id="points">–</b> points</span>
 </header>
 
 <main>
@@ -84,10 +85,13 @@
         <button id="center">Go center</button>
       </div>
       <div class="row">
-        <button id="reset" class="danger">Let go of everything</button>
+        <button id="reset">Let go of everything</button>
+        <button id="wipe" class="danger">Reset everything</button>
       </div>
-      <p class="hint">The golem lets go of every mission — journaled as <code>g.Retire(reason)</code>,
-      nothing is erased — and the body is put back (turtle to the center, trails cleared).</p>
+      <p class="hint"><b>Let go</b>: the golem lets go of every mission — journaled as <code>g.Retire(reason)</code>,
+      nothing is erased — and the body is put back. <b>Reset everything</b> (lab lever): wipes the journals of
+      this golem AND its peers and reboots them reborn at entry 1 — both, because the hearer dedups the
+      sender's tell ids.</p>
     </div>
   </section>
 
@@ -103,25 +107,32 @@
         <button data-q="g.Pending()">Pending()</button>
         <button data-q="g.Total()">Total()</button>
         <button data-q="g.HasPendingMission()">HasPendingMission()</button>
+        <button data-q="g.Speed()">Speed()</button>
+        <button data-q="g.RouteLength()">RouteLength()</button>
+        <button data-q="g.RouteSeconds()">RouteSeconds()</button>
         <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextX() 'x', g.NextY() 'y'; } }">Next target</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <p class="hint">Queries read the golem's in-memory state and never touch the journal.
       Keep them read-only: a mutating call here would change memory without journaling it,
-      and the change evaporates on the next rehydration.</p>
+      and the change evaporates on the next rehydration. The header's <i>route left · eta</i>
+      is the golem's own answer too: it knows its speed and its pauses (released into its journal), so
+      <code>g.RouteSeconds()</code> answers from the console with no parameters; <code>/progress</code> only adds
+      the leg from where the body stands (its pose, as a query parameter) to the first pending point.</p>
     </div>
 
     <h2>Journal — live</h2>
     <ul id="feed"></ul>
     <p class="hint" style="margin-top:8px">
-      Every row is a journaled fact, projected by one of the golem's view reactions
-      (Assigned, Taken, Completed, Failed, Retired, Acked) with the entry that triggered it.
+      Every row is a journaled command, as the journal wrote it, with the entry it landed on.
+      A view reaction per fact (Assigned, Taken, Completed, Failed, Retired, Acked — the tag at the
+      right) projects it here; the release chain (entry 1) is announced by the host.
     </p>
 
     <h2 style="margin-top:20px">Runtime events</h2>
     <ul id="events"></ul>
     <p class="hint" style="margin-top:8px">
-      Ephemeral facts (missions starting, membrane, lifecycle) — they never touch the journal.
+      Ephemeral facts (missions starting, holds, membrane, lifecycle) — they never touch the journal.
     </p>
   </section>
 </main>
@@ -147,9 +158,14 @@ function row(e) {
   const target = journaled ? feed : events;
   const li = document.createElement('li');
   li.className = e.Kind + ' flash';
+  // a journaled row carries the command as the journal wrote it; the fact name is only a tag
+  let script = e.Script || '', note = e.Note;
+  if (journaled) {
+    try { const doc = JSON.parse(e.Note); if (doc.command) { script = doc.command; note = e.Script; } } catch {}
+  }
   li.innerHTML = `<span class="entry">${journaled ? '#' + e.Entry : '·'}</span>` +
-                 `<span class="script">${e.Script || ''}</span>` +
-                 `<span class="note">${e.Note}</span>`;
+                 `<span class="script">${script}</span>` +
+                 `<span class="note">${note}</span>`;
   target.appendChild(li);
   target.scrollTop = target.scrollHeight;
   if (journaled) paintFact(e);
@@ -200,6 +216,10 @@ document.getElementById('reset').onclick = async () => {
   if (!confirm('Let go of every mission (journaled as Retire) and put the body back?')) return;
   await fetch('/reset', {method: 'POST'});
 };
+document.getElementById('wipe').onclick = async () => {
+  if (!confirm('Wipe the journals of this golem and its peers and reboot them from entry 1?')) return;
+  await fetch('/reset-everything', {method: 'POST'});
+};
 
 map.addEventListener('click', (ev) => {
   const r = map.getBoundingClientRect();
@@ -231,15 +251,22 @@ function drawMap() {
   }
 }
 
-// /state is the golem's mission board (one PerformQuery); /body is host telemetry.
+// /state is the golem's mission board, /progress its road ahead (both one PerformQuery each);
+// /body is host telemetry.
 async function poll() {
   try {
-    const [s, b] = await Promise.all([
+    const [s, b, pr] = await Promise.all([
       (await fetch('/state')).json(),
-      (await fetch('/body')).json()
+      (await fetch('/body')).json(),
+      (await fetch('/progress')).json()
     ]);
     document.getElementById('pending').textContent = s.pending;
     document.getElementById('total').textContent = s.total;
+
+    // the golem's own answer: the road through every pending point, and the seconds to run it (holds included)
+    document.getElementById('left').textContent = pr.hasNext ? pr.distanceLeft.toFixed(2) : '–';
+    document.getElementById('eta').textContent = pr.hasNext ? pr.secondsLeft.toFixed(1) + ' s' : '–';
+    document.getElementById('points').textContent = pr.pendingPoints;
 
     document.getElementById('who').textContent = b.golem;
     document.getElementById('dot').style.background = b.golem; // color names double as identity

@@ -41,13 +41,14 @@ var perf = new GolemPerformance(golem, GolemDomain.Assembly);
 perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
 
 var ros = new Rosbridge(rosbridgeUrl, turtle);
-var navigator = new TurtlesimNavigator(ros);
+GolemChoreography flow = null;
+var navigator = new TurtlesimNavigator(ros, () => flow.Speed()); // cruise = the speed the golem declared in its journal
 var feed = new PanelFeed();
 var wire = new HttpBroker(golem, HttpBroker.ParseRoutes(tellRoutes), tellRetry);
 if (tellDoneTo != null && !wire.CanRoute($"tell-{tellDoneTo}"))
     throw new InvalidOperationException($"TELL_ROUTES lacks 'tell-{tellDoneTo}' — tells to '{tellDoneTo}' would have nowhere to go");
 
-var flow = new GolemChoreography(perf, ros, navigator, feed, wire, golem, turtle, tellDoneTo);
+flow = new GolemChoreography(perf, ros, navigator, feed, wire, golem, turtle, tellDoneTo, journalPath);
 flow.DefineReactions();
 perf.OutputTarget(new PanelSink(feed));
 

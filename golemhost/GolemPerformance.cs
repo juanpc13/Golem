@@ -24,12 +24,16 @@ internal sealed class GolemPerformance : PerformanceV2
         BornThisBoot = true;
     }
 
-    // The releases: the golem is born. (Its knowledge of the world — walls, obstacles,
-    // alternate routes — is deliberately NOT here yet; that design is still open.)
+    // The releases: the golem is born, then learns its body. The body's properties are
+    // the golem's own knowledge (like the hitbox will be): its cruise speed in world
+    // units per second, and how long it pauses at a point a peer told it about — so it
+    // can answer "how long until I am done" by itself. Every golem runs this same chain.
     protected override void OnHydrated()
     {
         Actor.Using(@"
-            upgrade('init') { g = Golem(); }
+            upgrade('init')    { g = Golem(); }
+            upgrade('body_v1') { g.Embody(2.0); }
+            upgrade('pace_v1') { g.Pace(6); }
         ")
         .PerformCommand();
     }

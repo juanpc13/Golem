@@ -24,13 +24,14 @@ public sealed class GolemChoreography
     private readonly string golem;
     private readonly string turtle;
     private readonly string tellDoneTo;
+    private readonly string journalPath;
     private readonly InProcessBroker ops = new();
     private readonly string topic;
     private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
 
     internal GolemChoreography(GolemPerformance perf, Rosbridge ros, INavigator navigator, PanelFeed feed, HttpBroker wire,
-                               string golem, string turtle, string tellDoneTo)
+                               string golem, string turtle, string tellDoneTo, string journalPath)
     {
         this.perf = perf;
         this.ros = ros;
@@ -40,6 +41,7 @@ public sealed class GolemChoreography
         this.golem = golem;
         this.turtle = turtle;
         this.tellDoneTo = tellDoneTo;
+        this.journalPath = journalPath;
         topic = $"{golem}-ops";
     }
 
@@ -49,6 +51,9 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     public void DefineReactions()
     {
+        feed.Broadcast(new PanelEvent(1, "command", "release chain",
+            "{\"command\":\"upgrade('init') { g = Golem(); }\"}", DateTime.UtcNow));
+
         bindings.Bind(golem, $"tell-{golem}");
         if (tellDoneTo != null)
             bindings.Bind(tellDoneTo, $"tell-{tellDoneTo}");
@@ -65,7 +70,7 @@ public sealed class GolemChoreography
                     [_:Golem].Assign($mission, $x, $y)
                 ")
             .Program.Emit(@"
-                print @mission 'mission', @x 'x', @y 'y';
+                print 'g.Assign(' + @mission + ', ' + @x + ', ' + @y + ');' 'command', @mission 'mission', @x 'x', @y 'y';
             ");
 
         perf.Actor.Reactions.DefineReaction("Taken")
@@ -75,7 +80,7 @@ public sealed class GolemChoreography
                     [_:Golem].Take($x, $y)
                 ")
             .Program.Emit(@"
-                print @x 'x', @y 'y';
+                print 'g.Take(' + @x + ', ' + @y + ');' 'command', @x 'x', @y 'y';
             ");
 
         perf.Actor.Reactions.DefineReaction("Completed")
@@ -85,7 +90,7 @@ public sealed class GolemChoreography
                     [_:Golem].Complete($mission)
                 ")
             .Program.Emit(@"
-                print @mission 'mission';
+                print 'g.Complete(' + @mission + ');' 'command', @mission 'mission';
             ");
 
         perf.Actor.Reactions.DefineReaction("Failed")
@@ -95,7 +100,7 @@ public sealed class GolemChoreography
                     [_:Golem].Fail($mission, $reason)
                 ")
             .Program.Emit(@"
-                print @mission 'mission', @reason 'reason';
+                print 'g.Fail(' + @mission + ', ""' + @reason + '"");' 'command', @mission 'mission', @reason 'reason';
             ");
 
         perf.Actor.Reactions.DefineReaction("Retired")
@@ -105,14 +110,22 @@ public sealed class GolemChoreography
                     [_:Golem].Retire($reason)
                 ")
             .Program.Emit(@"
-                print @reason 'reason';
+                print 'g.Retire(""' + @reason + '"");' 'command', @reason 'reason';
             ");
 
         if (tellDoneTo == null) return;
 
         // Speech is a Reaction, never a command: "this mission was ordered" (Assign,
         // capturing its point) closed by "this SAME mission completed" (Complete,
-        // unifying on $missionId). The body is just the tell.
+        // unifying on $missionId). The body announces the point and tells the peer.
+        //
+        // WHY two statements (engine 2.0.1-beta.10017): when the ack arrives, the engine
+        // elides the {tell, ack} pair — but only if the tell entry is a SINGLE tell statement.
+        // Rehydration then skips elided entries and resumes the entry counter after the
+        // last REPLAYED one, so an elided pair at the tail of the journal gets its ids
+        // REUSED by the next boot: the next Assign lands on an id already marked elided
+        // and vanishes on the following replay ("unknown mission N"). Announcing the
+        // point first is a real fact of the golem and keeps this entry out of elision.
         perf.Actor.Reactions.DefineReaction("echo-visited-point")
             .Cue().Company().WithSharedHydration()
             .Seek("Ordered").One()
@@ -124,9 +137,13 @@ public sealed class GolemChoreography
                     [_:Golem].Complete($missionId)
                 ")
             .Causation.Continue($@"
+                g.Announce(@missionId);
                 tell PointVisited with @x, @y to {tellDoneTo} once 'visited-' + @missionId;
             ");
 
+        // (The entry the reaction writes — Announce + tell — is NOT observable by other
+        // view reactions in this build: a view on [_:Golem].Announce never fires, silently.
+        // The ack below is the visible mark of the round trip.)
         // The peer heard us: its ack is journaled on OUR side — project it too.
         perf.Actor.Reactions.DefineReaction("Acked")
             .Cue().Company().WithSharedHydration()
@@ -134,8 +151,8 @@ public sealed class GolemChoreography
                 .OnMatch($@"
                     tell ack $id from {tellDoneTo}
                 ")
-            .Program.Emit(@"
-                print @id 'tell';
+            .Program.Emit($@"
+                print 'tell ack ""' + @id + '"" from {tellDoneTo};' 'command', @id 'tell';
             ");
     }
 
@@ -267,6 +284,43 @@ public sealed class GolemChoreography
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", "letting go of every mission", DateTime.UtcNow));
     }
 
+    // The operator's hard reset — a LAB lever, not a domain fact: put the body back, wipe
+    // THIS golem's journal and exit; Docker restarts the container and the golem is born
+    // again at entry 1. With cascade, every peer is asked to do the same: the world is
+    // shared, and the hearer dedups the sender's once-ids ('visited-N'), so resetting
+    // one side alone would make the peer swallow the next tells as repeats.
+    public async Task ResetEverythingAsync(bool cascade)
+    {
+        Console.WriteLine($"[golem {golem}] RESET EVERYTHING — wiping the journal and rebooting{(cascade ? ", peers too" : "")}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", "reset everything — wiping the journal, the golem reboots reborn", DateTime.UtcNow));
+        if (cascade)
+            foreach (var peer in wire.Peers)
+                await wire.AskPeerAsync(peer, "reset-everything?cascade=false");
+        try
+        {
+            await ros.DriveAsync(0, 0, CancellationToken.None);
+            await ros.CallServiceAsync($"/{turtle}/teleport_absolute",
+                new { x = 5.544445, y = 5.544445, theta = 0.0 }, CancellationToken.None);
+            await ros.CallServiceAsync("/clear", null, CancellationToken.None);
+        }
+        catch { /* best effort: the wipe is the point */ }
+
+        // Give the HTTP response time to leave, then wipe and go.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500);
+            try { perf.Dispose(); } catch { /* the loop may be mid-perform; we are leaving anyway */ }
+            string mine = Path.Combine(journalPath, golem);
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                try { if (Directory.Exists(mine)) Directory.Delete(mine, recursive: true); break; }
+                catch (IOException) { await Task.Delay(200); }
+            }
+            Console.WriteLine($"[golem {golem}] journal wiped at {mine} — exiting for a reborn boot");
+            Environment.Exit(0);
+        });
+    }
+
     // ------------------------------------------------------------------
     // The mission loop: next mission -> navigator -> verdict -> journaled outcome.
     // What counts as failure (a stall, a timeout, later a blocked run) is the
@@ -299,6 +353,22 @@ public sealed class GolemChoreography
 
             if (!await WaitUntilSettledAsync(plan.Id, ct))
                 await Task.Delay(TimeSpan.FromSeconds(2), ct); // never re-drive on a timeout; back off and re-read
+
+            // Pacing: a point a peer told us about is a point that peer is already past.
+            // Holding there a while keeps the leader's lead. How long is the golem's own
+            // property (the pace release); the pause itself is runtime — the mission is
+            // settled and nothing about the wait belongs in the journal.
+            if (outcome.Reached && WasTold(plan.Id))
+            {
+                var hold = TimeSpan.FromSeconds(HoldAfterTold());
+                if (hold > TimeSpan.Zero)
+                {
+                    Console.WriteLine($"[golem {golem}] holding {hold.TotalSeconds:0} s at ({plan.X:0.0}, {plan.Y:0.0}) to keep the leader's lead");
+                    feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+                        $"holding {hold.TotalSeconds:0} s at ({plan.X:0.0}, {plan.Y:0.0}) to keep the leader's lead", DateTime.UtcNow));
+                    await Task.Delay(hold, ct);
+                }
+            }
         }
     }
 
@@ -342,6 +412,47 @@ public sealed class GolemChoreography
         .PerformQuery();
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
                 rented["x"].GetValue<double>(), rented["y"].GetValue<double>());
+    }
+
+    // The body's properties, as the journal knows them.
+    public double Speed()
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @speed = g.Speed();
+        ")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "speed", typeof(double)] = default;
+        })
+        .PerformQuery();
+        return rented["speed"].GetValue<double>();
+    }
+
+    private double HoldAfterTold()
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @hold = g.HoldAfterTold();
+        ")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "hold", typeof(double)] = default;
+        })
+        .PerformQuery();
+        return rented["hold"].GetValue<double>();
+    }
+
+    private bool WasTold(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @told = g.WasTold(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                    = id;
+            p[Parameter.Out, "told", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["told"].GetValue<bool>();
     }
 
     private bool IsSettled(int id)
