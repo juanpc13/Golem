@@ -3,6 +3,7 @@ using GolemHost;
 using GolemHost.Choreography;
 using GolemHost.Domain;
 using GolemHost.Membrane;
+using GolemHost.Navigation;
 using GolemHost.Panel;
 using Puppeteer;
 
@@ -14,6 +15,7 @@ System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureIn
 // GolemHost bootstrap — the carátula around one actor. The pieces:
 //   golemdomain/   — plain puppets (Golem, Mission, World, Rock): the DSL verbs.
 //   Membrane       — rosbridge websocket (telemetry) + HttpBroker (tell wire).
+//   Navigation     — the seam to the body's locomotion (TurtlesimNavigator today, Nav2 tomorrow).
 //   Panel          — the page, the SSE feed, and the sink the golem's projections push to.
 //   Controllers    — the actor's endpoints (GolemController) and the operator's (OperatorController).
 //   Choreography   — reactions (views, speech), the ops Saga, the mission loop.
@@ -39,12 +41,13 @@ var perf = new GolemPerformance(golem, GolemDomain.Assembly);
 perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
 
 var ros = new Rosbridge(rosbridgeUrl, turtle);
+var navigator = new TurtlesimNavigator(ros);
 var feed = new PanelFeed();
 var wire = new HttpBroker(golem, HttpBroker.ParseRoutes(tellRoutes), tellRetry);
 if (tellDoneTo != null && !wire.CanRoute($"tell-{tellDoneTo}"))
     throw new InvalidOperationException($"TELL_ROUTES lacks 'tell-{tellDoneTo}' — tells to '{tellDoneTo}' would have nowhere to go");
 
-var flow = new GolemChoreography(perf, ros, feed, wire, golem, turtle, tellDoneTo);
+var flow = new GolemChoreography(perf, ros, navigator, feed, wire, golem, turtle, tellDoneTo);
 flow.DefineReactions();
 perf.OutputTarget(new PanelSink(feed));
 

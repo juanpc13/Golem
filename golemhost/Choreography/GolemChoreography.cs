@@ -3,19 +3,22 @@ using Choreography.Input;
 using Choreography.Told;
 using Choreography.Transport.Brokered;
 using GolemHost.Membrane;
+using GolemHost.Navigation;
 using GolemHost.Panel;
 using Puppeteer;
 
 namespace GolemHost.Choreography;
 
-// The golem's choreography. The mission loop perceives the body (ROS telemetry),
-// drives, and reports outcomes to a Saga keyed by mission id — every write goes
-// through the actor, guarded by a domain Check, and the journal stays the only truth.
+// The golem's choreography. The mission loop hands each pending mission to the
+// navigator (the body's locomotion, behind a seam) and reports its verdict to a Saga
+// keyed by mission id — every write goes through the actor, guarded by a domain
+// Check, and the journal stays the only truth.
 // Speech (tells) and the panel's projections are Reactions on the golem's own journal.
 public sealed class GolemChoreography
 {
     private readonly GolemPerformance perf;
     private readonly Rosbridge ros;
+    private readonly INavigator navigator;
     private readonly PanelFeed feed;
     private readonly HttpBroker wire;
     private readonly string golem;
@@ -26,11 +29,12 @@ public sealed class GolemChoreography
     private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
 
-    internal GolemChoreography(GolemPerformance perf, Rosbridge ros, PanelFeed feed, HttpBroker wire,
+    internal GolemChoreography(GolemPerformance perf, Rosbridge ros, INavigator navigator, PanelFeed feed, HttpBroker wire,
                                string golem, string turtle, string tellDoneTo)
     {
         this.perf = perf;
         this.ros = ros;
+        this.navigator = navigator;
         this.feed = feed;
         this.wire = wire;
         this.golem = golem;
@@ -264,12 +268,10 @@ public sealed class GolemChoreography
     }
 
     // ------------------------------------------------------------------
-    // The mission loop: perceive -> drive -> produce the outcome.
-    // Failure is defined here for now (turtlesim never fails on its own): the body
-    // stalls against a wall, or the run times out. Whether the golem should know
-    // its world (walls, obstacles, alternate routes) is an open design question.
+    // The mission loop: next mission -> navigator -> verdict -> journaled outcome.
+    // What counts as failure (a stall, a timeout, later a blocked run) is the
+    // navigator's to say; the golem only journals how the mission ended.
     // ------------------------------------------------------------------
-    private enum Outcome { Arrived, Stalled, Timeout }
 
     public async Task RunAsync(CancellationToken ct)
     {
@@ -286,22 +288,14 @@ public sealed class GolemChoreography
             feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
                 $"mission {plan.Id} started — driving to ({plan.X:0.0}, {plan.Y:0.0})", DateTime.UtcNow));
 
-            Outcome outcome = await GoToAsync(plan.X, plan.Y, ct);
+            Outcome outcome = await navigator.GoToAsync(plan.X, plan.Y, ct);
             if (ct.IsCancellationRequested) break;
 
             string key = $"{golem}:mission:{plan.Id}";
-            switch (outcome)
-            {
-                case Outcome.Arrived:
-                    Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
-                    break;
-                case Outcome.Stalled:
-                    Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "stuck against a wall"));
-                    break;
-                default:
-                    Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "timeout"));
-                    break;
-            }
+            if (outcome.Reached)
+                Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
+            else
+                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, outcome.Reason));
 
             if (!await WaitUntilSettledAsync(plan.Id, ct))
                 await Task.Delay(TimeSpan.FromSeconds(2), ct); // never re-drive on a timeout; back off and re-read
@@ -362,60 +356,5 @@ public sealed class GolemChoreography
         })
         .PerformQuery();
         return rented["settled"].GetValue<bool>();
-    }
-
-    // ------------------------------------------------------------------
-    // The body: a simple controller against ROS telemetry. Stall detection: if
-    // the distance stops improving for 3 s while we push, the body is against a
-    // wall — no point in waiting out the whole timeout.
-    // ------------------------------------------------------------------
-    private async Task<Outcome> GoToAsync(double targetX, double targetY, CancellationToken ct)
-    {
-        var start = DateTime.UtcNow;
-        double bestDistance = double.MaxValue;
-        var lastImprovement = DateTime.UtcNow;
-
-        while (DateTime.UtcNow - start < TimeSpan.FromSeconds(90) && !ct.IsCancellationRequested)
-        {
-            var pose = ros.LatestPose;
-            if (pose == null) { await Task.Delay(100, ct); continue; }
-
-            double dx = targetX - pose.X, dy = targetY - pose.Y;
-            double distance = Math.Sqrt(dx * dx + dy * dy);
-            if (distance < 0.25)
-            {
-                await ros.DriveAsync(0, 0, ct);
-                return Outcome.Arrived;
-            }
-
-            if (distance < bestDistance - 0.05)
-            {
-                bestDistance = distance;
-                lastImprovement = DateTime.UtcNow;
-            }
-            else if (DateTime.UtcNow - lastImprovement > TimeSpan.FromSeconds(3))
-            {
-                await ros.DriveAsync(0, 0, ct);
-                return Outcome.Stalled;
-            }
-
-            double heading = Math.Atan2(dy, dx);
-            double deviation = NormalizeAngle(heading - pose.Theta);
-            double angular = Math.Clamp(4.0 * deviation, -4.0, 4.0);
-            double linear = Math.Abs(deviation) < 0.4 ? Math.Min(2.0, 1.5 * distance) : 0.0;
-
-            await ros.DriveAsync(linear, angular, ct);
-            await Task.Delay(100, ct);
-        }
-        if (!ct.IsCancellationRequested)
-            await ros.DriveAsync(0, 0, ct);
-        return Outcome.Timeout;
-    }
-
-    private static double NormalizeAngle(double a)
-    {
-        while (a > Math.PI) a -= 2 * Math.PI;
-        while (a < -Math.PI) a += 2 * Math.PI;
-        return a;
     }
 }
