@@ -1,6 +1,6 @@
 namespace GolemHost.Domain;
 
-/// <summary>A task entrusted to the golem: where it was told to go, who ordered it, and how it ended.</summary>
+/// <summary>A task entrusted to the golem: where it was told to go, who ordered it, the road it chose, and how it ended.</summary>
 internal sealed class Mission
 {
     internal int Id { get; }
@@ -12,6 +12,8 @@ internal sealed class Mission
 
     private MissionStatus status = MissionStatus.Pending;
     private string reason = "";
+    private readonly List<Leg> legs = new();   // the road chosen at start: passages to cross, the goal last
+    private int nextLeg;
 
     internal Mission(int id, Waypoint at, bool told)
     {
@@ -23,6 +25,35 @@ internal sealed class Mission
     internal bool IsPending() => status == MissionStatus.Pending;
     internal string ReadStatus() => status.Name;
     internal string ReadReason() => reason;
+
+    // ---- the road ----
+
+    internal bool IsRouted => legs.Count > 0;
+    internal int LegsLeft => legs.Count - nextLeg;
+    internal Leg NextLeg => IsRouted ? legs[nextLeg] : new Leg(At, "");
+
+    /// <summary>The golem decided its road: the legs to walk, in order, the goal last.</summary>
+    internal void Route(IEnumerable<Leg> road)
+    {
+        MustBePending();
+        if (IsRouted) throw new DomainException($"mission {Id} already has its road");
+        legs.AddRange(road);
+        if (legs.Count == 0) throw new DomainException($"mission {Id} needs at least the goal as a leg");
+        nextLeg = 0;
+    }
+
+    /// <summary>The golem crossed the next passage of its road. Returns what it crossed.</summary>
+    internal string Pass(string passage)
+    {
+        MustBePending();
+        if (!IsRouted) throw new DomainException($"mission {Id} has no road to pass along");
+        if (LegsLeft <= 1) throw new DomainException($"mission {Id} has only the goal left: complete it, do not pass");
+        if (legs[nextLeg].Name != passage) throw new DomainException($"mission {Id} is heading to '{legs[nextLeg].Name}', not '{passage}'");
+        nextLeg++;
+        return passage;
+    }
+
+    // ---- the ending ----
 
     internal void Complete()
     {

@@ -114,6 +114,23 @@ feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
 
 await ros.BindAsync(ct); // subscribe once the body is guaranteed to exist
 
+// The floor plan on the canvas: the golem that carries PAINT_MAP draws what it knows.
+// Turtlesim has no walls; the picture is for the operator, the passages are for the golems.
+if ((Environment.GetEnvironmentVariable("PAINT_MAP") ?? "false") == "true")
+{
+    var painter = new MapPainter(ros);
+    Func<CancellationToken, Task> paint = async token =>
+    {
+        await ros.CallServiceAsync("/clear", null, token);
+        string map = System.Text.Json.JsonDocument.Parse(perf.Actor.Using("print g.DescribeMap() 'map';").PerformQuery())
+            .RootElement.GetProperty("map").GetString();
+        await painter.PaintAsync(map, token);
+    };
+    await paint(ct);
+    flow.RepaintWith(paint);
+    feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", "floor plan painted on the canvas", DateTime.UtcNow));
+}
+
 // --- The mission loop, until shutdown. ---
 try
 {

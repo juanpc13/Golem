@@ -17,7 +17,7 @@
   h1 { font-size:1.05rem; margin:0; }
   .badge { font-family:ui-monospace, monospace; font-size:12.5px; color:var(--muted); }
   .badge b { color:var(--ink); font-weight:600; }
-  main { display:grid; grid-template-columns:280px 1fr; gap:20px; padding:20px 22px;
+  main { display:grid; grid-template-columns:300px 1fr; gap:20px; padding:20px 22px;
          max-width:1100px; }
   @media (max-width:760px) { main { grid-template-columns:1fr; } }
 
@@ -27,14 +27,15 @@
 
   /* operations */
   #map { display:block; width:100%; aspect-ratio:1; border-radius:8px;
-         cursor:crosshair; border:1px solid var(--line); background:#4556e8; }
+         cursor:crosshair; border:1px solid var(--line); background:#2a2f55; }
   .ops { display:flex; flex-direction:column; gap:10px; }
-  .row { display:flex; gap:8px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
   input[type=number] { width:70px; background:var(--bg); color:var(--ink);
          border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-family:ui-monospace, monospace; }
   button { background:#2e2e4e; color:var(--ink); border:0; border-radius:8px;
            padding:8px 12px; cursor:pointer; font-size:14px; }
   button:active { background:#4a4a8a; }
+  button.place { background:#25324f; border:1px solid #3d5a99; }
   button.danger { background:#4a2430; color:#f0b9b9; border:1px solid #7a3a44; }
   button.danger:active { background:#6a3040; }
   .hint { font-size:12px; color:var(--muted); margin:0; }
@@ -64,7 +65,7 @@
   <span class="badge">drives <b id="turtle">–</b></span>
   <span class="badge">journal entry <b id="entry">–</b></span>
   <span class="badge">missions <b id="pending">–</b> pending / <b id="total">–</b> total</span>
-  <span class="badge">pose <b id="pose">–</b> <span style="opacity:.7">(ephemeral)</span></span>
+  <span class="badge">pose <b id="pose">–</b> in <b id="here">–</b> <span style="opacity:.7">(ephemeral)</span></span>
   <span class="badge">route left <b id="left">–</b> · eta <b id="eta">–</b> · <b id="points">–</b> points</span>
 </header>
 
@@ -72,17 +73,15 @@
   <section>
     <h2>Operations</h2>
     <div class="card ops">
-      <canvas id="map" width="260" height="260" title="click to send the turtle there"></canvas>
-      <p class="hint">Click the map to entrust a mission. A target the body cannot reach ends as a
-      journaled <code>Fail</code> (stuck against a wall after 3 s without progress, or timeout).</p>
+      <canvas id="map" width="300" height="300" title="click to send the turtle there"></canvas>
+      <p class="hint">The floor plan is the golem's own map, released into its journal. Click a room to
+      entrust a mission to that point, or send it to a place by name: the golem plans the shortest road
+      through the doors and open boundaries, journals it, and journals every passage it crosses.</p>
+      <div class="row" id="places"></div>
       <div class="row">
         <input id="x" type="number" step="0.5" value="5.5">
         <input id="y" type="number" step="0.5" value="5.5">
-        <button id="assign">Assign</button>
-      </div>
-      <div class="row">
-        <button id="patrol">Patrol square</button>
-        <button id="center">Go center</button>
+        <button id="assign">Assign point</button>
       </div>
       <div class="row">
         <button id="reset">Let go of everything</button>
@@ -106,19 +105,19 @@
       <div class="row" id="presets">
         <button data-q="g.Pending()">Pending()</button>
         <button data-q="g.Total()">Total()</button>
-        <button data-q="g.HasPendingMission()">HasPendingMission()</button>
         <button data-q="g.Speed()">Speed()</button>
         <button data-q="g.RouteLength()">RouteLength()</button>
         <button data-q="g.RouteSeconds()">RouteSeconds()</button>
-        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextX() 'x', g.NextY() 'y'; } }">Next target</button>
+        <button data-q="g.Distance('kitchen', 'garage')">Distance(kitchen, garage)</button>
+        <button data-q="g.PlaceAt(5.5, 5.5)">PlaceAt(5.5, 5.5)</button>
+        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextPassage(g.NextId()) 'heading', g.LegsLeft(g.NextId()) 'legsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <p class="hint">Queries read the golem's in-memory state and never touch the journal.
       Keep them read-only: a mutating call here would change memory without journaling it,
-      and the change evaporates on the next rehydration. The header's <i>route left · eta</i>
-      is the golem's own answer too: it knows its speed and its pauses (released into its journal), so
-      <code>g.RouteSeconds()</code> answers from the console with no parameters; <code>/progress</code> only adds
-      the leg from where the body stands (its pose, as a query parameter) to the first pending point.</p>
+      and the change evaporates on the next rehydration. Distances follow the map's passages:
+      <code>g.Distance('kitchen', 'garage')</code> is the shortest road through the doors, and the header's
+      <i>route left · eta</i> comes from <code>/progress</code>, which only adds the road from where the body stands.</p>
     </div>
 
     <h2>Journal — live</h2>
@@ -133,20 +132,21 @@
     <h2 style="margin-top:20px">Runtime events</h2>
     <ul id="events"></ul>
     <p class="hint" style="margin-top:8px">
-      Ephemeral facts (missions starting, holds, membrane, lifecycle) — they never touch the journal.
+      Ephemeral facts (roads chosen, legs started, holds, membrane, lifecycle) — they never touch the journal.
     </p>
   </section>
 </main>
 
 <script>
-// The map is turtlesim's canvas (11.08 x 11.08 world units) — a drawing constant, not golem knowledge.
+// The canvas is turtlesim's world (11.08 x 11.08 units); the floor plan drawn on it is the golem's map.
 const WORLD = 11.08;
 const feed = document.getElementById('feed');
 const events = document.getElementById('events');
 const map = document.getElementById('map');
 const mctx = map.getContext('2d');
 let lastPose = null;
-let targets = [];   // recent targets, from the journal's Assigned / Taken facts
+let targets = [];   // recent targets, from the journal's Assign / AssignTold records
+let plan = null;    // {places, doors, opens} as the golem describes it
 
 // world <-> canvas (world y grows upward; canvas y grows downward)
 const toPx = (wx) => wx / WORLD * map.width;
@@ -182,19 +182,20 @@ function paintFact(e) {
 const es = new EventSource('/events');
 es.onmessage = (m) => row(JSON.parse(m.data));
 // on (re)connect the server replays its history — start from clean lists
-// so a golem restart doesn't duplicate rows
-es.onopen = () => { feed.innerHTML = ''; events.innerHTML = ''; targets = []; };
+// so a golem restart doesn't duplicate rows; the map is re-read too (it may have grown a release)
+es.onopen = () => { feed.innerHTML = ''; events.innerHTML = ''; targets = []; loadMap(); };
 
 async function assign(x, y) {
-  await fetch(`/assign?x=${x}&y=${y}`, {method: 'POST'});
+  const r = await fetch(`/assign?x=${x}&y=${y}`, {method: 'POST'});
+  if (!r.ok) document.getElementById('qout').textContent = 'refused: ' + await r.text();
+}
+async function goTo(place) {
+  const r = await fetch(`/goto?place=${encodeURIComponent(place)}`, {method: 'POST'});
+  if (!r.ok) document.getElementById('qout').textContent = 'refused: ' + await r.text();
 }
 
 document.getElementById('assign').onclick = () =>
   assign(+document.getElementById('x').value, +document.getElementById('y').value);
-document.getElementById('center').onclick = () => assign(5.5, 5.5);
-document.getElementById('patrol').onclick = async () => {
-  for (const [x, y] of [[8,3],[8,8],[3,8],[3,3]]) await assign(x, y);
-};
 
 async function runQuery(script) {
   const out = document.getElementById('qout');
@@ -228,14 +229,72 @@ map.addEventListener('click', (ev) => {
   assign(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
 });
 
+// The floor plan, as the golem knows it (one query on /map); one "go to" button per place.
+async function loadMap() {
+  try {
+    const m = await (await fetch('/map')).json();
+    plan = JSON.parse(m.map);
+    const holder = document.getElementById('places');
+    holder.innerHTML = '';
+    for (const p of plan.places) {
+      const b = document.createElement('button');
+      b.className = 'place'; b.textContent = '→ ' + p.name;
+      b.onclick = () => goTo(p.name);
+      holder.appendChild(b);
+    }
+  } catch { /* the golem may still be waking up */ }
+}
+
 function drawMap() {
   const w = map.width, h = map.height;
-  mctx.fillStyle = '#4556e8';
+  // solid by default; the golem's places are the floor
+  mctx.fillStyle = plan ? '#2a2f55' : '#4556e8';
   mctx.fillRect(0, 0, w, h);
+  if (plan) {
+    // rooms
+    mctx.lineWidth = 2;
+    for (const p of plan.places) {
+      const x0 = toPx(p.x), y0 = toPy(p.y + p.h), pw = toPx(p.w) - toPx(0), ph = toPy(0) - toPy(p.h);
+      mctx.fillStyle = '#4556e8';
+      mctx.fillRect(x0, y0, pw, ph);
+      mctx.strokeStyle = 'rgba(200,208,255,0.85)';
+      mctx.strokeRect(x0, y0, pw, ph);
+      mctx.fillStyle = 'rgba(229,231,242,0.9)';
+      mctx.font = '12px system-ui, sans-serif';
+      mctx.fillText(p.name, toPx(p.cx) - mctx.measureText(p.name).width / 2, toPy(p.cy) + 4);
+    }
+    // open boundaries: the shared edge, dashed and dim
+    for (const o of plan.opens) {
+      const a = plan.places.find(p => p.name === o.a), b = plan.places.find(p => p.name === o.b);
+      if (!a || !b) continue;
+      mctx.setLineDash([3, 4]); mctx.strokeStyle = '#4556e8'; mctx.lineWidth = 3;
+      if (Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6) {
+        const x = Math.abs(a.x + a.w - b.x) < 1e-6 ? b.x : a.x;
+        const y0 = Math.max(a.y, b.y), y1 = Math.min(a.y + a.h, b.y + b.h);
+        mctx.beginPath(); mctx.moveTo(toPx(x), toPy(y0)); mctx.lineTo(toPx(x), toPy(y1)); mctx.stroke();
+      } else {
+        const y = Math.abs(a.y + a.h - b.y) < 1e-6 ? b.y : a.y;
+        const x0 = Math.max(a.x, b.x), x1 = Math.min(a.x + a.w, b.x + b.w);
+        mctx.beginPath(); mctx.moveTo(toPx(x0), toPy(y)); mctx.lineTo(toPx(x1), toPy(y)); mctx.stroke();
+      }
+      mctx.setLineDash([]); mctx.lineWidth = 2;
+    }
+    // doors: a gap in the wall, marked in clay
+    for (const d of plan.doors) {
+      mctx.strokeStyle = '#dfa563'; mctx.lineWidth = 4;
+      const gap = 0.4;
+      const vertical = plan.places.some(p => Math.abs(p.x - d.x) < 1e-6 || Math.abs(p.x + p.w - d.x) < 1e-6);
+      mctx.beginPath();
+      if (vertical) { mctx.moveTo(toPx(d.x), toPy(d.y - gap)); mctx.lineTo(toPx(d.x), toPy(d.y + gap)); }
+      else { mctx.moveTo(toPx(d.x - gap), toPy(d.y)); mctx.lineTo(toPx(d.x + gap), toPy(d.y)); }
+      mctx.stroke();
+      mctx.lineWidth = 2;
+    }
+  }
   // recent targets
   const now = Date.now();
   targets = targets.filter(t => now - t.at < 60000);
-  mctx.strokeStyle = 'rgba(223,165,99,0.9)';
+  mctx.strokeStyle = 'rgba(223,165,99,0.9)'; mctx.lineWidth = 1.5;
   for (const t of targets) {
     mctx.beginPath(); mctx.arc(toPx(t.x), toPy(t.y), 5, 0, 7); mctx.stroke();
   }
@@ -263,10 +322,10 @@ async function poll() {
     document.getElementById('pending').textContent = s.pending;
     document.getElementById('total').textContent = s.total;
 
-    // the golem's own answer: the road through every pending point, and the seconds to run it (holds included)
-    document.getElementById('left').textContent = pr.hasNext ? pr.distanceLeft.toFixed(2) : '–';
-    document.getElementById('eta').textContent = pr.hasNext ? pr.secondsLeft.toFixed(1) + ' s' : '–';
+    document.getElementById('left').textContent = pr.distanceLeft !== undefined ? pr.distanceLeft.toFixed(2) : (pr.hasNext ? pr.routeLength.toFixed(2) : '–');
+    document.getElementById('eta').textContent = pr.secondsLeft !== undefined ? pr.secondsLeft.toFixed(1) + ' s' : (pr.hasNext ? pr.routeSeconds.toFixed(1) + ' s' : '–');
     document.getElementById('points').textContent = pr.pendingPoints;
+    document.getElementById('here').textContent = pr.here || '–';
 
     document.getElementById('who').textContent = b.golem;
     document.getElementById('dot').style.background = b.golem; // color names double as identity
@@ -275,9 +334,9 @@ async function poll() {
     document.getElementById('entry').textContent = b.entry;
     if (b.pose) {
       lastPose = b.pose;
-      document.getElementById('pose').textContent =
-        `${b.pose.x.toFixed(2)}, ${b.pose.y.toFixed(2)}, θ ${b.pose.theta.toFixed(2)}`;
+      document.getElementById('pose').textContent = `${b.pose.x.toFixed(2)}, ${b.pose.y.toFixed(2)}`;
     }
+    if (!plan) loadMap();
     drawMap();
   } catch { /* golem restarting — EventSource reconnects on its own */ }
   setTimeout(poll, 500);

@@ -10,9 +10,9 @@ using Puppeteer;
 namespace GolemHost.Choreography;
 
 // The golem's choreography. The mission loop hands each pending mission to the
-// navigator (the body's locomotion, behind a seam) and reports its verdict to a Saga
-// keyed by mission id — every write goes through the actor, guarded by a domain
-// Check, and the journal stays the only truth.
+// navigator (the body's locomotion, behind a seam) one leg at a time, and reports the
+// verdicts to a Saga keyed by mission id — every write goes through the actor, guarded
+// by a domain Check, and the journal stays the only truth.
 // Speech (tells) is a Reaction on the golem's own journal; the panel's journal lane is the
 // journal itself, tapped record by record (Panel/JournalTap).
 public sealed class GolemChoreography
@@ -30,6 +30,7 @@ public sealed class GolemChoreography
     private readonly string topic;
     private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
+    private Func<CancellationToken, Task> repaint;   // the floor plan, painted again after the canvas is cleared
 
     internal GolemChoreography(GolemPerformance perf, Rosbridge ros, INavigator navigator, PanelFeed feed, HttpBroker wire,
                                string golem, string turtle, string tellDoneTo, string journalPath)
@@ -45,6 +46,8 @@ public sealed class GolemChoreography
         this.journalPath = journalPath;
         topic = $"{golem}-ops";
     }
+
+    public void RepaintWith(Func<CancellationToken, Task> paint) => repaint = paint;
 
     // ------------------------------------------------------------------
     // BEFORE perf.Start(): the tell transport and every Reaction. Start is
@@ -84,6 +87,24 @@ public sealed class GolemChoreography
                 g.Announce(@missionId);
                 tell PointVisited with @x, @y to {tellDoneTo} once 'visited-' + @missionId;
             ");
+        // A mission ordered by PLACE has its own shape (AssignPlace) and its own echo: the
+        // peer is told the place, and plans its own road to it.
+        perf.Actor.Reactions.DefineReaction("echo-visited-place")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Ordered").One()
+                .OnMatch(@"
+                    [_:Golem].AssignPlace($missionId, $place)
+                ")
+            .ThenSeek("Done").One()
+                .OnMatch(@"
+                    [_:Golem].Complete($missionId)
+                ")
+            .Causation.Continue($@"
+                g.Announce(@missionId);
+                tell PlaceVisited with @place to {tellDoneTo} once 'visited-' + @missionId;
+            ");
+        // (The entries the reactions write — Announce + tell — are NOT observable by other
+        // reactions in this build; the journal lane shows them anyway, record by record.)
     }
 
     // ------------------------------------------------------------------
@@ -98,9 +119,9 @@ public sealed class GolemChoreography
             ? $"[golem {golem}] born by the release chain (entry {perf.CurrentEntryId})"
             : $"[golem {golem}] release chain no-op — awake at entry {perf.CurrentEntryId}");
 
-        // The loop's outcomes are steps of ONE run per mission: a Saga keyed by mission
-        // id serializes them per key; a domain Check on each step is the real guard
-        // against a redelivered or repeated outcome. Letting go is an independent command.
+        // The loop's decisions and outcomes are steps of ONE run per mission: a Saga keyed
+        // by mission id serializes them per key; a domain Check on each step is the real
+        // guard against a redelivered or repeated step. Letting go is an independent command.
         var dispatch = perf.CreateDispatch();
 
         dispatch.On<GolemRetired>((actor, m) =>
@@ -115,7 +136,44 @@ public sealed class GolemChoreography
             Console.WriteLine($"[golem {golem}] let go of every mission (entry {perf.CurrentEntryId})");
         });
 
+        // Passing a door happens as many times per mission as the road has passages: a REPEATED
+        // event, so it is a plain command handler (idempotent per message id — one id per leg),
+        // NOT a saga step: a saga runs a given step once per key and silently drops a repeat.
+        dispatch.On<MissionPassed>((actor, m) =>
+        {
+            string refused = actor.Using(
+                @"
+                    Check(g.Knows(@id) && g.IsPending(@id) && g.LegsLeft(@id) > 1 && g.NextPassage(@id) == @passage) Error 'that is not the passage ahead';
+                ",
+                @"
+                    g.Pass(@id, @passage);
+                ")
+            .WithParameters(p => {
+                p["id",      typeof(int)]    = m.Id;
+                p["passage", typeof(string)] = m.Passage;
+            })
+            .PerformCheckThenCommand();
+            Settle(refused, $"mission {m.Id} passed {m.Passage}");
+        });
+
         perf.DefineSaga("Mission")
+            .On<MissionRouted>(m => m.Id.ToString(CultureInfo.InvariantCulture))
+                .Task("route", (actor, m) =>
+                {
+                    string refused = actor.Using(
+                        @"
+                            Check(g.Knows(@id) && g.IsPending(@id) && g.IsRouted(@id) == false) Error 'mission already has its road';
+                        ",
+                        @"
+                            g.Route(@id, @plan);
+                        ")
+                    .WithParameters(p => {
+                        p["id",   typeof(int)]    = m.Id;
+                        p["plan", typeof(string)] = m.Plan;
+                    })
+                    .PerformCheckThenCommand();
+                    Settle(refused, $"mission {m.Id} takes the road {m.Plan}");
+                })
             .On<MissionSucceeded>(m => m.Id.ToString(CultureInfo.InvariantCulture))
                 .Task("complete", (actor, m) =>
                 {
@@ -159,6 +217,8 @@ public sealed class GolemChoreography
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
                 .Command("g.AssignTold(@x, @y);")
+            .Told("PlaceVisited").With<string>("place")
+                .Command("g.AssignToldPlace(@place);")
             .Start();
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
             $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
@@ -174,6 +234,8 @@ public sealed class GolemChoreography
         if (!signal.Headers.TryGetValue("kind", out string kind)) return null;
         int tag = kind switch
         {
+            "routed"    => MissionRouted.TypeId,
+            "passed"    => MissionPassed.TypeId,
             "succeeded" => MissionSucceeded.TypeId,
             "failed"    => MissionFailed.TypeId,
             "retired"   => GolemRetired.TypeId,
@@ -198,7 +260,8 @@ public sealed class GolemChoreography
     }
 
     // The operator asks the golem to let go of every mission: the body is put back
-    // (ephemeral) and the forgetting is journaled through the same ops surface.
+    // (ephemeral), the canvas is cleared and the floor plan painted again, and the
+    // forgetting is journaled through the same ops surface.
     public async Task LetGoAsync()
     {
         try
@@ -207,6 +270,7 @@ public sealed class GolemChoreography
             await ros.CallServiceAsync($"/{turtle}/teleport_absolute",
                 new { x = 5.544445, y = 5.544445, theta = 0.0 }, CancellationToken.None);
             await ros.CallServiceAsync("/clear", null, CancellationToken.None);
+            if (repaint != null) await repaint(CancellationToken.None);
         }
         catch { /* the world reset is best-effort; the journaled fact is the point */ }
 
@@ -252,13 +316,16 @@ public sealed class GolemChoreography
     }
 
     // ------------------------------------------------------------------
-    // The mission loop: next mission -> navigator -> verdict -> journaled outcome.
-    // What counts as failure (a stall, a timeout, later a blocked run) is the
-    // navigator's to say; the golem only journals how the mission ended.
+    // The mission loop. A mission is a point on the map; before moving, the golem decides
+    // its ROAD from where the body stands — the passages to cross, the goal last — and
+    // journals it (g.Route). Then the navigator is handed one leg at a time: each passage
+    // crossed is journaled (g.Pass), the goal reached is the mission completed. What counts
+    // as failure on a leg (a stall, a timeout) is the navigator's to say.
     // ------------------------------------------------------------------
-
     public async Task RunAsync(CancellationToken ct)
     {
+        int announcedFor = 0;
+        string announcedLeg = null;
         while (!ct.IsCancellationRequested)
         {
             var plan = ReadPlan();
@@ -267,28 +334,65 @@ public sealed class GolemChoreography
                 await Task.Delay(TimeSpan.FromSeconds(2), ct);
                 continue;
             }
+            string key = $"{golem}:mission:{plan.Id}";
 
-            Console.WriteLine($"[golem {golem}] mission {plan.Id}: go to ({plan.X:0.0}, {plan.Y:0.0})");
-            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-                $"mission {plan.Id} started — driving to ({plan.X:0.0}, {plan.Y:0.0})", DateTime.UtcNow));
+            if (!plan.Routed)
+            {
+                var here = ros.LatestPose;
+                if (here == null) { await Task.Delay(200, ct); continue; }
+                string road;
+                try
+                {
+                    road = PlanFrom(plan.Id, here.X, here.Y);
+                }
+                catch (Exception ex)
+                {
+                    Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "no road: " + Reason(ex)));
+                    if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                    continue;
+                }
+                Console.WriteLine($"[golem {golem}] mission {plan.Id}: road {road}");
+                feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: road {road}", DateTime.UtcNow));
+                Produce("routed", $"{key}:routed", MissionRouted.Payload(plan.Id, road));
+                await WaitUntilAsync(() => IsRouted(plan.Id), ct);
+                continue;
+            }
+
+            if (announcedFor != plan.Id || announcedLeg != plan.Passage)
+            {
+                announcedFor = plan.Id;
+                announcedLeg = plan.Passage;
+                string what = plan.LegsLeft > 1 ? $"heading to the passage {plan.Passage}" : $"heading to the goal in {plan.Passage}";
+                Console.WriteLine($"[golem {golem}] mission {plan.Id}: {what} ({plan.X:0.0}, {plan.Y:0.0})");
+                feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: {what} ({plan.X:0.0}, {plan.Y:0.0})", DateTime.UtcNow));
+            }
 
             Outcome outcome = await navigator.GoToAsync(plan.X, plan.Y, ct);
             if (ct.IsCancellationRequested) break;
 
-            string key = $"{golem}:mission:{plan.Id}";
-            if (outcome.Reached)
-                Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
-            else
+            if (!outcome.Reached)
+            {
                 Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, outcome.Reason));
+                if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                continue;
+            }
 
-            if (!await WaitUntilSettledAsync(plan.Id, ct))
+            if (plan.LegsLeft > 1)
+            {
+                Produce("passed", $"{key}:pass:{plan.LegsLeft}", MissionPassed.Payload(plan.Id, plan.Passage));
+                await WaitUntilAsync(() => LegsLeft(plan.Id) < plan.LegsLeft, ct);
+                continue;
+            }
+
+            Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
+            if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct))
                 await Task.Delay(TimeSpan.FromSeconds(2), ct); // never re-drive on a timeout; back off and re-read
 
             // Pacing: a point a peer told us about is a point that peer is already past.
             // Holding there a while keeps the leader's lead. How long is the golem's own
             // property (the pace release); the pause itself is runtime — the mission is
             // settled and nothing about the wait belongs in the journal.
-            if (outcome.Reached && WasTold(plan.Id))
+            if (WasTold(plan.Id))
             {
                 var hold = TimeSpan.FromSeconds(HoldAfterTold());
                 if (hold > TimeSpan.Zero)
@@ -302,16 +406,23 @@ public sealed class GolemChoreography
         }
     }
 
-    // Settled = the journal moved past this mission (completed/failed) — or a timeout.
-    private async Task<bool> WaitUntilSettledAsync(int id, CancellationToken ct)
+    private static string Reason(Exception ex)
+    {
+        var inner = ex;
+        while (inner.InnerException != null) inner = inner.InnerException;
+        return inner.Message;
+    }
+
+    // Wait for the journal to move as expected — or give up after a while and re-read.
+    private async Task<bool> WaitUntilAsync(Func<bool> condition, CancellationToken ct)
     {
         var start = DateTime.UtcNow;
         while (!ct.IsCancellationRequested)
         {
-            if (IsSettled(id)) return true;
+            if (condition()) return true;
             if (DateTime.UtcNow - start > TimeSpan.FromSeconds(5))
             {
-                Console.WriteLine($"[golem {golem}] mission {id} not settled yet — backing off");
+                Console.WriteLine($"[golem {golem}] the journal did not move as expected within 5 s — backing off");
                 return false;
             }
             await Task.Delay(100, ct);
@@ -322,7 +433,7 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     // Typed reads: Out parameters through the rent-lease (never parsing print).
     // ------------------------------------------------------------------
-    private (bool Has, int Id, double X, double Y) ReadPlan()
+    private (bool Has, int Id, double X, double Y, bool Routed, int LegsLeft, string Passage) ReadPlan()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
@@ -331,17 +442,70 @@ public sealed class GolemChoreography
                 @id = g.NextId();
                 @x = g.NextX();
                 @y = g.NextY();
+                @routed = g.IsRouted(g.NextId());
+                @legs = g.LegsLeft(g.NextId());
+                @passage = g.NextPassage(g.NextId());
             }
         ")
         .WithParameters(rented, p => {
-            p[Parameter.Out, "has", typeof(bool)]   = default;
-            p[Parameter.Out, "id",  typeof(int)]    = default;
-            p[Parameter.Out, "x",   typeof(double)] = default;
-            p[Parameter.Out, "y",   typeof(double)] = default;
+            p[Parameter.Out, "has",     typeof(bool)]   = default;
+            p[Parameter.Out, "id",      typeof(int)]    = default;
+            p[Parameter.Out, "x",       typeof(double)] = default;
+            p[Parameter.Out, "y",       typeof(double)] = default;
+            p[Parameter.Out, "routed",  typeof(bool)]   = default;
+            p[Parameter.Out, "legs",    typeof(int)]    = default;
+            p[Parameter.Out, "passage", typeof(string)] = default;
         })
         .PerformQuery();
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
-                rented["x"].GetValue<double>(), rented["y"].GetValue<double>());
+                rented["x"].GetValue<double>(), rented["y"].GetValue<double>(),
+                rented["routed"].GetValue<bool>(), rented["legs"].GetValue<int>(),
+                rented["passage"].GetValue<string>() ?? "");
+    }
+
+    // The road from where the body stands, as the journal will write it.
+    private string PlanFrom(int id, double x, double y)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @plan = g.Plan(@id, @x, @y);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                     = id;
+            p["x",  typeof(double)]                  = x;
+            p["y",  typeof(double)]                  = y;
+            p[Parameter.Out, "plan", typeof(string)] = default;
+        })
+        .PerformQuery();
+        return rented["plan"].GetValue<string>();
+    }
+
+    private bool IsRouted(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @routed = g.IsRouted(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                      = id;
+            p[Parameter.Out, "routed", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["routed"].GetValue<bool>();
+    }
+
+    private int LegsLeft(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @legs = g.LegsLeft(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                   = id;
+            p[Parameter.Out, "legs", typeof(int)]  = default;
+        })
+        .PerformQuery();
+        return rented["legs"].GetValue<int>();
     }
 
     // The body's properties, as the journal knows them.

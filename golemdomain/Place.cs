@@ -1,0 +1,49 @@
+namespace GolemHost.Domain;
+
+/// <summary>
+/// A named room of the map: an axis-aligned rectangle. Built fluently from the release
+/// chain — <c>g.AddPlace('kitchen', 0, 6, 4, 5).Door('hall', 4, 8.5).Open('living')</c> —
+/// so each place declares its own passages and the journal reads like a floor plan.
+/// </summary>
+internal sealed class Place
+{
+    internal string Name { get; }
+    internal double X { get; }
+    internal double Y { get; }
+    internal double Width { get; }
+    internal double Height { get; }
+
+    private readonly Atlas atlas;
+
+    internal Place(string name, double x, double y, double width, double height, Atlas atlas)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new DomainException("a place needs a name");
+        if (width <= 0 || height <= 0) throw new DomainException($"place '{name}' needs a positive width and height");
+        Name = name;
+        X = x;
+        Y = y;
+        Width = width;
+        Height = height;
+        this.atlas = atlas;
+    }
+
+    internal Waypoint Center => new(X + Width / 2, Y + Height / 2);
+
+    /// <summary>Inclusive on the edges: a point on a shared wall belongs to both places.</summary>
+    internal bool Contains(Waypoint at) =>
+        at.X >= X - 1e-9 && at.X <= X + Width + 1e-9 && at.Y >= Y - 1e-9 && at.Y <= Y + Height + 1e-9;
+
+    /// <summary>A door to a neighbouring place, at a point on the shared wall. Chainable.</summary>
+    internal Place Door(string to, double x, double y)
+    {
+        atlas.AddDoor(Name, to, new Waypoint(x, y));
+        return this;
+    }
+
+    /// <summary>The whole shared boundary with a neighbour is open — no wall, no door. Chainable.</summary>
+    internal Place Open(string to)
+    {
+        atlas.AddOpening(Name, to);
+        return this;
+    }
+}

@@ -48,6 +48,7 @@ services:
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller)
       - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080
       - TELL_RETRY_SECONDS=30
+      - PAINT_MAP=true  # blue paints the floor plan on the canvas at boot (one painter is enough)
     volumes:
       - ./journal:/golem/journal
     depends_on:

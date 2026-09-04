@@ -23,6 +23,6 @@ COPY kiosk/rc.xml /root/.config/openbox/rc.xml
 # -AcceptSetDesktopSize=0 stops noVNC from resizing the remote desktop on connect.
 RUN chmod +x /golem/kiosk.sh \
     && sed -i 's|^mate-session$|exec bash /golem/kiosk.sh|' /entrypoint.sh \
-    && sed -i 's/-geometry 1920x1080/-geometry 500x500 -AcceptSetDesktopSize=0/g' /entrypoint.sh \
+    && sed -i 's/-geometry 1920x1080/-geometry 504x504 -AcceptSetDesktopSize=0/g' /entrypoint.sh \
     && grep -q '/golem/kiosk.sh' /entrypoint.sh \
-    && grep -q '500x500' /entrypoint.sh
+    && grep -q "504x504" /entrypoint.sh
