@@ -68,6 +68,15 @@ internal sealed class Mission
         reason = why;
     }
 
+    /// <summary>A newer told point made this one pointless: the follower catches up instead of retracing.</summary>
+    internal void Supersede(int byId)
+    {
+        MustBePending();
+        if (!Told) throw new DomainException($"mission {Id} was ordered by the operator: only told points are superseded");
+        status = MissionStatus.Superseded;
+        reason = $"superseded by mission {byId}";
+    }
+
     internal void Announce()
     {
         if (status != MissionStatus.Completed) throw new DomainException($"mission {Id} is {status.Name}: only a completed point is announced");

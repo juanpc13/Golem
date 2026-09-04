@@ -174,6 +174,23 @@ public sealed class GolemChoreography
                     .PerformCheckThenCommand();
                     Settle(refused, $"mission {m.Id} takes the road {m.Plan}");
                 })
+            .On<MissionSuperseded>(m => m.Id.ToString(CultureInfo.InvariantCulture))
+                .Task("supersede", (actor, m) =>
+                {
+                    string refused = actor.Using(
+                        @"
+                            Check(g.Knows(@id) && g.IsPending(@id) && g.WasTold(@id) && g.HasNewerTold(@id)) Error 'nothing newer was told';
+                        ",
+                        @"
+                            g.Supersede(@id, @by);
+                        ")
+                    .WithParameters(p => {
+                        p["id", typeof(int)] = m.Id;
+                        p["by", typeof(int)] = m.By;
+                    })
+                    .PerformCheckThenCommand();
+                    Settle(refused, $"mission {m.Id} superseded by {m.By}: catching up with the leader");
+                })
             .On<MissionSucceeded>(m => m.Id.ToString(CultureInfo.InvariantCulture))
                 .Task("complete", (actor, m) =>
                 {
@@ -236,6 +253,7 @@ public sealed class GolemChoreography
         {
             "routed"    => MissionRouted.TypeId,
             "passed"    => MissionPassed.TypeId,
+            "superseded" => MissionSuperseded.TypeId,
             "succeeded" => MissionSucceeded.TypeId,
             "failed"    => MissionFailed.TypeId,
             "retired"   => GolemRetired.TypeId,
@@ -336,6 +354,18 @@ public sealed class GolemChoreography
             }
             string key = $"{golem}:mission:{plan.Id}";
 
+            // Catching up: a told point still pending when a NEWER told point arrived is where the
+            // leader WAS, not where it is. The follower lets it go (a journaled decision) and heads
+            // for the newest one by the shortest road — checked between legs, never mid-leg.
+            if (plan.Told && plan.NewerTold > 0)
+            {
+                Console.WriteLine($"[golem {golem}] mission {plan.Id}: a newer told point ({plan.NewerTold}) arrived — letting this one go");
+                feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: superseded by {plan.NewerTold} — catching up with the leader", DateTime.UtcNow));
+                Produce("superseded", $"{key}:superseded", MissionSuperseded.Payload(plan.Id, plan.NewerTold));
+                if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                continue;
+            }
+
             if (!plan.Routed)
             {
                 var here = ros.LatestPose;
@@ -433,7 +463,7 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     // Typed reads: Out parameters through the rent-lease (never parsing print).
     // ------------------------------------------------------------------
-    private (bool Has, int Id, double X, double Y, bool Routed, int LegsLeft, string Passage) ReadPlan()
+    private (bool Has, int Id, double X, double Y, bool Routed, int LegsLeft, string Passage, bool Told, int NewerTold) ReadPlan()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
@@ -445,9 +475,14 @@ public sealed class GolemChoreography
                 @routed = g.IsRouted(g.NextId());
                 @legs = g.LegsLeft(g.NextId());
                 @passage = g.NextPassage(g.NextId());
+                @told = g.WasTold(g.NextId());
+                @newer = 0;
+                if (g.HasNewerTold(g.NextId())) { @newer = g.NewestToldId(); }
             }
         ")
         .WithParameters(rented, p => {
+            p[Parameter.Out, "told",    typeof(bool)]   = default;
+            p[Parameter.Out, "newer",   typeof(int)]    = default;
             p[Parameter.Out, "has",     typeof(bool)]   = default;
             p[Parameter.Out, "id",      typeof(int)]    = default;
             p[Parameter.Out, "x",       typeof(double)] = default;
@@ -460,7 +495,7 @@ public sealed class GolemChoreography
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
                 rented["x"].GetValue<double>(), rented["y"].GetValue<double>(),
                 rented["routed"].GetValue<bool>(), rented["legs"].GetValue<int>(),
-                rented["passage"].GetValue<string>() ?? "");
+                rented["passage"].GetValue<string>() ?? "", rented["told"].GetValue<bool>(), rented["newer"].GetValue<int>());
     }
 
     // The road from where the body stands, as the journal will write it.

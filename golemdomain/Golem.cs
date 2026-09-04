@@ -107,6 +107,15 @@ internal sealed class Golem
         return id;
     }
 
+    /// <summary>The follower lets a told point go because a newer told point arrived: it heads for where the leader is now. Returns the id let go.</summary>
+    internal int Supersede(int id, int byId)
+    {
+        var newer = Find(byId);
+        if (!newer.Told || !newer.IsPending() || byId <= id) throw new DomainException($"mission {byId} is not a newer pending told point than {id}");
+        Find(id).Supersede(byId);
+        return id;
+    }
+
     /// <summary>The golem puts on record that it announces this visited point to its peer (the tell follows in the same entry).</summary>
     internal int Announce(int id)
     {
@@ -138,6 +147,9 @@ internal sealed class Golem
     internal int PendingTold() => missions.Count(m => m.IsPending() && m.Told);
     internal int Total() => missions.Count;
     internal string StatusOf(int id) => Find(id).ReadStatus();
+    /// <summary>The newest pending point a peer told about — where the leader is now, as far as the follower knows. Consult HasNewerTold first.</summary>
+    internal int NewestToldId() => missions.Where(m => m.IsPending() && m.Told).Select(m => m.Id).DefaultIfEmpty(0).Max();
+    internal bool HasNewerTold(int id) => missions.Any(m => m.IsPending() && m.Told && m.Id > id);
 
     // ---- the road ahead, answered from the golem's own knowledge ----
 

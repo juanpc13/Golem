@@ -48,6 +48,26 @@ public sealed class MissionPassed : IDispatchMessage
     public static string Payload(int id, string passage) => $"{id}|{passage}";
 }
 
+// A told point was made obsolete by a newer one: the follower lets it go.
+public sealed class MissionSuperseded : IDispatchMessage
+{
+    public static int TypeId => 'U';
+    public int Id { get; private init; }
+    public int By { get; private init; }
+
+    public static IDispatchMessage Deserialize(string raw)
+    {
+        int bar = raw.IndexOf('|');
+        return new MissionSuperseded
+        {
+            Id = int.Parse(raw[1..bar], CultureInfo.InvariantCulture),
+            By = int.Parse(raw[(bar + 1)..], CultureInfo.InvariantCulture)
+        };
+    }
+
+    public static string Payload(int id, int by) => $"{id}|{by}";
+}
+
 public sealed class MissionSucceeded : IDispatchMessage
 {
     public static int TypeId => 'S';

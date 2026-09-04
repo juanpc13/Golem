@@ -167,6 +167,33 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
+    public void AStaleToldPoint_IsSupersededByANewerOne_ButAnOperatorPointNeverIs()
+    {
+        Assign(1, 9.0, 1.5);                 // the operator: garage
+        AssignTold(2.0, 9.5);                // the leader was in the kitchen...
+        Assert.IsFalse(Bool("g.HasNewerTold(2)"));
+
+        AssignTold(9.0, 9.5);                // ...and now says it is in the storage
+        Assert.IsTrue(Bool("g.HasNewerTold(2)"));
+        Assert.AreEqual(3, Int("g.NewestToldId()"));
+
+        perf.Actor.Using(@"
+            g.Supersede(@id, @by);
+        ")
+        .WithParameters(p => {
+            p["id", typeof(int)] = 2;
+            p["by", typeof(int)] = 3;
+        })
+        .PerformCommand();
+
+        Assert.AreEqual("superseded", Text("g.StatusOf(2)"));
+        Assert.IsFalse(Bool("g.IsPending(2)"));
+        Assert.AreEqual(2, Int("g.Pending()"), "the operator's garage and the newest told point remain");
+        Refuses("g.Supersede(1, 3);", "only told points are superseded");
+        Refuses("g.Supersede(3, 2);", "is not a newer pending told point");
+    }
+
+    [TestMethod]
     public void APointInsideASolidBlock_IsRefused()
     {
         Refuses("g.Assign(1, 3.0, 5.0);", "nowhere on the map");
