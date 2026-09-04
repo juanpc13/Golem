@@ -74,8 +74,12 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void TheShortestRoad_CutsThroughTheCenter_WhenThatIsShorter()
     {
-        // kitchen (2,9.5) -> door (4,9.5) -> across the two open boundaries -> door (7,1.5) -> garage (9,1.5)
-        double throughTheCenter = 2.0 + Math.Sqrt(4.5) + Math.Sqrt(44.5) + 2.0;      // ~12.79
+        // kitchen (2,9.5) -> door (4,9.5) -> the open boundary north~center at its middle (5.5,8) -> the open
+        // boundary center~south, crossed where the walked run to the door's approach point (6.4,1.5) meets it
+        // (x ~ 6.19) -> door (7,1.5) -> garage (9,1.5)
+        double cross = 5.5 + (6.4 - 5.5) * (5.0 / 6.5);
+        double throughTheCenter = 2.0 + Math.Sqrt(4.5) + Math.Sqrt((cross - 5.5) * (cross - 5.5) + 25)
+                                  + Math.Sqrt((7 - cross) * (7 - cross) + 2.25) + 2.0;      // ~12.87
         double aroundByTheWest = 2 * Math.Sqrt(3.8125) + 5.0 + Math.Sqrt(12.8125) + 3.0 + 2.0; // ~15.5
         double road = Double("g.Distance('kitchen', 'garage')");
         Assert.AreEqual(throughTheCenter, road, 0.01);
@@ -131,6 +135,29 @@ public class MissionAcceptanceTests
         Refuses("g.Pass(1, 'living');", "only the goal left");
 
         Assert.AreEqual("", Complete(1));
+    }
+
+    [TestMethod]
+    public void ADoor_IsCrossedStraight_LiningUpOffTheWallOnBothSides()
+    {
+        // kitchen (2,9.5) -> door kitchen/west at (0.75,8) on a horizontal wall -> west corridor -> door (0.75,3) -> living
+        Assign(1, 2.0, 1.5);
+        Route(1, Text("g.Plan(1, 2.0, 9.5)"));
+
+        Assert.AreEqual(0.75, Double("g.NextX()"), 0.001, "the leg IS the door");
+        Assert.AreEqual(8.0, Double("g.NextY()"), 0.001);
+        Assert.AreEqual(0.75, Double("g.NextApproachX()"), 0.001, "the approach stands right in front of the door");
+        Assert.AreEqual(8.6, Double("g.NextApproachY()"), 0.001, "0.6 into the kitchen, the side the body comes from");
+        Assert.AreEqual(0.75, Double("g.NextExitX()"), 0.001);
+        Assert.AreEqual(7.4, Double("g.NextExitY()"), 0.001, "0.6 into the corridor, the side it goes to");
+
+        Pass(1, "kitchen/west");
+        Assert.AreEqual(3.6, Double("g.NextApproachY()"), 0.001, "the next door, west/living at y=3, is approached from the corridor");
+        Assert.AreEqual(2.4, Double("g.NextExitY()"), 0.001);
+
+        Pass(1, "west/living");
+        Assert.AreEqual(2.0, Double("g.NextApproachX()"), 0.001, "the goal has no wall to clear: approach, exit and point coincide");
+        Assert.AreEqual(1.5, Double("g.NextExitY()"), 0.001);
     }
 
     [TestMethod]

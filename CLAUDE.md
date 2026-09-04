@@ -1,7 +1,8 @@
 # Golem — working rules for Claude
 
-Golem is a spike: Puppeteer 2 actors ("golems") driving ROS 2 turtlesim turtles.
-One golem per turtle, one journal per golem, a shared world.
+Golem is a spike: Puppeteer 2 actors ("golems") driving robot bodies in a ROS 2 world
+simulated by Gazebo Fortress (turtlesim until 4-sep-2026). One golem per body, one
+journal per golem, a shared world with real physics and real collisions.
 
 ## Scope
 
@@ -26,13 +27,17 @@ One golem per turtle, one journal per golem, a shared world.
 
 ## Architecture in one breath
 
-- `sim/` — the world: turtlesim + rosbridge in kiosk mode (noVNC :6080, ws :9090).
+- `sim/` — the world: Gazebo Fortress in kiosk mode (noVNC :6080, rosbridge ws :9090).
+  Reality is GENERATED from `sim/world/plan.json` at image build (walls, doors, solid
+  blocks, bodies with contact sensors, obstacles the golems' map does not know).
 - `golemhost/` — the generic golem program (ASP.NET controllers). One image, N
-  golems via environment: `GOLEM` (identity, names the journal), `TURTLE` (body),
-  `TELL_ROUTES`/`TELL_DONE_TO` (speech), `ROCK` (shared world knowledge).
-- The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose
-  is ephemeral telemetry, transitions (Assign/Complete/Fail/Reroute) are journaled,
-  every write goes through one serial Dispatch, tells are reaction-only.
+  golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
+  it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech).
+- The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
+  contacts are ephemeral telemetry, transitions (Assign/Route/Pass/Complete/Fail/
+  Supersede/Retire) are journaled, every write goes through one serial Dispatch,
+  tells are reaction-only. The golem's map (release `map_v1`) is its knowledge;
+  what the simulator reports (a collision with a crate) is reality.
 
 ## Habits
 

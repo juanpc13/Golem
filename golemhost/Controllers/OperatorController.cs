@@ -31,17 +31,20 @@ public class OperatorController : Controller
     public IActionResult Panel() =>
         PhysicalFile(Path.Combine(AppContext.BaseDirectory, "panel.html"), "text/html; charset=utf-8");
 
-    // Host telemetry (not domain state): who I am, my body, where the journal is, the pose.
+    // Host telemetry (not domain state): who I am, my body, the journal's entry, the pose,
+    // and the last thing the body touched as the world reported it.
     [HttpGet("body")]
     public IActionResult Body()
     {
         var pose = ros.LatestPose;
+        var touch = ros.LatestContact;
         return Content(JsonSerializer.Serialize(new
         {
             golem = identity.Golem,
-            turtle = identity.Turtle,
+            body = identity.Body,
             entry = perf.CurrentEntryId,
-            pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta }
+            pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta },
+            contact = touch == null ? null : new { with = touch.With, agoSeconds = (DateTime.UtcNow - touch.At).TotalSeconds }
         }), "application/json");
     }
 

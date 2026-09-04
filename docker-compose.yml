@@ -1,27 +1,30 @@
-# Golem — sim in kiosk mode: turtlesim + rosbridge start on their own, no desktop.
+# Golem — the world is Gazebo Fortress in kiosk mode: physics server, ROS<->Gazebo bridge,
+# rosbridge and the GUI start on their own, no desktop.
 # Bring up:  docker compose up -d --build
 # Watch:     http://localhost:6080/vnc.html?autoconnect=true&resize=scale
-#            (the TurtleSim window IS the screen, scaled to the browser)
+#            (Gazebo's picture IS the screen, straight above the floor, scaled to the browser)
 # Operate:   http://localhost:8081 (blue-golem) · http://localhost:8082 (red-golem)
-# Membrane:  ws://localhost:9090  (rosbridge: topics/services/actions as JSON)
+# Membrane:  ws://localhost:9090  (rosbridge: the bodies' topics as JSON)
 services:
   sim:
     build: ./sim
-    image: golem-sim:kiosk
+    image: golem-sim:gazebo
     container_name: golem-sim
     ports:
-      - "6080:80"    # noVNC: the sim window in the browser
+      - "6080:80"    # noVNC: the picture in the browser
       - "9090:9090"  # rosbridge (the membrane)
+    environment:
+      - KIOSK=true   # false = headless: physics and bridges only, no picture (saves ~5 cores of software rendering)
     shm_size: 512m
     security_opt:
       - seccomp=unconfined
     restart: unless-stopped
 
-  # The golems (GolemHost, ASP.NET controllers on :8080 inside). One golem per
-  # turtle, all from the same image — only the environment differs. GOLEM is the
-  # identity (names the journal); TURTLE is the body it drives (ROS topics); the
-  # golem spawns its body if the world lacks it, and signs its trail with PEN_RGB.
-  # Journals live in ./journal on the host — inspectable, they outlive containers.
+  # The golems (GolemHost, ASP.NET controllers on :8080 inside). One golem per body, all
+  # from the same image — only the environment differs. GOLEM is the identity (names the
+  # journal); BODY is the model it drives in the world (sim/world/plan.json declares the
+  # bodies); HOME_AT is the body's mark: a reborn golem puts its body there, and so does
+  # "let go". Journals live in ./journal on the host — inspectable, they outlive containers.
   # RULE: one writer per journal — never point two processes at the same GOLEM.
   #
   # Tells travel container-to-container over the HttpBroker wire: TELL_ROUTES maps
@@ -41,14 +44,12 @@ services:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
       - GOLEM=blue
-      - TURTLE=turtle1
-      - SPAWN_AT=5.5,5.5
-      - PEN_RGB=10,25,120  # deep navy: plain blue vanishes on turtlesim's blue canvas
+      - BODY=blue
+      - HOME_AT=5.5,5.5
       - PANEL_PORT=8080
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller)
       - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080
       - TELL_RETRY_SECONDS=30
-      - PAINT_MAP=true  # blue paints the floor plan on the canvas at boot (one painter is enough)
     volumes:
       - ./journal:/golem/journal
     depends_on:
@@ -67,9 +68,8 @@ services:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
       - GOLEM=red
-      - TURTLE=turtle2
-      - SPAWN_AT=2.5,2.5
-      - PEN_RGB=230,70,70
+      - BODY=red
+      - HOME_AT=2.5,2.5
       - PANEL_PORT=8080
       # tells TO blue go to blue; acks for tells addressed to ME return to blue
       - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080

@@ -78,12 +78,13 @@ internal sealed class Golem
         return string.Join(" > ", legs.Select(l => $"{l.Name}@{Fmt(l.At.X)},{Fmt(l.At.Y)}"));
     }
 
-    /// <summary>The golem decides its road for a mission (the plan as text, so the decision reads in the journal). Returns the number of legs.</summary>
+    /// <summary>The golem decides its road for a mission (the plan as text, so the decision reads in the journal). Returns the number of legs.
+    /// The text names the doors; how each door is crossed (straight in, straight out) is derived from the map again, so it never has to be written.</summary>
     internal int Route(int id, string plan)
     {
-        var legs = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        var legs = atlas.WithDoorCrossings(plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(ParseLeg)
-            .ToList();
+            .ToList());
         Find(id).Route(legs);
         return legs.Count;
     }
@@ -186,6 +187,12 @@ internal sealed class Golem
     /// <summary>Where the body should head now: the next leg of the road when routed, the point itself before that.</summary>
     internal double NextX() => NextPending().NextLeg.At.X;
     internal double NextY() => NextPending().NextLeg.At.Y;
+    /// <summary>How the next leg is walked: line up at the approach, end at the exit. For a door they stand off the wall on
+    /// either side (the body crosses it straight); for an opening or the goal they are the point itself.</summary>
+    internal double NextApproachX() => NextPending().NextLeg.Approach.X;
+    internal double NextApproachY() => NextPending().NextLeg.Approach.Y;
+    internal double NextExitX() => NextPending().NextLeg.Exit.X;
+    internal double NextExitY() => NextPending().NextLeg.Exit.Y;
 
     private int Entrust(int id, Waypoint at, bool told)
     {

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Minimal openbox for kiosk mode: every window undecorated and pinned to (0,0).
-     The VNC screen measures exactly what turtlesim measures (500x500),
-     so the window IS the screen. -->
+<!-- Minimal openbox for kiosk mode: every window undecorated and pinned to (0,0);
+     kiosk.sh maximizes Gazebo's window, so the picture IS the screen. -->
 <openbox_config xmlns="http://openbox.org/3.4/rc">
   <applications>
     <application class="*">

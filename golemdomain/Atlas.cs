@@ -8,10 +8,18 @@ namespace GolemHost.Domain;
 /// where a point is and the shortest road between two points through the passages —
 /// Dijkstra over a graph whose nodes are the doors (plus the start and the goal) and whose
 /// edges join nodes that can see each other inside one place or across an open boundary.
-/// Rooms are rectangles, so a straight line inside a room never crosses a wall.
+/// Rooms are rectangles, so a straight line inside a room never crosses a wall. The body is
+/// not a point, though: a door is crossed straight (line up in front of it, leave behind it),
+/// and an open boundary is crossed away from its corners.
 /// </summary>
 internal sealed class Atlas
 {
+    // The body's size, as the map accounts for it (pending as a property of the golem, like its speed):
+    // how far from a door the body lines up and is clear of the wall, and how far from the corners of
+    // an open boundary it crosses.
+    internal const double DoorClearance = 0.6;
+    internal const double OpeningMargin = 0.5;
+
     private readonly List<Place> places = new();
     private readonly List<Passage> passages = new();
 
@@ -101,8 +109,56 @@ internal sealed class Atlas
             else if (n.Via != null) legs.Insert(0, new Leg(n.At, n.Via.Name));
             else legs.Insert(0, new Leg(n.At, OpeningCrossed(prev[n], n)?.Name ?? "?"));
         }
-        // an open boundary crossed on the way is a leg of its own, so the journal tells it
-        return WithOpeningsNamed(from, legs);
+        // doors are crossed straight; an open boundary crossed on the way is a leg of its own, so the journal tells it
+        return WithOpeningsNamed(from, WithDoorCrossings(legs));
+    }
+
+    /// <summary>
+    /// Every door on a road is crossed straight: its leg gains an approach point in front of the door
+    /// (DoorClearance into the place the body comes from) and an exit point behind it (into the place it
+    /// goes to). Derived from the map alone, so a road parsed back from the journal gets the same crossings.
+    /// </summary>
+    internal List<Leg> WithDoorCrossings(List<Leg> legs)
+    {
+        var result = new List<Leg>();
+        for (int i = 0; i < legs.Count; i++)
+        {
+            var leg = legs[i];
+            var door = passages.FirstOrDefault(p => p.IsDoor && p.Name == leg.Name && p.At.DistanceTo(leg.At) < 1e-6);
+            string toSide = door == null || i + 1 >= legs.Count ? null : SideOf(door, legs[i + 1]);
+            var step = toSide == null ? null : Normal(PlaceNamed(door.OtherSide(toSide)), PlaceNamed(toSide));
+            if (step == null) { result.Add(leg); continue; }
+            result.Add(new Leg(leg.At, leg.Name,
+                new Waypoint(leg.At.X - step.X * DoorClearance, leg.At.Y - step.Y * DoorClearance),
+                new Waypoint(leg.At.X + step.X * DoorClearance, leg.At.Y + step.Y * DoorClearance)));
+        }
+        return result;
+    }
+
+    // The side of a door the road continues on: the door's place that holds the next leg's point. When
+    // both hold it (the next point sits on a wall they share, e.g. another door), the next leg's own
+    // passage decides; when neither does, the crossing cannot be told.
+    private string SideOf(Passage door, Leg next)
+    {
+        bool inA = PlaceNamed(door.A).Contains(next.At), inB = PlaceNamed(door.B).Contains(next.At);
+        if (inA && !inB) return door.A;
+        if (inB && !inA) return door.B;
+        if (!inA) return null;
+        var onward = passages.FirstOrDefault(p => p.Name == next.Name);
+        if (onward == null) return null;
+        if (onward.Joins(door.A) && !onward.Joins(door.B)) return door.A;
+        if (onward.Joins(door.B) && !onward.Joins(door.A)) return door.B;
+        return null;
+    }
+
+    // A unit step across the wall two touching places share, from one into the other.
+    private static Waypoint Normal(Place from, Place to)
+    {
+        if (Math.Abs(from.X + from.Width - to.X) < 1e-6) return new Waypoint(1, 0);
+        if (Math.Abs(to.X + to.Width - from.X) < 1e-6) return new Waypoint(-1, 0);
+        if (Math.Abs(from.Y + from.Height - to.Y) < 1e-6) return new Waypoint(0, 1);
+        if (Math.Abs(to.Y + to.Height - from.Y) < 1e-6) return new Waypoint(0, -1);
+        return null;
     }
 
     internal double RoadLength(Waypoint from, Waypoint to)
@@ -203,17 +259,18 @@ internal sealed class Atlas
         return false;
     }
 
-    // Insert a named leg where the road crosses an open boundary, so `Pass` can tell it.
+    // Insert a named leg where the road crosses an open boundary, so `Pass` can tell it. The
+    // road is walked as the body walks it: from one leg's exit to the next leg's approach.
     private List<Leg> WithOpeningsNamed(Waypoint from, List<Leg> legs)
     {
         var result = new List<Leg>();
         Waypoint here = from;
         foreach (var leg in legs)
         {
-            var crossing = OpeningBetween(here, leg.At);
+            var crossing = OpeningBetween(here, leg.Approach);
             if (crossing != null) result.Add(crossing);
             result.Add(leg);
-            here = leg.At;
+            here = leg.Exit;
         }
         return result;
     }
@@ -253,30 +310,55 @@ internal sealed class Atlas
         return null;
     }
 
+    // Where the straight run u->v meets the open boundary — kept OpeningMargin away from the
+    // boundary's corners, where the walls of the solid blocks stand.
     private static Waypoint CrossingPoint(Place a, Place b, Waypoint u, Waypoint v)
     {
         foreach (var (left, right) in new[] { (a, b), (b, a) })
             if (Math.Abs(left.X + left.Width - right.X) < 1e-6)
             {
                 double x = right.X, t = (x - u.X) / (v.X - u.X);
-                return new Waypoint(x, u.Y + t * (v.Y - u.Y));
+                double y0 = Math.Max(left.Y, right.Y), y1 = Math.Min(left.Y + left.Height, right.Y + right.Height);
+                return new Waypoint(x, AwayFromCorners(u.Y + t * (v.Y - u.Y), y0, y1));
             }
         foreach (var (low, high) in new[] { (a, b), (b, a) })
             if (Math.Abs(low.Y + low.Height - high.Y) < 1e-6)
             {
                 double y = high.Y, t = (y - u.Y) / (v.Y - u.Y);
-                return new Waypoint(u.X + t * (v.X - u.X), y);
+                double x0 = Math.Max(low.X, high.X), x1 = Math.Min(low.X + low.Width, high.X + high.Width);
+                return new Waypoint(AwayFromCorners(u.X + t * (v.X - u.X), x0, x1), y);
             }
         return v;
+    }
+
+    private static double AwayFromCorners(double along, double from, double to)
+    {
+        if (to - from <= 2 * OpeningMargin) return (from + to) / 2;   // a narrow opening: straight through the middle
+        return Math.Clamp(along, from + OpeningMargin, to - OpeningMargin);
     }
 
     private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 }
 
-/// <summary>One stretch of a road: where to go next, and how the journal names it (a door, an opening, or the goal's place).</summary>
+/// <summary>
+/// One stretch of a road: where to go next, and how the journal names it (a door, an opening, or the
+/// goal's place). A door's leg also says how it is walked: line up at the approach (in front of the
+/// door, off the wall) and end at the exit (behind it); for an opening or the goal both are the point.
+/// </summary>
 internal sealed class Leg
 {
     internal Waypoint At { get; }
     internal string Name { get; }
-    internal Leg(Waypoint at, string name) { At = at; Name = name; }
+    internal Waypoint Approach { get; }
+    internal Waypoint Exit { get; }
+
+    internal Leg(Waypoint at, string name) : this(at, name, at, at) { }
+
+    internal Leg(Waypoint at, string name, Waypoint approach, Waypoint exit)
+    {
+        At = at;
+        Name = name;
+        Approach = approach;
+        Exit = exit;
+    }
 }

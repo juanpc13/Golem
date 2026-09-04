@@ -1,0 +1,36 @@
+{
+  "_": "Reality, as the simulator builds it (see build_world.py). The golems carry their OWN copy of places, doors and opens in their journal (release map_v1) — the obstacles they do not know: hitting one is a real collision the map never contemplated.",
+  "world": "arena",
+  "places": [
+    { "name": "kitchen", "x": 0,   "y": 8, "w": 4,   "h": 3 },
+    { "name": "north",   "x": 4,   "y": 8, "w": 3,   "h": 3 },
+    { "name": "storage", "x": 7,   "y": 8, "w": 4,   "h": 3 },
+    { "name": "west",    "x": 0,   "y": 3, "w": 1.5, "h": 5 },
+    { "name": "center",  "x": 4,   "y": 3, "w": 3,   "h": 5 },
+    { "name": "east",    "x": 9.5, "y": 3, "w": 1.5, "h": 5 },
+    { "name": "living",  "x": 0,   "y": 0, "w": 4,   "h": 3 },
+    { "name": "south",   "x": 4,   "y": 0, "w": 3,   "h": 3 },
+    { "name": "garage",  "x": 7,   "y": 0, "w": 4,   "h": 3 }
+  ],
+  "doors": [
+    { "a": "kitchen", "b": "north",   "x": 4,     "y": 9.5 },
+    { "a": "kitchen", "b": "west",    "x": 0.75,  "y": 8 },
+    { "a": "north",   "b": "storage", "x": 7,     "y": 9.5 },
+    { "a": "storage", "b": "east",    "x": 10.25, "y": 8 },
+    { "a": "west",    "b": "living",  "x": 0.75,  "y": 3 },
+    { "a": "east",    "b": "garage",  "x": 10.25, "y": 3 },
+    { "a": "living",  "b": "south",   "x": 4,     "y": 1.5 },
+    { "a": "south",   "b": "garage",  "x": 7,     "y": 1.5 }
+  ],
+  "opens": [
+    { "a": "north",  "b": "center" },
+    { "a": "center", "b": "south" }
+  ],
+  "bodies": [
+    { "name": "blue", "x": 5.5, "y": 5.5, "yaw": 0, "color": "0.10 0.25 0.85" },
+    { "name": "red",  "x": 2.5, "y": 2.5, "yaw": 0, "color": "0.85 0.20 0.20" }
+  ],
+  "obstacles": [
+    { "name": "crate", "x": 10.25, "y": 5.5, "w": 0.7, "d": 0.7, "h": 0.5, "color": "0.72 0.50 0.25" }
+  ]
+}

@@ -12,28 +12,38 @@ namespace GolemHost.Choreography;
 // The golem's choreography. The mission loop hands each pending mission to the
 // navigator (the body's locomotion, behind a seam) one leg at a time, and reports the
 // verdicts to a Saga keyed by mission id — every write goes through the actor, guarded
-// by a domain Check, and the journal stays the only truth.
+// by a domain Check, and the journal stays the only truth. A real collision (the simulator's
+// contact sensor) arrives as the navigator's verdict and is journaled as the mission's failure,
+// naming what the body hit: the map never knew about it.
 // Speech (tells) is a Reaction on the golem's own journal; the panel's journal lane is the
 // journal itself, tapped record by record (Panel/JournalTap).
 public sealed class GolemChoreography
 {
+    // How close counts as "there". A leg's end (a door's far side, a goal of my own) is met
+    // tightly; the approach in front of a door tighter still, so the run through the gap is
+    // straight. A point a PEER told me about is where the leader stood — and may still stand:
+    // bodies are real now, so the follower stops a body's length short instead of ramming it.
+    private const double ArriveWithin = 0.25;     // m
+    private const double LineUpWithin = 0.15;     // m
+    private const double LeaderStandoff = 1.0;    // m
+
     private readonly GolemPerformance perf;
     private readonly Rosbridge ros;
     private readonly INavigator navigator;
     private readonly PanelFeed feed;
     private readonly HttpBroker wire;
     private readonly string golem;
-    private readonly string turtle;
+    private readonly string body;
+    private readonly (double X, double Y) home;
     private readonly string tellDoneTo;
     private readonly string journalPath;
     private readonly InProcessBroker ops = new();
     private readonly string topic;
     private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
-    private Func<CancellationToken, Task> repaint;   // the floor plan, painted again after the canvas is cleared
 
     internal GolemChoreography(GolemPerformance perf, Rosbridge ros, INavigator navigator, PanelFeed feed, HttpBroker wire,
-                               string golem, string turtle, string tellDoneTo, string journalPath)
+                               string golem, string body, (double X, double Y) home, string tellDoneTo, string journalPath)
     {
         this.perf = perf;
         this.ros = ros;
@@ -41,13 +51,12 @@ public sealed class GolemChoreography
         this.feed = feed;
         this.wire = wire;
         this.golem = golem;
-        this.turtle = turtle;
+        this.body = body;
+        this.home = home;
         this.tellDoneTo = tellDoneTo;
         this.journalPath = journalPath;
         topic = $"{golem}-ops";
     }
-
-    public void RepaintWith(Func<CancellationToken, Task> paint) => repaint = paint;
 
     // ------------------------------------------------------------------
     // BEFORE perf.Start(): the tell transport and every Reaction. Start is
@@ -277,18 +286,15 @@ public sealed class GolemChoreography
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"refused — {refused}", DateTime.UtcNow));
     }
 
-    // The operator asks the golem to let go of every mission: the body is put back
-    // (ephemeral), the canvas is cleared and the floor plan painted again, and the
-    // forgetting is journaled through the same ops surface.
+    // The operator asks the golem to let go of every mission: the body is stopped and put
+    // back on its mark (ephemeral, a lab lever), and the forgetting is journaled through the
+    // same ops surface.
     public async Task LetGoAsync()
     {
         try
         {
             await ros.DriveAsync(0, 0, CancellationToken.None);
-            await ros.CallServiceAsync($"/{turtle}/teleport_absolute",
-                new { x = 5.544445, y = 5.544445, theta = 0.0 }, CancellationToken.None);
-            await ros.CallServiceAsync("/clear", null, CancellationToken.None);
-            if (repaint != null) await repaint(CancellationToken.None);
+            await ros.TeleportAsync(home.X, home.Y, 0.0, CancellationToken.None);
         }
         catch { /* the world reset is best-effort; the journaled fact is the point */ }
 
@@ -296,11 +302,12 @@ public sealed class GolemChoreography
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", "letting go of every mission", DateTime.UtcNow));
     }
 
-    // The operator's hard reset — a LAB lever, not a domain fact: put the body back, wipe
-    // THIS golem's journal and exit; Docker restarts the container and the golem is born
-    // again at entry 1. With cascade, every peer is asked to do the same: the world is
-    // shared, and the hearer dedups the sender's once-ids ('visited-N'), so resetting
-    // one side alone would make the peer swallow the next tells as repeats.
+    // The operator's hard reset — a LAB lever, not a domain fact: stop the body, wipe THIS
+    // golem's journal and exit; Docker restarts the container and the golem is born again at
+    // entry 1 (the reborn boot puts the body back on its mark). With cascade, every peer is
+    // asked to do the same: the world is shared, and the hearer dedups the sender's once-ids
+    // ('visited-N'), so resetting one side alone would make the peer swallow the next tells
+    // as repeats.
     public async Task ResetEverythingAsync(bool cascade)
     {
         Console.WriteLine($"[golem {golem}] RESET EVERYTHING — wiping the journal and rebooting{(cascade ? ", peers too" : "")}");
@@ -311,9 +318,6 @@ public sealed class GolemChoreography
         try
         {
             await ros.DriveAsync(0, 0, CancellationToken.None);
-            await ros.CallServiceAsync($"/{turtle}/teleport_absolute",
-                new { x = 5.544445, y = 5.544445, theta = 0.0 }, CancellationToken.None);
-            await ros.CallServiceAsync("/clear", null, CancellationToken.None);
         }
         catch { /* best effort: the wipe is the point */ }
 
@@ -338,7 +342,8 @@ public sealed class GolemChoreography
     // its ROAD from where the body stands — the passages to cross, the goal last — and
     // journals it (g.Route). Then the navigator is handed one leg at a time: each passage
     // crossed is journaled (g.Pass), the goal reached is the mission completed. What counts
-    // as failure on a leg (a stall, a timeout) is the navigator's to say.
+    // as failure on a leg (a collision reported by the world, a stall, a timeout) is the
+    // navigator's to say; the golem journals the verdict with its reason.
     // ------------------------------------------------------------------
     public async Task RunAsync(CancellationToken ct)
     {
@@ -388,16 +393,25 @@ public sealed class GolemChoreography
                 continue;
             }
 
+            // The last leg of a told mission ends a body's length short: the leader may still be there.
+            bool standoff = plan.Told && plan.LegsLeft == 1;
             if (announcedFor != plan.Id || announcedLeg != plan.Passage)
             {
                 announcedFor = plan.Id;
                 announcedLeg = plan.Passage;
                 string what = plan.LegsLeft > 1 ? $"heading to the passage {plan.Passage}" : $"heading to the goal in {plan.Passage}";
+                if (standoff) what += $", stopping {LeaderStandoff:0.0} short of the leader's spot";
                 Console.WriteLine($"[golem {golem}] mission {plan.Id}: {what} ({plan.X:0.0}, {plan.Y:0.0})");
                 feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: {what} ({plan.X:0.0}, {plan.Y:0.0})", DateTime.UtcNow));
             }
 
-            Outcome outcome = await navigator.GoToAsync(plan.X, plan.Y, ct);
+            // A door is crossed straight: line up in front of it, then run through to the far side.
+            // The map says where those two points are; an opening or the goal is a single run.
+            Outcome outcome = Outcome.Arrived;
+            if (plan.ApproachX != plan.ExitX || plan.ApproachY != plan.ExitY)
+                outcome = await navigator.GoToAsync(plan.ApproachX, plan.ApproachY, LineUpWithin, ct);
+            if (outcome.Reached && !ct.IsCancellationRequested)
+                outcome = await navigator.GoToAsync(plan.ExitX, plan.ExitY, standoff ? LeaderStandoff : ArriveWithin, ct);
             if (ct.IsCancellationRequested) break;
 
             if (!outcome.Reached)
@@ -463,7 +477,8 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     // Typed reads: Out parameters through the rent-lease (never parsing print).
     // ------------------------------------------------------------------
-    private (bool Has, int Id, double X, double Y, bool Routed, int LegsLeft, string Passage, bool Told, int NewerTold) ReadPlan()
+    private (bool Has, int Id, double X, double Y, double ApproachX, double ApproachY, double ExitX, double ExitY,
+             bool Routed, int LegsLeft, string Passage, bool Told, int NewerTold) ReadPlan()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
@@ -472,6 +487,10 @@ public sealed class GolemChoreography
                 @id = g.NextId();
                 @x = g.NextX();
                 @y = g.NextY();
+                @ax = g.NextApproachX();
+                @ay = g.NextApproachY();
+                @ex = g.NextExitX();
+                @ey = g.NextExitY();
                 @routed = g.IsRouted(g.NextId());
                 @legs = g.LegsLeft(g.NextId());
                 @passage = g.NextPassage(g.NextId());
@@ -487,6 +506,10 @@ public sealed class GolemChoreography
             p[Parameter.Out, "id",      typeof(int)]    = default;
             p[Parameter.Out, "x",       typeof(double)] = default;
             p[Parameter.Out, "y",       typeof(double)] = default;
+            p[Parameter.Out, "ax",      typeof(double)] = default;
+            p[Parameter.Out, "ay",      typeof(double)] = default;
+            p[Parameter.Out, "ex",      typeof(double)] = default;
+            p[Parameter.Out, "ey",      typeof(double)] = default;
             p[Parameter.Out, "routed",  typeof(bool)]   = default;
             p[Parameter.Out, "legs",    typeof(int)]    = default;
             p[Parameter.Out, "passage", typeof(string)] = default;
@@ -494,6 +517,8 @@ public sealed class GolemChoreography
         .PerformQuery();
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
                 rented["x"].GetValue<double>(), rented["y"].GetValue<double>(),
+                rented["ax"].GetValue<double>(), rented["ay"].GetValue<double>(),
+                rented["ex"].GetValue<double>(), rented["ey"].GetValue<double>(),
                 rented["routed"].GetValue<bool>(), rented["legs"].GetValue<int>(),
                 rented["passage"].GetValue<string>() ?? "", rented["told"].GetValue<bool>(), rented["newer"].GetValue<int>());
     }
