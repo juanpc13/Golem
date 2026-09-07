@@ -50,6 +50,9 @@ public class MissionAcceptanceTests
                 g.AddPlace('south',   4, 0, 3, 3).Door('garage', 7, 1.5);
                 g.AddPlace('garage',  7, 0, 4, 3);
             }
+            upgrade('size_v1') {
+                g.Measure(0.25);
+            }
         ")
         .PerformCommand();
     }
@@ -343,6 +346,21 @@ public class MissionAcceptanceTests
 
     [TestMethod]
     public void ABodyWithoutSpeed_IsRefused() => Refuses("g.Embody(0.0);", "speed above zero");
+
+    [TestMethod]
+    public void TheGolem_KnowsItsSize_AndTellsAKnownWallFromAnythingElse()
+    {
+        Assert.AreEqual(0.25, Double("g.Radius()"), 0.001, "the size release");
+        Refuses("g.Measure(0.0);", "radius above zero");
+
+        // a point the body touched: on a boundary the map holds as a wall, or not
+        Assert.IsTrue(Bool("g.KnowsWallAt(0.05, 5.5)"), "the corridor's outer wall");
+        Assert.IsTrue(Bool("g.KnowsWallAt(4.0, 8.5)"), "the kitchen's east wall, by the door's jamb");
+        Assert.IsTrue(Bool("g.KnowsWallAt(4.05, 8.0)"), "the corner of the left block, met through the walls that end there");
+        Assert.IsFalse(Bool("g.KnowsWallAt(10.25, 5.9)"), "the middle of the east corridor: whatever stands there is not on the map");
+        Assert.IsFalse(Bool("g.KnowsWallAt(5.5, 8.0)"), "the open boundary north~center is not a wall");
+        Assert.IsFalse(Bool("g.KnowsWallAt(5.5, 5.5)"), "the middle of the center hall");
+    }
 
     [TestMethod]
     public void ACompletedPoint_CanBeAnnounced_AndAPendingOneCannot()

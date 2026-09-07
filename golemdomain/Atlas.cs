@@ -19,6 +19,8 @@ internal sealed class Atlas
     // an open boundary it crosses.
     internal const double DoorClearance = 0.6;
     internal const double OpeningMargin = 0.5;
+    // How far from a boundary line a touched point may fall and still be that wall (its thickness, the pose's error).
+    internal const double WallTolerance = 0.3;
 
     private readonly List<Place> places = new();
     private readonly List<Passage> passages = new();
@@ -56,6 +58,53 @@ internal sealed class Atlas
     }
 
     internal bool IsOnMap(Waypoint at) => places.Any(p => p.Contains(at));
+
+    /// <summary>Whether a point lies on a wall the map knows: within tolerance of a place's boundary that is not
+    /// declared open. A door is a gap in a known wall, so near a door the wall is still what stands there; the
+    /// corner of a solid block is known through the perpendicular boundaries that meet at it.</summary>
+    internal bool IsWallAt(Waypoint at, double tolerance)
+    {
+        foreach (var p in places)
+            foreach (var edge in Edges(p))
+                if (!IsOpenEdge(p, edge) && DistanceToSegment(at, edge.From, edge.To) <= tolerance) return true;
+        return false;
+    }
+
+    private static IEnumerable<(Waypoint From, Waypoint To)> Edges(Place p)
+    {
+        double x0 = p.X, y0 = p.Y, x1 = p.X + p.Width, y1 = p.Y + p.Height;
+        yield return (new Waypoint(x0, y0), new Waypoint(x1, y0));   // south
+        yield return (new Waypoint(x0, y1), new Waypoint(x1, y1));   // north
+        yield return (new Waypoint(x0, y0), new Waypoint(x0, y1));   // west
+        yield return (new Waypoint(x1, y0), new Waypoint(x1, y1));   // east
+    }
+
+    // An edge is open when a neighbour joined by an opening shares that very edge.
+    private bool IsOpenEdge(Place p, (Waypoint From, Waypoint To) edge)
+    {
+        bool vertical = Math.Abs(edge.From.X - edge.To.X) < 1e-9;
+        foreach (var o in passages.Where(o => !o.IsDoor && o.Joins(p.Name)))
+        {
+            var q = PlaceNamed(o.OtherSide(p.Name));
+            if (vertical)
+            {
+                if ((Math.Abs(q.X - edge.From.X) < 1e-6 || Math.Abs(q.X + q.Width - edge.From.X) < 1e-6)
+                    && Math.Min(edge.To.Y, q.Y + q.Height) - Math.Max(edge.From.Y, q.Y) > 1e-6) return true;
+            }
+            else if ((Math.Abs(q.Y - edge.From.Y) < 1e-6 || Math.Abs(q.Y + q.Height - edge.From.Y) < 1e-6)
+                     && Math.Min(edge.To.X, q.X + q.Width) - Math.Max(edge.From.X, q.X) > 1e-6) return true;
+        }
+        return false;
+    }
+
+    private static double DistanceToSegment(Waypoint p, Waypoint a, Waypoint b)
+    {
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        double length2 = dx * dx + dy * dy;
+        double t = length2 < 1e-12 ? 0 : Math.Clamp(((p.X - a.X) * dx + (p.Y - a.Y) * dy) / length2, 0, 1);
+        double ox = a.X + t * dx - p.X, oy = a.Y + t * dy - p.Y;
+        return Math.Sqrt(ox * ox + oy * oy);
+    }
 
     /// <summary>The place a point stands in. A point on a shared wall belongs to the first declared.</summary>
     internal Place PlaceAt(Waypoint at)

@@ -49,6 +49,9 @@ internal sealed class GolemPerformance : PerformanceV2
     //             boundaries. Shortest roads become visible: kitchen -> garage cuts through
     //             the center, kitchen -> living takes the west corridor. The map is the golem's own knowledge: roads are planned
     //             through the passages (shortest path), and every golem shares the same map.
+    //   size_v1 — the golem learns the size of its body (the radius of the disk it occupies, matching
+    //             the chassis the sim builds). With it the golem reckons WHERE a touch happened and
+    //             holds that point against its map: a wall it knows, or something the map lacks.
     // RULE: an applied release is never edited (the engine guards its body signature) —
     // evolve the golem by APPENDING the next release.
     protected override void OnHydrated()
@@ -69,6 +72,9 @@ internal sealed class GolemPerformance : PerformanceV2
                 g.AddPlace('living',  0, 0, 4, 3).Door('south', 4, 1.5);
                 g.AddPlace('south',   4, 0, 3, 3).Door('garage', 7, 1.5);
                 g.AddPlace('garage',  7, 0, 4, 3);
+            }
+            upgrade('size_v1') {
+                g.Measure(0.25);
             }
         ")
         .PerformCommand();

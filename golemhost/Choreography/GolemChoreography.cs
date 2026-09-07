@@ -27,6 +27,10 @@ public sealed class GolemChoreography
     private const double LineUpWithin = 0.15;     // m
     private const double LeaderStandoff = 1.0;    // m
 
+    // Bumping into a wall the golem KNOWS is its own execution error: it backs off, lines up and
+    // tries the leg again — this many times before the mission is given up as failed.
+    private const int RetriesAfterBump = 3;
+
     private readonly GolemPerformance perf;
     private readonly Rosbridge ros;
     private readonly INavigator navigator;
@@ -349,6 +353,7 @@ public sealed class GolemChoreography
     {
         int announcedFor = 0;
         string announcedLeg = null;
+        int bumps = 0;   // known walls bumped on the current leg
         while (!ct.IsCancellationRequested)
         {
             var plan = ReadPlan();
@@ -399,6 +404,7 @@ public sealed class GolemChoreography
             {
                 announcedFor = plan.Id;
                 announcedLeg = plan.Passage;
+                bumps = 0;
                 string what = plan.LegsLeft > 1 ? $"heading to the passage {plan.Passage}" : $"heading to the goal in {plan.Passage}";
                 if (standoff) what += $", stopping {LeaderStandoff:0.0} short of the leader's spot";
                 Console.WriteLine($"[golem {golem}] mission {plan.Id}: {what} ({plan.X:0.0}, {plan.Y:0.0})");
@@ -416,7 +422,30 @@ public sealed class GolemChoreography
 
             if (!outcome.Reached)
             {
-                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, outcome.Reason));
+                string reason = outcome.Reason;
+                if (outcome.Hit != null)
+                {
+                    // The world said "you touched something". The golem holds the point against ITS map:
+                    // a wall it knows is its own execution error — it has backed off, so it lines up and
+                    // tries the leg again (runtime, nothing to journal) until patience runs out. Anything
+                    // the map does not hold is reality differing from the map: the mission fails, saying so.
+                    string where = $"({outcome.Hit.X:0.0}, {outcome.Hit.Y:0.0})";
+                    if (KnowsWallAt(outcome.Hit.X, outcome.Hit.Y))
+                    {
+                        if (bumps < RetriesAfterBump)
+                        {
+                            bumps++;
+                            string retry = $"mission {plan.Id}: bumped into {outcome.Hit.With} at {where}, a wall I know — recovering, try {bumps}/{RetriesAfterBump}";
+                            Console.WriteLine($"[golem {golem}] {retry}");
+                            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", retry, DateTime.UtcNow));
+                            continue;
+                        }
+                        reason = $"still bumping into {outcome.Hit.With} at {where} after {RetriesAfterBump} tries";
+                    }
+                    else
+                        reason = $"collided with {outcome.Hit.With} at {where}: nothing on my map there";
+                }
+                Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, reason));
                 if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(2), ct);
                 continue;
             }
@@ -593,6 +622,35 @@ public sealed class GolemChoreography
         })
         .PerformQuery();
         return rented["hold"].GetValue<double>();
+    }
+
+    public double Radius()
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @radius = g.Radius();
+        ")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "radius", typeof(double)] = default;
+        })
+        .PerformQuery();
+        return rented["radius"].GetValue<double>();
+    }
+
+    // Does a touched point lie on a wall the golem knows? The map answers; the pose is the only telemetry.
+    private bool KnowsWallAt(double x, double y)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @known = g.KnowsWallAt(@x, @y);
+        ")
+        .WithParameters(rented, p => {
+            p["x", typeof(double)]                   = x;
+            p["y", typeof(double)]                   = y;
+            p[Parameter.Out, "known", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["known"].GetValue<bool>();
     }
 
     private bool WasTold(int id)

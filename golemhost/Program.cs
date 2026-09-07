@@ -43,7 +43,7 @@ perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
 
 var ros = new Rosbridge(rosbridgeUrl, body);
 GolemChoreography flow = null;
-var navigator = new DiffDriveNavigator(ros, () => flow.Speed()); // cruise = the speed the golem declared in its journal
+var navigator = new DiffDriveNavigator(ros, () => flow.Speed(), () => flow.Radius()); // speed and size: the body the golem declared in its journal
 var feed = new PanelFeed();
 var wire = new HttpBroker(golem, HttpBroker.ParseRoutes(tellRoutes), tellRetry);
 if (tellDoneTo != null && !wire.CanRoute($"tell-{tellDoneTo}"))

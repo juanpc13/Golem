@@ -13,6 +13,7 @@ internal sealed class Golem
     private int lastHandle;   // a handle names one mission forever — even after letting go (idempotency keys hang on it)
     private double speed;     // the body's cruise speed, units/s — a property released into the journal
     private double holdAfterTold; // seconds the golem pauses at every point a peer told it about
+    private double radius;    // the body's size: the radius of the disk it occupies — a property released into the journal
 
     internal Golem() { }
 
@@ -34,6 +35,14 @@ internal sealed class Golem
         return holdAfterTold;
     }
 
+    /// <summary>Gives the golem the size of its body: the radius of the disk it occupies, in world units. Returns it.</summary>
+    internal double Measure(double bodyRadius)
+    {
+        if (bodyRadius <= 0) throw new DomainException("a body needs a radius above zero");
+        radius = bodyRadius;
+        return radius;
+    }
+
     internal double Speed()
     {
         if (speed <= 0) throw new DomainException("the golem has no body speed yet: the body release must run first");
@@ -41,6 +50,9 @@ internal sealed class Golem
     }
 
     internal double HoldAfterTold() => holdAfterTold;
+
+    /// <summary>The body's radius; zero until the size release runs (a golem that has not measured itself is a point).</summary>
+    internal double Radius() => radius;
 
     // ---- the map (issued by upgrade releases, one fluent chain per place) ----
 
@@ -53,6 +65,11 @@ internal sealed class Golem
     internal bool IsOnMap(double x, double y) => atlas.IsOnMap(new Waypoint(x, y));
     internal string PlaceAt(double x, double y) => atlas.PlaceAt(new Waypoint(x, y)).Name;
     internal string DescribeMap() => atlas.Describe();
+
+    /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a boundary of a place that is not
+    /// open, within a tolerance that absorbs the wall's thickness and the pose's error. Touching a known wall is the
+    /// golem's own execution error; touching anything else is reality holding something the map does not.</summary>
+    internal bool KnowsWallAt(double x, double y) => atlas.IsWallAt(new Waypoint(x, y), Atlas.WallTolerance);
 
     /// <summary>The shortest road between two places, center to center, through the passages.</summary>
     internal double Distance(string from, string to) => atlas.RoadLength(atlas.PlaceNamed(from).Center, atlas.PlaceNamed(to).Center);

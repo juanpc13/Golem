@@ -12,19 +12,28 @@ public interface INavigator
     Task<Outcome> GoToAsync(double x, double y, double within, CancellationToken ct);
 }
 
-// How a run ended: reached, or not — and why, in the navigator's words.
+// How a run ended: reached, or not — and why, in the navigator's words. A collision also says
+// what was hit (as the world names it) and where the golem reckons the touch happened, so the
+// golem can hold that point against its map and decide whether it hit something it knows.
 public sealed class Outcome
 {
-    public static readonly Outcome Arrived = new(reached: true, "arrived");
+    public static readonly Outcome Arrived = new(reached: true, "arrived", null);
 
-    public static Outcome Failed(string reason) => new(reached: false, reason);
+    public static Outcome Failed(string reason) => new(reached: false, reason, null);
+
+    public static Outcome Collided(string with, double x, double y) =>
+        new(reached: false, $"collided with {with}", new Collision(with, x, y));
 
     public bool Reached { get; }
     public string Reason { get; }
+    public Collision Hit { get; }   // null unless the run ended in a collision
 
-    private Outcome(bool reached, string reason)
+    private Outcome(bool reached, string reason, Collision hit)
     {
         Reached = reached;
         Reason = reason;
+        Hit = hit;
     }
 }
+
+public sealed record Collision(string With, double X, double Y);

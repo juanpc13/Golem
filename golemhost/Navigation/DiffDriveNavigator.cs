@@ -20,11 +20,13 @@ public sealed class DiffDriveNavigator : INavigator
 
     private readonly Rosbridge ros;
     private readonly Func<double> cruiseSpeed;   // the golem's declared body speed (a journaled property)
+    private readonly Func<double> bodyRadius;    // the golem's declared body size (a journaled property)
 
-    public DiffDriveNavigator(Rosbridge ros, Func<double> cruiseSpeed)
+    public DiffDriveNavigator(Rosbridge ros, Func<double> cruiseSpeed, Func<double> bodyRadius)
     {
         this.ros = ros;
         this.cruiseSpeed = cruiseSpeed;
+        this.bodyRadius = bodyRadius;
     }
 
     public async Task<Outcome> GoToAsync(double targetX, double targetY, double within, CancellationToken ct)
@@ -39,8 +41,15 @@ public sealed class DiffDriveNavigator : INavigator
             var touch = ros.LatestContact;
             if (touch != null && touch.At > start)
             {
+                // Where the touch happened, as the golem reckons it: one body radius ahead of the
+                // nose. A bumper knows no more than "I touched something while heading this way";
+                // the run is taken as head-on. The world's name for what was hit rides along as words.
+                var atTouch = ros.LatestPose;
+                double r = bodyRadius();
+                double hitX = atTouch == null ? targetX : atTouch.X + r * Math.Cos(atTouch.Theta);
+                double hitY = atTouch == null ? targetY : atTouch.Y + r * Math.Sin(atTouch.Theta);
                 await BackOffAsync(touch, ct);
-                return Outcome.Failed($"collided with {touch.With}");
+                return Outcome.Collided(touch.With, hitX, hitY);
             }
 
             var pose = ros.LatestPose;

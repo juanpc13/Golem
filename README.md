@@ -35,8 +35,10 @@ in [CLAUDE.md](CLAUDE.md).
 ```
 
 - **The world is real.** Walls, doors, solid blocks and the bodies are physical. A body that touches
-  something is told so by the simulator's contact sensor; the golem journals it as the mission's failure,
-  naming what it hit (`g.Fail(18, 'collided with crate')`).
+  something is told so by the simulator's contact sensor. The golem reckons where the touch happened
+  (its pose plus its own radius) and holds that point against its map: a wall it knows is its own
+  execution error, so it backs off and tries the leg again, a few times; anything the map does not hold
+  fails the mission, saying so (`g.Fail(10, 'collided with crate at (10.3, 5.9): nothing on my map there')`).
 - **The map is knowledge.** Each golem carries a floor plan in its journal (release `map_v1`) and plans
   the shortest road through doors and open boundaries. The map does not know about the crate in the east
   corridor — that is the point.
@@ -107,8 +109,9 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 Releases (versioned initialization inside the actor, applied once and journaled): `init` embodies the
 golem with its cruise speed and its pause after a told point (`g.Embody(2.0); g.Pace(6);`); `map_v1`
 teaches it the floor plan, one fluent chain per place
-(`g.AddPlace('kitchen', 0, 8, 4, 3).Door('north', 4, 9.5).Door('west', 0.75, 8);`). Evolve the golem by
-appending a release, never by editing an applied one.
+(`g.AddPlace('kitchen', 0, 8, 4, 3).Door('north', 4, 9.5).Door('west', 0.75, 8);`); `size_v1` gives it
+the size of its body (`g.Measure(0.25);`). Evolve the golem by appending a release, never by editing an
+applied one.
 
 Endpoints, per golem:
 
@@ -139,8 +142,9 @@ URL), `TELL_DONE_TO` (the peer to tell every visited place), `TELL_RETRY_SECONDS
 
 ## Where this stands
 
-Verified live on 4 September 2026: two golems, real doors crossed straight, the follower stopping short
-of the leader, a real collision with an obstacle the map does not know, journaled with its cause. Open
-decisions, in the PLAN: what a golem does after a collision (learn the obstacle and replan, or wait for
-the operator), whether the body's size and standoff become properties of the golem like its speed, the
-follower's pause versus catching up, GPU rendering for the kiosk, Nav2 as the navigator on a real robot.
+Verified live on 7 September 2026: two golems, real doors crossed straight, the follower stopping short
+of the leader, a bump against a known wall recovered and retried, a real collision with an obstacle the
+map does not know, journaled with its cause and its place. Next, in the PLAN: exploring space beyond the
+map (with a lidar rather than by bumping), then learning discovered obstacles, telling peers about them
+and replanning. Open decisions: the follower's pause versus catching up, GPU rendering for the kiosk,
+Nav2 as the navigator on a real robot.
