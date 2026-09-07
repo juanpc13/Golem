@@ -10,12 +10,21 @@ public sealed record Pose(double X, double Y, double Theta);
 // model's name, and when. Telemetry — it lives in memory, never in the journal.
 public sealed record Contact(string With, DateTime At);
 
+// Where the golem's idea of its own position comes from.
+//   World  — the simulator's ground truth (a gift no real robot gets).
+//   Wheels — dead reckoning: the pose the wheels believe, integrated by the drive plugin from
+//            wheel speeds and anchored ONCE to the true pose when the golem binds (the operator
+//            telling the robot where it stands at start-up). It lies whenever the wheels slip or
+//            the body is pushed — exactly as a real robot without a sensor on the world would.
+public enum PoseSource { World, Wheels }
+
 // The golem's membrane to the ROS world: JSON over websocket against rosbridge. Behind it,
 // ros_gz_bridge turns the body's Gazebo topics into ROS topics:
-//   /model/<body>/cmd_vel   geometry_msgs/Twist        (in)  how the body is driven
-//   /model/<body>/odometry  nav_msgs/Odometry          (out) where the body REALLY is (ground truth)
-//   /model/<body>/contacts  ros_gz_interfaces/Contacts (out) what the body touches, by name
-//   /sim/teleport           geometry_msgs/PoseStamped  (in)  the lab lever: put a body on a mark
+//   /model/<body>/cmd_vel         geometry_msgs/Twist        (in)  how the body is driven
+//   /model/<body>/odometry        nav_msgs/Odometry          (out) where the body REALLY is (ground truth)
+//   /model/<body>/wheel_odometry  nav_msgs/Odometry          (out) where the wheels BELIEVE it is
+//   /model/<body>/contacts        ros_gz_interfaces/Contacts (out) what the body touches, by name
+//   /sim/teleport                 geometry_msgs/PoseStamped  (in)  the lab lever: put a body on a mark
 // Everything arriving here is ephemeral telemetry; nothing of it reaches the journal.
 public sealed class Rosbridge : IAsyncDisposable
 {
@@ -25,18 +34,29 @@ public sealed class Rosbridge : IAsyncDisposable
     private readonly CancellationTokenSource readerCts = new();
     private Task reader;
 
+    // Dead reckoning's anchor: the wheels' pose and the true pose at the moment of calibration.
+    private Pose odometryAtStart, truthAtStart;
+    private volatile bool calibrate = true;
+
+    public PoseSource Source { get; }
+
+    /// <summary>Where the golem believes its body is: the truth, or dead reckoning. THE pose the golem acts on.</summary>
     public volatile Pose LatestPose;
+    /// <summary>Where the body really is, for the operator's eyes only (the panel's ghost). Never for the golem.</summary>
+    public volatile Pose LatestTruth;
     public volatile Contact LatestContact;
 
     private string CmdVel => $"/model/{body}/cmd_vel";
     private string Odometry => $"/model/{body}/odometry";
+    private string WheelOdometry => $"/model/{body}/wheel_odometry";
     private string Contacts => $"/model/{body}/contacts";
     private const string Teleport = "/sim/teleport";
 
-    public Rosbridge(string url, string body)
+    public Rosbridge(string url, string body, PoseSource source)
     {
         this.url = url;
         this.body = body;
+        Source = source;
     }
 
     public async Task ConnectAsync(CancellationToken ct)
@@ -68,9 +88,11 @@ public sealed class Rosbridge : IAsyncDisposable
         await SendAsync(new { op = "advertise", topic = CmdVel, type = "geometry_msgs/Twist" }, ct);
         await SendAsync(new { op = "advertise", topic = Teleport, type = "geometry_msgs/PoseStamped" }, ct);
         await SendAsync(new { op = "subscribe", topic = Odometry, type = "nav_msgs/Odometry", throttle_rate = 50 }, ct);
+        if (Source == PoseSource.Wheels)
+            await SendAsync(new { op = "subscribe", topic = WheelOdometry, type = "nav_msgs/Odometry", throttle_rate = 50 }, ct);
         await SendAsync(new { op = "subscribe", topic = Contacts, type = "ros_gz_interfaces/Contacts", throttle_rate = 50 }, ct);
         reader = Task.Run(() => ReadLoopAsync(readerCts.Token), CancellationToken.None);
-        Console.WriteLine($"[membrane] driving {CmdVel}; listening on {Odometry} and {Contacts}");
+        Console.WriteLine($"[membrane] driving {CmdVel}; pose from {(Source == PoseSource.Wheels ? WheelOdometry + " (dead reckoning)" : Odometry + " (the world's truth)")}; contacts on {Contacts}");
     }
 
     public Task DriveAsync(double linear, double angular, CancellationToken ct) =>
@@ -86,8 +108,10 @@ public sealed class Rosbridge : IAsyncDisposable
         }, ct);
 
     // Put the body on a mark (lab lever; see sim/bridge/teleport.py). The frame_id names the model.
-    public Task TeleportAsync(double x, double y, double theta, CancellationToken ct) =>
-        SendAsync(new
+    // A body carried somewhere is told where it stands: dead reckoning re-anchors once it has settled.
+    public async Task TeleportAsync(double x, double y, double theta, CancellationToken ct)
+    {
+        await SendAsync(new
         {
             op = "publish",
             topic = Teleport,
@@ -101,6 +125,9 @@ public sealed class Rosbridge : IAsyncDisposable
                 }
             }
         }, ct);
+        if (Source == PoseSource.Wheels)
+            _ = Task.Run(async () => { await Task.Delay(1500); calibrate = true; });
+    }
 
     private async Task ReadLoopAsync(CancellationToken ct)
     {
@@ -121,7 +148,8 @@ public sealed class Rosbridge : IAsyncDisposable
                 using var doc = JsonDocument.Parse(message.ToString());
                 if (!doc.RootElement.TryGetProperty("topic", out var topic)) continue;
                 string name = topic.GetString();
-                if (name == Odometry) ReadPose(doc.RootElement.GetProperty("msg"));
+                if (name == Odometry) ReadTruth(doc.RootElement.GetProperty("msg"));
+                else if (name == WheelOdometry) ReadWheels(doc.RootElement.GetProperty("msg"));
                 else if (name == Contacts) ReadContacts(doc.RootElement.GetProperty("msg"));
             }
         }
@@ -132,8 +160,36 @@ public sealed class Rosbridge : IAsyncDisposable
         }
     }
 
+    private void ReadTruth(JsonElement msg)
+    {
+        var truth = ParsePose(msg);
+        LatestTruth = truth;
+        if (Source == PoseSource.World) LatestPose = truth;
+    }
+
+    // Dead reckoning: the wheels' pose, expressed in the world through the anchor taken at calibration.
+    private void ReadWheels(JsonElement msg)
+    {
+        var odometry = ParsePose(msg);
+        var truth = LatestTruth;
+        if (truth == null) return;   // nothing to anchor to yet
+        if (calibrate)
+        {
+            odometryAtStart = odometry;
+            truthAtStart = truth;
+            calibrate = false;
+            Console.WriteLine($"[membrane] dead reckoning anchored: the body is told it stands at ({truth.X:0.00}, {truth.Y:0.00})");
+        }
+        double dx = odometry.X - odometryAtStart.X, dy = odometry.Y - odometryAtStart.Y;
+        double turn = truthAtStart.Theta - odometryAtStart.Theta;
+        LatestPose = new Pose(
+            truthAtStart.X + dx * Math.Cos(turn) - dy * Math.Sin(turn),
+            truthAtStart.Y + dx * Math.Sin(turn) + dy * Math.Cos(turn),
+            Normalize(truthAtStart.Theta + (odometry.Theta - odometryAtStart.Theta)));
+    }
+
     // nav_msgs/Odometry: the planar pose is x, y and the yaw of the orientation quaternion.
-    private void ReadPose(JsonElement msg)
+    private static Pose ParsePose(JsonElement msg)
     {
         var pose = msg.GetProperty("pose").GetProperty("pose");
         var p = pose.GetProperty("position");
@@ -141,7 +197,7 @@ public sealed class Rosbridge : IAsyncDisposable
         double qx = q.GetProperty("x").GetDouble(), qy = q.GetProperty("y").GetDouble();
         double qz = q.GetProperty("z").GetDouble(), qw = q.GetProperty("w").GetDouble();
         double yaw = Math.Atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz));
-        LatestPose = new Pose(p.GetProperty("x").GetDouble(), p.GetProperty("y").GetDouble(), yaw);
+        return new Pose(p.GetProperty("x").GetDouble(), p.GetProperty("y").GetDouble(), yaw);
     }
 
     // ros_gz_interfaces/Contacts: each contact names both collisions as model::link::collision.
@@ -159,6 +215,13 @@ public sealed class Rosbridge : IAsyncDisposable
             LatestContact = new Contact(model, DateTime.UtcNow);
             return;
         }
+    }
+
+    private static double Normalize(double a)
+    {
+        while (a > Math.PI) a -= 2 * Math.PI;
+        while (a < -Math.PI) a += 2 * Math.PI;
+        return a;
     }
 
     private Task SendAsync(object o, CancellationToken ct) =>

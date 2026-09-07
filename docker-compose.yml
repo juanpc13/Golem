@@ -4,6 +4,7 @@
 # Watch:     http://localhost:6080/vnc.html?autoconnect=true&resize=scale
 #            (Gazebo's picture IS the screen, straight above the floor, scaled to the browser)
 # Operate:   http://localhost:8081 (blue-golem) · http://localhost:8082 (red-golem)
+#            http://localhost:8083 (green-golem: lives on its wheels' reckoning, like a real robot)
 # Membrane:  ws://localhost:9090  (rosbridge: the bodies' topics as JSON)
 services:
   sim:
@@ -27,6 +28,12 @@ services:
   # "let go". Journals live in ./journal on the host — inspectable, they outlive containers.
   # RULE: one writer per journal — never point two processes at the same GOLEM.
   #
+  # POSE_SOURCE is where a golem's idea of its position comes from: "world" (default) hands
+  # it the simulator's true pose — a gift no real robot gets; "wheels" makes it live on dead
+  # reckoning from its wheels, anchored once at start-up, so being blocked or pushed shows
+  # up as the gap between what it believes and what the world says (the panel draws both).
+  # blue and red live on the truth; green is the one that lives like a real robot.
+  #
   # Tells travel container-to-container over the HttpBroker wire: TELL_ROUTES maps
   # each tell topic to the peer that subscribes it (acks travel back on
   # <topic>.acks over the same table), and TELL_DONE_TO=<peer> makes a golem tell
@@ -47,8 +54,9 @@ services:
       - BODY=blue
       - HOME_AT=5.5,5.5
       - PANEL_PORT=8080
-      # tells TO red go to red; acks for tells addressed to ME return to red (the teller)
-      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080
+      # tells TO red go to red; acks for tells addressed to ME return to red (the teller);
+      # the route to green carries no tells — it only lets "reset everything" reach green too
+      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080,tell-green=http://green-golem:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
@@ -71,10 +79,39 @@ services:
       - BODY=red
       - HOME_AT=2.5,2.5
       - PANEL_PORT=8080
-      # tells TO blue go to blue; acks for tells addressed to ME return to blue
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080
+      # tells TO blue go to blue; acks for tells addressed to ME return to blue;
+      # the route to green carries no tells — it only lets "reset everything" reach green too
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080,tell-green=http://green-golem:8080
       - TELL_RETRY_SECONDS=30
       - TELL_DONE_TO=blue  # red tells blue every visited point
+    volumes:
+      - ./journal:/golem/journal
+    depends_on:
+      - sim
+    restart: unless-stopped
+
+  # The third golem lives as a real robot would: nobody hands it the world's truth. Its pose
+  # is dead reckoning from its own wheels, anchored once when it binds; the panel shows, for
+  # the operator only, where the world says its body really is. Nobody tells it anything —
+  # its routes exist so that "reset everything" reaches all three.
+  green-golem:
+    build:
+      context: .
+      dockerfile: golemhost/Dockerfile
+    image: golemhost
+    container_name: green-golem
+    ports:
+      - "8083:8080"  # green's endpoints + panel
+    environment:
+      - ROSBRIDGE_URL=ws://sim:9090
+      - JOURNAL_PATH=/golem/journal
+      - GOLEM=green
+      - BODY=green
+      - HOME_AT=10,10.5
+      - POSE_SOURCE=wheels
+      - PANEL_PORT=8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080
+      - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
     depends_on:

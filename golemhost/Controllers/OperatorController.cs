@@ -31,19 +31,26 @@ public class OperatorController : Controller
     public IActionResult Panel() =>
         PhysicalFile(Path.Combine(AppContext.BaseDirectory, "panel.html"), "text/html; charset=utf-8");
 
-    // Host telemetry (not domain state): who I am, my body, the journal's entry, the pose,
-    // and the last thing the body touched as the world reported it.
+    // Host telemetry (not domain state): who I am, my body, the journal's entry, the pose the
+    // golem BELIEVES (and acts on), the pose the world reports (for the operator's eyes: the
+    // panel's ghost), how far apart they are, and the last thing the body touched.
     [HttpGet("body")]
     public IActionResult Body()
     {
         var pose = ros.LatestPose;
+        var truth = ros.LatestTruth;
         var touch = ros.LatestContact;
+        double? error = pose == null || truth == null ? null
+            : Math.Sqrt((pose.X - truth.X) * (pose.X - truth.X) + (pose.Y - truth.Y) * (pose.Y - truth.Y));
         return Content(JsonSerializer.Serialize(new
         {
             golem = identity.Golem,
             body = identity.Body,
             entry = perf.CurrentEntryId,
+            poseSource = ros.Source == PoseSource.Wheels ? "wheels" : "world",
             pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta },
+            truth = truth == null ? null : new { x = truth.X, y = truth.Y, theta = truth.Theta },
+            error,
             contact = touch == null ? null : new { with = touch.With, agoSeconds = (DateTime.UtcNow - touch.At).TotalSeconds }
         }), "application/json");
     }

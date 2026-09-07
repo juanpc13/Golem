@@ -6,8 +6,10 @@ along their edges — minus the boundaries declared open, minus a gap at every d
 threshold marks it on the floor). Whatever is not a place becomes a solid block. Each body is a
 differential-drive robot (round chassis, two wheels, two casters) with a contact sensor on its
 chassis, a DiffDrive plugin listening on /model/<name>/cmd_vel and an OdometryPublisher giving
-its REAL pose on /model/<name>/odometry (ground truth, not integrated wheels). Obstacles are
-placed as declared.
+its REAL pose on /model/<name>/odometry (ground truth). The DiffDrive's own odometry, integrated
+from the wheels, goes to /model/<name>/wheel_odometry: it is what a real robot would believe, and it
+lies whenever the wheels slip or the body is pushed (the golems can be made to live on it: see
+POSE_SOURCE in docker-compose.yml). Obstacles are placed as declared.
 
 The golems' map (release map_v1 in their journal) mirrors places, doors and openings — and knows
 nothing of the obstacles. That is the point: when the simulator reports a body touching a crate,
@@ -211,7 +213,7 @@ def body(b):
         <wheel_radius>0.10</wheel_radius>
         <topic>/model/%s/cmd_vel</topic>
         <odom_topic>/model/%s/wheel_odometry</odom_topic>
-        <odom_publish_frequency>2</odom_publish_frequency>
+        <odom_publish_frequency>30</odom_publish_frequency>
         <max_linear_acceleration>4</max_linear_acceleration>
         <min_linear_acceleration>-4</min_linear_acceleration>
         <max_angular_acceleration>12</max_angular_acceleration>
@@ -298,12 +300,14 @@ WORLD = """<?xml version="1.0" ?>
 
 
 def bridge_args(bodies):
-    """One ros_gz_bridge mapping per body topic: cmd_vel in, odometry and contacts out."""
+    """One ros_gz_bridge mapping per body topic: cmd_vel in; the real pose (odometry), what the wheels
+    believe (wheel_odometry: dead reckoning, lies when the body is blocked or pushed) and contacts out."""
     args = []
     for b in bodies:
         n = b["name"]
         args.append("/model/%s/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist" % n)
         args.append("/model/%s/odometry@nav_msgs/msg/Odometry[ignition.msgs.Odometry" % n)
+        args.append("/model/%s/wheel_odometry@nav_msgs/msg/Odometry[ignition.msgs.Odometry" % n)
         args.append("/model/%s/contacts@ros_gz_interfaces/msg/Contacts[ignition.msgs.Contacts" % n)
     return " ".join(args)
 

@@ -460,6 +460,7 @@ public sealed class GolemChoreography
             Produce("succeeded", $"{key}:succeeded", MissionSucceeded.Payload(plan.Id));
             if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct))
                 await Task.Delay(TimeSpan.FromSeconds(2), ct); // never re-drive on a timeout; back off and re-read
+            ReportLocalization(plan.Id);
 
             // Pacing: a point a peer told us about is a point that peer is already past.
             // Holding there a while keeps the leader's lead. How long is the golem's own
@@ -484,6 +485,22 @@ public sealed class GolemChoreography
         var inner = ex;
         while (inner.InnerException != null) inner = inner.InnerException;
         return inner.Message;
+    }
+
+    // The localization experiment's readout: when the golem lives on dead reckoning, say — at every
+    // mission's end, in the runtime lane only — where it believes it stands and where the world says
+    // it stands. The journal already holds "completed"; whether that is TRUE of the world is not the
+    // golem's to know.
+    private void ReportLocalization(int id)
+    {
+        if (ros.Source != PoseSource.Wheels) return;
+        var believed = ros.LatestPose;
+        var truth = ros.LatestTruth;
+        if (believed == null || truth == null) return;
+        double off = Math.Sqrt((believed.X - truth.X) * (believed.X - truth.X) + (believed.Y - truth.Y) * (believed.Y - truth.Y));
+        string note = $"mission {id}: the body believes it stands at ({believed.X:0.00}, {believed.Y:0.00}); the world says ({truth.X:0.00}, {truth.Y:0.00}) — {off:0.00} m apart";
+        Console.WriteLine($"[golem {golem}] {note}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
     }
 
     // Wait for the journal to move as expected — or give up after a while and re-read.

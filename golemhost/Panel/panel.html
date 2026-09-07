@@ -65,7 +65,8 @@
   <span class="badge">drives body <b id="body">–</b></span>
   <span class="badge">journal entry <b id="entry">–</b></span>
   <span class="badge">missions <b id="pending">–</b> pending / <b id="total">–</b> total</span>
-  <span class="badge">pose <b id="pose">–</b> in <b id="here">–</b> <span style="opacity:.7">(ephemeral)</span></span>
+  <span class="badge">pose <b id="pose">–</b> in <b id="here">–</b> <span style="opacity:.7">(believed, from <span id="source">–</span>)</span></span>
+  <span class="badge">truth <b id="truth">–</b> · off by <b id="error">–</b> <span style="opacity:.7">(the world's pose, for your eyes only)</span></span>
   <span class="badge">route left <b id="left">–</b> · eta <b id="eta">–</b> · <b id="points">–</b> points</span>
   <span class="badge">last contact <b id="contact">–</b> <span style="opacity:.7">(the world's report)</span></span>
 </header>
@@ -148,7 +149,8 @@ const feed = document.getElementById('feed');
 const events = document.getElementById('events');
 const map = document.getElementById('map');
 const mctx = map.getContext('2d');
-let lastPose = null;
+let lastPose = null;    // where the golem believes its body is (what it acts on)
+let lastTruth = null;   // where the world says it is (drawn as a ghost when they differ)
 let targets = [];   // recent targets, from the journal's Assign / AssignTold records
 let plan = null;    // {places, doors, opens} as the golem describes it
 
@@ -302,12 +304,22 @@ function drawMap() {
   for (const t of targets) {
     mctx.beginPath(); mctx.arc(toPx(t.x), toPy(t.y), 5, 0, 7); mctx.stroke();
   }
-  // the body
+  // the body where the world says it is: a ghost, tethered to where the golem believes it is
+  if (lastTruth && lastPose) {
+    const tx = toPx(lastTruth.x), ty = toPy(lastTruth.y);
+    mctx.setLineDash([2, 3]); mctx.strokeStyle = 'rgba(224,119,119,0.9)'; mctx.lineWidth = 1.5;
+    mctx.beginPath(); mctx.moveTo(tx, ty); mctx.lineTo(toPx(lastPose.x), toPy(lastPose.y)); mctx.stroke();
+    mctx.setLineDash([]);
+    mctx.beginPath(); mctx.arc(tx, ty, 6, 0, 7); mctx.stroke();
+    mctx.beginPath(); mctx.moveTo(tx, ty);
+    mctx.lineTo(tx + 10 * Math.cos(lastTruth.theta), ty - 10 * Math.sin(lastTruth.theta)); mctx.stroke();
+  }
+  // the body where the golem believes it is
   if (lastPose) {
     const px = toPx(lastPose.x), py = toPy(lastPose.y);
     mctx.fillStyle = '#e5e7f2';
     mctx.beginPath(); mctx.arc(px, py, 4, 0, 7); mctx.fill();
-    mctx.strokeStyle = '#e5e7f2';
+    mctx.strokeStyle = '#e5e7f2'; mctx.lineWidth = 2;
     mctx.beginPath(); mctx.moveTo(px, py);
     mctx.lineTo(px + 10 * Math.cos(lastPose.theta), py - 10 * Math.sin(lastPose.theta));
     mctx.stroke();
@@ -339,6 +351,12 @@ async function poll() {
     if (b.pose) {
       lastPose = b.pose;
       document.getElementById('pose').textContent = `${b.pose.x.toFixed(2)}, ${b.pose.y.toFixed(2)}`;
+    }
+    document.getElementById('source').textContent = b.poseSource || '–';
+    if (b.truth) {
+      lastTruth = b.truth;
+      document.getElementById('truth').textContent = `${b.truth.x.toFixed(2)}, ${b.truth.y.toFixed(2)}`;
+      document.getElementById('error').textContent = b.error !== null && b.error !== undefined ? `${b.error.toFixed(2)} m` : '–';
     }
     document.getElementById('contact').textContent =
       b.contact ? `${b.contact.with} · ${b.contact.agoSeconds.toFixed(0)} s ago` : '–';

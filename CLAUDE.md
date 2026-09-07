@@ -43,6 +43,7 @@ journal per golem, a shared world with real physics and real collisions.
 
 - Never commit on your own; leave the working tree and offer the commit command.
 - Deploy = `docker compose up -d --build`; verify with the panels (:8081 blue,
-  :8082 red) and the kiosk before claiming anything works.
+  :8082 red, :8083 green — the one on dead reckoning) and the kiosk before claiming
+  anything works.
 - Journals are disposable in this spike, but always say when a change makes the
   existing ones incompatible (renamed verbs, renamed upgrades).

@@ -27,6 +27,10 @@ string rosbridgeUrl = Environment.GetEnvironmentVariable("ROSBRIDGE_URL") ?? "ws
 string golem = Environment.GetEnvironmentVariable("GOLEM") ?? "blue";  // who I am (names the journal)
 string body = Environment.GetEnvironmentVariable("BODY") ?? golem;      // the model I drive in the world (/model/<body>/...)
 var home = ParsePoint(Environment.GetEnvironmentVariable("HOME_AT") ?? "5.5,5.5"); // the body's mark: reborn or let go, it is put back here
+// Where the golem's pose comes from: "world" (the simulator's truth) or "wheels" (dead reckoning:
+// what a real robot without a sensor on the world would believe — the localization experiment).
+var poseSource = (Environment.GetEnvironmentVariable("POSE_SOURCE") ?? "world").Trim().ToLowerInvariant() == "wheels"
+    ? PoseSource.Wheels : PoseSource.World;
 int panelPort = int.Parse(Environment.GetEnvironmentVariable("PANEL_PORT") ?? "8080");
 string tellRoutes = Environment.GetEnvironmentVariable("TELL_ROUTES");     // topic=http://peer,... (the wire's route table)
 string tellDoneTo = Environment.GetEnvironmentVariable("TELL_DONE_TO");    // peer golem to echo visited points to
@@ -41,7 +45,7 @@ var ct = shutdown.Token;
 var perf = new GolemPerformance(golem, GolemDomain.Assembly);
 perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
 
-var ros = new Rosbridge(rosbridgeUrl, body);
+var ros = new Rosbridge(rosbridgeUrl, body, poseSource);
 GolemChoreography flow = null;
 var navigator = new DiffDriveNavigator(ros, () => flow.Speed(), () => flow.Radius()); // speed and size: the body the golem declared in its journal
 var feed = new PanelFeed();
@@ -88,7 +92,7 @@ flow.Awaken();
 await ros.ConnectAsync(ct);
 await ros.BindAsync(ct);
 feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-    $"membrane connected to {rosbridgeUrl} — driving body '{body}'", DateTime.UtcNow));
+    $"membrane connected to {rosbridgeUrl} — driving body '{body}', pose from {(poseSource == PoseSource.Wheels ? "the wheels (dead reckoning: the world's truth is shown to you, never to the golem)" : "the world's truth")}", DateTime.UtcNow));
 if (perf.BornThisBoot)
 {
     await Task.Delay(500, ct); // let the advertise settle before the first publish

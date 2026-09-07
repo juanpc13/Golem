@@ -66,6 +66,7 @@ Then open:
 | http://localhost:6080/vnc.html?autoconnect=true&resize=scale | The kiosk: Gazebo's picture, camera straight above the floor |
 | http://localhost:8081 | Blue's panel (the follower) |
 | http://localhost:8082 | Red's panel (the leader: it tells blue every visited place) |
+| http://localhost:8083 | Green's panel (lives on its wheels' reckoning, like a real robot; the panel draws where the world says it really is) |
 | ws://localhost:9090 | rosbridge — the bodies' topics as JSON |
 
 A first tour, from a shell:
@@ -128,7 +129,12 @@ Endpoints, per golem:
 Environment of a golem container: `GOLEM` (identity, names the journal), `BODY` (the model it drives),
 `HOME_AT` (its mark), `ROSBRIDGE_URL`, `JOURNAL_PATH`, `PANEL_PORT`, `TELL_ROUTES` (tell topic → peer
 URL), `TELL_DONE_TO` (the peer to tell every visited place), `TELL_RETRY_SECONDS`. Only one direction of
-`TELL_DONE_TO` between two golems, or the told missions echo back forever.
+`TELL_DONE_TO` between two golems, or the told missions echo back forever. `POSE_SOURCE` is where a
+golem's idea of its position comes from: `world` (blue and red) hands it the simulator's true pose, a
+gift no real robot gets; `wheels` (green) makes it live on dead reckoning from its own wheels, anchored
+once at start-up, and the panel draws a ghost where the world says the body really is. Blocked against
+a crate for half a second, a wheel-reckoning golem is half a metre wrong about itself, and misreads what
+it touches next.
 
 ## Rules of the house
 
