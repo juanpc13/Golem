@@ -38,6 +38,8 @@ internal sealed class Place
     internal IReadOnlyList<Doorway> Doors() => atlas.DoorsOf(this);
     internal IReadOnlyList<Opening> Openings() => atlas.OpeningsOf(this);
     internal IReadOnlyList<Mark> Marks() => atlas.MarksIn(this);
+    /// <summary>The obstacles the marks in this place outline: joined vertices, the figure of what stands here uncharted.</summary>
+    internal IReadOnlyList<Obstacle> Obstacles() => atlas.ObstaclesIn(this);
 
     /// <summary>A door to a neighbouring place, at a point on the shared wall. Chainable.</summary>
     internal Place DoorTo(string place, double x, double y)

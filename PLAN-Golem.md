@@ -100,7 +100,9 @@ Hallazgos del motor (probados en `scratchpad/lang`, `Probe2`–`Probe5`): un `fo
 
 **Verificado en vivo (7-sep, journals reiniciados)**: red `MoveTo(1, {'storage', 'garage'})` → almacén alcanzado → corredor este → `Bump(1, 10.2, 5.8)` (entrada 18) → "no room for a step right/left: a wall there" → `Route` de nuevo por north~center~south (entrada 23); blue y green `Learn(10.25, 5.85)` por tell, 0 tells sin ack. Antes, red cedió dos veces a blue en el centro y siguió cuando blue se movió. Hallazgo abierto: blue, seguidor, parado a 1 m del centro del almacén, estorbó la salida del líder: `Fail('blocked by blue … after yielding 4 times')`. La coordinación entre cuerpos es el siguiente diseño: que el seguidor se aparte del paso, o que el líder rodee a un peer como obstáculo transitorio sin marca.
 
-**Lo que no está**: marcas que caduquen (algo que se movió), forma poligonal explícita, y la exploración del escenario 3.
+**La figura del obstáculo (8-sep, pedido de Juan: "que se vea que se empiezan a unir esos vértices acorde su cercanía")**: conocimiento del golem, no dibujo del panel. `Atlas.Obstacles()` agrupa las marcas a ≤ 1.0 m entre sí (`JoinWithin`, directa o encadenadamente, unión-búsqueda) en un `Obstacle` con `Center` (centroide), `Size` y `Vertices()` ordenados por ángulo alrededor del centro; `Place.Obstacles()` da los que tienen su centro en el lugar; `g.ObstacleCount()`. `/map` los imprime anidados (`obstacles: [{size, cx, cy, vertices: [{x, y}]}]`) y el panel une los vértices: dos marcas son una línea, tres o más un polígono relleno que se afina con cada golpe. El planificador sigue usando la unión de discos; usar el contorno para planificar sería un paso posterior.
+
+**Lo que no está**: marcas que caduquen (algo que se movió), el contorno como geometría de planificación, y la exploración del escenario 3.
 
 ## Cómo quedó el golem (3-sep-2026, tras la auditoría contra las guías; verbos RENOMBRADOS el 7-sep, ver *El lenguaje del golem*)
 

@@ -87,7 +87,8 @@
       takes the shortest road through the doors and open boundaries, journals it, and journals every passage
       crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body
       bumps into there becomes a red <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.Learn</code>
-      it); the golem feels for a way past, right then left, and if none fits its body it decides the road again
+      it); marks close together are joined as the vertices of one <b>obstacle</b>, the figure of the thing nobody charted.
+      The golem feels for a way past, right then left, and if none fits its body it decides the road again
       around the marks. Only when no road fits does the mission fail.</p>
       <div class="row" id="places"></div>
       <div class="row">
@@ -132,6 +133,7 @@
         <button data-q="g.PlaceAt(5.5, 5.5)">PlaceAt(5.5, 5.5)</button>
         <button data-q="g.KnowsWallAt(4.0, 8.5)">KnowsWallAt(4.0, 8.5)</button>
         <button data-q="g.MarkCount()">MarkCount()</button>
+        <button data-q="g.ObstacleCount()">ObstacleCount()</button>
         <button data-q="{ foreach (places in g.Places()) { print places.Name 'name'; foreach (doors in places.Doors()) { print doors.To 'to'; } } }">Places as objects</button>
         <button data-q="g.FitsAt(10.25, 5.5)">FitsAt(10.25, 5.5)</button>
         <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextPassage(g.NextId()) 'heading', g.NextIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
@@ -288,7 +290,8 @@ map.addEventListener('click', (ev) => {
 async function loadMap() {
   try {
     const m = await (await fetch('/map')).json();
-    plan = { places: (m.places || []).map(p => ({ ...p, doors: p.doors || [], opens: p.opens || [], marks: p.marks || [] })) };
+    plan = { places: (m.places || []).map(p => ({ ...p, doors: p.doors || [], opens: p.opens || [], marks: p.marks || [],
+                                                  obstacles: (p.obstacles || []).map(o => ({ ...o, vertices: o.vertices || [] })) })) };
     const holder = document.getElementById('places');
     holder.innerHTML = '';
     for (const p of plan.places) {
@@ -342,6 +345,17 @@ function drawMap() {
         const r = Math.max(4, m.r / WORLD * w);
         mctx.fillStyle = 'rgba(224,119,119,0.45)'; mctx.strokeStyle = 'rgba(224,119,119,0.95)'; mctx.lineWidth = 1.5;
         mctx.beginPath(); mctx.arc(toPx(m.x), toPy(m.y), r, 0, 7); mctx.fill(); mctx.stroke();
+      }
+      // obstacles: marks close to one another, joined as vertices — two make a line, three or more a shape
+      for (const o of a.obstacles) {
+        const v = o.vertices;
+        if (v.length < 2) continue;
+        mctx.strokeStyle = 'rgba(240,150,150,1)'; mctx.fillStyle = 'rgba(224,119,119,0.25)'; mctx.lineWidth = 2;
+        mctx.beginPath(); mctx.moveTo(toPx(v[0].x), toPy(v[0].y));
+        for (let i = 1; i < v.length; i++) mctx.lineTo(toPx(v[i].x), toPy(v[i].y));
+        if (v.length >= 3) { mctx.closePath(); mctx.fill(); }
+        mctx.stroke();
+        for (const p of v) { mctx.fillStyle = 'rgba(240,150,150,1)'; mctx.beginPath(); mctx.arc(toPx(p.x), toPy(p.y), 2.5, 0, 7); mctx.fill(); }
       }
       // doors: a gap in the wall, marked in clay; on this place's vertical edge, or on a horizontal one
       for (const d of a.doors) {

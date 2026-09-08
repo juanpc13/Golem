@@ -25,6 +25,8 @@ internal sealed class Atlas
     // this far around the point; a body passes it at its own radius plus a margin.
     internal const double MarkReach = 0.25;
     internal const double MarkMargin = 0.1;
+    // Two marks this close were made on the same thing: joined, they become vertices of one obstacle.
+    internal const double JoinWithin = 1.0;
 
     private readonly List<Place> places = new();
     private readonly List<Passage> passages = new();
@@ -80,6 +82,32 @@ internal sealed class Atlas
     /// <summary>The marks standing in a place (a mark on a shared wall stands in both).</summary>
     internal IReadOnlyList<Mark> MarksIn(Place place) =>
         marks.Where(place.Contains).Select(m => new Mark(m.X, m.Y, MarkReach)).ToList();
+
+    /// <summary>The obstacles the marks outline: marks within JoinWithin of one another (directly or through
+    /// others) are vertices of one thing, ordered around its center so they can be joined into a figure. One
+    /// mark is a point, two a line, three or more a shape — and every new touch refines it.</summary>
+    internal IReadOnlyList<Obstacle> Obstacles()
+    {
+        int n = marks.Count;
+        var parent = Enumerable.Range(0, n).ToArray();
+        int Root(int i) { while (parent[i] != i) i = parent[i] = parent[parent[i]]; return i; }
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                if (marks[i].DistanceTo(marks[j]) <= JoinWithin) parent[Root(i)] = Root(j);
+
+        var obstacles = new List<Obstacle>();
+        foreach (var group in Enumerable.Range(0, n).GroupBy(Root).OrderBy(g => g.Min()))
+        {
+            var members = group.Select(i => marks[i]).ToList();
+            var center = new Waypoint(members.Average(m => m.X), members.Average(m => m.Y));
+            var ordered = members.OrderBy(m => Math.Atan2(m.Y - center.Y, m.X - center.X)).ToList();
+            obstacles.Add(new Obstacle(ordered, center));
+        }
+        return obstacles;
+    }
+
+    /// <summary>The obstacles whose center stands in a place.</summary>
+    internal IReadOnlyList<Obstacle> ObstaclesIn(Place place) => Obstacles().Where(o => place.Contains(o.Center)).ToList();
 
     internal Place PlaceNamed(string name)
     {
@@ -545,6 +573,17 @@ internal sealed class Mark
     internal double Y { get; }
     internal double Reach { get; }
     internal Mark(double x, double y, double reach) { X = x; Y = y; Reach = reach; }
+}
+
+/// <summary>An obstacle as the marks outline it: its vertices (the marks, ordered around the center) and its center.
+/// The figure of a thing nobody charted, drawn by the bodies that bumped into it.</summary>
+internal sealed class Obstacle
+{
+    private readonly IReadOnlyList<Waypoint> vertices;
+    internal Waypoint Center { get; }
+    internal int Size => vertices.Count;
+    internal Obstacle(IReadOnlyList<Waypoint> vertices, Waypoint center) { this.vertices = vertices; Center = center; }
+    internal IReadOnlyList<Waypoint> Vertices() => vertices;
 }
 
 /// <summary>

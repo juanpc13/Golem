@@ -88,6 +88,9 @@ internal sealed class Golem
     /// <summary>How many marks the map holds: points where a body touched something the plan does not hold.</summary>
     internal int MarkCount() => atlas.MarkCount;
 
+    /// <summary>How many things the marks outline: marks close to one another are vertices of one obstacle.</summary>
+    internal int ObstacleCount() => atlas.Obstacles().Count;
+
     /// <summary>Whether every token names a place or a point 'x,y' on the map — what a list of stops must be made of.</summary>
     internal bool AreStops(string[] stops)
     {

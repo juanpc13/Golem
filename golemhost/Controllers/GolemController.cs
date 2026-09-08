@@ -115,6 +115,12 @@ public class GolemController : Controller
                 foreach (marks in places.Marks()) {
                     print marks.X 'x', marks.Y 'y', marks.Reach 'r';
                 }
+                foreach (obstacles in places.Obstacles()) {
+                    print obstacles.Size 'size', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
+                    foreach (vertices in obstacles.Vertices()) {
+                        print vertices.X 'x', vertices.Y 'y';
+                    }
+                }
             }
         ")
         .PerformQuery(), "application/json");

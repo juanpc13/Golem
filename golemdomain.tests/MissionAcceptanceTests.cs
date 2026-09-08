@@ -500,6 +500,38 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
+    public void MarksCloseTogether_AreJoinedIntoOneObstacle_WhoseVerticesOutlineIt()
+    {
+        Learn(10.25, 5.85);    // the crate's north face
+        Learn(10.25, 5.15);    // its south face
+        Learn(9.9, 5.5);       // its west face
+        Learn(8.0, 9.5);       // something else, far away in the storage room
+        Assert.AreEqual(4, Int("g.MarkCount()"));
+        Assert.AreEqual(2, Int("g.ObstacleCount()"), "three touches on one thing, one on another");
+
+        string json = perf.Actor.Using(@"
+            foreach (places in g.Places()) {
+                print places.Name 'name';
+                foreach (obstacles in places.Obstacles()) {
+                    print obstacles.Size 'size', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
+                    foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y'; }
+                }
+            }
+        ").PerformQuery();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var places = doc.RootElement.GetProperty("places");
+        var east = places[5];
+        Assert.AreEqual("east", east.GetProperty("name").GetString());
+        var crate = east.GetProperty("obstacles")[0];
+        Assert.AreEqual(3, crate.GetProperty("size").GetInt32(), "the three touches outline one obstacle in the corridor");
+        Assert.AreEqual(3, crate.GetProperty("vertices").GetArrayLength());
+        Assert.AreEqual(10.13, crate.GetProperty("cx").GetDouble(), 0.01, "centered among its vertices");
+        var storage = places[2];
+        Assert.AreEqual(1, storage.GetProperty("obstacles")[0].GetProperty("size").GetInt32(), "one touch is a point, not a figure yet");
+        Assert.IsFalse(places[0].TryGetProperty("obstacles", out _), "the kitchen holds none");
+    }
+
+    [TestMethod]
     public void AMarkInACorridorTooNarrowForTheBody_ClosesIt_AndTheRoadGoesRound()
     {
         MoveTo(1, 9.0, 1.5);                        // the garage, from the storage center
