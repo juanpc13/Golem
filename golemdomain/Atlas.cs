@@ -4,26 +4,32 @@ using System.Text;
 namespace GolemHost.Domain;
 
 /// <summary>
-/// The golem's map: places (rectangles), doors between them, and open boundaries. Answers
-/// where a point is and the shortest road between two points through the passages —
-/// Dijkstra over a graph whose nodes are the doors (plus the start and the goal) and whose
-/// edges join nodes that can see each other inside one place or across an open boundary.
-/// Rooms are rectangles, so a straight line inside a room never crosses a wall. The body is
-/// not a point, though: a door is crossed straight (line up in front of it, leave behind it),
-/// and an open boundary is crossed away from its corners.
+/// The golem's map: places (rectangles), doors between them, open boundaries — and the marks
+/// where a body touched something the plan does not hold. Answers where a point is and the
+/// shortest road between two points through the passages — Dijkstra over a graph whose nodes
+/// are the doors (plus the start, the goal, and detour points around the marks) and whose
+/// edges join nodes that can see each other inside one place or across an open boundary,
+/// clear of every mark. Rooms are rectangles, so a straight line inside a room never crosses
+/// a wall. The body is not a point, though: a door is crossed straight (line up in front of
+/// it, leave behind it), an open boundary is crossed away from its corners, a mark is skirted
+/// by a body's width, and a place too narrow for the body around a mark is no road at all.
 /// </summary>
 internal sealed class Atlas
 {
-    // The body's size, as the map accounts for it (pending as a property of the golem, like its speed):
-    // how far from a door the body lines up and is clear of the wall, and how far from the corners of
-    // an open boundary it crosses.
+    // The body's size, as the map accounts for it: how far from a door the body lines up and is
+    // clear of the wall, and how far from the corners of an open boundary it crosses.
     internal const double DoorClearance = 0.6;
     internal const double OpeningMargin = 0.5;
     // How far from a boundary line a touched point may fall and still be that wall (its thickness, the pose's error).
     internal const double WallTolerance = 0.3;
+    // A mark is a point where a body touched something: whatever stands there is taken to reach at least
+    // this far around the point; a body passes it at its own radius plus a margin.
+    internal const double MarkReach = 0.25;
+    internal const double MarkMargin = 0.1;
 
     private readonly List<Place> places = new();
     private readonly List<Passage> passages = new();
+    private readonly List<Waypoint> marks = new();
 
     internal Place AddPlace(string name, double x, double y, double width, double height)
     {
@@ -47,8 +53,17 @@ internal sealed class Atlas
         passages.Add(new Passage(a, b, null));
     }
 
+    /// <summary>A point where a body touched something the plan does not hold. Two touches within a tenth of a
+    /// unit are one mark. Returns how many marks the map holds.</summary>
+    internal int Mark(Waypoint at)
+    {
+        if (!marks.Any(m => m.DistanceTo(at) < 0.1)) marks.Add(at);
+        return marks.Count;
+    }
+
     internal int PlaceCount => places.Count;
     internal int PassageCount => passages.Count;
+    internal int MarkCount => marks.Count;
     internal bool Knows(string place) => places.Any(p => p.Name == place);
 
     internal Place PlaceNamed(string name)
@@ -58,6 +73,18 @@ internal sealed class Atlas
     }
 
     internal bool IsOnMap(Waypoint at) => places.Any(p => p.Contains(at));
+
+    /// <summary>Whether a body of this radius stands clear at a point: inside a place, off every wall by its
+    /// radius plus a margin, and off every mark by the mark's reach plus its radius plus a margin.</summary>
+    internal bool Fits(Waypoint at, double radius)
+    {
+        if (!HasRoom(at, radius)) return false;
+        return !marks.Any(m => m.DistanceTo(at) < MarkReach + radius + MarkMargin);
+    }
+
+    /// <summary>Whether the walls alone leave room for a body of this radius at a point — marks not counted:
+    /// the question a body asks while feeling its way around one.</summary>
+    internal bool HasRoom(Waypoint at, double radius) => places.Any(p => ContainsInset(p, at, radius + MarkMargin));
 
     /// <summary>Whether a point lies on a wall the map knows: within tolerance of a place's boundary that is not
     /// declared open. A door is a gap in a known wall, so near a door the wall is still what stands there; the
@@ -97,6 +124,15 @@ internal sealed class Atlas
         return false;
     }
 
+    // A point inside a place with a margin off every wall — except where the boundary is open.
+    private bool ContainsInset(Place p, Waypoint at, double inset)
+    {
+        if (!p.Contains(at)) return false;
+        foreach (var edge in Edges(p))
+            if (!IsOpenEdge(p, edge) && DistanceToSegment(at, edge.From, edge.To) < inset) return false;
+        return true;
+    }
+
     private static double DistanceToSegment(Waypoint p, Waypoint a, Waypoint b)
     {
         double dx = b.X - a.X, dy = b.Y - a.Y;
@@ -113,18 +149,18 @@ internal sealed class Atlas
         throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
     }
 
-    /// <summary>The shortest road from one point to another through the passages: the legs to walk, the stop last.</summary>
-    internal List<Leg> Road(Waypoint from, Waypoint to) => Road(from, new[] { to });
+    /// <summary>The shortest road from one point to another through the passages, for a body of this radius: the legs to walk, the stop last.</summary>
+    internal List<Leg> Road(Waypoint from, Waypoint to, double radius) => Road(from, new[] { to }, radius);
 
     /// <summary>The road through several stops, in the order given: the shortest road from each stop to the next,
-    /// walked as one — doors crossed straight, open boundaries named where the walk meets them.</summary>
-    internal List<Leg> Road(Waypoint from, IReadOnlyList<Waypoint> stops)
+    /// walked as one — doors crossed straight, open boundaries named where the walk meets them, marks skirted.</summary>
+    internal List<Leg> Road(Waypoint from, IReadOnlyList<Waypoint> stops, double radius)
     {
         var raw = new List<Leg>();
         Waypoint here = from;
         foreach (var stop in stops)
         {
-            raw.AddRange(RawRoad(here, stop));
+            raw.AddRange(RawRoad(here, stop, radius));
             here = stop;
         }
         return WithOpeningsNamed(from, WithDoorCrossings(raw));
@@ -132,7 +168,7 @@ internal sealed class Atlas
 
     /// <summary>The order of stops that makes the whole road shortest, starting from a point. Every order is tried
     /// up to seven stops; beyond that the nearest stop is taken each time.</summary>
-    internal IReadOnlyList<Waypoint> BestOrder(Waypoint from, IReadOnlyList<Waypoint> stops)
+    internal IReadOnlyList<Waypoint> BestOrder(Waypoint from, IReadOnlyList<Waypoint> stops, double radius)
     {
         if (stops.Count < 2) return stops;
         var points = new List<Waypoint> { from };
@@ -140,7 +176,7 @@ internal sealed class Atlas
         var road = new double[points.Count, points.Count];
         for (int i = 0; i < points.Count; i++)
             for (int j = 1; j < points.Count; j++)
-                if (i != j) road[i, j] = RoadLength(points[i], points[j]);
+                if (i != j) road[i, j] = RoadLength(points[i], points[j], radius);
 
         var order = new List<int>();
         if (stops.Count <= 7)
@@ -183,20 +219,31 @@ internal sealed class Atlas
         }
     }
 
-    // Dijkstra from one point to the next: the raw legs (doors and openings met, the stop last).
-    private List<Leg> RawRoad(Waypoint from, Waypoint to)
+    // Dijkstra from one point to the next: the raw legs (doors, openings and detours met, the stop last).
+    private List<Leg> RawRoad(Waypoint from, Waypoint to, double radius)
     {
-        var start = new Node(from, PlacesOf(from), null);
-        var goal = new Node(to, PlacesOf(to), null);
+        double clearance = MarkReach + radius + MarkMargin;
+        var start = new Node(from, PlacesOf(from), null, NodeKind.Start);
+        var goal = new Node(to, PlacesOf(to), null, NodeKind.Goal);
         var nodes = new List<Node> { start };
         foreach (var d in passages.Where(p => p.IsDoor))
-            nodes.Add(new Node(d.At, new[] { d.A, d.B }, d));
+            nodes.Add(new Node(d.At, new[] { d.A, d.B }, d, NodeKind.Passage));
         // an open boundary is a node too (its midpoint), so a road can chain two openings
         foreach (var o in passages.Where(p => !p.IsDoor))
         {
             var mid = SharedEdgeMidpoint(PlaceNamed(o.A), PlaceNamed(o.B));
-            if (mid != null) nodes.Add(new Node(mid, new[] { o.A, o.B }, o));
+            if (mid != null) nodes.Add(new Node(mid, new[] { o.A, o.B }, o, NodeKind.Passage));
         }
+        // around every mark, the points a body of this radius could pass through — only where it fits
+        // (a ring a little wider than the clearance, so the run between two neighbouring points stays clear)
+        foreach (var m in marks)
+            for (int k = 0; k < 8; k++)
+            {
+                double angle = k * Math.PI / 4;
+                var p = new Waypoint(m.X + (clearance + 0.08) * Math.Cos(angle), m.Y + (clearance + 0.08) * Math.Sin(angle));
+                if (!Fits(p, radius)) continue;
+                nodes.Add(new Node(p, places.Where(q => ContainsInset(q, p, radius + MarkMargin)).Select(q => q.Name).ToArray(), null, NodeKind.Detour));
+            }
         nodes.Add(goal);
 
         var dist = nodes.ToDictionary(n => n, _ => double.PositiveInfinity);
@@ -214,17 +261,20 @@ internal sealed class Atlas
             foreach (var v in nodes)
             {
                 if (done.Contains(v) || v == u) continue;
-                if (!Sees(u, v, out double cost)) continue;
+                if (!Sees(u, v, clearance, radius, out double cost)) continue;
                 if (dist[u] + cost < dist[v]) { dist[v] = dist[u] + cost; prev[v] = u; }
             }
         }
         if (double.IsPositiveInfinity(dist[goal]))
-            throw new DomainException($"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) through the map");
+            throw new DomainException(marks.Count == 0
+                ? $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) through the map"
+                : $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) that fits a body of radius {Fmt(radius)} past {marks.Count} marks");
 
         var legs = new List<Leg>();
         for (Node n = goal; n != start; n = prev[n])
         {
             if (n == goal) legs.Insert(0, new Leg(n.At, PlaceAt(to).Name));   // a stop: named by its place alone
+            else if (n.Kind == NodeKind.Detour) legs.Insert(0, new Leg(n.At, Leg.Detour));
             else if (n.Via != null) legs.Insert(0, new Leg(n.At, n.Via.Name));
             else legs.Insert(0, new Leg(n.At, OpeningCrossed(prev[n], n)?.Name ?? "?"));
         }
@@ -280,15 +330,15 @@ internal sealed class Atlas
         return null;
     }
 
-    internal double RoadLength(Waypoint from, Waypoint to)
+    internal double RoadLength(Waypoint from, Waypoint to, double radius)
     {
         double length = 0;
         Waypoint here = from;
-        foreach (var leg in Road(from, to)) { length += here.DistanceTo(leg.At); here = leg.At; }
+        foreach (var leg in Road(from, to, radius)) { length += here.DistanceTo(leg.At); here = leg.At; }
         return length;
     }
 
-    /// <summary>The map as the panel and the painter read it.</summary>
+    /// <summary>The map as the panel reads it: places, doors, open boundaries, and the marks where bodies touched something.</summary>
     internal string Describe()
     {
         var sb = new StringBuilder("{\"places\":[");
@@ -299,18 +349,23 @@ internal sealed class Atlas
             $"{{\"a\":\"{p.A}\",\"b\":\"{p.B}\",\"x\":{Fmt(p.At.X)},\"y\":{Fmt(p.At.Y)}}}")));
         sb.Append("],\"opens\":[");
         sb.Append(string.Join(",", passages.Where(p => !p.IsDoor).Select(p => $"{{\"a\":\"{p.A}\",\"b\":\"{p.B}\"}}")));
+        sb.Append("],\"marks\":[");
+        sb.Append(string.Join(",", marks.Select(m => $"{{\"x\":{Fmt(m.X)},\"y\":{Fmt(m.Y)},\"r\":{Fmt(MarkReach)}}}")));
         sb.Append("]}");
         return sb.ToString();
     }
 
     // ---- the graph ----
 
+    private enum NodeKind { Start, Passage, Detour, Goal }
+
     private sealed class Node
     {
         internal Waypoint At { get; }
         internal string[] Places { get; }
         internal Passage Via { get; }
-        internal Node(Waypoint at, string[] places, Passage via) { At = at; Places = places; Via = via; }
+        internal NodeKind Kind { get; }
+        internal Node(Waypoint at, string[] places, Passage via, NodeKind kind) { At = at; Places = places; Via = via; Kind = kind; }
     }
 
     private string[] PlacesOf(Waypoint at)
@@ -322,12 +377,23 @@ internal sealed class Atlas
 
     // Two nodes see each other when they share a place (a straight line inside a rectangle),
     // or when they stand in two places joined by an opening and the straight line between
-    // them crosses that open boundary.
-    private bool Sees(Node u, Node v, out double cost)
+    // them crosses that open boundary — and, either way, the line keeps clear of every mark.
+    // The start may stand inside a mark's clearance (the body just backed off it, maybe from
+    // several): the first run out is judged by the body's own radius — it may not run THROUGH a
+    // mark, but it may brush past one at the distance it already stands from things.
+    private bool Sees(Node u, Node v, double clearance, double radius, out double cost)
     {
         cost = u.At.DistanceTo(v.At);
-        if (u.Places.Intersect(v.Places).Any()) return true;
-        return OpeningCrossed(u, v) != null;
+        bool related = u.Places.Intersect(v.Places).Any() || OpeningCrossed(u, v) != null;
+        if (!related) return false;
+        foreach (var m in marks)
+        {
+            double along = DistanceToSegment(m, u.At, v.At);
+            if (along >= clearance) continue;
+            if (u.Kind == NodeKind.Start && along >= radius - 0.05) continue;
+            return false;
+        }
+        return true;
     }
 
     private Passage OpeningCrossed(Node u, Node v)
@@ -378,7 +444,7 @@ internal sealed class Atlas
         return false;
     }
 
-    // Insert a named leg where the road crosses an open boundary, so `Pass` can tell it. The
+    // Insert a named leg where the road crosses an open boundary, so `Cross` can tell it. The
     // road is walked as the body walks it: from one leg's exit to the next leg's approach.
     private List<Leg> WithOpeningsNamed(Waypoint from, List<Leg> legs)
     {
@@ -461,18 +527,20 @@ internal sealed class Atlas
 
 /// <summary>
 /// One stretch of a road: where to go next, and how the journal names it — a door (kitchen/north), an
-/// opening (north~center), or a stop (the place alone: garage). A door's leg also says how it is walked:
-/// line up at the approach (in front of the door, off the wall) and end at the exit (behind it); for an
-/// opening or a stop both are the point.
+/// opening (north~center), a detour around a mark (around), or a stop (the place alone: garage). A door's
+/// leg also says how it is walked: line up at the approach (in front of the door, off the wall) and end at
+/// the exit (behind it); for an opening, a detour or a stop both are the point.
 /// </summary>
 internal sealed class Leg
 {
+    internal const string Detour = "around";
+
     internal Waypoint At { get; }
     internal string Name { get; }
     internal Waypoint Approach { get; }
     internal Waypoint Exit { get; }
-    /// <summary>A stop to reach, as opposed to a passage to cross.</summary>
-    internal bool IsStop => !Name.Contains('/') && !Name.Contains('~');
+    /// <summary>A stop to reach, as opposed to a passage to cross or a mark to skirt.</summary>
+    internal bool IsStop => Name != Detour && !Name.Contains('/') && !Name.Contains('~');
 
     internal Leg(Waypoint at, string name) : this(at, name, at, at) { }
 

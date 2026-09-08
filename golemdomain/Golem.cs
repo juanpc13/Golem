@@ -71,8 +71,17 @@ internal sealed class Golem
     /// golem's own execution error; touching anything else is reality holding something the map does not.</summary>
     internal bool KnowsWallAt(double x, double y) => atlas.IsWallAt(new Waypoint(x, y), Atlas.WallTolerance);
 
-    /// <summary>The shortest road between two places, center to center, through the passages.</summary>
-    internal double Distance(string from, string to) => atlas.RoadLength(atlas.PlaceNamed(from).Center, atlas.PlaceNamed(to).Center);
+    /// <summary>The shortest road between two places, center to center, through the passages, for this body.</summary>
+    internal double Distance(string from, string to) => atlas.RoadLength(atlas.PlaceNamed(from).Center, atlas.PlaceNamed(to).Center, radius);
+
+    /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark.</summary>
+    internal bool FitsAt(double x, double y) => atlas.Fits(new Waypoint(x, y), radius);
+
+    /// <summary>Whether the walls alone leave room for this body at a point — what it asks while feeling around a mark.</summary>
+    internal bool HasRoomAt(double x, double y) => atlas.HasRoom(new Waypoint(x, y), radius);
+
+    /// <summary>How many marks the map holds: points where a body touched something the plan does not hold.</summary>
+    internal int Marks() => atlas.MarkCount;
 
     /// <summary>Whether every token names a place or a point 'x,y' on the map — what a list of stops must be made of.</summary>
     internal bool AreStops(string[] stops)
@@ -101,20 +110,23 @@ internal sealed class Golem
 
     // ---- missions: the road ----
 
-    /// <summary>The road the golem would walk from (x, y) through a mission's stops, as the journal writes it:
+    /// <summary>The road the golem would walk from (x, y) through a mission's stops still ahead, as the journal writes it:
     /// "kitchen/north@4,9.5 > kitchen@2,9.5 > kitchen/north@4,9.5 > north/storage@7,9.5 > storage@9,9.5".
-    /// For a Cover mission the stops come out in the order the golem chose.</summary>
+    /// For a Cover mission the stops come out in the order the golem chose. Marks are skirted ('around' legs)
+    /// or, where the body would not fit past them, avoided by another road altogether.</summary>
     internal string Plan(int id, double x, double y)
     {
         var mission = Find(id);
         var from = new Waypoint(x, y);
-        var stops = mission.ChoosesOrder ? atlas.BestOrder(from, mission.Stops) : mission.Stops;
-        var legs = atlas.Road(from, stops);
+        var ahead = mission.StopsAhead.ToList();
+        var stops = mission.ChoosesOrder ? atlas.BestOrder(from, ahead, radius) : ahead;
+        var legs = atlas.Road(from, stops, radius);
         return string.Join(" > ", legs.Select(l => $"{l.Name}@{Fmt(l.At.X)},{Fmt(l.At.Y)}"));
     }
 
     /// <summary>The golem decides its road for a mission (the plan as text, so the decision reads in the journal). Returns the number of legs.
-    /// The text names doors, openings and stops; how each door is crossed (straight in, straight out) is derived from the map again.</summary>
+    /// The text names doors, openings, detours and stops; how each door is crossed (straight in, straight out) is derived from the
+    /// map again. A road is decided a second time only after a bump on it: the journal then reads "bumped, bumped, took another road".</summary>
     internal int Route(int id, string plan)
     {
         var legs = atlas.WithDoorCrossings(plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -123,6 +135,18 @@ internal sealed class Golem
         Find(id).Route(legs);
         return legs.Count;
     }
+
+    /// <summary>The body touched something the map does not hold, at (x, y), on this mission: a mark on the map of
+    /// touches, and a reason to look for another way. Returns the mission id.</summary>
+    internal int Bump(int id, double x, double y)
+    {
+        Find(id).Bump();
+        atlas.Mark(new Waypoint(x, y));
+        return id;
+    }
+
+    /// <summary>A peer says a body touched something at (x, y): the golem learns the mark without the bruise. Returns how many marks it holds.</summary>
+    internal int Learn(double x, double y) => atlas.Mark(new Waypoint(x, y));
 
     /// <summary>The golem crossed the next passage of its road. Returns the mission id.</summary>
     internal int Cross(int id, string passage)
@@ -171,6 +195,9 @@ internal sealed class Golem
     internal bool IsRouted(int id) => Find(id).IsRouted;
     internal int LegsLeft(int id) => Find(id).LegsLeft;
     internal int StopsLeft(int id) => Find(id).StopsLeft;
+    internal int Bumps(int id) => Find(id).Bumps;
+    /// <summary>The body bumped since the road was last decided: the road may be decided again.</summary>
+    internal bool HasBumpedSinceRoute(int id) => Find(id).BumpedSinceRoute;
     /// <summary>The next leg's name: a passage to cross, or the place of the stop to reach.</summary>
     internal string NextPassage(int id) => Find(id).NextLeg.Name;
     internal bool NextIsStop(int id) => Find(id).NextLeg.IsStop;
@@ -197,7 +224,7 @@ internal sealed class Golem
             if (!m.IsPending()) continue;
             foreach (var stop in m.StopsAhead)
             {
-                if (previous != null) road += atlas.RoadLength(previous, stop);
+                if (previous != null) road += atlas.RoadLength(previous, stop, radius);
                 previous = stop;
             }
         }
@@ -213,7 +240,7 @@ internal sealed class Golem
         if (!HasPendingMission()) return 0;
         var first = NextPending().StopsAhead.FirstOrDefault();
         if (first == null) return RouteLength();
-        return atlas.RoadLength(new Waypoint(x, y), first) + RouteLength();
+        return atlas.RoadLength(new Waypoint(x, y), first, radius) + RouteLength();
     }
 
     /// <summary>Seconds until every pending mission is done, for a body standing at (x, y), at the body's speed and with its lingers.</summary>

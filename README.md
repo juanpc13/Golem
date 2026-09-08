@@ -37,8 +37,10 @@ in [CLAUDE.md](CLAUDE.md).
 - **The world is real.** Walls, doors, solid blocks and the bodies are physical. A body that touches
   something is told so by the simulator's contact sensor. The golem reckons where the touch happened
   (its pose plus its own radius) and holds that point against its map: a wall it knows is its own
-  execution error, so it backs off and tries the leg again, a few times; anything the map does not hold
-  fails the mission, saying so (`g.Fail(10, 'collided with crate at (10.3, 5.9): nothing on my map there')`).
+  execution error, so it backs off and tries the leg again; a peer is a body that moves, so it yields
+  and waits; anything else becomes a mark on its map (`g.Bump(1, 10.2, 5.8)`), told to every peer
+  (`g.Learn`), and the golem feels for a way past, right then left, before deciding its road again
+  around the marks. Only when no road fits its body does the mission fail.
 - **The map is knowledge.** Each golem carries a floor plan in its journal (release `map_v1`) and plans
   the shortest road through doors and open boundaries. The map does not know about the crate in the east
   corridor — that is the point.
@@ -114,7 +116,9 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Route(id, plan)` | The road decided from where the body stands, passages and stops in order: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. Between stops it is always the shortest road. |
 | `Cross(id, passage)` | A door or open boundary crossed. |
 | `Reach(id, x, y)` | A stop reached. Reaching the last one completes the mission — there is no separate "complete". |
-| `Fail(id, reason)` | The world said no — in the navigator's words (`collided with crate at (10.3, 5.9): nothing on my map there`, `stalled`, `timeout`). |
+| `Bump(id, x, y)` | The body touched something the map does not hold: a **mark** on the map of touches. The golem then feels for a way past (a step right, then left, a body's width at a time) and, failing that, decides its road again around the marks. |
+| `Learn(x, y)` | A peer told of a mark: the golem learns it without the bruise, and plans around it too. |
+| `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
 | `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
 
 Releases (versioned initialization inside the actor, applied once and journaled): `init` gives the golem

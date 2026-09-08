@@ -441,7 +441,121 @@ public class MissionAcceptanceTests
         Assert.AreEqual(0.0, Double("g.DistanceLeft(2.0, 9.5)"), 0.001);
     }
 
+    // ---- marks: what bodies touched that the plan does not hold ----
+
+    [TestMethod]
+    public void ABump_MarksTheMap_AndALearnedMarkIsTheSameKindOfMark()
+    {
+        MoveTo(1, 9.0, 1.5);                       // the garage
+        Route(1, Text("g.Plan(1, 9.0, 9.5)"));      // from the storage: down the east corridor
+        Assert.AreEqual(0, Int("g.Marks()"));
+        Assert.IsTrue(Bool("g.FitsAt(10.25, 5.5)"), "the corridor is clear as far as the map knows");
+
+        Bump(1, 10.25, 5.85);                       // the crate's face
+        Assert.AreEqual(1, Int("g.Marks()"));
+        Assert.AreEqual(1, Int("g.Bumps(1)"));
+        Assert.IsTrue(Bool("g.HasBumpedSinceRoute(1)"));
+        Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the body no longer fits where the mark reaches");
+        Assert.IsTrue(Bool("g.HasRoomAt(10.25, 5.5)"), "the walls alone still leave room there: marks are what the body feels around");
+        Assert.IsFalse(Bool("g.HasRoomAt(9.7, 5.5)"), "too close to the corridor's wall for the body");
+
+        Assert.AreEqual(1, Int("g.Learn(10.25, 5.9)"), "a touch within a tenth of a unit is the same mark");
+        Assert.AreEqual(2, Int("g.Learn(10.3, 6.6)"), "a peer's touch further along is another mark");
+    }
+
+    [TestMethod]
+    public void AMarkInACorridorTooNarrowForTheBody_ClosesIt_AndTheRoadGoesRound()
+    {
+        MoveTo(1, 9.0, 1.5);                        // the garage, from the storage center
+        string before = Text("g.Plan(1, 9.0, 9.5)");
+        StringAssert.Contains(before, "storage/east@10.25,8 > east/garage@10.25,3", "the east corridor is the shortest road");
+
+        Learn(10.25, 5.85);                          // a peer bumped into something in the middle of the corridor
+
+        string after = Text("g.Plan(1, 9.0, 9.5)");
+        Assert.IsFalse(after.Contains("east/garage"), "between the mark and the corridor's walls the body does not fit: " + after);
+        StringAssert.Contains(after, "north~center@");
+        StringAssert.EndsWith(after, "> south/garage@7,1.5 > garage@9,1.5");
+    }
+
+    [TestMethod]
+    public void AMarkInAWideRoom_IsSkirted_WithAroundLegs()
+    {
+        MoveTo(1, 10.2, 9.5);                        // across the storage room
+        Learn(9.0, 9.5);                             // something in the middle of it
+
+        string plan = Text("g.Plan(1, 7.6, 9.5)");
+        StringAssert.Contains(plan, "around@", "the body skirts the mark: " + plan);
+        StringAssert.EndsWith(plan, "> storage@10.2,9.5");
+
+        Route(1, plan);
+        Assert.IsFalse(Bool("g.NextIsStop(1)"));
+        Assert.AreEqual("around", Text("g.NextPassage(1)"));
+        Cross(1, "around");
+        Assert.IsTrue(Int("g.LegsLeft(1)") >= 1);
+    }
+
+    [TestMethod]
+    public void AfterABump_TheRoadIsDecidedAgain_AndOnlyThen()
+    {
+        MoveTo(1, 9.0, 1.5);
+        Route(1, Text("g.Plan(1, 9.0, 9.5)"));
+        Refuses("g.Route(1, 'garage@9,1.5');", "already has its road");
+
+        Bump(1, 10.25, 5.85);                        // the crate, met halfway down the corridor
+        string again = Text("g.Plan(1, 10.25, 6.3)");   // from where the body backed off to
+        Assert.IsFalse(again.Contains("east/garage"), "the corridor is closed by the mark: " + again);
+        StringAssert.Contains(again, "storage/east@10.25,8", "back out the way it came");
+        Route(1, again);
+        Assert.IsFalse(Bool("g.HasBumpedSinceRoute(1)"));
+        Assert.AreEqual(1, Int("g.StopsLeft(1)"));
+        Assert.AreEqual("pending", Text("g.StatusOf(1)"));
+    }
+
+    [TestMethod]
+    public void ABodyStandingAmongMarks_CanStillLeave_ButNotThroughThem()
+    {
+        MoveTo(1, 9.0, 1.5);                        // the garage
+        Learn(7.6, 9.3);                             // two touches on something right beside the body...
+        Learn(8.2, 9.3);
+        string plan = Text("g.Plan(1, 7.9, 9.55)");  // ...which stands between them, in the storage room
+        StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
+
+        Learn(10.25, 5.85);                          // the crate closes the corridor too
+        Refuses("g.Plan(1, 10.25, 6.0);", "fits a body of radius 0.25 past 3 marks");   // straight down through the crate: no
+    }
+
+    [TestMethod]
+    public void WhenNoRoadFitsTheBody_ThePlanSaysSo()
+    {
+        MoveTo(1, 9.0, 1.5);                        // the garage has two doors
+        Learn(7.0, 1.5);                             // something in the south/garage door
+        Learn(10.25, 3.0);                           // and something in the east/garage door
+        Refuses("g.Plan(1, 2.0, 1.5);", "fits a body of radius 0.25 past 2 marks");
+    }
+
     // ---- helpers: the same perform shapes the host uses ----
+
+    private void Bump(int id, double x, double y) =>
+        perf.Actor.Using(@"
+            g.Bump(@id, @x, @y);
+        ")
+        .WithParameters(p => {
+            p["id", typeof(int)]    = id;
+            p["x",  typeof(double)] = x;
+            p["y",  typeof(double)] = y;
+        })
+        .PerformCommand();
+
+    private void Learn(double x, double y) =>
+        perf.Actor.Using(@"
+            g.Learn(@x, @y);
+        ")
+        .WithParameters(p => {
+            p["x", typeof(double)] = x;
+            p["y", typeof(double)] = y;
+        })
+        .PerformCommand();
 
     private void MoveTo(int id, double x, double y) =>
         perf.Actor.Using(@"

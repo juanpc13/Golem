@@ -49,11 +49,21 @@ var ros = new Rosbridge(rosbridgeUrl, body, poseSource);
 GolemChoreography flow = null;
 var navigator = new DiffDriveNavigator(ros, () => flow.Speed(), () => flow.Radius()); // speed and size: the body the golem declared in its journal
 var feed = new PanelFeed();
-var wire = new HttpBroker(golem, HttpBroker.ParseRoutes(tellRoutes), tellRetry);
+// Where peers reach ME (the origin every outgoing frame carries, so acks find their way back).
+var myUrl = new Uri(Environment.GetEnvironmentVariable("MY_URL") ?? $"http://{golem}-golem:{panelPort}");
+var routes = HttpBroker.ParseRoutes(tellRoutes);
+var wire = new HttpBroker(golem, routes, tellRetry, myUrl);
 if (tellDoneTo != null && !wire.CanRoute($"tell-{tellDoneTo}"))
     throw new InvalidOperationException($"TELL_ROUTES lacks 'tell-{tellDoneTo}' — tells to '{tellDoneTo}' would have nowhere to go");
+// Every golem I can tell (a route 'tell-<peer>'): what the body bumps into is told to all of them.
+var peers = routes.Keys
+    .Where(t => t.StartsWith("tell-", StringComparison.Ordinal) && !t.EndsWith(".acks", StringComparison.Ordinal))
+    .Select(t => t["tell-".Length..])
+    .Where(n => n != golem)
+    .Distinct()
+    .ToList();
 
-flow = new GolemChoreography(perf, ros, navigator, feed, wire, golem, body, home, tellDoneTo, journalPath);
+flow = new GolemChoreography(perf, ros, navigator, feed, wire, golem, body, home, tellDoneTo, peers, journalPath);
 flow.DefineReactions();
 
 perf.Start(); // rehydration + release chain + the .Cue() reactions come alive here

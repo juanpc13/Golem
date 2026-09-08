@@ -86,7 +86,9 @@
       it <b>choose the order</b> that makes the whole road shortest (<code>Cover</code>). Between stops it always
       takes the shortest road through the doors and open boundaries, journals it, and journals every passage
       crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body
-      hits there is journaled as the mission's failure, naming the point.</p>
+      bumps into there becomes a red <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.Learn</code>
+      it); the golem feels for a way past, right then left, and if none fits its body it decides the road again
+      around the marks. Only when no road fits does the mission fail.</p>
       <div class="row" id="places"></div>
       <div class="row">
         <input id="x" type="number" step="0.5" value="5.5">
@@ -129,6 +131,8 @@
         <button data-q="g.Distance('kitchen', 'garage')">Distance(kitchen, garage)</button>
         <button data-q="g.PlaceAt(5.5, 5.5)">PlaceAt(5.5, 5.5)</button>
         <button data-q="g.KnowsWallAt(4.0, 8.5)">KnowsWallAt(4.0, 8.5)</button>
+        <button data-q="g.Marks()">Marks()</button>
+        <button data-q="g.FitsAt(10.25, 5.5)">FitsAt(10.25, 5.5)</button>
         <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextPassage(g.NextId()) 'heading', g.NextIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
@@ -327,6 +331,12 @@ function drawMap() {
       }
       mctx.setLineDash([]); mctx.lineWidth = 2;
     }
+    // marks: where a body touched something the plan does not hold — the map of touches
+    for (const m of (plan.marks || [])) {
+      const r = Math.max(4, m.r / WORLD * w);
+      mctx.fillStyle = 'rgba(224,119,119,0.45)'; mctx.strokeStyle = 'rgba(224,119,119,0.95)'; mctx.lineWidth = 1.5;
+      mctx.beginPath(); mctx.arc(toPx(m.x), toPy(m.y), r, 0, 7); mctx.fill(); mctx.stroke();
+    }
     // doors: a gap in the wall, marked in clay
     for (const d of plan.doors) {
       mctx.strokeStyle = '#dfa563'; mctx.lineWidth = 4;
@@ -402,11 +412,13 @@ async function poll() {
     }
     document.getElementById('contact').textContent =
       b.contact ? `${b.contact.with} · ${b.contact.agoSeconds.toFixed(0)} s ago` : '–';
-    if (!plan) loadMap();
+    // the map grows: marks appear as bodies bump and peers tell — re-read it now and then
+    if (!plan || (++polls % 8) === 0) loadMap();
     drawMap();
   } catch { /* golem restarting — EventSource reconnects on its own */ }
   setTimeout(poll, 500);
 }
+let polls = 0;
 poll();
 </script>
 </body>

@@ -28,18 +28,27 @@ public sealed class HttpBroker : IMessageBroker
     private static readonly HttpClient Wire = new() { Timeout = TimeSpan.FromSeconds(10) };
     private const int RetainedPerTopic = 500;
 
+    // Every frame carries where it came from, and a tell's id is remembered with its origin: the ack
+    // the hearer emits for that tell id goes back to whoever told, not to the one URL a route table
+    // can hold — so several peers can tell the same golem and each gets its own acks.
+    private const string OriginHeader = "golem-origin";
+    private const string TellIdHeader = "puppeteer-tell-id";
+
     private readonly string whoAmI;
+    private readonly Uri myUrl;
     private readonly IReadOnlyDictionary<string, Uri> routes;
     private readonly TimeSpan retryWindow;
     private readonly ConcurrentDictionary<string, List<Action<BrokerRecord>>> local = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, List<BrokerRecord>> retained = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> keyGates = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Uri> originOfTell = new(StringComparer.Ordinal);
 
-    public HttpBroker(string whoAmI, IReadOnlyDictionary<string, Uri> routes, TimeSpan retryWindow)
+    public HttpBroker(string whoAmI, IReadOnlyDictionary<string, Uri> routes, TimeSpan retryWindow, Uri myUrl = null)
     {
         this.whoAmI = whoAmI;
         this.routes = routes;
         this.retryWindow = retryWindow;
+        this.myUrl = myUrl;
     }
 
     // "topic=http://host:port,topic2=http://..." -> route table. Fails fast on a malformed entry.
@@ -89,11 +98,17 @@ public sealed class HttpBroker : IMessageBroker
             return;
         }
 
-        if (!routes.TryGetValue(topic, out Uri peer))
+        // An ack goes back to whoever told; anything else follows the route table.
+        Uri peer = null;
+        if (topic.EndsWith(".acks", StringComparison.Ordinal) && headers != null
+            && headers.TryGetValue(TellIdHeader, out string tellId) && originOfTell.TryRemove(tellId, out Uri origin))
+            peer = origin;
+        if (peer == null && !routes.TryGetValue(topic, out peer))
             throw new InvalidOperationException($"[wire {whoAmI}] no route for topic '{topic}' — bind it in TELL_ROUTES");
 
-        var frame = new Frame(topic, key,
-            headers == null ? new Dictionary<string, string>() : new Dictionary<string, string>(headers), value);
+        var outgoing = headers == null ? new Dictionary<string, string>() : new Dictionary<string, string>(headers);
+        if (myUrl != null) outgoing[OriginHeader] = myUrl.ToString();
+        var frame = new Frame(topic, key, outgoing, value);
         string body = JsonSerializer.Serialize(frame);
 
         // One gate per partition key: records to one instance keep their order.
@@ -149,6 +164,12 @@ public sealed class HttpBroker : IMessageBroker
     // True when at least one local handler consumed it without throwing.
     public bool Deliver(string topic, string key, IReadOnlyDictionary<string, string> headers, string value)
     {
+        // A tell that arrives remembers who told it, so its ack can find the way back.
+        if (headers != null && !topic.EndsWith(".acks", StringComparison.Ordinal)
+            && headers.TryGetValue(TellIdHeader, out string tellId) && headers.TryGetValue(OriginHeader, out string origin)
+            && Uri.TryCreate(origin, UriKind.Absolute, out Uri from))
+            originOfTell[tellId] = from;
+
         var record = new BrokerRecord(topic, key, headers ?? new Dictionary<string, string>(), value);
         var log = retained.GetOrAdd(topic, _ => new List<BrokerRecord>());
         lock (log)
