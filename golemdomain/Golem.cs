@@ -1,95 +1,81 @@
 using System.Globalization;
+using GolemHost.Domain.Geometry;
+using GolemHost.Domain.Plans;
+using GolemHost.Domain.Robots;
+using GolemHost.Domain.Routes;
 
 namespace GolemHost.Domain;
 
 /// <summary>
-/// The golem: the executor that is entrusted missions, carries them out, and keeps how
-/// each one ended. Aggregate root of its journal; refuses a repeated handle.
+/// The golem: the robot's mind — the executor that is entrusted missions, carries them out over its floor
+/// plan with its body, and keeps how each one ended. Aggregate root of its journal (the DSL's <c>g = Golem()</c>);
+/// refuses a repeated handle. Its name is the journal's identity and its estimated position is telemetry: both
+/// come from the host, as the actor's name and as query parameters, never as state here.
 /// </summary>
 internal sealed class Golem
 {
     private readonly List<Mission> missions = new();
-    private readonly Atlas atlas = new();
+    private readonly Body body = new();
+    private readonly FloorPlan plan = new();
+    private readonly List<HeardBump> heard = new();   // peers' bumps, as they told them: who, and where
+    private int idleBumps;       // times something touched the body while it stood without a mission
     private int lastHandle;      // a handle names one mission forever — even after letting go (idempotency keys hang on it)
-    private double speed;        // the body's cruise speed, units/s — a property released into the journal
-    private double linger;       // seconds the golem lingers at every stop a peer told it about
-    private double radius;       // the body's size: the radius of the disk it occupies — a property released into the journal
 
     internal Golem() { }
 
     // ---- the body (issued by upgrade releases) ----
 
     /// <summary>Gives the golem a body: the radius of the disk it occupies, in world units. Returns it.</summary>
-    internal double Embody(double bodyRadius)
-    {
-        if (bodyRadius <= 0) throw new DomainException("a body needs a radius above zero");
-        radius = bodyRadius;
-        return radius;
-    }
+    internal double Embody(double bodyRadius) => body.Embody(bodyRadius);
 
     /// <summary>Sets the body's cruise speed, in world units per second. Returns it.</summary>
-    internal double Cruise(double unitsPerSecond)
-    {
-        if (unitsPerSecond <= 0) throw new DomainException("a body needs a cruise speed above zero");
-        speed = unitsPerSecond;
-        return speed;
-    }
+    internal double Cruise(double unitsPerSecond) => body.Cruise(unitsPerSecond);
 
     /// <summary>Sets how long the golem lingers at every stop a peer told it about — the follower's pacing. Returns it.</summary>
-    internal double Linger(double seconds)
-    {
-        if (seconds < 0) throw new DomainException("a linger cannot be negative");
-        linger = seconds;
-        return linger;
-    }
+    internal double Linger(double seconds) => body.Linger(seconds);
 
     /// <summary>The body's radius; zero until the init release runs (a golem that has no body yet is a point).</summary>
-    internal double Radius() => radius;
-
-    internal double Speed()
-    {
-        if (speed <= 0) throw new DomainException("the golem has no cruise speed yet: the init release must run first");
-        return speed;
-    }
-
-    internal double LingerAfterTold() => linger;
+    internal double Radius() => body.Radius;
+    internal double Speed() => body.Speed();
+    internal double LingerAfterTold() => body.LingerAfterTold;
 
     // ---- the map (issued by upgrade releases, one fluent chain per place) ----
 
     /// <summary>Charts a room of the map. Chain its passages: <c>g.Chart('kitchen', 0, 6, 4, 5).DoorTo('hall', 4, 8.5)</c>.</summary>
-    internal Place Chart(string name, double x, double y, double width, double height) => atlas.AddPlace(name, x, y, width, height);
+    internal Place Chart(string name, double x, double y, double width, double height) => plan.AddPlace(name, x, y, width, height);
 
-    internal int PlaceCount() => atlas.PlaceCount;
-    internal int PassageCount() => atlas.PassageCount;
-    internal bool KnowsPlace(string name) => atlas.Knows(name);
-    internal bool IsOnMap(double x, double y) => atlas.IsOnMap(new Waypoint(x, y));
-    internal string PlaceAt(double x, double y) => atlas.PlaceAt(new Waypoint(x, y)).Name;
+    internal int PlaceCount() => plan.PlaceCount;
+    internal int PassageCount() => plan.PassageCount;
+    internal bool KnowsPlace(string name) => plan.Knows(name);
+    internal bool IsOnMap(double x, double y) => plan.IsOnMap(new Position(x, y));
+    internal string PlaceAt(double x, double y) => plan.PlaceAt(new Position(x, y)).Name;
 
-    /// <summary>The map as objects, for whoever draws it: every place, each knowing its doors, its open boundaries
-    /// and the marks standing in it. A query walks them with foreach and prints their properties —
+    /// <summary>The map as objects, for whoever draws it: every place, each knowing its corners, its walls (with
+    /// their doors), its doors, its open boundaries, the marks standing in it and the obstacles they outline. A
+    /// query walks them with foreach and prints their properties —
     /// <c>foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doors()) { print doors.To 'to'; } }</c>
     /// — so the golem hands out its objects and never renders a document.</summary>
-    internal IReadOnlyList<Place> Places() => atlas.Places;
+    internal IReadOnlyList<Place> Places() => plan.Places;
 
-    /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a boundary of a place that is not
-    /// open, within a tolerance that absorbs the wall's thickness and the pose's error. Touching a known wall is the
-    /// golem's own execution error; touching anything else is reality holding something the map does not.</summary>
-    internal bool KnowsWallAt(double x, double y) => atlas.IsWallAt(new Waypoint(x, y), Atlas.WallTolerance);
+    /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a wall of a place, within a
+    /// tolerance that absorbs the wall's thickness and the pose's error, outside its doorways. Touching a known wall
+    /// is the golem's own execution error; touching anything else is reality holding something the map does not.</summary>
+    internal bool KnowsWallAt(double x, double y) => plan.IsWallAt(new Position(x, y), FloorPlan.WallTolerance);
 
     /// <summary>The shortest road between two places, center to center, through the passages, for this body.</summary>
-    internal double Distance(string from, string to) => atlas.RoadLength(atlas.PlaceNamed(from).Center, atlas.PlaceNamed(to).Center, radius);
+    internal double Distance(string from, string to) => Planner().RoadLength(plan.PlaceNamed(from).Center, plan.PlaceNamed(to).Center);
 
     /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark.</summary>
-    internal bool FitsAt(double x, double y) => atlas.Fits(new Waypoint(x, y), radius);
+    internal bool FitsAt(double x, double y) => plan.Fits(new Position(x, y), body.Radius);
 
     /// <summary>Whether the walls alone leave room for this body at a point — what it asks while feeling around a mark.</summary>
-    internal bool HasRoomAt(double x, double y) => atlas.HasRoom(new Waypoint(x, y), radius);
+    internal bool HasRoomAt(double x, double y) => plan.HasRoom(new Position(x, y), body.Radius);
 
     /// <summary>How many marks the map holds: points where a body touched something the plan does not hold.</summary>
-    internal int MarkCount() => atlas.MarkCount;
+    internal int MarkCount() => plan.MarkCount;
 
     /// <summary>How many things the marks outline: marks close to one another are vertices of one obstacle.</summary>
-    internal int ObstacleCount() => atlas.Obstacles().Count;
+    internal int ObstacleCount() => plan.Obstacles().Count;
 
     /// <summary>Whether every token names a place or a point 'x,y' on the map — what a list of stops must be made of.</summary>
     internal bool AreStops(string[] stops)
@@ -102,10 +88,10 @@ internal sealed class Golem
     // ---- missions: the entrusting ----
 
     /// <summary>The operator sends the golem to a point. A repeated or spent handle is a caller bug.</summary>
-    internal int MoveTo(int id, double x, double y) => Entrust(id, new[] { new Waypoint(x, y) }, following: false, choosesOrder: false);
+    internal int MoveTo(int id, double x, double y) => Entrust(id, new[] { new Position(x, y) }, following: false, choosesOrder: false);
 
     /// <summary>The operator sends the golem to a place: its center.</summary>
-    internal int MoveTo(int id, string place) => Entrust(id, new[] { atlas.PlaceNamed(place).Center }, following: false, choosesOrder: false);
+    internal int MoveTo(int id, string place) => Entrust(id, new[] { plan.PlaceNamed(place).Center }, following: false, choosesOrder: false);
 
     /// <summary>The operator sends the golem through several stops, in this order. A stop is a place name or a point 'x,y'.</summary>
     internal int MoveTo(int id, string[] stops) => Entrust(id, Stops(stops), following: false, choosesOrder: false);
@@ -113,8 +99,10 @@ internal sealed class Golem
     /// <summary>The operator sends the golem through several stops and lets it choose the order that makes the road shortest.</summary>
     internal int Cover(int id, string[] stops) => Entrust(id, Stops(stops), following: false, choosesOrder: true);
 
-    /// <summary>The golem follows its leader to a point a peer says it reached — a mission with a handle of its own.</summary>
-    internal int Follow(double x, double y) => Entrust(NextHandle(), new[] { new Waypoint(x, y) }, following: true, choosesOrder: false);
+    /// <summary>The golem follows its leader to a point a peer says it reached — a mission with a handle of its own.
+    /// (Leader–follower formation by told waypoints, not by sensing the leader: the follower knows where the leader
+    /// WAS, which is why a newer told point supersedes an older one and the host keeps a standoff on arrival.)</summary>
+    internal int Follow(double x, double y) => Entrust(NextHandle(), new[] { new Position(x, y) }, following: true, choosesOrder: false);
 
     // ---- missions: the road ----
 
@@ -125,36 +113,71 @@ internal sealed class Golem
     internal string Plan(int id, double x, double y)
     {
         var mission = Find(id);
-        var from = new Waypoint(x, y);
+        var from = new Position(x, y);
         var ahead = mission.StopsAhead.ToList();
-        var stops = mission.ChoosesOrder ? atlas.BestOrder(from, ahead, radius) : ahead;
-        var legs = atlas.Road(from, stops, radius);
-        return string.Join(" > ", legs.Select(l => $"{l.Name}@{Fmt(l.At.X)},{Fmt(l.At.Y)}"));
+        var planner = Planner();
+        var stops = mission.ChoosesOrder ? planner.BestOrder(from, ahead) : ahead;
+        return planner.Road(from, stops).AsPlan();
     }
 
     /// <summary>The golem decides its road for a mission (the plan as text, so the decision reads in the journal). Returns the number of legs.
     /// The text names doors, openings, detours and stops; how each door is crossed (straight in, straight out) is derived from the
     /// map again. A road is decided a second time only after a bump on it: the journal then reads "bumped, bumped, took another road".</summary>
-    internal int Route(int id, string plan)
+    internal int Route(int id, string road)
     {
-        var legs = atlas.WithDoorCrossings(plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(ParseLeg)
-            .ToList());
-        Find(id).Route(legs);
-        return legs.Count;
+        var trajectory = plan.WithDoorCrossings(Trajectory.Parse(road));
+        Find(id).Route(trajectory);
+        return trajectory.Count;
     }
 
-    /// <summary>The body touched something the map does not hold, at (x, y), on this mission: a mark on the map of
-    /// touches, and a reason to look for another way. Returns the mission id.</summary>
+    /// <summary>The evasion maneuver a strategy ('back-off', 'step-right', 'step-left') plans from where the body
+    /// stands and the heading it had when it touched something: a trajectory to walk with foreach —
+    /// <c>foreach (legs in g.Evasion(@x, @y, @heading, 'step-right').Legs()) { print legs.Name 'leg', legs.At.X 'x', legs.At.Y 'y'; }</c>.
+    /// A read: the host executes it and reports what the body met.</summary>
+    internal Maneuver Evasion(double x, double y, double heading, string strategy) =>
+        EvasionStrategy.Named(strategy).From(new Position(x, y), heading);
+
+    // ---- touches: what the body met that the map does not hold ----
+
+    /// <summary>The body touched something the map does not hold, at (x, y), on this mission. A fact, told to the
+    /// peers: whether it was one of them or an obstacle is settled afterwards (Mark). Returns the mission id.</summary>
     internal int Bump(int id, double x, double y)
     {
         Find(id).Bump();
-        atlas.AddMark(new Waypoint(x, y));
         return id;
     }
 
-    /// <summary>A peer says a body touched something at (x, y): the golem learns the mark without the bruise. Returns how many marks it holds.</summary>
-    internal int Learn(double x, double y) => atlas.AddMark(new Waypoint(x, y));
+    /// <summary>Something touched the body at (x, y) while it stood without a mission — a peer, most likely; told
+    /// to the peers so the one that moved knows it met a body. Returns how many such touches so far.</summary>
+    internal int Bump(double x, double y) => ++idleBumps;
+
+    /// <summary>A peer says it bumped at (x, y): heard and kept, so a touch of my own there and then is known to be that peer.</summary>
+    internal int Hear(string who, double x, double y)
+    {
+        heard.Add(new HeardBump(who, new Position(x, y)));
+        return heard.Count;
+    }
+
+    /// <summary>The golem concludes what it touched was an obstacle (no peer bumped there and then): a mark on the map,
+    /// told to the peers. Returns how many marks it holds.</summary>
+    internal int Mark(double x, double y) => plan.AddMark(new Position(x, y));
+
+    /// <summary>A peer says an obstacle stands at (x, y): the golem learns the mark without the bruise. Returns how many marks it holds.</summary>
+    internal int Learn(double x, double y) => plan.AddMark(new Position(x, y));
+
+    internal int HeardCount() => heard.Count;
+    /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a body's diameter and change; "" for nobody.
+    /// (Robotics resolves two bodies meeting with reciprocal velocity obstacles — van den Berg, Lin &amp; Manocha,
+    /// ICRA 2008; ORCA 2011 — each taking half the avoidance from what it senses of the other. Our bodies sense
+    /// nothing but a touch, so they resolve it by speech: both tell the fact, and a deterministic rule in the host
+    /// decides who yields. Same problem, solved with the puppet's means.)</summary>
+    internal string HeardNear(double x, double y, int sinceCount)
+    {
+        var at = new Position(x, y);
+        for (int i = heard.Count - 1; i >= sinceCount && i >= 0; i--)
+            if (heard[i].At.DistanceTo(at) <= 1.2) return heard[i].Who;
+        return "";
+    }
 
     /// <summary>The golem crossed the next passage of its road. Returns the mission id.</summary>
     internal int Cross(int id, string passage)
@@ -225,14 +248,15 @@ internal sealed class Golem
     /// <summary>The road through every stop still ahead, in the order they will run, through the map's passages. Zero with one stop or none.</summary>
     internal double RouteLength()
     {
+        var planner = Planner();
         double road = 0;
-        Waypoint previous = null;
+        Position previous = null;
         foreach (Mission m in missions)
         {
             if (!m.IsPending()) continue;
             foreach (var stop in m.StopsAhead)
             {
-                if (previous != null) road += atlas.RoadLength(previous, stop, radius);
+                if (previous != null) road += planner.RoadLength(previous, stop);
                 previous = stop;
             }
         }
@@ -240,19 +264,22 @@ internal sealed class Golem
     }
 
     /// <summary>Seconds to run the whole pending route at the body's speed, lingering at every told stop. Answerable with no parameters.</summary>
-    internal double RouteSeconds() => RouteLength() / Speed() + FollowingCount() * linger;
+    internal double RouteSeconds() => RouteLength() / Speed() + FollowingCount() * body.LingerAfterTold;
 
-    /// <summary>The road still ahead for a body standing at (x, y): to the first stop ahead through the passages, then the route.</summary>
+    /// <summary>The road still ahead for a body standing at (x, y): to the first stop ahead through the passages, then the
+    /// route. When no road fits the body (marks closing every way), the distance as the crow flies: a read never refuses.</summary>
     internal double DistanceLeft(double x, double y)
     {
         if (!HasPendingMission()) return 0;
         var first = NextPending().StopsAhead.FirstOrDefault();
         if (first == null) return RouteLength();
-        return atlas.RoadLength(new Waypoint(x, y), first, radius) + RouteLength();
+        var here = new Position(x, y);
+        try { return Planner().RoadLength(here, first) + RouteLength(); }
+        catch (DomainException) { return here.DistanceTo(first) + RouteLength(); }
     }
 
     /// <summary>Seconds until every pending mission is done, for a body standing at (x, y), at the body's speed and with its lingers.</summary>
-    internal double SecondsLeft(double x, double y) => DistanceLeft(x, y) / Speed() + FollowingCount() * linger;
+    internal double SecondsLeft(double x, double y) => DistanceLeft(x, y) / Speed() + FollowingCount() * body.LingerAfterTold;
 
     // ---- reads (guarded: consult HasPendingMission() first) ----
 
@@ -269,12 +296,15 @@ internal sealed class Golem
 
     // ---- inside ----
 
-    private int Entrust(int id, IReadOnlyList<Waypoint> stops, bool following, bool choosesOrder)
+    // The planner for this body over this plan: the plan's geometry and the body's radius, distance as the cost.
+    private RoutePlanner Planner() => new(plan, body.Radius);
+
+    private int Entrust(int id, IReadOnlyList<Position> stops, bool following, bool choosesOrder)
     {
         if (Knows(id)) throw new DomainException($"mission {id} already exists");
         if (id <= lastHandle) throw new DomainException($"handle {id} was already spent: handles are never reused");
         foreach (var stop in stops)
-            if (atlas.PlaceCount > 0 && !atlas.IsOnMap(stop))
+            if (plan.PlaceCount > 0 && !plan.IsOnMap(stop))
                 throw new DomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
         missions.Add(new Mission(id, stops, following, choosesOrder));
         lastHandle = id;
@@ -282,40 +312,29 @@ internal sealed class Golem
     }
 
     // A stop is a place name or a point 'x,y'; either way it must be on the map.
-    private List<Waypoint> Stops(string[] tokens)
+    private List<Position> Stops(string[] tokens)
     {
         if (tokens == null || tokens.Length == 0) throw new DomainException("a mission needs at least one stop");
-        var stops = new List<Waypoint>();
+        var stops = new List<Position>();
         foreach (var token in tokens)
             stops.Add(TryStop(token) ?? throw new DomainException($"'{token}' is neither a place nor a point x,y on the map"));
         return stops;
     }
 
-    private Waypoint TryStop(string token)
+    private Position TryStop(string token)
     {
         if (token == null) return null;
         token = token.Trim();
-        if (atlas.Knows(token)) return atlas.PlaceNamed(token).Center;
+        if (plan.Knows(token)) return plan.PlaceNamed(token).Center;
         var xy = token.Split(',');
         if (xy.Length == 2
             && double.TryParse(xy[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double x)
             && double.TryParse(xy[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double y))
         {
-            var at = new Waypoint(x, y);
-            return atlas.IsOnMap(at) ? at : null;
+            var at = new Position(x, y);
+            return plan.IsOnMap(at) ? at : null;
         }
         return null;
-    }
-
-    private static Leg ParseLeg(string token)
-    {
-        int at = token.LastIndexOf('@');
-        if (at <= 0) throw new DomainException($"a leg reads name@x,y — not '{token}'");
-        var xy = token[(at + 1)..].Split(',');
-        if (xy.Length != 2) throw new DomainException($"a leg reads name@x,y — not '{token}'");
-        return new Leg(new Waypoint(
-            double.Parse(xy[0], CultureInfo.InvariantCulture),
-            double.Parse(xy[1], CultureInfo.InvariantCulture)), token[..at]);
     }
 
     private Mission NextPending()

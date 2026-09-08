@@ -71,7 +71,28 @@ public sealed class StopReached : IDispatchMessage
         $"{id}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}";
 }
 
-// The body touched something the map does not hold, on a mission's road: a mark on the map of touches.
+// The golem concluded a touch was an obstacle: a mark on the map of touches.
+public sealed class ObstacleMarked : IDispatchMessage
+{
+    public static int TypeId => 'M';
+    public double X { get; private init; }
+    public double Y { get; private init; }
+
+    public static IDispatchMessage Deserialize(string raw)
+    {
+        var parts = raw[1..].Split('|');
+        return new ObstacleMarked
+        {
+            X = double.Parse(parts[0], CultureInfo.InvariantCulture),
+            Y = double.Parse(parts[1], CultureInfo.InvariantCulture)
+        };
+    }
+
+    public static string Payload(double x, double y) =>
+        $"{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}";
+}
+
+// The body touched something the map does not hold — on a mission's road (Id > 0), or while standing idle (Id 0).
 public sealed class MissionBumped : IDispatchMessage
 {
     public static int TypeId => 'B';

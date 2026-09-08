@@ -37,13 +37,15 @@ in [CLAUDE.md](CLAUDE.md).
 - **The world is real.** Walls, doors, solid blocks and the bodies are physical. A body that touches
   something is told so by the simulator's contact sensor. The golem reckons where the touch happened
   (its pose plus its own radius) and holds that point against its map: a wall it knows is its own
-  execution error, so it backs off and tries the leg again; a peer is a body that moves, so it yields
-  and waits; anything else becomes a mark on its map (`g.Bump(1, 10.2, 5.8)`), told to every peer
-  (`g.Learn`), and the golem feels for a way past, right then left, before deciding its road again
-  around the marks. Only when no road fits its body does the mission fail.
+  execution error, so it backs off and tries the leg again; anything else is a touch it journals and
+  tells (`g.Bump(1, 4.5, 9.5)`), then listens: a peer that says it bumped there and then is a body,
+  not a thing — the two coordinate (the name that sorts first has the way, the other backs down its
+  lane and steps aside), and no mark is made; nobody? then it was an obstacle, a mark on its map
+  (`g.Mark`), told to every peer (`g.Learn`), and the golem feels for a way past, right then left,
+  before deciding its road again around the marks. Only when no road fits its body does the mission fail.
 - **The map is knowledge.** Each golem carries a floor plan in its journal (release `map_v1`) and plans
-  the shortest road through doors and open boundaries. The map does not know about the crate in the east
-  corridor — that is the point.
+  the shortest road through doors and open boundaries. The map does not know about the crate standing in
+  the middle of the center hall — that is the point.
 - **The journal is the only truth.** Pose and contacts are ephemeral telemetry. Transitions are journaled:
   `MoveTo`, `Cover`, `Follow` (the entrusting), `Route` (the road decided), `Cross` and `Reach` (progress; the
   last stop reached completes the mission), `Fail` and `Abandon` (the ending). Kill a golem mid-mission and
@@ -86,9 +88,10 @@ curl -X POST localhost:8082/move  -H "Content-Type: application/json" -d "{\"sto
 curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"stops\": [\"garage\", \"kitchen\", \"storage\"]}"
 ```
 
-Its shortest road from the storage to the garage is the east corridor, where a crate the map never heard
-of stands — the journal will say so. The panels do the same with a stop composer: click rooms or press
-places to collect stops, then *MoveTo* or *Cover*.
+Its shortest road from the kitchen to the garage cuts through the center hall, where a crate the map never
+heard of stands — the journal will say so: a mark, a few steps aside to feel for a way past it, and either
+the way found or another road. The panels do the same with a stop composer: click rooms or press places
+to collect stops, then *MoveTo* or *Cover*.
 
 To watch the physics without the picture (the GUI's software rendering costs five or six CPU cores),
 set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
@@ -116,7 +119,9 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Route(id, plan)` | The road decided from where the body stands, passages and stops in order: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. Between stops it is always the shortest road. |
 | `Cross(id, passage)` | A door or open boundary crossed. |
 | `Reach(id, x, y)` | A stop reached. Reaching the last one completes the mission — there is no separate "complete". |
-| `Bump(id, x, y)` | The body touched something the map does not hold: a **mark** on the map of touches. The golem then feels for a way past (a step right, then left, a body's width at a time) and, failing that, decides its road again around the marks. |
+| `Bump(id, x, y)` · `Bump(x, y)` | The body touched something the map does not hold — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is settled afterwards. |
+| `Hear(who, x, y)` | A peer told it bumped at a point. A touch of my own there and then was that peer: a body, not a thing. |
+| `Mark(x, y)` | Nobody else bumped there: the touch was an obstacle, a **mark** on the map of touches, told to every peer. The golem then feels for a way past (a step right, then left, a body's width at a time) and, failing that, decides its road again around the marks. |
 | `Learn(x, y)` | A peer told of a mark: the golem learns it without the bruise, and plans around it too. |
 | `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
 | `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
@@ -162,9 +167,11 @@ it touches next.
 
 ## Where this stands
 
-Verified live on 7 September 2026: two golems, real doors crossed straight, the follower stopping short
-of the leader, a bump against a known wall recovered and retried, a real collision with an obstacle the
-map does not know, journaled with its cause and its place. Next, in the PLAN: exploring space beyond the
-map (with a lidar rather than by bumping), then learning discovered obstacles, telling peers about them
-and replanning. Open decisions: the follower's pause versus catching up, GPU rendering for the kiosk,
-Nav2 as the navigator on a real robot.
+Verified live on 8 September 2026: red sent through the kitchen to the garage meets blue head-on in a
+doorway — both journal the touch, each hears the other's, nobody marks anything, blue passes by name and
+red gives way, then re-decides its road and crosses; in the center hall red bumps the crate three times
+with nobody else bumping, marks its north face as a three-vertex figure, told to blue and green, and
+feels past it on the right; blue follows to the garage around the freshly learned marks. Next, in the
+PLAN: marks that expire, the obstacle's outline as planning geometry, exploring space beyond the map
+(with a lidar rather than by bumping). Open decisions: the follower's pause versus catching up, GPU
+rendering for the kiosk, Nav2 as the navigator on a real robot.

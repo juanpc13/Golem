@@ -88,20 +88,35 @@ public sealed class GolemChoreography
             bindings.Bind(peer, $"tell-{peer}");
         perf.UseTellTransport(new BrokerTellTransport(wire, bindings, golem));
 
-        // What the body bumps into is news for every peer: a mark they can plan around without the
-        // bruise. One tell per peer in one entry (several statements: no single-tell elision).
+        // What the body bumps into is news for every peer, twice over. First the touch itself, with my
+        // name: a peer that bumped there and then knows it met ME, not a thing. Then, once I conclude it
+        // was a thing, the mark: something they can plan around without the bruise. One tell per peer in
+        // one entry (several statements: no single-tell elision), one once-id per addressee (the same id
+        // twice would make the second tell a duplicate).
         if (peers.Count > 0)
         {
-            // one once-id per addressee: the same id twice would make the second tell a duplicate
-            string tells = string.Join("\n", peers.Select(p =>
-                $"tell ObstacleFound with @x, @y to {p} once 'obstacle-' + @missionId + '-' + @x + ',' + @y + '-{p}';"));
+            // The bump command exposes the point and my name onto its own entry (a literal in a
+            // `with` clause has no name a peer could bind): one match serves a bump on a mission's
+            // road and a touch while standing idle alike.
+            string bumped = string.Join("\n", peers.Select(p =>
+                $"tell BumpedAt with @x, @y, @who to {p} once 'bump-' + @who + '-' + @x + ',' + @y + '-{p}';"));
             perf.Actor.Reactions.DefineReaction("echo-bumped")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Bumped").One()
                     .OnMatch(@"
-                        [_:Golem].Bump($missionId, $x, $y)
+                        expose $x x, $y y, $who who;
                     ")
-                .Causation.Continue(tells);
+                .Causation.Continue(bumped);
+
+            string marked = string.Join("\n", peers.Select(p =>
+                $"tell ObstacleFound with @x, @y to {p} once 'obstacle-{golem}-' + @x + ',' + @y + '-{p}';"));
+            perf.Actor.Reactions.DefineReaction("echo-marked")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Marked").One()
+                    .OnMatch(@"
+                        [_:Golem].Mark($x, $y)
+                    ")
+                .Causation.Continue(marked);
         }
 
         if (tellDoneTo == null) return;
@@ -214,23 +229,55 @@ public sealed class GolemChoreography
             Settle(refused, $"mission {m.Id} takes the road {m.Plan}");
         });
 
-        // A bump: the body touched something the map does not hold. Repeated per touch.
+        // A bump: the body touched something the map does not hold — on a mission's road, or standing idle
+        // (id 0). Repeated per touch. What it was is settled afterwards, by what the peers say.
         dispatch.On<MissionBumped>((actor, m) =>
         {
+            if (m.Id == 0)
+            {
+                actor.Using(@"
+                    g.Bump(@x, @y);
+                    expose @x x, @y y, @me who;
+                ")
+                .WithParameters(p => {
+                    p["x",  typeof(double)] = m.X;
+                    p["y",  typeof(double)] = m.Y;
+                    p["me", typeof(string)] = golem;
+                })
+                .PerformCommand();
+                Console.WriteLine($"[golem {golem}] touched at ({m.X:0.0}, {m.Y:0.0}) while standing idle (entry {perf.CurrentEntryId})");
+                return;
+            }
             string refused = actor.Using(
                 @"
                     Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                 ",
                 @"
                     g.Bump(@id, @x, @y);
+                    expose @x x, @y y, @me who;
                 ")
             .WithParameters(p => {
                 p["id", typeof(int)]    = m.Id;
                 p["x",  typeof(double)] = m.X;
                 p["y",  typeof(double)] = m.Y;
+                p["me", typeof(string)] = golem;
             })
             .PerformCheckThenCommand();
-            Settle(refused, $"mission {m.Id} bumped into something at ({m.X:0.0}, {m.Y:0.0}): a mark on the map");
+            Settle(refused, $"mission {m.Id} bumped into something at ({m.X:0.0}, {m.Y:0.0})");
+        });
+
+        // A mark: the golem concluded a touch was an obstacle (nobody else bumped there and then).
+        dispatch.On<ObstacleMarked>((actor, m) =>
+        {
+            actor.Using(@"
+                g.Mark(@x, @y);
+            ")
+            .WithParameters(p => {
+                p["x", typeof(double)] = m.X;
+                p["y", typeof(double)] = m.Y;
+            })
+            .PerformCommand();
+            Console.WriteLine($"[golem {golem}] marked an obstacle at ({m.X:0.0}, {m.Y:0.0}) (entry {perf.CurrentEntryId})");
         });
 
         // Once-per-mission decisions are steps of ONE run per mission: a Saga keyed by mission id
@@ -281,6 +328,8 @@ public sealed class GolemChoreography
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
                 .Command("g.Follow(@x, @y);")
+            .Told("BumpedAt").With<double>("x").With<double>("y").With<string>("who")
+                .Command("g.Hear(@who, @x, @y);")
             .Told("ObstacleFound").With<double>("x").With<double>("y")
                 .Command("g.Learn(@x, @y);")
             .Start();
@@ -302,6 +351,7 @@ public sealed class GolemChoreography
             "crossed"   => PassageCrossed.TypeId,
             "reached"   => StopReached.TypeId,
             "bumped"    => MissionBumped.TypeId,
+            "marked"    => ObstacleMarked.TypeId,
             "abandoned" => MissionAbandoned.TypeId,
             "failed"    => MissionFailed.TypeId,
             "letgo"     => EverythingLetGo.TypeId,
@@ -391,12 +441,15 @@ public sealed class GolemChoreography
         string announcedLeg = null;
         int wallBumps = 0;     // known walls bumped on the current leg
         int yields = 0;        // times the golem waited for a peer on the current leg
+        int marksAtRoute = -1; // how many marks the map held when the current road was decided
+        bool gaveWay = false;  // the body moved off its road to let a peer pass: the road is decided again from where it stands
         Probe probe = null;    // the feeling-past state on the current leg, after a bump into the unknown
         while (!ct.IsCancellationRequested)
         {
             var plan = ReadPlan();
             if (!plan.Has)
             {
+                await MakeRoomIfBumpedAsync(ct);
                 await Task.Delay(TimeSpan.FromSeconds(2), ct);
                 continue;
             }
@@ -415,10 +468,12 @@ public sealed class GolemChoreography
             }
 
             // The road is decided when the mission comes up — and decided AGAIN when the body bumped into
-            // something on it and feeling past it, right and left, found no way: the marks are on the map
-            // now, and the next road skirts them or goes round; when no road fits the body, the mission fails.
+            // something on it, the map holds marks it did not hold when the road was decided (a bump that
+            // turned out to be a peer leaves none: same road), and feeling past it, right and left, found
+            // no way: the next road skirts the marks or goes round; when no road fits the body, the mission fails.
             bool feltEverything = probe != null && probe.MissionId == plan.Id && probe.Exhausted;
-            if (!plan.Routed || (plan.BumpedSinceRoute && (probe == null || probe.MissionId != plan.Id || feltEverything)))
+            bool newMarks = marksAtRoute < 0 || Marks() != marksAtRoute;
+            if (!plan.Routed || (plan.BumpedSinceRoute && (newMarks || gaveWay) && (probe == null || probe.MissionId != plan.Id || feltEverything)))
             {
                 var here = ros.LatestPose;
                 if (here == null) { await Task.Delay(200, ct); continue; }
@@ -438,6 +493,8 @@ public sealed class GolemChoreography
                 feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: {verb} {road}", DateTime.UtcNow));
                 Produce("routed", $"{key}:routed:{plan.Bumps}", MissionRouted.Payload(plan.Id, road));
                 await WaitUntilAsync(() => IsRouted(plan.Id) && !HasBumpedSinceRoute(plan.Id), ct);
+                marksAtRoute = Marks();
+                gaveWay = false;
                 probe = null;
                 continue;
             }
@@ -461,6 +518,12 @@ public sealed class GolemChoreography
             // A door is crossed straight: line up in front of it, then run through to the far side.
             // The map says where those two points are; an opening or a stop is a single run.
             Outcome outcome = Outcome.Arrived;
+            heardAtDriveStart = HeardCount();
+            var from = ros.LatestPose;
+            if (from != null)
+                lane = (plan.ApproachX != plan.ExitX || plan.ApproachY != plan.ExitY)
+                    ? Math.Atan2(plan.ExitY - plan.ApproachY, plan.ExitX - plan.ApproachX)
+                    : Math.Atan2(plan.ExitY - from.Y, plan.ExitX - from.X);
             if (plan.ApproachX != plan.ExitX || plan.ApproachY != plan.ExitY)
                 outcome = await navigator.GoToAsync(plan.ApproachX, plan.ApproachY, LineUpWithin, ct);
             if (outcome.Reached && !ct.IsCancellationRequested)
@@ -472,9 +535,9 @@ public sealed class GolemChoreography
                 string reason = outcome.Reason;
                 if (outcome.Hit != null)
                 {
-                    // The world said "you touched something". The golem holds the point against ITS map.
-                    // A wall it knows is its own execution error — it has backed off, so it lines up and
-                    // tries the leg again (runtime, nothing to journal) until patience runs out.
+                    // The world said "you touched something". The golem holds the point against ITS map first:
+                    // a wall it knows (not a doorway) is its own execution error — it has backed off, so it lines
+                    // up and tries the leg again (runtime, nothing to journal) until patience runs out.
                     string where = $"({outcome.Hit.X:0.0}, {outcome.Hit.Y:0.0})";
                     if (KnowsWallAt(outcome.Hit.X, outcome.Hit.Y))
                     {
@@ -488,33 +551,32 @@ public sealed class GolemChoreography
                         }
                         reason = $"still bumping into {outcome.Hit.With} at {where} after {RetriesAfterBump} tries";
                     }
-                    else if (peers.Contains(outcome.Hit.With) || outcome.Hit.With == tellDoneTo)
-                    {
-                        // A peer: a body the golem knows by name (its fleet), and one that moves. Not a mark —
-                        // yield a while and try the leg again; give the mission up only after several yields.
-                        if (yields < MaxYields)
-                        {
-                            yields++;
-                            string wait = $"mission {plan.Id}: bumped into {outcome.Hit.With} at {where}, a peer — yielding {Yield.TotalSeconds:0} s, {yields}/{MaxYields}";
-                            Console.WriteLine($"[golem {golem}] {wait}");
-                            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", wait, DateTime.UtcNow));
-                            await Task.Delay(Yield, ct);
-                            continue;
-                        }
-                        reason = $"blocked by {outcome.Hit.With} at {where} after yielding {MaxYields} times";
-                    }
                     else
                     {
-                        // Something the map does not hold: a mark on the map (journaled, told to the peers),
-                        // then the golem feels for a way past it. A step aside found: the leg again from there.
-                        // Both sides given up: the loop above decides the road anew with the marks it has.
-                        await BumpAsync(plan.Id, key, outcome.Hit, ct);
-                        probe ??= new Probe(plan.Id, plan.Passage, ros.LatestPose?.Theta ?? 0);
-                        if (await FeelForAWayPastAsync(plan.Id, key, probe, ct)) continue;
-                        string give = $"mission {plan.Id}: no way past by feel, {probe.RightSteps} steps right and {probe.LeftSteps} left — deciding the road again with {Marks()} marks";
-                        Console.WriteLine($"[golem {golem}] {give}");
-                        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", give, DateTime.UtcNow));
-                        continue;
+                        // Something the map does not hold. The touch is journaled and told; then the golem
+                        // listens: did a peer bump there and then? A peer is a body that moves — coordinate,
+                        // never mark. Nobody? Then it is an obstacle: a mark (journaled, told), and the golem
+                        // feels for a way past it; both sides given up, the loop above decides the road anew.
+                        string who = await BumpAndListenAsync(plan.Id, key, outcome.Hit, ct);
+                        if (who != "")
+                        {
+                            if (yields < MaxYields)
+                            {
+                                yields++;
+                                if (await CoordinateWithAsync(plan.Id, who, where, yields, ct)) gaveWay = true;
+                                continue;
+                            }
+                            reason = $"blocked by {who} at {where} after yielding {MaxYields} times";
+                        }
+                        else
+                        {
+                            probe ??= new Probe(plan.Id, plan.Passage, ros.LatestPose?.Theta ?? 0);
+                            if (await FeelForAWayPastAsync(plan.Id, key, probe, ct)) continue;
+                            string give = $"mission {plan.Id}: no way past by feel, {probe.RightSteps} steps right and {probe.LeftSteps} left — deciding the road again with {Marks()} marks";
+                            Console.WriteLine($"[golem {golem}] {give}");
+                            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", give, DateTime.UtcNow));
+                            continue;
+                        }
                     }
                 }
                 Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, reason));
@@ -542,16 +604,18 @@ public sealed class GolemChoreography
             // Pacing: a stop a peer told us about is a stop that peer is already past. Lingering there
             // a while keeps the leader's lead. How long is the golem's own property (the init release);
             // the pause itself is runtime — the mission is settled and nothing about the wait belongs
-            // in the journal.
+            // in the journal. And the follower pulls over first: its standoff spot lies on the line the
+            // leader walked in on, which is the line the leader walks out on.
             if (plan.Following)
             {
+                await PullOverAsync(ct);
                 var hold = TimeSpan.FromSeconds(LingerAfterTold());
                 if (hold > TimeSpan.Zero)
                 {
                     Console.WriteLine($"[golem {golem}] lingering {hold.TotalSeconds:0} s at ({plan.X:0.0}, {plan.Y:0.0}) to keep the leader's lead");
                     feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
                         $"lingering {hold.TotalSeconds:0} s at ({plan.X:0.0}, {plan.Y:0.0}) to keep the leader's lead", DateTime.UtcNow));
-                    await Task.Delay(hold, ct);
+                    await StandAsync(hold, ct);
                 }
             }
         }
@@ -587,14 +651,123 @@ public sealed class GolemChoreography
     // be past a mark's reach and its own body, so a thing the size of itself is left behind.
     private const double AheadRun = 1.2;   // m
 
-    private async Task BumpAsync(int id, string key, Collision hit, CancellationToken ct)
+    // How long the golem listens, after telling its bump, for a peer telling a bump there and then.
+    private static readonly TimeSpan Listen = TimeSpan.FromMilliseconds(2500);
+
+    // The touch protocol (Juan, 8-sep): journal the bump (the reaction tells every peer, with my name), then
+    // listen for a peer's bump near the same point. One heard: it was that peer. None: it was an obstacle —
+    // journal the mark (the reaction tells every peer, who learn it). Returns the peer's name, or "".
+    private int heardAtDriveStart;   // peers' bumps heard before the current drive began are older news than this touch
+
+    private async Task<string> BumpAndListenAsync(int id, string key, Collision hit, CancellationToken ct)
     {
+        int since = heardAtDriveStart;
         int before = Bumps(id);
-        string note = $"mission {id}: bumped into {hit.With} at ({hit.X:0.0}, {hit.Y:0.0}) — nothing on my map there: a mark";
+        string note = $"mission {id}: bumped into something at ({hit.X:0.0}, {hit.Y:0.0}) — nothing on my map there; telling the peers and listening";
         Console.WriteLine($"[golem {golem}] {note}");
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
         Produce("bumped", $"{key}:bump:{before + 1}", MissionBumped.Payload(id, hit.X, hit.Y));
         await WaitUntilAsync(() => Bumps(id) > before, ct);
+
+        var until = DateTime.UtcNow + Listen;
+        string who = HeardNear(hit.X, hit.Y, since);   // a peer may have told first, during this very drive
+        while (who == "" && DateTime.UtcNow < until && !ct.IsCancellationRequested)
+        {
+            await Task.Delay(250, ct);
+            who = HeardNear(hit.X, hit.Y, since);
+        }
+        if (who != "")
+        {
+            string peer = $"mission {id}: {who} bumped there too — it was {who}, a body, not a thing";
+            Console.WriteLine($"[golem {golem}] {peer}");
+            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", peer, DateTime.UtcNow));
+            return who;
+        }
+        int marksBefore = Marks();
+        string mark = $"mission {id}: nobody else bumped there — an obstacle: a mark at ({hit.X:0.0}, {hit.Y:0.0}), told to the peers";
+        Console.WriteLine($"[golem {golem}] {mark}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", mark, DateTime.UtcNow));
+        Produce("marked", $"{golem}:mark:{hit.X:0.00},{hit.Y:0.00}:{DateTime.UtcNow.Ticks}", ObstacleMarked.Payload(hit.X, hit.Y));
+        await WaitUntilAsync(() => Marks() >= marksBefore, ct);
+        return "";
+    }
+
+    // Two bodies met. No talk needed once both know it: the one whose name sorts first has the way and
+    // waits a moment for the other to clear; the other gives way — backs out the way it came (a doorway
+    // is only free when the body leaves it), then steps off the line it was on, so the first can pass
+    // and go on to wherever it was going — and waits long enough for it to pass.
+    private static readonly TimeSpan WaitForTheWay = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan GiveWay = TimeSpan.FromSeconds(10);
+    private const double BackAway = 0.9;   // m: more than a body's length out of the other's way
+
+    // True when this body moved off its road to give way.
+    private async Task<bool> CoordinateWithAsync(int id, string who, string where, int yield, CancellationToken ct)
+    {
+        bool mine = string.CompareOrdinal(golem, who) < 0;
+        string note = mine
+            ? $"mission {id}: met {who} at {where} — the way is mine by name; waiting {WaitForTheWay.TotalSeconds:0} s for {who} to clear, {yield}/{MaxYields}"
+            : $"mission {id}: met {who} at {where} — {who} has the way by name; giving way and waiting {GiveWay.TotalSeconds:0} s, {yield}/{MaxYields}";
+        Console.WriteLine($"[golem {golem}] {note}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
+        bool moved = false;
+        if (!mine)
+        {
+            moved |= await BackAwayAsync(ct);
+            moved |= await StepAsideAsync(right: false, ct);
+        }
+        await StandAsync(mine ? WaitForTheWay : GiveWay, ct);
+        return moved;
+    }
+
+    // Standing still for a while — and telling any touch meanwhile: whoever moved into me must hear it met a body.
+    private async Task StandAsync(TimeSpan span, CancellationToken ct)
+    {
+        var until = DateTime.UtcNow + span;
+        var seen = ros.LatestContact?.At ?? DateTime.MinValue;
+        while (DateTime.UtcNow < until && !ct.IsCancellationRequested)
+        {
+            await Task.Delay(250, ct);
+            var touch = ros.LatestContact;
+            if (touch == null || touch.At <= seen) continue;
+            seen = touch.At;
+            TellTouchedStanding();
+        }
+    }
+
+    private DateTime lastToldStanding = DateTime.MinValue;
+
+    // The touch of a standing body is a fact worth telling (idle overload of Bump), at most once a second.
+    private void TellTouchedStanding()
+    {
+        if (DateTime.UtcNow - lastToldStanding < TimeSpan.FromSeconds(1)) return;
+        lastToldStanding = DateTime.UtcNow;
+        var pose = ros.LatestPose;
+        if (pose == null) return;
+        double r = Radius();
+        double hx = pose.X + r * Math.Cos(pose.Theta), hy = pose.Y + r * Math.Sin(pose.Theta);
+        Produce("bumped", $"{golem}:standing-bump:{DateTime.UtcNow.Ticks}", MissionBumped.Payload(0, hx, hy));
+        string note = $"touched while standing at ({hx:0.0}, {hy:0.0}) — telling the peers";
+        Console.WriteLine($"[golem {golem}] {note}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
+    }
+
+    // Back down the lane the way the body came, if it fits there. True when it moved.
+    private async Task<bool> BackAwayAsync(CancellationToken ct)
+    {
+        var pose = ros.LatestPose;
+        if (pose == null) return false;
+        double tx = pose.X - BackAway * Math.Cos(lane), ty = pose.Y - BackAway * Math.Sin(lane);
+        if (!FitsAt(tx, ty)) return false;
+        Console.WriteLine($"[golem {golem}] backing away to ({tx:0.0}, {ty:0.0})");
+        await navigator.GoToAsync(tx, ty, 0.15, ct);
+        return true;
+    }
+
+    // The old shape: a bump that is an obstacle without asking — used while feeling past one already found.
+    private async Task BumpAsync(int id, string key, Collision hit, CancellationToken ct)
+    {
+        string who = await BumpAndListenAsync(id, key, hit, ct);
+        if (who != "") await CoordinateWithAsync(id, who, $"({hit.X:0.0}, {hit.Y:0.0})", 1, ct);
     }
 
     // True when a step aside succeeded (the leg is worth trying again from there); false when both sides are given up.
@@ -626,31 +799,100 @@ public sealed class GolemChoreography
             string trying = $"mission {id}: feeling for a way past — a step {side} to ({tx:0.0}, {ty:0.0})";
             Console.WriteLine($"[golem {golem}] {trying}");
             feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", trying, DateTime.UtcNow));
+            heardAtDriveStart = HeardCount();
             var step = await navigator.GoToAsync(tx, ty, 0.12, ct);
             if (right) probe.RightSteps++; else probe.LeftSteps++;
             if (!step.Reached)
             {
-                // the step itself met something: if it was unknown (and not a peer), that is a mark too; either way this side is done
-                if (step.Hit != null && !KnowsWallAt(step.Hit.X, step.Hit.Y) && !IsPeer(step.Hit.With))
+                // the step itself met something: if it was not a wall, it is told and settled (a peer, or a mark); either way this side is done
+                if (step.Hit != null && !KnowsWallAt(step.Hit.X, step.Hit.Y))
                     await BumpAsync(id, key, step.Hit, ct);
                 if (right) probe.RightDone = true; else probe.LeftDone = true;
                 continue;
             }
 
-            // in the new lane, run ahead past where the thing was before going back to the leg;
-            // a hit here is another mark and the end of this side, a clear run means "try the leg again"
+            // in the new lane, run ahead past where the thing was before going back to the leg. A clear run
+            // means "try the leg again from here". A hit here means the thing is wider than one step: another
+            // mark, and the next step goes further out on the SAME side — the side is given up only when a
+            // step itself is blocked or the steps run out.
             double ax = tx + AheadRun * Math.Cos(th), ay = ty + AheadRun * Math.Sin(th);
             if (!HasRoomAt(ax, ay)) return true;   // no lane ahead: still, the leg is worth trying from here
+            heardAtDriveStart = HeardCount();
             var run = await navigator.GoToAsync(ax, ay, 0.2, ct);
             if (run.Reached) return true;
-            if (run.Hit != null && !KnowsWallAt(run.Hit.X, run.Hit.Y) && !IsPeer(run.Hit.With))
-                await BumpAsync(id, key, run.Hit, ct);
-            if (right) probe.RightDone = true; else probe.LeftDone = true;
+            if (run.Hit == null) { if (right) probe.RightDone = true; else probe.LeftDone = true; continue; }   // a stall or a timeout: this side is not working
+            if (KnowsWallAt(run.Hit.X, run.Hit.Y)) { if (right) probe.RightDone = true; else probe.LeftDone = true; continue; }
+            await BumpAsync(id, key, run.Hit, ct);
         }
         return false;
     }
 
-    private bool IsPeer(string name) => peers.Contains(name) || name == tellDoneTo;
+    // ------------------------------------------------------------------
+    // Bodies sharing a floor. Small courtesies keep them out of each other's way, all of them relative
+    // to the LANE — the line of the leg the body was driving, not its nose, which points anywhere after
+    // a back-off — and each to a fixed side, so two bodies on the same lane end up on opposite sides:
+    // the follower pulls over to the RIGHT when it arrives; a golem giving way backs down its lane and
+    // steps off it to the LEFT; a golem standing idle that gets touched journals the touch — so whoever
+    // moved hears it met a body — and makes room to the right of its last lane. Runtime, except the
+    // idle touch, which is a fact the peers need told.
+    // ------------------------------------------------------------------
+    private const double StepAside = 0.8;   // m: a body's width and a hand
+    private DateTime lastMadeRoom = DateTime.MinValue;
+    private double lane;                    // heading of the leg being (or last) driven
+
+    private async Task PullOverAsync(CancellationToken ct)
+    {
+        var pose = ros.LatestPose;
+        if (pose == null) return;
+        string note = $"pulling over to the right, off the leader's way";
+        if (await StepAsideAsync(right: true, ct)) { Console.WriteLine($"[golem {golem}] {note}"); feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow)); }
+    }
+
+    private async Task MakeRoomIfBumpedAsync(CancellationToken ct)
+    {
+        var touch = ros.LatestContact;
+        if (touch == null || touch.At <= lastMadeRoom || DateTime.UtcNow - touch.At > TimeSpan.FromSeconds(2)) return;
+        lastMadeRoom = DateTime.UtcNow;
+        var pose = ros.LatestPose;
+        if (pose == null) return;
+        // the touch is a fact worth telling: whoever moved into me will hear a body was here
+        TellTouchedStanding();
+        Console.WriteLine($"[golem {golem}] making room");
+        await StepAsideAsync(right: true, ct);
+    }
+
+    // A body's width off the lane, to the side asked for if the body fits there, else the other. True when it moved.
+    private async Task<bool> StepAsideAsync(bool right, CancellationToken ct)
+    {
+        var pose = ros.LatestPose;
+        if (pose == null) return false;
+        foreach (bool side in new[] { right, !right })
+        {
+            double tx = pose.X + StepAside * (side ? Math.Sin(lane) : -Math.Sin(lane));
+            double ty = pose.Y + StepAside * (side ? -Math.Cos(lane) : Math.Cos(lane));
+            if (!FitsAt(tx, ty)) continue;
+            Console.WriteLine($"[golem {golem}] stepping {(side ? "right" : "left")} of the lane to ({tx:0.0}, {ty:0.0})");
+            await navigator.GoToAsync(tx, ty, 0.15, ct);
+            return true;
+        }
+        return false;
+    }
+
+    // Does my body stand clear at this point? On the map, off the walls, off the marks.
+    private bool FitsAt(double x, double y)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @fits = g.FitsAt(@x, @y);
+        ")
+        .WithParameters(rented, p => {
+            p["x", typeof(double)]                  = x;
+            p["y", typeof(double)]                  = y;
+            p[Parameter.Out, "fits", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["fits"].GetValue<bool>();
+    }
 
     // The localization experiment's readout: when the golem lives on dead reckoning, say — at every
     // mission's end, in the runtime lane only — where it believes it stands and where the world says
@@ -768,6 +1010,36 @@ public sealed class GolemChoreography
         })
         .PerformQuery();
         return rented["bumped"].GetValue<bool>();
+    }
+
+    private int HeardCount()
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @heard = g.HeardCount();
+        ")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "heard", typeof(int)] = default;
+        })
+        .PerformQuery();
+        return rented["heard"].GetValue<int>();
+    }
+
+    // Who, among the peers' bumps heard after a given count, bumped near this point; "" for nobody.
+    private string HeardNear(double x, double y, int sinceCount)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @who = g.HeardNear(@x, @y, @since);
+        ")
+        .WithParameters(rented, p => {
+            p["x",     typeof(double)]                 = x;
+            p["y",     typeof(double)]                 = y;
+            p["since", typeof(int)]                    = sinceCount;
+            p[Parameter.Out, "who", typeof(string)]    = default;
+        })
+        .PerformQuery();
+        return rented["who"].GetValue<string>() ?? "";
     }
 
     private int Marks()

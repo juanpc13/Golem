@@ -1,14 +1,17 @@
-namespace GolemHost.Domain;
+using GolemHost.Domain.Geometry;
+using GolemHost.Domain.Routes;
+
+namespace GolemHost.Domain.Robots;
 
 /// <summary>
 /// A task entrusted to the golem: the stops to reach (one, or several), who ordered it, whether the
-/// golem may choose the order of the stops, the road it chose, and how it ended.
+/// golem may choose the order of the stops, the road it chose (a trajectory), and how it ended.
 /// </summary>
 internal sealed class Mission
 {
     internal int Id { get; }
     /// <summary>Where to go, in the order given.</summary>
-    internal IReadOnlyList<Waypoint> Stops { get; }
+    internal IReadOnlyList<Position> Stops { get; }
     /// <summary>True when the stop came from a peer's tell (the golem follows), false when the operator ordered it.</summary>
     internal bool Following { get; }
     /// <summary>True when the golem may reorder the stops for the shortest road (Cover), false when the order is the operator's (MoveTo).</summary>
@@ -18,13 +21,13 @@ internal sealed class Mission
 
     private MissionStatus status = MissionStatus.Pending;
     private string reason = "";
-    private readonly List<Leg> legs = new();   // the road chosen at start: passages to cross and stops to reach, in order
+    private Trajectory road = new(Array.Empty<Leg>());   // the road decided at start: passages to cross and stops to reach, in order
     private int nextLeg;
-    private int reached;                       // stops reached so far
-    private int bumps;                         // times the body touched something the map did not hold, on this mission
-    private int bumpsSinceRoute;               // ...since the road was last decided: a reason to decide it again
+    private int reached;                                 // stops reached so far
+    private int bumps;                                   // times the body touched something the map did not hold, on this mission
+    private int bumpsSinceRoute;                         // ...since the road was last decided: a reason to decide it again
 
-    internal Mission(int id, IReadOnlyList<Waypoint> stops, bool following, bool choosesOrder)
+    internal Mission(int id, IReadOnlyList<Position> stops, bool following, bool choosesOrder)
     {
         if (stops == null || stops.Count == 0) throw new DomainException($"mission {id} needs at least one stop");
         Id = id;
@@ -39,11 +42,11 @@ internal sealed class Mission
 
     // ---- the road ----
 
-    internal bool IsRouted => legs.Count > 0;
-    internal int LegsLeft => legs.Count - nextLeg;
-    internal Leg NextLeg => IsRouted ? legs[nextLeg] : new Leg(Stops[0], "");
+    internal bool IsRouted => !road.IsEmpty;
+    internal int LegsLeft => road.Count - nextLeg;
+    internal Leg NextLeg => IsRouted ? road.LegAt(nextLeg) : new Leg(Stops[0], "");
     /// <summary>Stops not reached yet: the stop legs ahead once routed, every stop before that.</summary>
-    internal IEnumerable<Waypoint> StopsAhead => IsRouted ? legs.Skip(nextLeg).Where(l => l.IsStop).Select(l => l.At) : Stops.Skip(reached);
+    internal IEnumerable<Position> StopsAhead => IsRouted ? road.StopsFrom(nextLeg) : Stops.Skip(reached);
     internal int StopsLeft => StopsAhead.Count();
     internal int Bumps => bumps;
     internal bool BumpedSinceRoute => bumpsSinceRoute > 0;
@@ -51,17 +54,15 @@ internal sealed class Mission
     /// <summary>The golem decided its road: passages and stops, in order, the last stop last. A road already
     /// decided is decided again only after the body bumped into something on it — then the new road replaces
     /// what was left of the old one and must still reach every stop ahead.</summary>
-    internal void Route(IEnumerable<Leg> road)
+    internal void Route(Trajectory fresh)
     {
         MustBePending();
         if (IsRouted && bumpsSinceRoute == 0) throw new DomainException($"mission {Id} already has its road");
-        var fresh = road.ToList();
-        if (fresh.Count == 0) throw new DomainException($"mission {Id} needs at least the stop as a leg");
-        if (!fresh[^1].IsStop) throw new DomainException($"mission {Id}'s road must end at a stop, not at '{fresh[^1].Name}'");
+        if (fresh == null || fresh.IsEmpty) throw new DomainException($"mission {Id} needs at least the stop as a leg");
+        if (!fresh.Last.IsStop) throw new DomainException($"mission {Id}'s road must end at a stop, not at '{fresh.Last.Name}'");
         int ahead = Stops.Count - reached;
-        if (fresh.Count(l => l.IsStop) != ahead) throw new DomainException($"mission {Id} has {ahead} stops ahead but the road reaches {fresh.Count(l => l.IsStop)}");
-        legs.Clear();
-        legs.AddRange(fresh);
+        if (fresh.StopCount != ahead) throw new DomainException($"mission {Id} has {ahead} stops ahead but the road reaches {fresh.StopCount}");
+        road = fresh;
         nextLeg = 0;
         bumpsSinceRoute = 0;
     }
@@ -79,7 +80,7 @@ internal sealed class Mission
     {
         MustBePending();
         if (!IsRouted) throw new DomainException($"mission {Id} has no road to cross along");
-        var leg = legs[nextLeg];
+        var leg = road.LegAt(nextLeg);
         if (leg.IsStop) throw new DomainException($"mission {Id} is heading to the stop '{leg.Name}', a stop, not a passage: reach it");
         if (leg.Name != passage) throw new DomainException($"mission {Id} is heading to '{leg.Name}', not '{passage}'");
         nextLeg++;
@@ -91,13 +92,13 @@ internal sealed class Mission
     {
         MustBePending();
         if (!IsRouted) throw new DomainException($"mission {Id} has no road to reach a stop along");
-        var leg = legs[nextLeg];
+        var leg = road.LegAt(nextLeg);
         if (!leg.IsStop) throw new DomainException($"mission {Id} is heading to the passage '{leg.Name}': cross it, no stop is next");
         if (Math.Abs(leg.At.X - x) > 1e-6 || Math.Abs(leg.At.Y - y) > 1e-6)
             throw new DomainException($"mission {Id}'s next stop is ({leg.At.X}, {leg.At.Y}), not ({x}, {y})");
         nextLeg++;
         reached++;
-        if (nextLeg == legs.Count) status = MissionStatus.Completed;
+        if (nextLeg == road.Count) status = MissionStatus.Completed;
     }
 
     // ---- the ending ----

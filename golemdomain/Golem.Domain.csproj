@@ -1,12 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The pure domain: plain C# puppets, no Puppeteer, no ASP.NET, no I/O.
-       Hosts reference it; it references nothing (domain-modeling guide E38). -->
+       Hosts reference it; it references nothing (domain-modeling guide E38).
+       Namespaces: GolemHost.Domain (the Golem aggregate the DSL instantiates),
+       .Geometry (Position, Location, Segment), .Robots (Body, Mission),
+       .Plans (FloorPlan, Place, Wall, Door, OpenBoundary, Mark, Obstacle, the
+       FloorPlans catalog), .Routes (Trajectory, Leg, RoutePlanner, Maneuver).
+       The engine binds classes by SIMPLE name: every class name must be unique. -->
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>GolemHost.Domain</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The acceptance tests chart the catalog's floor plans through the perform (FloorPlans.X().AsRelease). -->
+    <InternalsVisibleTo Include="Golem.Domain.Tests" />
+  </ItemGroup>
 
 </Project>

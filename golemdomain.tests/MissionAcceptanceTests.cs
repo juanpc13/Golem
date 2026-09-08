@@ -122,6 +122,88 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
+    public void TheMap_KnowsItsCornersWallsAndJambs_AsObjects()
+    {
+        // corners are locations (a Location IS a Position: X and Y are inherited, the engine binds them the same);
+        // walls are segments (Length inherited too), each knowing the doors that pierce it; a door has two jambs
+        string json = perf.Actor.Using(@"
+            foreach (places in g.Places()) {
+                print places.Name 'name';
+                foreach (corners in places.Corners()) { print corners.Label 'label', corners.X 'x', corners.Y 'y'; }
+                foreach (walls in places.Walls()) {
+                    print walls.From.X 'x0', walls.From.Y 'y0', walls.To.X 'x1', walls.To.Y 'y1', walls.Length 'len', walls.Thickness 't';
+                    foreach (doors in walls.Doors()) {
+                        print doors.Name 'name', doors.At.X 'x', doors.At.Y 'y', doors.Width 'w', doors.Height 'h';
+                        foreach (jambs in doors.Jambs()) { print jambs.Label 'label', jambs.X 'x', jambs.Y 'y'; }
+                    }
+                }
+            }
+        ").PerformQuery();
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var places = doc.RootElement.GetProperty("places");
+        var kitchen = places[0];
+        var corners = kitchen.GetProperty("corners");
+        Assert.AreEqual(4, corners.GetArrayLength(), "a rectangle: four corner locations");
+        Assert.AreEqual("kitchen ne", corners[2].GetProperty("label").GetString());
+        Assert.AreEqual(4.0, corners[2].GetProperty("x").GetDouble(), 0.001, "X is inherited from Position");
+        Assert.AreEqual(11.0, corners[2].GetProperty("y").GetDouble(), 0.001);
+
+        var walls = kitchen.GetProperty("walls");
+        Assert.AreEqual(4, walls.GetArrayLength(), "the kitchen has no open boundary: four walls");
+        var east = walls[3];                                                     // south, north, west, east
+        Assert.AreEqual(4.0, east.GetProperty("x0").GetDouble(), 0.001);
+        Assert.AreEqual(3.0, east.GetProperty("len").GetDouble(), 0.001, "Length is inherited from Segment");
+        Assert.AreEqual(0.0, east.GetProperty("t").GetDouble(), 0.001, "a wall is a line today");
+        var door = east.GetProperty("doors")[0];
+        Assert.AreEqual("kitchen/north", door.GetProperty("name").GetString(), "the east wall holds the door to the north hall");
+        Assert.AreEqual(1.4, door.GetProperty("w").GetDouble(), 0.001, "the gap the world leaves");
+        Assert.AreEqual(0.5, door.GetProperty("h").GetDouble(), 0.001, "as tall as the plan");
+        var jambs = door.GetProperty("jambs");
+        Assert.AreEqual(2, jambs.GetArrayLength(), "a door is two locations on its wall");
+        Assert.AreEqual(8.8, jambs[0].GetProperty("y").GetDouble(), 0.001);
+        Assert.AreEqual(10.2, jambs[1].GetProperty("y").GetDouble(), 0.001);
+        Assert.AreEqual(4.0, jambs[1].GetProperty("x").GetDouble(), 0.001, "both on the wall's line");
+
+        var north = places[1];
+        Assert.AreEqual(3, north.GetProperty("walls").GetArrayLength(), "the north hall's south edge is open to the center: three walls");
+        Assert.AreEqual(0, places[4].GetProperty("walls").EnumerateArray().Count(w => Math.Abs(w.GetProperty("y0").GetDouble() - 3.0) < 0.001 && Math.Abs(w.GetProperty("y1").GetDouble() - 3.0) < 0.001),
+            "the center's south edge is open too: no wall along y = 3");
+    }
+
+    [TestMethod]
+    public void AnEvasion_IsAManeuver_ATrajectoryOfItsOwn()
+    {
+        // the body at the middle of the center hall, heading east (0 rad), touched something: step right, run ahead
+        string json = perf.Actor.Using(@"
+            foreach (legs in g.Evasion(@x, @y, @heading, 'step-right').Legs()) { print legs.Name 'leg', legs.At.X 'x', legs.At.Y 'y'; }
+            foreach (back in g.Evasion(@x, @y, @heading, 'back-off').Legs()) { print back.Name 'leg', back.At.X 'x', back.At.Y 'y'; }
+        ")
+        .WithParameters(p => {
+            p["x",       typeof(double)] = 5.5;
+            p["y",       typeof(double)] = 5.5;
+            p["heading", typeof(double)] = 0.0;
+        })
+        .PerformQuery();
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var legs = doc.RootElement.GetProperty("legs");
+        Assert.AreEqual(2, legs.GetArrayLength(), "aside, then ahead");
+        Assert.AreEqual("aside", legs[0].GetProperty("leg").GetString());
+        Assert.AreEqual(5.5, legs[0].GetProperty("x").GetDouble(), 0.001);
+        Assert.AreEqual(5.0, legs[0].GetProperty("y").GetDouble(), 0.001, "right of an eastward lane is south: half a metre");
+        Assert.AreEqual("ahead", legs[1].GetProperty("leg").GetString());
+        Assert.AreEqual(6.7, legs[1].GetProperty("x").GetDouble(), 0.001, "then 1.2 ahead in the new lane");
+        Assert.AreEqual(5.0, legs[1].GetProperty("y").GetDouble(), 0.001);
+        var back = doc.RootElement.GetProperty("back");
+        Assert.AreEqual(1, back.GetArrayLength());
+        Assert.AreEqual("back", back[0].GetProperty("leg").GetString());
+        Assert.AreEqual(4.6, back[0].GetProperty("x").GetDouble(), 0.001, "0.9 back along the lane");
+
+        Refuses("g.Evasion(5.5, 5.5, 0.0, 'teleport');", "no evasion strategy named");
+    }
+
+    [TestMethod]
     public void TheShortestRoad_CutsThroughTheCenter_WhenThatIsShorter()
     {
         // kitchen (2,9.5) -> door (4,9.5) -> the open boundary north~center at its middle (5.5,8) -> the open
@@ -153,6 +235,7 @@ public class MissionAcceptanceTests
         // a point the body touched: on a boundary the map holds as a wall, or not
         Assert.IsTrue(Bool("g.KnowsWallAt(0.05, 5.5)"), "the corridor's outer wall");
         Assert.IsTrue(Bool("g.KnowsWallAt(4.0, 8.5)"), "the kitchen's east wall, by the door's jamb");
+        Assert.IsFalse(Bool("g.KnowsWallAt(4.1, 9.2)"), "the kitchen/north doorway: no wall there, whatever was touched is something else");
         Assert.IsTrue(Bool("g.KnowsWallAt(4.05, 8.0)"), "the corner of the left block, met through the walls that end there");
         Assert.IsFalse(Bool("g.KnowsWallAt(10.25, 5.9)"), "the middle of the east corridor: whatever stands there is not on the map");
         Assert.IsFalse(Bool("g.KnowsWallAt(5.5, 8.0)"), "the open boundary north~center is not a wall");
@@ -480,23 +563,45 @@ public class MissionAcceptanceTests
     // ---- marks: what bodies touched that the plan does not hold ----
 
     [TestMethod]
-    public void ABump_MarksTheMap_AndALearnedMarkIsTheSameKindOfMark()
+    public void ABump_IsATouchToBeSettled_AndAMarkIsTheConclusion()
     {
         MoveTo(1, 9.0, 1.5);                       // the garage
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));      // from the storage: down the east corridor
         Assert.AreEqual(0, Int("g.MarkCount()"));
         Assert.IsTrue(Bool("g.FitsAt(10.25, 5.5)"), "the corridor is clear as far as the map knows");
 
-        Bump(1, 10.25, 5.85);                       // the crate's face
-        Assert.AreEqual(1, Int("g.MarkCount()"));
+        Bump(1, 10.25, 5.85);                       // the crate's face — or a peer: not known yet
+        Assert.AreEqual(0, Int("g.MarkCount()"), "a bump is a touch, not yet a mark");
         Assert.AreEqual(1, Int("g.Bumps(1)"));
         Assert.IsTrue(Bool("g.HasBumpedSinceRoute(1)"));
+        Assert.AreEqual("", Text("g.HeardNear(10.25, 5.85, 0)"), "no peer said it bumped there");
+
+        Assert.AreEqual(1, Int("g.Mark(10.25, 5.85)"), "nobody else bumped: the golem marks it");
         Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the body no longer fits where the mark reaches");
         Assert.IsTrue(Bool("g.HasRoomAt(10.25, 5.5)"), "the walls alone still leave room there: marks are what the body feels around");
         Assert.IsFalse(Bool("g.HasRoomAt(9.7, 5.5)"), "too close to the corridor's wall for the body");
 
-        Assert.AreEqual(1, Int("g.Learn(10.25, 5.9)"), "a touch within a tenth of a unit is the same mark");
+        Assert.AreEqual(1, Int("g.Learn(10.25, 5.9)"), "a peer's touch within a tenth of a unit is the same mark");
         Assert.AreEqual(2, Int("g.Learn(10.3, 6.6)"), "a peer's touch further along is another mark");
+    }
+
+    [TestMethod]
+    public void APeersBumpHeardThereAndThen_NamesWhoWasMet()
+    {
+        MoveTo(1, 9.0, 1.5);
+        Route(1, Text("g.Plan(1, 9.0, 9.5)"));
+        Assert.AreEqual(1, Int("g.Hear('blue', 4.6, 9.5)"), "blue says it bumped in the kitchen's doorway");
+        int heard = Int("g.HeardCount()");
+
+        Bump(1, 4.7, 9.5);                          // my own touch, right there
+        Assert.AreEqual("blue", Text("g.HeardNear(4.7, 9.5, 0)"), "blue's bump is within a body's diameter of mine: it was blue");
+        Assert.AreEqual("", Text("g.HeardNear(4.7, 9.5, " + heard + ")"), "nothing heard after that count");
+        Assert.AreEqual("", Text("g.HeardNear(10.25, 5.85, 0)"), "a bump far away is somebody else's business");
+        Assert.AreEqual(0, Int("g.MarkCount()"), "meeting a body leaves no mark");
+
+        Assert.AreEqual(1, Int("g.Bump(4.9, 9.5)"), "a body standing idle that gets touched bumps too, without a mission");
+        Assert.AreEqual(2, Int("g.Bump(4.9, 9.5)"));
+        Refuses("g.Hear('', 1.0, 1.0);", "needs to say who");
     }
 
     [TestMethod]
@@ -571,6 +676,7 @@ public class MissionAcceptanceTests
         Refuses("g.Route(1, 'garage@9,1.5');", "already has its road");
 
         Bump(1, 10.25, 5.85);                        // the crate, met halfway down the corridor
+        Mark(10.25, 5.85);                           // nobody else bumped: an obstacle
         string again = Text("g.Plan(1, 10.25, 6.3)");   // from where the body backed off to
         Assert.IsFalse(again.Contains("east/garage"), "the corridor is closed by the mark: " + again);
         StringAssert.Contains(again, "storage/east@10.25,8", "back out the way it came");
@@ -594,6 +700,20 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
+    public void WhenNoRoadFits_TheProgressReadsStillAnswer_AsTheCrowFlies()
+    {
+        MoveTo(1, 2.0, 9.5);                          // the kitchen, from the storage
+        Route(1, Text("g.Plan(1, 9.0, 9.5)"));
+        Learn(4.0, 9.2);                              // marks close the kitchen/north doorway...
+        Learn(4.0, 9.8);
+        Learn(0.75, 8.2);                             // ...and the kitchen/west one
+        Learn(0.75, 7.8);
+        Refuses("g.Plan(1, 9.0, 9.5);", "no road");
+        Assert.AreEqual(7.0, Double("g.DistanceLeft(9.0, 9.5)"), 0.001, "straight from (9, 9.5) to (2, 9.5): a read never refuses");
+        Assert.IsTrue(Double("g.SecondsLeft(9.0, 9.5)") > 0);
+    }
+
+    [TestMethod]
     public void WhenNoRoadFitsTheBody_ThePlanSaysSo()
     {
         MoveTo(1, 9.0, 1.5);                        // the garage has two doors
@@ -612,6 +732,16 @@ public class MissionAcceptanceTests
             p["id", typeof(int)]    = id;
             p["x",  typeof(double)] = x;
             p["y",  typeof(double)] = y;
+        })
+        .PerformCommand();
+
+    private void Mark(double x, double y) =>
+        perf.Actor.Using(@"
+            g.Mark(@x, @y);
+        ")
+        .WithParameters(p => {
+            p["x", typeof(double)] = x;
+            p["y", typeof(double)] = y;
         })
         .PerformCommand();
 
