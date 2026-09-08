@@ -33,6 +33,12 @@ internal sealed class Place
     internal bool Contains(Waypoint at) =>
         at.X >= X - 1e-9 && at.X <= X + Width + 1e-9 && at.Y >= Y - 1e-9 && at.Y <= Y + Height + 1e-9;
 
+    // What the place holds, for whoever reads the map as objects:
+    //   foreach (places in g.Places()) { print places.Name 'name', …; foreach (doors in places.Doors()) { print doors.To 'to', doors.At.X 'x', …; } }
+    internal IReadOnlyList<Doorway> Doors() => atlas.DoorsOf(this);
+    internal IReadOnlyList<Opening> Openings() => atlas.OpeningsOf(this);
+    internal IReadOnlyList<Mark> Marks() => atlas.MarksIn(this);
+
     /// <summary>A door to a neighbouring place, at a point on the shared wall. Chainable.</summary>
     internal Place DoorTo(string place, double x, double y)
     {

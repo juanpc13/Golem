@@ -131,7 +131,8 @@
         <button data-q="g.Distance('kitchen', 'garage')">Distance(kitchen, garage)</button>
         <button data-q="g.PlaceAt(5.5, 5.5)">PlaceAt(5.5, 5.5)</button>
         <button data-q="g.KnowsWallAt(4.0, 8.5)">KnowsWallAt(4.0, 8.5)</button>
-        <button data-q="g.Marks()">Marks()</button>
+        <button data-q="g.MarkCount()">MarkCount()</button>
+        <button data-q="{ foreach (places in g.Places()) { print places.Name 'name'; foreach (doors in places.Doors()) { print doors.To 'to'; } } }">Places as objects</button>
         <button data-q="g.FitsAt(10.25, 5.5)">FitsAt(10.25, 5.5)</button>
         <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextPassage(g.NextId()) 'heading', g.NextIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
       </div>
@@ -281,11 +282,13 @@ map.addEventListener('click', (ev) => {
   addStop(`${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`);
 });
 
-// The floor plan, as the golem knows it (one query on /map); one "go to" button per place.
+// The floor plan, as the golem knows it: one query on /map walks the golem's Place objects and prints their
+// properties, and inside each place its Doors(), Openings() and Marks() — the engine renders each loop as an
+// array named after its variable. A place with none of something simply lacks that key. One "+ place" button per place.
 async function loadMap() {
   try {
     const m = await (await fetch('/map')).json();
-    plan = JSON.parse(m.map);
+    plan = { places: (m.places || []).map(p => ({ ...p, doors: p.doors || [], opens: p.opens || [], marks: p.marks || [] })) };
     const holder = document.getElementById('places');
     holder.innerHTML = '';
     for (const p of plan.places) {
@@ -315,38 +318,42 @@ function drawMap() {
       mctx.font = '12px system-ui, sans-serif';
       mctx.fillText(p.name, toPx(p.cx) - mctx.measureText(p.name).width / 2, toPy(p.cy) + 4);
     }
-    // open boundaries: the shared edge, dashed and dim
-    for (const o of plan.opens) {
-      const a = plan.places.find(p => p.name === o.a), b = plan.places.find(p => p.name === o.b);
-      if (!a || !b) continue;
-      mctx.setLineDash([3, 4]); mctx.strokeStyle = '#4556e8'; mctx.lineWidth = 3;
-      if (Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6) {
-        const x = Math.abs(a.x + a.w - b.x) < 1e-6 ? b.x : a.x;
-        const y0 = Math.max(a.y, b.y), y1 = Math.min(a.y + a.h, b.y + b.h);
-        mctx.beginPath(); mctx.moveTo(toPx(x), toPy(y0)); mctx.lineTo(toPx(x), toPy(y1)); mctx.stroke();
-      } else {
-        const y = Math.abs(a.y + a.h - b.y) < 1e-6 ? b.y : a.y;
-        const x0 = Math.max(a.x, b.x), x1 = Math.min(a.x + a.w, b.x + b.w);
-        mctx.beginPath(); mctx.moveTo(toPx(x0), toPy(y)); mctx.lineTo(toPx(x1), toPy(y)); mctx.stroke();
+    // each place carries its own passages and marks (a door or an open boundary is listed by both
+    // places it joins, so it is drawn twice — on the same line)
+    for (const a of plan.places) {
+      // open boundaries: the shared edge, dashed and dim
+      for (const o of a.opens) {
+        const b = plan.places.find(p => p.name === o.to);
+        if (!b) continue;
+        mctx.setLineDash([3, 4]); mctx.strokeStyle = '#4556e8'; mctx.lineWidth = 3;
+        if (Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6) {
+          const x = Math.abs(a.x + a.w - b.x) < 1e-6 ? b.x : a.x;
+          const y0 = Math.max(a.y, b.y), y1 = Math.min(a.y + a.h, b.y + b.h);
+          mctx.beginPath(); mctx.moveTo(toPx(x), toPy(y0)); mctx.lineTo(toPx(x), toPy(y1)); mctx.stroke();
+        } else {
+          const y = Math.abs(a.y + a.h - b.y) < 1e-6 ? b.y : a.y;
+          const x0 = Math.max(a.x, b.x), x1 = Math.min(a.x + a.w, b.x + b.w);
+          mctx.beginPath(); mctx.moveTo(toPx(x0), toPy(y)); mctx.lineTo(toPx(x1), toPy(y)); mctx.stroke();
+        }
+        mctx.setLineDash([]); mctx.lineWidth = 2;
       }
-      mctx.setLineDash([]); mctx.lineWidth = 2;
-    }
-    // marks: where a body touched something the plan does not hold — the map of touches
-    for (const m of (plan.marks || [])) {
-      const r = Math.max(4, m.r / WORLD * w);
-      mctx.fillStyle = 'rgba(224,119,119,0.45)'; mctx.strokeStyle = 'rgba(224,119,119,0.95)'; mctx.lineWidth = 1.5;
-      mctx.beginPath(); mctx.arc(toPx(m.x), toPy(m.y), r, 0, 7); mctx.fill(); mctx.stroke();
-    }
-    // doors: a gap in the wall, marked in clay
-    for (const d of plan.doors) {
-      mctx.strokeStyle = '#dfa563'; mctx.lineWidth = 4;
-      const gap = 0.4;
-      const vertical = plan.places.some(p => Math.abs(p.x - d.x) < 1e-6 || Math.abs(p.x + p.w - d.x) < 1e-6);
-      mctx.beginPath();
-      if (vertical) { mctx.moveTo(toPx(d.x), toPy(d.y - gap)); mctx.lineTo(toPx(d.x), toPy(d.y + gap)); }
-      else { mctx.moveTo(toPx(d.x - gap), toPy(d.y)); mctx.lineTo(toPx(d.x + gap), toPy(d.y)); }
-      mctx.stroke();
-      mctx.lineWidth = 2;
+      // marks: where a body touched something the plan does not hold — the map of touches
+      for (const m of a.marks) {
+        const r = Math.max(4, m.r / WORLD * w);
+        mctx.fillStyle = 'rgba(224,119,119,0.45)'; mctx.strokeStyle = 'rgba(224,119,119,0.95)'; mctx.lineWidth = 1.5;
+        mctx.beginPath(); mctx.arc(toPx(m.x), toPy(m.y), r, 0, 7); mctx.fill(); mctx.stroke();
+      }
+      // doors: a gap in the wall, marked in clay; on this place's vertical edge, or on a horizontal one
+      for (const d of a.doors) {
+        mctx.strokeStyle = '#dfa563'; mctx.lineWidth = 4;
+        const gap = 0.4;
+        const vertical = Math.abs(a.x - d.x) < 1e-6 || Math.abs(a.x + a.w - d.x) < 1e-6;
+        mctx.beginPath();
+        if (vertical) { mctx.moveTo(toPx(d.x), toPy(d.y - gap)); mctx.lineTo(toPx(d.x), toPy(d.y + gap)); }
+        else { mctx.moveTo(toPx(d.x - gap), toPy(d.y)); mctx.lineTo(toPx(d.x + gap), toPy(d.y)); }
+        mctx.stroke();
+        mctx.lineWidth = 2;
+      }
     }
   }
   // recent targets

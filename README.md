@@ -133,7 +133,7 @@ Endpoints, per golem:
 |---|---|
 | `POST /move?place=` · `POST /move?x=&y=` · `POST /move` `{"stops": [...]}` | Send the golem to a place, a point, or through several stops in that order (409 when a stop is off the map) |
 | `POST /cover` `{"stops": [...]}` | Send it through several stops in the order it finds shortest |
-| `GET /state` · `GET /progress` · `GET /map` | The mission board; road left and ETA from where the body stands; the map as the golem knows it |
+| `GET /state` · `GET /progress` · `GET /map` | The mission board; road left and ETA from where the body stands; the map as the golem knows it — one query that walks the golem's `Place` objects and prints their properties (`foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doors()) { print doors.To 'to', doors.At.X 'x'; } }`), rendered by the engine as `{places: [{name, x, y, w, h, cx, cy, doors: [...], opens: [...], marks: [...]}]}` |
 | `GET /body` | Host telemetry: body, believed pose, the world's pose, the last thing the body touched |
 | `POST /query` | Ad-hoc read-only query in the DSL, e.g. `g.Distance('kitchen', 'garage')` |
 | `POST /reset` · `POST /reset-everything` | Abandon every pending mission (journaled, one command) and put the body back; wipe the journals of this golem and its peers and reboot them reborn |

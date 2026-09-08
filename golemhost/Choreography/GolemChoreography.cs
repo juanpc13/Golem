@@ -774,7 +774,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @marks = g.Marks();
+            @marks = g.MarkCount();
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "marks", typeof(int)] = default;

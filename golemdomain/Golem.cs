@@ -59,12 +59,17 @@ internal sealed class Golem
     /// <summary>Charts a room of the map. Chain its passages: <c>g.Chart('kitchen', 0, 6, 4, 5).DoorTo('hall', 4, 8.5)</c>.</summary>
     internal Place Chart(string name, double x, double y, double width, double height) => atlas.AddPlace(name, x, y, width, height);
 
-    internal int Places() => atlas.PlaceCount;
-    internal int Passages() => atlas.PassageCount;
+    internal int PlaceCount() => atlas.PlaceCount;
+    internal int PassageCount() => atlas.PassageCount;
     internal bool KnowsPlace(string name) => atlas.Knows(name);
     internal bool IsOnMap(double x, double y) => atlas.IsOnMap(new Waypoint(x, y));
     internal string PlaceAt(double x, double y) => atlas.PlaceAt(new Waypoint(x, y)).Name;
-    internal string DescribeMap() => atlas.Describe();
+
+    /// <summary>The map as objects, for whoever draws it: every place, each knowing its doors, its open boundaries
+    /// and the marks standing in it. A query walks them with foreach and prints their properties —
+    /// <c>foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doors()) { print doors.To 'to'; } }</c>
+    /// — so the golem hands out its objects and never renders a document.</summary>
+    internal IReadOnlyList<Place> Places() => atlas.Places;
 
     /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a boundary of a place that is not
     /// open, within a tolerance that absorbs the wall's thickness and the pose's error. Touching a known wall is the
@@ -81,7 +86,7 @@ internal sealed class Golem
     internal bool HasRoomAt(double x, double y) => atlas.HasRoom(new Waypoint(x, y), radius);
 
     /// <summary>How many marks the map holds: points where a body touched something the plan does not hold.</summary>
-    internal int Marks() => atlas.MarkCount;
+    internal int MarkCount() => atlas.MarkCount;
 
     /// <summary>Whether every token names a place or a point 'x,y' on the map — what a list of stops must be made of.</summary>
     internal bool AreStops(string[] stops)
@@ -141,12 +146,12 @@ internal sealed class Golem
     internal int Bump(int id, double x, double y)
     {
         Find(id).Bump();
-        atlas.Mark(new Waypoint(x, y));
+        atlas.AddMark(new Waypoint(x, y));
         return id;
     }
 
     /// <summary>A peer says a body touched something at (x, y): the golem learns the mark without the bruise. Returns how many marks it holds.</summary>
-    internal int Learn(double x, double y) => atlas.Mark(new Waypoint(x, y));
+    internal int Learn(double x, double y) => atlas.AddMark(new Waypoint(x, y));
 
     /// <summary>The golem crossed the next passage of its road. Returns the mission id.</summary>
     internal int Cross(int id, string passage)

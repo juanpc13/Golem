@@ -76,13 +76,49 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void TheMap_IsChartedFromTheReleaseChain_OneFluentChainPerPlace()
     {
-        Assert.AreEqual(9, Int("g.Places()"));
-        Assert.AreEqual(10, Int("g.Passages()"), "eight doors and two open boundaries");
+        Assert.AreEqual(9, Int("g.PlaceCount()"));
+        Assert.AreEqual(10, Int("g.PassageCount()"), "eight doors and two open boundaries");
         Assert.AreEqual("kitchen", Text("g.PlaceAt(2.0, 9.5)"));
         Assert.AreEqual("center", Text("g.PlaceAt(5.5, 5.5)"));
         Assert.AreEqual("west", Text("g.PlaceAt(0.75, 5.5)"));
         Assert.IsFalse(Bool("g.IsOnMap(3.0, 5.0)"), "the left block is solid: nowhere on the map");
         Assert.IsFalse(Bool("g.IsOnMap(11.5, 5.0)"), "beyond the east wall");
+    }
+
+    [TestMethod]
+    public void TheMap_IsReadAsObjects_EachPlaceWithItsDoorsOpeningsAndMarks()
+    {
+        Learn(10.25, 5.85);   // something in the east corridor
+
+        // the very query the panel runs: the golem's places, walked and printed, each with what it holds
+        string json = perf.Actor.Using(@"
+            foreach (places in g.Places()) {
+                print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h', places.Center.X 'cx', places.Center.Y 'cy';
+                foreach (doors in places.Doors()) { print doors.To 'to', doors.At.X 'x', doors.At.Y 'y'; }
+                foreach (opens in places.Openings()) { print opens.To 'to'; }
+                foreach (marks in places.Marks()) { print marks.X 'x', marks.Y 'y', marks.Reach 'r'; }
+            }
+        ").PerformQuery();
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var places = doc.RootElement.GetProperty("places");
+        Assert.AreEqual(9, places.GetArrayLength(), "the engine renders each foreach as an array named after its variable");
+
+        var kitchen = places[0];
+        Assert.AreEqual("kitchen", kitchen.GetProperty("name").GetString());
+        Assert.AreEqual(2.0, kitchen.GetProperty("cx").GetDouble(), 0.001, "a property chain: places.Center.X");
+        var doors = kitchen.GetProperty("doors");
+        Assert.AreEqual(2, doors.GetArrayLength(), "nested foreach: the place's doors, as the place sees them");
+        Assert.AreEqual("north", doors[0].GetProperty("to").GetString());
+        Assert.AreEqual(4.0, doors[0].GetProperty("x").GetDouble(), 0.001);
+        Assert.IsFalse(kitchen.TryGetProperty("opens", out _), "a place with no open boundary simply lacks the key");
+
+        Assert.AreEqual("center", places[1].GetProperty("opens")[0].GetProperty("to").GetString(), "north opens to the center");
+        var east = places[5];
+        Assert.AreEqual("east", east.GetProperty("name").GetString());
+        Assert.AreEqual(1, east.GetProperty("marks").GetArrayLength(), "the mark stands in the east corridor");
+        Assert.AreEqual(0.25, east.GetProperty("marks")[0].GetProperty("r").GetDouble(), 0.001);
+        Assert.IsFalse(places[0].TryGetProperty("marks", out _), "and nowhere else");
     }
 
     [TestMethod]
@@ -448,11 +484,11 @@ public class MissionAcceptanceTests
     {
         MoveTo(1, 9.0, 1.5);                       // the garage
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));      // from the storage: down the east corridor
-        Assert.AreEqual(0, Int("g.Marks()"));
+        Assert.AreEqual(0, Int("g.MarkCount()"));
         Assert.IsTrue(Bool("g.FitsAt(10.25, 5.5)"), "the corridor is clear as far as the map knows");
 
         Bump(1, 10.25, 5.85);                       // the crate's face
-        Assert.AreEqual(1, Int("g.Marks()"));
+        Assert.AreEqual(1, Int("g.MarkCount()"));
         Assert.AreEqual(1, Int("g.Bumps(1)"));
         Assert.IsTrue(Bool("g.HasBumpedSinceRoute(1)"));
         Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the body no longer fits where the mark reaches");

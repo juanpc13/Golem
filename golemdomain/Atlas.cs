@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 
 namespace GolemHost.Domain;
 
@@ -55,7 +54,7 @@ internal sealed class Atlas
 
     /// <summary>A point where a body touched something the plan does not hold. Two touches within a tenth of a
     /// unit are one mark. Returns how many marks the map holds.</summary>
-    internal int Mark(Waypoint at)
+    internal int AddMark(Waypoint at)
     {
         if (!marks.Any(m => m.DistanceTo(at) < 0.1)) marks.Add(at);
         return marks.Count;
@@ -65,6 +64,22 @@ internal sealed class Atlas
     internal int PassageCount => passages.Count;
     internal int MarkCount => marks.Count;
     internal bool Knows(string place) => places.Any(p => p.Name == place);
+
+    // ---- the map, read as objects: the places, and what each one holds ----
+
+    internal IReadOnlyList<Place> Places => places;
+
+    /// <summary>The doors of a place as that place sees them: the place across, and where the door stands.</summary>
+    internal IReadOnlyList<Doorway> DoorsOf(Place place) =>
+        passages.Where(p => p.IsDoor && p.Joins(place.Name)).Select(p => new Doorway(p.OtherSide(place.Name), p.At)).ToList();
+
+    /// <summary>The open boundaries of a place: the place across each one.</summary>
+    internal IReadOnlyList<Opening> OpeningsOf(Place place) =>
+        passages.Where(p => !p.IsDoor && p.Joins(place.Name)).Select(p => new Opening(p.OtherSide(place.Name))).ToList();
+
+    /// <summary>The marks standing in a place (a mark on a shared wall stands in both).</summary>
+    internal IReadOnlyList<Mark> MarksIn(Place place) =>
+        marks.Where(place.Contains).Select(m => new Mark(m.X, m.Y, MarkReach)).ToList();
 
     internal Place PlaceNamed(string name)
     {
@@ -338,23 +353,6 @@ internal sealed class Atlas
         return length;
     }
 
-    /// <summary>The map as the panel reads it: places, doors, open boundaries, and the marks where bodies touched something.</summary>
-    internal string Describe()
-    {
-        var sb = new StringBuilder("{\"places\":[");
-        sb.Append(string.Join(",", places.Select(p =>
-            $"{{\"name\":\"{p.Name}\",\"x\":{Fmt(p.X)},\"y\":{Fmt(p.Y)},\"w\":{Fmt(p.Width)},\"h\":{Fmt(p.Height)},\"cx\":{Fmt(p.Center.X)},\"cy\":{Fmt(p.Center.Y)}}}")));
-        sb.Append("],\"doors\":[");
-        sb.Append(string.Join(",", passages.Where(p => p.IsDoor).Select(p =>
-            $"{{\"a\":\"{p.A}\",\"b\":\"{p.B}\",\"x\":{Fmt(p.At.X)},\"y\":{Fmt(p.At.Y)}}}")));
-        sb.Append("],\"opens\":[");
-        sb.Append(string.Join(",", passages.Where(p => !p.IsDoor).Select(p => $"{{\"a\":\"{p.A}\",\"b\":\"{p.B}\"}}")));
-        sb.Append("],\"marks\":[");
-        sb.Append(string.Join(",", marks.Select(m => $"{{\"x\":{Fmt(m.X)},\"y\":{Fmt(m.Y)},\"r\":{Fmt(MarkReach)}}}")));
-        sb.Append("]}");
-        return sb.ToString();
-    }
-
     // ---- the graph ----
 
     private enum NodeKind { Start, Passage, Detour, Goal }
@@ -523,6 +521,30 @@ internal sealed class Atlas
     }
 
     private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
+}
+
+/// <summary>A door as one place sees it: the place across, and where the door stands. Read, never written.</summary>
+internal sealed class Doorway
+{
+    internal string To { get; }
+    internal Waypoint At { get; }
+    internal Doorway(string to, Waypoint at) { To = to; At = at; }
+}
+
+/// <summary>An open boundary as one place sees it: the place across. Read, never written.</summary>
+internal sealed class Opening
+{
+    internal string To { get; }
+    internal Opening(string to) => To = to;
+}
+
+/// <summary>A mark as the map shows it: where a body touched something the plan does not hold, and how far that thing is taken to reach.</summary>
+internal sealed class Mark
+{
+    internal double X { get; }
+    internal double Y { get; }
+    internal double Reach { get; }
+    internal Mark(double x, double y, double reach) { X = x; Y = y; Reach = reach; }
 }
 
 /// <summary>

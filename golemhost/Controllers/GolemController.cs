@@ -96,11 +96,26 @@ public class GolemController : Controller
         .PerformCheckThenCommand());
     }
 
-    // The map as the golem knows it: places, doors and open boundaries (one print).
+    // The map as the golem knows it, read as objects: one query walks the places and prints their
+    // properties, and inside each place walks its doors, its open boundaries and the marks standing in
+    // it. The engine renders each foreach as an array named after the loop variable, nested where the
+    // loop is nested — places, and within a place: doors, opens, marks; a place with none of something
+    // simply lacks that key. The golem hands out its objects and never renders a document itself.
     [HttpGet("map")]
     public IActionResult Map() =>
         Content(perf.Actor.Using(@"
-            print g.DescribeMap() 'map', g.Places() 'places', g.Passages() 'passages';
+            foreach (places in g.Places()) {
+                print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h', places.Center.X 'cx', places.Center.Y 'cy';
+                foreach (doors in places.Doors()) {
+                    print doors.To 'to', doors.At.X 'x', doors.At.Y 'y';
+                }
+                foreach (opens in places.Openings()) {
+                    print opens.To 'to';
+                }
+                foreach (marks in places.Marks()) {
+                    print marks.X 'x', marks.Y 'y', marks.Reach 'r';
+                }
+            }
         ")
         .PerformQuery(), "application/json");
 
