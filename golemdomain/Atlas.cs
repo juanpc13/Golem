@@ -113,8 +113,78 @@ internal sealed class Atlas
         throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
     }
 
-    /// <summary>The shortest road from one point to another through the passages: the legs to walk, the goal last. Empty when both points share a place with a clear line.</summary>
-    internal List<Leg> Road(Waypoint from, Waypoint to)
+    /// <summary>The shortest road from one point to another through the passages: the legs to walk, the stop last.</summary>
+    internal List<Leg> Road(Waypoint from, Waypoint to) => Road(from, new[] { to });
+
+    /// <summary>The road through several stops, in the order given: the shortest road from each stop to the next,
+    /// walked as one — doors crossed straight, open boundaries named where the walk meets them.</summary>
+    internal List<Leg> Road(Waypoint from, IReadOnlyList<Waypoint> stops)
+    {
+        var raw = new List<Leg>();
+        Waypoint here = from;
+        foreach (var stop in stops)
+        {
+            raw.AddRange(RawRoad(here, stop));
+            here = stop;
+        }
+        return WithOpeningsNamed(from, WithDoorCrossings(raw));
+    }
+
+    /// <summary>The order of stops that makes the whole road shortest, starting from a point. Every order is tried
+    /// up to seven stops; beyond that the nearest stop is taken each time.</summary>
+    internal IReadOnlyList<Waypoint> BestOrder(Waypoint from, IReadOnlyList<Waypoint> stops)
+    {
+        if (stops.Count < 2) return stops;
+        var points = new List<Waypoint> { from };
+        points.AddRange(stops);
+        var road = new double[points.Count, points.Count];
+        for (int i = 0; i < points.Count; i++)
+            for (int j = 1; j < points.Count; j++)
+                if (i != j) road[i, j] = RoadLength(points[i], points[j]);
+
+        var order = new List<int>();
+        if (stops.Count <= 7)
+        {
+            double best = double.PositiveInfinity;
+            foreach (var candidate in Permutations(Enumerable.Range(1, stops.Count).ToList()))
+            {
+                double length = 0; int at = 0;
+                foreach (int next in candidate) { length += road[at, next]; at = next; }
+                if (length < best) { best = length; order = candidate; }
+            }
+        }
+        else
+        {
+            var left = Enumerable.Range(1, stops.Count).ToList();
+            int at = 0;
+            while (left.Count > 0)
+            {
+                int nearest = left.OrderBy(j => road[at, j]).First();
+                order.Add(nearest);
+                left.Remove(nearest);
+                at = nearest;
+            }
+        }
+        return order.Select(i => points[i]).ToList();
+    }
+
+    private static IEnumerable<List<int>> Permutations(List<int> items)
+    {
+        if (items.Count <= 1) { yield return new List<int>(items); yield break; }
+        foreach (int head in items)
+        {
+            var rest = items.Where(i => i != head).ToList();
+            foreach (var tail in Permutations(rest))
+            {
+                var p = new List<int> { head };
+                p.AddRange(tail);
+                yield return p;
+            }
+        }
+    }
+
+    // Dijkstra from one point to the next: the raw legs (doors and openings met, the stop last).
+    private List<Leg> RawRoad(Waypoint from, Waypoint to)
     {
         var start = new Node(from, PlacesOf(from), null);
         var goal = new Node(to, PlacesOf(to), null);
@@ -154,12 +224,12 @@ internal sealed class Atlas
         var legs = new List<Leg>();
         for (Node n = goal; n != start; n = prev[n])
         {
-            if (n == goal) legs.Insert(0, new Leg(n.At, PlaceAt(to).Name));
+            if (n == goal) legs.Insert(0, new Leg(n.At, PlaceAt(to).Name));   // a stop: named by its place alone
             else if (n.Via != null) legs.Insert(0, new Leg(n.At, n.Via.Name));
             else legs.Insert(0, new Leg(n.At, OpeningCrossed(prev[n], n)?.Name ?? "?"));
         }
-        // doors are crossed straight; an open boundary crossed on the way is a leg of its own, so the journal tells it
-        return WithOpeningsNamed(from, WithDoorCrossings(legs));
+        if (legs.Count == 0) legs.Add(new Leg(to, PlaceAt(to).Name));         // already there: the stop alone
+        return legs;
     }
 
     /// <summary>
@@ -390,9 +460,10 @@ internal sealed class Atlas
 }
 
 /// <summary>
-/// One stretch of a road: where to go next, and how the journal names it (a door, an opening, or the
-/// goal's place). A door's leg also says how it is walked: line up at the approach (in front of the
-/// door, off the wall) and end at the exit (behind it); for an opening or the goal both are the point.
+/// One stretch of a road: where to go next, and how the journal names it — a door (kitchen/north), an
+/// opening (north~center), or a stop (the place alone: garage). A door's leg also says how it is walked:
+/// line up at the approach (in front of the door, off the wall) and end at the exit (behind it); for an
+/// opening or a stop both are the point.
 /// </summary>
 internal sealed class Leg
 {
@@ -400,6 +471,8 @@ internal sealed class Leg
     internal string Name { get; }
     internal Waypoint Approach { get; }
     internal Waypoint Exit { get; }
+    /// <summary>A stop to reach, as opposed to a passage to cross.</summary>
+    internal bool IsStop => !Name.Contains('/') && !Name.Contains('~');
 
     internal Leg(Waypoint at, string name) : this(at, name, at, at) { }
 

@@ -39,6 +39,11 @@
   button.danger { background:#4a2430; color:#f0b9b9; border:1px solid #7a3a44; }
   button.danger:active { background:#6a3040; }
   .hint { font-size:12px; color:var(--muted); margin:0; }
+  .stops { margin:0; padding-left:22px; font-family:ui-monospace, monospace; font-size:13px; min-height:18px; }
+  .stops li { display:flex; gap:10px; align-items:center; padding:2px 0; }
+  .stops li .drop { cursor:pointer; color:var(--muted); }
+  .stops li .drop:hover { color:var(--warn); }
+  .stops-empty { font-size:12px; color:var(--muted); font-style:italic; }
 
   /* journal feed */
   #feed, #events { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;
@@ -75,26 +80,33 @@
   <section>
     <h2>Operations</h2>
     <div class="card ops">
-      <canvas id="map" width="300" height="300" title="click to send the body there"></canvas>
-      <p class="hint">The floor plan is the golem's own map, released into its journal. Click a room to
-      entrust a mission to that point, or send it to a place by name: the golem plans the shortest road
-      through the doors and open boundaries, journals it, and journals every passage it crosses.
-      The world (Gazebo, the kiosk) holds more than the map knows: what the body hits there is journaled
-      as the mission's failure, naming the obstacle.</p>
+      <canvas id="map" width="300" height="300" title="click to add a stop here"></canvas>
+      <p class="hint">The floor plan is the golem's own map, released into its journal. Click a room or press a
+      place to add a stop, then send the golem through the stops <b>in that order</b> (<code>MoveTo</code>) or let
+      it <b>choose the order</b> that makes the whole road shortest (<code>Cover</code>). Between stops it always
+      takes the shortest road through the doors and open boundaries, journals it, and journals every passage
+      crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body
+      hits there is journaled as the mission's failure, naming the point.</p>
       <div class="row" id="places"></div>
       <div class="row">
         <input id="x" type="number" step="0.5" value="5.5">
         <input id="y" type="number" step="0.5" value="5.5">
-        <button id="assign">Assign point</button>
+        <button id="addpoint">Add point</button>
+      </div>
+      <ol id="stops" class="stops"></ol>
+      <div class="row">
+        <button id="move" class="place">MoveTo · in this order</button>
+        <button id="cover" class="place">Cover · shortest order</button>
+        <button id="clear">Clear</button>
       </div>
       <div class="row">
         <button id="reset">Let go of everything</button>
         <button id="wipe" class="danger">Reset everything</button>
       </div>
-      <p class="hint"><b>Let go</b>: the golem lets go of every mission — journaled as <code>g.Retire(reason)</code>,
-      nothing is erased — and the body is put back. <b>Reset everything</b> (lab lever): wipes the journals of
-      this golem AND its peers and reboots them reborn at entry 1 — both, because the hearer dedups the
-      sender's tell ids.</p>
+      <p class="hint"><b>Let go</b>: every pending mission is abandoned — one command, journaled as
+      <code>g.Abandon(id, reason)</code> per mission, nothing erased — and the body is put back on its mark.
+      <b>Reset everything</b> (lab lever): wipes the journals of this golem AND its peers and reboots them reborn
+      at entry 1 — all of them, because the hearer dedups the sender's tell ids.</p>
     </div>
   </section>
 
@@ -109,12 +121,15 @@
       <div class="row" id="presets">
         <button data-q="g.Pending()">Pending()</button>
         <button data-q="g.Total()">Total()</button>
+        <button data-q="g.Radius()">Radius()</button>
         <button data-q="g.Speed()">Speed()</button>
+        <button data-q="g.LingerAfterTold()">LingerAfterTold()</button>
         <button data-q="g.RouteLength()">RouteLength()</button>
         <button data-q="g.RouteSeconds()">RouteSeconds()</button>
         <button data-q="g.Distance('kitchen', 'garage')">Distance(kitchen, garage)</button>
         <button data-q="g.PlaceAt(5.5, 5.5)">PlaceAt(5.5, 5.5)</button>
-        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextPassage(g.NextId()) 'heading', g.LegsLeft(g.NextId()) 'legsLeft'; } }">Next leg</button>
+        <button data-q="g.KnowsWallAt(4.0, 8.5)">KnowsWallAt(4.0, 8.5)</button>
+        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextPassage(g.NextId()) 'heading', g.NextIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <p class="hint">Queries read the golem's in-memory state and never touch the journal.
@@ -178,7 +193,7 @@ function row(e) {
   if (journaled) paintFact(e);
 }
 
-// The map follows the journal: an Assign or AssignTold record places a target marker.
+// The map follows the journal: a record carrying a point (MoveTo, Follow, Reach) places a marker.
 function paintFact(e) {
   let doc;
   try { doc = JSON.parse(e.Note); } catch { return; }
@@ -191,17 +206,44 @@ es.onmessage = (m) => row(JSON.parse(m.data));
 // so a golem restart doesn't duplicate rows; the map is re-read too (it may have grown a release)
 es.onopen = () => { feed.innerHTML = ''; events.innerHTML = ''; targets = []; loadMap(); };
 
-async function assign(x, y) {
-  const r = await fetch(`/assign?x=${x}&y=${y}`, {method: 'POST'});
-  if (!r.ok) document.getElementById('qout').textContent = 'refused: ' + await r.text();
+// The stops being composed: place names or points 'x,y', in the order added. One send, one mission.
+let stops = [];
+function renderStops() {
+  const ol = document.getElementById('stops');
+  ol.innerHTML = '';
+  if (stops.length === 0) { ol.innerHTML = '<li class="stops-empty">no stops yet: click a room, press a place, or add a point</li>'; return; }
+  stops.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${s}</span><span class="drop" title="remove">✕</span>`;
+    li.querySelector('.drop').onclick = () => { stops.splice(i, 1); renderStops(); };
+    ol.appendChild(li);
+  });
 }
-async function goTo(place) {
-  const r = await fetch(`/goto?place=${encodeURIComponent(place)}`, {method: 'POST'});
-  if (!r.ok) document.getElementById('qout').textContent = 'refused: ' + await r.text();
+function addStop(stop) { stops.push(stop); renderStops(); }
+
+// MoveTo walks the stops in the order given (a single place or point takes the plain form, so the
+// journal reads g.MoveTo(7, 'kitchen')); Cover lets the golem choose the order.
+async function send(kind) {
+  const out = document.getElementById('qout');
+  if (stops.length === 0) { out.textContent = 'add a stop first'; return; }
+  let r;
+  if (kind === 'move' && stops.length === 1 && !stops[0].includes(','))
+    r = await fetch(`/move?place=${encodeURIComponent(stops[0])}`, {method: 'POST'});
+  else if (kind === 'move' && stops.length === 1)
+    r = await fetch(`/move?x=${stops[0].split(',')[0]}&y=${stops[0].split(',')[1]}`, {method: 'POST'});
+  else
+    r = await fetch(kind === 'move' ? '/move' : '/cover',
+                    {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({stops})});
+  if (!r.ok) { out.textContent = 'refused: ' + await r.text(); return; }
+  stops = []; renderStops();
 }
 
-document.getElementById('assign').onclick = () =>
-  assign(+document.getElementById('x').value, +document.getElementById('y').value);
+document.getElementById('addpoint').onclick = () =>
+  addStop(`${+document.getElementById('x').value},${+document.getElementById('y').value}`);
+document.getElementById('move').onclick = () => send('move');
+document.getElementById('cover').onclick = () => send('cover');
+document.getElementById('clear').onclick = () => { stops = []; renderStops(); };
+renderStops();
 
 async function runQuery(script) {
   const out = document.getElementById('qout');
@@ -220,7 +262,7 @@ document.querySelectorAll('#presets button').forEach(b => {
 });
 
 document.getElementById('reset').onclick = async () => {
-  if (!confirm('Let go of every mission (journaled as Retire) and put the body back?')) return;
+  if (!confirm('Abandon every pending mission (journaled, one command) and put the body back on its mark?')) return;
   await fetch('/reset', {method: 'POST'});
 };
 document.getElementById('wipe').onclick = async () => {
@@ -232,7 +274,7 @@ map.addEventListener('click', (ev) => {
   const r = map.getBoundingClientRect();
   const x = toWx((ev.clientX - r.left) / r.width * map.width);
   const y = toWy((ev.clientY - r.top) / r.height * map.height);
-  assign(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+  addStop(`${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`);
 });
 
 // The floor plan, as the golem knows it (one query on /map); one "go to" button per place.
@@ -244,8 +286,8 @@ async function loadMap() {
     holder.innerHTML = '';
     for (const p of plan.places) {
       const b = document.createElement('button');
-      b.className = 'place'; b.textContent = '→ ' + p.name;
-      b.onclick = () => goTo(p.name);
+      b.className = 'place'; b.textContent = '+ ' + p.name;
+      b.onclick = () => addStop(p.name);
       holder.appendChild(b);
     }
   } catch { /* the golem may still be waking up */ }

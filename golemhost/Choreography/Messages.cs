@@ -29,7 +29,7 @@ public sealed class MissionRouted : IDispatchMessage
 }
 
 // The body crossed the next passage of a mission's road.
-public sealed class MissionPassed : IDispatchMessage
+public sealed class PassageCrossed : IDispatchMessage
 {
     public static int TypeId => 'P';
     public int Id { get; private init; }
@@ -38,7 +38,7 @@ public sealed class MissionPassed : IDispatchMessage
     public static IDispatchMessage Deserialize(string raw)
     {
         int bar = raw.IndexOf('|');
-        return new MissionPassed
+        return new PassageCrossed
         {
             Id = int.Parse(raw[1..bar], CultureInfo.InvariantCulture),
             Passage = raw[(bar + 1)..]
@@ -48,37 +48,30 @@ public sealed class MissionPassed : IDispatchMessage
     public static string Payload(int id, string passage) => $"{id}|{passage}";
 }
 
-// A told point was made obsolete by a newer one: the follower lets it go.
-public sealed class MissionSuperseded : IDispatchMessage
-{
-    public static int TypeId => 'U';
-    public int Id { get; private init; }
-    public int By { get; private init; }
-
-    public static IDispatchMessage Deserialize(string raw)
-    {
-        int bar = raw.IndexOf('|');
-        return new MissionSuperseded
-        {
-            Id = int.Parse(raw[1..bar], CultureInfo.InvariantCulture),
-            By = int.Parse(raw[(bar + 1)..], CultureInfo.InvariantCulture)
-        };
-    }
-
-    public static string Payload(int id, int by) => $"{id}|{by}";
-}
-
-public sealed class MissionSucceeded : IDispatchMessage
+// The body reached the next stop of a mission's road (the last one completes the mission).
+public sealed class StopReached : IDispatchMessage
 {
     public static int TypeId => 'S';
     public int Id { get; private init; }
+    public double X { get; private init; }
+    public double Y { get; private init; }
 
-    public static IDispatchMessage Deserialize(string raw) =>
-        new MissionSucceeded { Id = int.Parse(raw[1..], CultureInfo.InvariantCulture) };
+    public static IDispatchMessage Deserialize(string raw)
+    {
+        var parts = raw[1..].Split('|');
+        return new StopReached
+        {
+            Id = int.Parse(parts[0], CultureInfo.InvariantCulture),
+            X = double.Parse(parts[1], CultureInfo.InvariantCulture),
+            Y = double.Parse(parts[2], CultureInfo.InvariantCulture)
+        };
+    }
 
-    public static string Payload(int id) => id.ToString(CultureInfo.InvariantCulture);
+    public static string Payload(int id, double x, double y) =>
+        $"{id}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}";
 }
 
+// The world said no: a collision, a stall, no road.
 public sealed class MissionFailed : IDispatchMessage
 {
     public static int TypeId => 'F';
@@ -98,13 +91,33 @@ public sealed class MissionFailed : IDispatchMessage
     public static string Payload(int id, string reason) => $"{id}|{reason}";
 }
 
-// The operator asked the golem to let go of every mission.
-public sealed class GolemRetired : IDispatchMessage
+// The golem lets a mission go: a newer told point made it pointless.
+public sealed class MissionAbandoned : IDispatchMessage
+{
+    public static int TypeId => 'U';
+    public int Id { get; private init; }
+    public string Reason { get; private init; } = "";
+
+    public static IDispatchMessage Deserialize(string raw)
+    {
+        int bar = raw.IndexOf('|');
+        return new MissionAbandoned
+        {
+            Id = int.Parse(raw[1..bar], CultureInfo.InvariantCulture),
+            Reason = raw[(bar + 1)..]
+        };
+    }
+
+    public static string Payload(int id, string reason) => $"{id}|{reason}";
+}
+
+// The operator asked the golem to let go of every pending mission.
+public sealed class EverythingLetGo : IDispatchMessage
 {
     public static int TypeId => 'X';
     public string Reason { get; private init; } = "";
 
-    public static IDispatchMessage Deserialize(string raw) => new GolemRetired { Reason = raw[1..] };
+    public static IDispatchMessage Deserialize(string raw) => new EverythingLetGo { Reason = raw[1..] };
 
     public static string Payload(string reason) => reason;
 }

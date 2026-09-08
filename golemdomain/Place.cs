@@ -2,7 +2,7 @@ namespace GolemHost.Domain;
 
 /// <summary>
 /// A named room of the map: an axis-aligned rectangle. Built fluently from the release
-/// chain — <c>g.AddPlace('kitchen', 0, 6, 4, 5).Door('hall', 4, 8.5).Open('living')</c> —
+/// chain — <c>g.Chart('kitchen', 0, 6, 4, 5).DoorTo('hall', 4, 8.5).OpenTo('living')</c> —
 /// so each place declares its own passages and the journal reads like a floor plan.
 /// </summary>
 internal sealed class Place
@@ -34,16 +34,16 @@ internal sealed class Place
         at.X >= X - 1e-9 && at.X <= X + Width + 1e-9 && at.Y >= Y - 1e-9 && at.Y <= Y + Height + 1e-9;
 
     /// <summary>A door to a neighbouring place, at a point on the shared wall. Chainable.</summary>
-    internal Place Door(string to, double x, double y)
+    internal Place DoorTo(string place, double x, double y)
     {
-        atlas.AddDoor(Name, to, new Waypoint(x, y));
+        atlas.AddDoor(Name, place, new Waypoint(x, y));
         return this;
     }
 
     /// <summary>The whole shared boundary with a neighbour is open — no wall, no door. Chainable.</summary>
-    internal Place Open(string to)
+    internal Place OpenTo(string place)
     {
-        atlas.AddOpening(Name, to);
+        atlas.AddOpening(Name, place);
         return this;
     }
 }

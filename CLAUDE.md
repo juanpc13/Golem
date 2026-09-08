@@ -34,10 +34,13 @@ journal per golem, a shared world with real physics and real collisions.
   golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech).
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
-  contacts are ephemeral telemetry, transitions (Assign/Route/Pass/Complete/Fail/
-  Supersede/Retire) are journaled, every write goes through one serial Dispatch,
-  tells are reaction-only. The golem's map (release `map_v1`) is its knowledge;
-  what the simulator reports (a collision with a crate) is reality.
+  contacts are ephemeral telemetry, transitions are journaled — entrusting (MoveTo/
+  Cover/Follow), the road (Route), progress (Cross/Reach: the last Reach completes),
+  the ending (Fail/Abandon) — every write goes through one serial Dispatch, tells are
+  reaction-only. The golem's map (release `map_v1`: Chart/DoorTo/OpenTo) is its
+  knowledge; what the simulator reports (a collision with a crate) is reality. The
+  language was fixed on 7-sep-2026 (PLAN, *El lenguaje del golem*): do not add verbs
+  on the fly — propose them there first.
 
 ## Habits
 

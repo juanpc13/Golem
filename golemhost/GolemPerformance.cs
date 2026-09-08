@@ -40,18 +40,21 @@ internal sealed class GolemPerformance : PerformanceV2
     }
 
     // The release chain.
-    //   init    — the golem is born with its body: cruise speed (world units per second)
-    //             and how long it pauses at a point a peer told it about.
-    //   map_v1  — the golem learns its map: a ring of rooms around two solid blocks, with a
+    //   init    — the golem is born with its body: its size (the radius of the disk it occupies,
+    //             matching the chassis the sim builds — with it the golem reckons WHERE a touch
+    //             happened and holds that point against its map), its cruise speed (world units
+    //             per second) and how long it lingers at a stop a peer told it about.
+    //   map_v1  — the golem charts its map: a ring of rooms around two solid blocks, with a
     //             wide shortcut through the middle (north ~ center ~ south, open boundaries)
     //             and two long narrow corridors on the sides (west, east). One fluent chain
     //             per place declaring its doors (a point on the shared wall) and its open
     //             boundaries. Shortest roads become visible: kitchen -> garage cuts through
-    //             the center, kitchen -> living takes the west corridor. The map is the golem's own knowledge: roads are planned
-    //             through the passages (shortest path), and every golem shares the same map.
-    //   size_v1 — the golem learns the size of its body (the radius of the disk it occupies, matching
-    //             the chassis the sim builds). With it the golem reckons WHERE a touch happened and
-    //             holds that point against its map: a wall it knows, or something the map lacks.
+    //             the center, kitchen -> living takes the west corridor. The map is the golem's
+    //             own knowledge: roads are planned through the passages (shortest path), and
+    //             every golem shares the same map.
+    // (7-sep-2026: the language was rewritten in one go — MoveTo/Cover/Follow, Cross/Reach,
+    // Fail/Abandon, Chart/DoorTo/OpenTo, Embody/Cruise/Linger — and the journals of the
+    // turtlesim era were archived; journals born before that day do not rehydrate.)
     // RULE: an applied release is never edited (the engine guards its body signature) —
     // evolve the golem by APPENDING the next release.
     protected override void OnHydrated()
@@ -59,22 +62,20 @@ internal sealed class GolemPerformance : PerformanceV2
         Actor.Using(@"
             upgrade('init') {
                 g = Golem();
-                g.Embody(2.0);
-                g.Pace(6);
+                g.Embody(0.25);
+                g.Cruise(2.0);
+                g.Linger(6);
             }
             upgrade('map_v1') {
-                g.AddPlace('kitchen', 0, 8, 4, 3).Door('north', 4, 9.5).Door('west', 0.75, 8);
-                g.AddPlace('north',   4, 8, 3, 3).Door('storage', 7, 9.5).Open('center');
-                g.AddPlace('storage', 7, 8, 4, 3).Door('east', 10.25, 8);
-                g.AddPlace('west',    0, 3, 1.5, 5).Door('living', 0.75, 3);
-                g.AddPlace('center',  4, 3, 3, 5).Open('south');
-                g.AddPlace('east',    9.5, 3, 1.5, 5).Door('garage', 10.25, 3);
-                g.AddPlace('living',  0, 0, 4, 3).Door('south', 4, 1.5);
-                g.AddPlace('south',   4, 0, 3, 3).Door('garage', 7, 1.5);
-                g.AddPlace('garage',  7, 0, 4, 3);
-            }
-            upgrade('size_v1') {
-                g.Measure(0.25);
+                g.Chart('kitchen', 0, 8, 4, 3).DoorTo('north', 4, 9.5).DoorTo('west', 0.75, 8);
+                g.Chart('north',   4, 8, 3, 3).DoorTo('storage', 7, 9.5).OpenTo('center');
+                g.Chart('storage', 7, 8, 4, 3).DoorTo('east', 10.25, 8);
+                g.Chart('west',    0, 3, 1.5, 5).DoorTo('living', 0.75, 3);
+                g.Chart('center',  4, 3, 3, 5).OpenTo('south');
+                g.Chart('east',    9.5, 3, 1.5, 5).DoorTo('garage', 10.25, 3);
+                g.Chart('living',  0, 0, 4, 3).DoorTo('south', 4, 1.5);
+                g.Chart('south',   4, 0, 3, 3).DoorTo('garage', 7, 1.5);
+                g.Chart('garage',  7, 0, 4, 3);
             }
         ")
         .PerformCommand();

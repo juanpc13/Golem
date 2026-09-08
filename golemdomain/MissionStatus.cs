@@ -4,9 +4,9 @@ namespace GolemHost.Domain;
 internal sealed class MissionStatus
 {
     internal static readonly MissionStatus Pending   = new("pending");
-    internal static readonly MissionStatus Completed = new("completed");
-    internal static readonly MissionStatus Failed    = new("failed");
-    internal static readonly MissionStatus Superseded = new("superseded");   // a told point made obsolete by a newer one
+    internal static readonly MissionStatus Completed = new("completed");   // the last stop was reached
+    internal static readonly MissionStatus Failed    = new("failed");      // the world said no: a collision, a stall, no road
+    internal static readonly MissionStatus Abandoned = new("abandoned");   // the golem let it go: a newer told point, or the operator
 
     internal string Name { get; }
 

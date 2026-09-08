@@ -43,10 +43,11 @@ in [CLAUDE.md](CLAUDE.md).
   the shortest road through doors and open boundaries. The map does not know about the crate in the east
   corridor — that is the point.
 - **The journal is the only truth.** Pose and contacts are ephemeral telemetry. Transitions are journaled:
-  `Assign`, `Route`, `Pass`, `Complete`, `Fail`, `Supersede`, `Retire`. Kill a golem mid-mission and it
-  rehydrates and resumes from where its body stands.
-- **Speech is a reaction.** Red tells blue every place it visits; blue takes each told place as a mission
-  of its own, follows, stops a body's length short of the leader, and lets stale told points go when newer
+  `MoveTo`, `Cover`, `Follow` (the entrusting), `Route` (the road decided), `Cross` and `Reach` (progress; the
+  last stop reached completes the mission), `Fail` and `Abandon` (the ending). Kill a golem mid-mission and
+  it rehydrates and resumes from where its body stands.
+- **Speech is a reaction.** Red tells blue every stop it reaches; blue takes each told point as a mission of
+  its own, follows, stops a body's length short of the leader, and abandons stale told points when newer
   ones arrive (catching up, not retracing).
 
 ## Run it
@@ -72,12 +73,20 @@ Then open:
 A first tour, from a shell:
 
 ```bash
-curl -X POST "localhost:8082/goto?place=kitchen"
+curl -X POST "localhost:8082/move?place=kitchen"
 ```
 
-Red plans its road, journals it, crosses two doors and completes; blue is told and follows. Send red on
-to `storage` and `garage`: its shortest road to the garage is the east corridor, where a crate the map
-never heard of stands — the journal will say so.
+Red plans its road, journals it, crosses two doors and reaches the kitchen; blue is told and follows.
+Send red on through several stops in one mission, in the order you give or in the order it finds shortest:
+
+```bash
+curl -X POST localhost:8082/move  -H "Content-Type: application/json" -d "{\"stops\": [\"storage\", \"garage\"]}"
+curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"stops\": [\"garage\", \"kitchen\", \"storage\"]}"
+```
+
+Its shortest road from the storage to the garage is the east corridor, where a crate the map never heard
+of stands — the journal will say so. The panels do the same with a stop composer: click rooms or press
+places to collect stops, then *MoveTo* or *Cover*.
 
 To watch the physics without the picture (the GUI's software rendering costs five or six CPU cores),
 set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
@@ -99,30 +108,31 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 
 | Verb | Meaning |
 |---|---|
-| `Assign(id, x, y)` / `AssignPlace(id, place)` | The operator entrusts a mission to a point or a place. Handles are minted by the actor and never reused. |
-| `AssignTold(x, y)` / `AssignToldPlace(place)` | The golem assigns itself a point a peer says it visited (following). |
-| `Route(id, plan)` | The road decided from where the body stands: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. |
-| `Pass(id, passage)` | A door or open boundary crossed. |
-| `Complete(id)` / `Fail(id, reason)` | How the mission ended — `reason` in the navigator's words (`collided with crate`, `stalled`, `timeout`). |
-| `Supersede(id, by)` | A told point made stale by a newer one: the follower catches up instead of retracing. |
-| `Retire(reason)` | Let go of every mission (journaled; nothing is erased). |
+| `MoveTo(id, place)` · `MoveTo(id, x, y)` · `MoveTo(id, stops)` | The operator sends the golem to a place, a point, or through several stops **in that order** (`{'kitchen', '9,8', 'garage'}`). Handles are minted by the actor and never reused. |
+| `Cover(id, stops)` | Several stops, and the golem **chooses the order** that makes the whole road shortest. |
+| `Follow(x, y)` | The golem follows its leader to a point a peer says it reached (handle minted inside). |
+| `Route(id, plan)` | The road decided from where the body stands, passages and stops in order: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. Between stops it is always the shortest road. |
+| `Cross(id, passage)` | A door or open boundary crossed. |
+| `Reach(id, x, y)` | A stop reached. Reaching the last one completes the mission — there is no separate "complete". |
+| `Fail(id, reason)` | The world said no — in the navigator's words (`collided with crate at (10.3, 5.9): nothing on my map there`, `stalled`, `timeout`). |
+| `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
 
-Releases (versioned initialization inside the actor, applied once and journaled): `init` embodies the
-golem with its cruise speed and its pause after a told point (`g.Embody(2.0); g.Pace(6);`); `map_v1`
-teaches it the floor plan, one fluent chain per place
-(`g.AddPlace('kitchen', 0, 8, 4, 3).Door('north', 4, 9.5).Door('west', 0.75, 8);`); `size_v1` gives it
-the size of its body (`g.Measure(0.25);`). Evolve the golem by appending a release, never by editing an
-applied one.
+Releases (versioned initialization inside the actor, applied once and journaled): `init` gives the golem
+its body — size, cruise speed and how long it lingers at a told stop (`g.Embody(0.25); g.Cruise(2.0);
+g.Linger(6);`); `map_v1` charts its floor plan, one fluent chain per place
+(`g.Chart('kitchen', 0, 8, 4, 3).DoorTo('north', 4, 9.5).DoorTo('west', 0.75, 8);`). Evolve the golem by
+appending a release, never by editing an applied one.
 
 Endpoints, per golem:
 
 | Endpoint | What it does |
 |---|---|
-| `POST /assign?x=&y=` · `POST /goto?place=` | Entrust a mission (refused with 409 when the point is off the map or the place unknown) |
+| `POST /move?place=` · `POST /move?x=&y=` · `POST /move` `{"stops": [...]}` | Send the golem to a place, a point, or through several stops in that order (409 when a stop is off the map) |
+| `POST /cover` `{"stops": [...]}` | Send it through several stops in the order it finds shortest |
 | `GET /state` · `GET /progress` · `GET /map` | The mission board; road left and ETA from where the body stands; the map as the golem knows it |
-| `GET /body` | Host telemetry: body, pose, the last thing the body touched |
+| `GET /body` | Host telemetry: body, believed pose, the world's pose, the last thing the body touched |
 | `POST /query` | Ad-hoc read-only query in the DSL, e.g. `g.Distance('kitchen', 'garage')` |
-| `POST /reset` · `POST /reset-everything` | Let go of every mission (journaled) and put the body back; wipe the journals of this golem and its peers and reboot them reborn |
+| `POST /reset` · `POST /reset-everything` | Abandon every pending mission (journaled, one command) and put the body back; wipe the journals of this golem and its peers and reboot them reborn |
 | `GET /events` | The panel's feed: the whole journal replayed, then every record as it lands, plus runtime events |
 | `POST /tell` | Where a peer's tells arrive |
 

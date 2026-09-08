@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Choreography.Theater;
 using GolemHost.Membrane;
 using Microsoft.AspNetCore.Mvc;
@@ -19,53 +20,80 @@ public class GolemController : Controller
         this.ros = ros;
     }
 
-    // Entrust a mission to a point. The handle is minted at the actor (Eval) and frozen
-    // into the journaled arguments, so the Reaction that echoes visited points can
-    // correlate on it. A point off the map is refused before anything is journaled.
-    [HttpPost("assign")]
-    public IActionResult AssignMission([FromQuery] double x, [FromQuery] double y)
+    // Send the golem somewhere: one place (?place=), one point (?x=&y=), or several stops in THIS
+    // order (a JSON body {"stops": ["kitchen", "9,8", "garage"]}). The handle is minted at the
+    // actor (Eval) and frozen into the journaled arguments. A stop off the map is refused before
+    // anything is journaled.
+    [HttpPost("move")]
+    public async Task<IActionResult> MoveTo([FromQuery] string place, [FromQuery] double? x, [FromQuery] double? y)
     {
-        if (!double.IsFinite(x) || !double.IsFinite(y)) return BadRequest("x and y must be finite numbers");
+        if (!string.IsNullOrWhiteSpace(place))
+            return Refusable(perf.Actor.Using(
+                @"
+                    Check(g.KnowsPlace(@place)) Error 'no such place on the map';
+                ",
+                @"
+                    g.MoveTo(@id, @place);
+                ")
+            .WithParameters(p => {
+                p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
+                p["place", typeof(string)]           = place.Trim();
+            })
+            .PerformCheckThenCommand());
 
-        string refused = perf.Actor.Using(
+        if (x.HasValue || y.HasValue)
+        {
+            if (!(x.HasValue && y.HasValue) || !double.IsFinite(x.Value) || !double.IsFinite(y.Value))
+                return BadRequest("x and y must both be finite numbers");
+            return Refusable(perf.Actor.Using(
+                @"
+                    Check(g.IsOnMap(@x, @y)) Error 'that point is nowhere on the map';
+                ",
+                @"
+                    g.MoveTo(@id, @x, @y);
+                ")
+            .WithParameters(p => {
+                p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
+                p["x", typeof(double)]               = x.Value;
+                p["y", typeof(double)]               = y.Value;
+            })
+            .PerformCheckThenCommand());
+        }
+
+        var stops = await ReadStopsAsync();
+        if (stops == null) return BadRequest("give ?place=, ?x=&y=, or a JSON body {\"stops\": [\"kitchen\", \"9,8\"]}");
+        return Refusable(perf.Actor.Using(
             @"
-                Check(g.IsOnMap(@x, @y)) Error 'that point is nowhere on the map';
+                Check(g.AreStops(@stops)) Error 'a stop is neither a place nor a point on the map';
             ",
             @"
-                g.Assign(@id, @x, @y);
+                g.MoveTo(@id, @stops);
             ")
         .WithParameters(p => {
             p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
-            p["x", typeof(double)]               = x;
-            p["y", typeof(double)]               = y;
+            p["stops", typeof(string[])]         = stops;
         })
-        .PerformCheckThenCommand();
-        if (refused != "") return Conflict(refused);
-
-        return Content(Board(), "application/json");
+        .PerformCheckThenCommand());
     }
 
-    // Entrust a mission to a place: the golem heads for its center, through the passages.
-    [HttpPost("goto")]
-    public IActionResult GoToPlace([FromQuery] string place)
+    // Send the golem through several stops and let it choose the order that makes the road shortest.
+    [HttpPost("cover")]
+    public async Task<IActionResult> Cover()
     {
-        if (string.IsNullOrWhiteSpace(place)) return BadRequest("a place name is required");
-
-        string refused = perf.Actor.Using(
+        var stops = await ReadStopsAsync();
+        if (stops == null) return BadRequest("give a JSON body {\"stops\": [\"garage\", \"kitchen\", \"storage\"]}");
+        return Refusable(perf.Actor.Using(
             @"
-                Check(g.KnowsPlace(@place)) Error 'no such place on the map';
+                Check(g.AreStops(@stops)) Error 'a stop is neither a place nor a point on the map';
             ",
             @"
-                g.AssignPlace(@id, @place);
+                g.Cover(@id, @stops);
             ")
         .WithParameters(p => {
             p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
-            p["place", typeof(string)]           = place.Trim();
+            p["stops", typeof(string[])]         = stops;
         })
-        .PerformCheckThenCommand();
-        if (refused != "") return Conflict(refused);
-
-        return Content(Board(), "application/json");
+        .PerformCheckThenCommand());
     }
 
     // The map as the golem knows it: places, doors and open boundaries (one print).
@@ -81,8 +109,8 @@ public class GolemController : Controller
 
     // Ask the golem how much road and how much time it still has ahead — through EVERY
     // pending mission, in the order it will run them, along the map's passages, at ITS
-    // OWN speed and with ITS OWN pauses. The only telemetry is where the body stands
-    // right now: it enters the query as @params (queries never journal).
+    // OWN speed and with ITS OWN lingers. The only telemetry is where the body believes
+    // it stands right now: it enters the query as @params (queries never journal).
     [HttpGet("progress")]
     public IActionResult Progress()
     {
@@ -90,9 +118,9 @@ public class GolemController : Controller
         if (pose == null) return StatusCode(503, "no telemetry from the body yet");
 
         string answer = perf.Actor.Using(@"
-            print g.HasPendingMission() 'hasNext', g.Pending() 'pendingPoints', g.Speed() 'speed', g.HoldAfterTold() 'holdAfterTold';
+            print g.HasPendingMission() 'hasNext', g.Pending() 'pendingMissions', g.Speed() 'speed', g.LingerAfterTold() 'lingerAfterTold';
             if (g.HasPendingMission()) {
-                print g.NextId() 'mission', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
+                print g.NextId() 'mission', g.StopsLeft(g.NextId()) 'stopsLeft', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
                 if (g.IsOnMap(@x, @y)) {
                     print g.DistanceLeft(@x, @y) 'distanceLeft', g.SecondsLeft(@x, @y) 'secondsLeft', g.PlaceAt(@x, @y) 'here';
                 }
@@ -112,8 +140,29 @@ public class GolemController : Controller
         perf.Actor.Using(@"
             print g.Pending() 'pending', g.Total() 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
-                print g.NextId() 'nextId', g.NextX() 'nextX', g.NextY() 'nextY';
+                print g.NextId() 'nextId', g.NextX() 'nextX', g.NextY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft';
             }
         ")
         .PerformQuery();
+
+    private IActionResult Refusable(string refused) =>
+        refused != "" ? Conflict(refused) : Content(Board(), "application/json");
+
+    // The stops of a JSON body {"stops": ["kitchen", "9,8", ...]}; null when there is no such body.
+    private async Task<string[]> ReadStopsAsync()
+    {
+        if (Request.ContentLength is null or 0) return null;
+        try
+        {
+            using var reader = new StreamReader(Request.Body);
+            using var doc = JsonDocument.Parse(await reader.ReadToEndAsync());
+            if (!doc.RootElement.TryGetProperty("stops", out var array) || array.ValueKind != JsonValueKind.Array) return null;
+            var stops = array.EnumerateArray().Select(e => e.GetString()?.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToArray();
+            return stops.Length == 0 ? null : stops;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
