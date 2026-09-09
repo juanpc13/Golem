@@ -28,9 +28,8 @@ public sealed class GolemChoreography
     private const double LineUpWithin = 0.15;     // m
     private const double LeaderStandoff = 1.0;    // m
 
-    // Bumping into a wall the golem KNOWS is its own execution error: it backs off, lines up and
-    // tries the leg again — this many times before the mission is given up as failed.
-    private const int RetriesAfterBump = 3;
+    // Bumping into a wall the golem KNOWS is its own execution error (a Graze, journaled): it backs off,
+    // lines up and tries the leg again while the DOMAIN says it may (g.MayRetryLeg: its patience on the leg).
 
     // Bumping into something the map does NOT hold: the golem feels for a way past it — a step
     // aside (right first, then left), one body's width at a time, and the leg again — before it
@@ -109,12 +108,12 @@ public sealed class GolemChoreography
                 .Causation.Continue(bumped);
 
             string marked = string.Join("\n", peers.Select(p =>
-                $"tell ObstacleFound with @x, @y to {p} once 'obstacle-{golem}-' + @x + ',' + @y + '-{p}';"));
+                $"tell ObstacleFound with @x, @y, @heading to {p} once 'obstacle-{golem}-' + @x + ',' + @y + '-{p}';"));
             perf.Actor.Reactions.DefineReaction("echo-marked")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Marked").One()
                     .OnMatch(@"
-                        [_:Golem].Mark($x, $y)
+                        [_:Golem].Mark($x, $y, $heading)
                     ")
                 .Causation.Continue(marked);
         }
@@ -236,13 +235,14 @@ public sealed class GolemChoreography
             if (m.Id == 0)
             {
                 actor.Using(@"
-                    g.Bump(@x, @y);
+                    g.Bump(@x, @y, @heading);
                     expose @x x, @y y, @me who;
                 ")
                 .WithParameters(p => {
-                    p["x",  typeof(double)] = m.X;
-                    p["y",  typeof(double)] = m.Y;
-                    p["me", typeof(string)] = golem;
+                    p["x",       typeof(double)] = m.X;
+                    p["y",       typeof(double)] = m.Y;
+                    p["heading", typeof(double)] = m.Heading;
+                    p["me",      typeof(string)] = golem;
                 })
                 .PerformCommand();
                 Console.WriteLine($"[golem {golem}] touched at ({m.X:0.0}, {m.Y:0.0}) while standing idle (entry {perf.CurrentEntryId})");
@@ -253,31 +253,68 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                 ",
                 @"
-                    g.Bump(@id, @x, @y);
+                    g.Bump(@id, @x, @y, @heading);
                     expose @x x, @y y, @me who;
                 ")
             .WithParameters(p => {
-                p["id", typeof(int)]    = m.Id;
-                p["x",  typeof(double)] = m.X;
-                p["y",  typeof(double)] = m.Y;
-                p["me", typeof(string)] = golem;
+                p["id",      typeof(int)]    = m.Id;
+                p["x",       typeof(double)] = m.X;
+                p["y",       typeof(double)] = m.Y;
+                p["heading", typeof(double)] = m.Heading;
+                p["me",      typeof(string)] = golem;
             })
             .PerformCheckThenCommand();
             Settle(refused, $"mission {m.Id} bumped into something at ({m.X:0.0}, {m.Y:0.0})");
         });
 
-        // A mark: the golem concluded a touch was an obstacle (nobody else bumped there and then).
+        // The conclusions of a touch, in the golem's voice — the DOMAIN suspected (g.Suspect), the host only writes
+        // what it named. A mark: it was a thing (nobody else bumped there and then); the heading is the mark's normal.
         dispatch.On<ObstacleMarked>((actor, m) =>
         {
             actor.Using(@"
-                g.Mark(@x, @y);
+                g.Mark(@x, @y, @heading);
             ")
             .WithParameters(p => {
-                p["x", typeof(double)] = m.X;
-                p["y", typeof(double)] = m.Y;
+                p["x",       typeof(double)] = m.X;
+                p["y",       typeof(double)] = m.Y;
+                p["heading", typeof(double)] = m.Heading;
             })
             .PerformCommand();
-            Console.WriteLine($"[golem {golem}] marked an obstacle at ({m.X:0.0}, {m.Y:0.0}) (entry {perf.CurrentEntryId})");
+            Console.WriteLine($"[golem {golem}] marked a thing at ({m.X:0.0}, {m.Y:0.0}) (entry {perf.CurrentEntryId})");
+        });
+
+        // It was a peer: the body met another body there. History, told to nobody (the peer lived it too).
+        dispatch.On<PeerMet>((actor, m) =>
+        {
+            actor.Using(@"
+                g.Met(@who, @x, @y);
+            ")
+            .WithParameters(p => {
+                p["who", typeof(string)] = m.Who;
+                p["x",   typeof(double)] = m.X;
+                p["y",   typeof(double)] = m.Y;
+            })
+            .PerformCommand();
+            Console.WriteLine($"[golem {golem}] met {m.Who} at ({m.X:0.0}, {m.Y:0.0}) (entry {perf.CurrentEntryId})");
+        });
+
+        // It was a wall the golem knows: a graze, its own execution error, counted against its patience on the leg.
+        dispatch.On<MissionGrazed>((actor, m) =>
+        {
+            string refused = actor.Using(
+                @"
+                    Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
+                ",
+                @"
+                    g.Graze(@id, @x, @y);
+                ")
+            .WithParameters(p => {
+                p["id", typeof(int)]    = m.Id;
+                p["x",  typeof(double)] = m.X;
+                p["y",  typeof(double)] = m.Y;
+            })
+            .PerformCheckThenCommand();
+            Settle(refused, $"mission {m.Id} grazed a wall it knows at ({m.X:0.0}, {m.Y:0.0})");
         });
 
         // Once-per-mission decisions are steps of ONE run per mission: a Saga keyed by mission id
@@ -330,8 +367,8 @@ public sealed class GolemChoreography
                 .Command("g.Follow(@x, @y);")
             .Told("BumpedAt").With<double>("x").With<double>("y").With<string>("who")
                 .Command("g.Hear(@who, @x, @y);")
-            .Told("ObstacleFound").With<double>("x").With<double>("y")
-                .Command("g.Learn(@x, @y);")
+            .Told("ObstacleFound").With<double>("x").With<double>("y").With<double>("heading")
+                .Command("g.Learn(@x, @y, @heading);")
             .Start();
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
             $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
@@ -352,6 +389,8 @@ public sealed class GolemChoreography
             "reached"   => StopReached.TypeId,
             "bumped"    => MissionBumped.TypeId,
             "marked"    => ObstacleMarked.TypeId,
+            "met"       => PeerMet.TypeId,
+            "grazed"    => MissionGrazed.TypeId,
             "abandoned" => MissionAbandoned.TypeId,
             "failed"    => MissionFailed.TypeId,
             "letgo"     => EverythingLetGo.TypeId,
@@ -439,7 +478,6 @@ public sealed class GolemChoreography
     {
         int announcedFor = 0;
         string announcedLeg = null;
-        int wallBumps = 0;     // known walls bumped on the current leg
         int yields = 0;        // times the golem waited for a peer on the current leg
         int marksAtRoute = -1; // how many marks the map held when the current road was decided
         bool gaveWay = false;  // the body moved off its road to let a peer pass: the road is decided again from where it stands
@@ -505,7 +543,6 @@ public sealed class GolemChoreography
             {
                 announcedFor = plan.Id;
                 announcedLeg = plan.Passage;
-                wallBumps = 0;
                 yields = 0;
                 probe = null;
                 string what = plan.IsStop ? $"heading to the stop in {plan.Passage}"
@@ -535,28 +572,32 @@ public sealed class GolemChoreography
                 string reason = outcome.Reason;
                 if (outcome.Hit != null)
                 {
-                    // The world said "you touched something". The golem holds the point against ITS map first:
-                    // a wall it knows (not a doorway) is its own execution error — it has backed off, so it lines
-                    // up and tries the leg again (runtime, nothing to journal) until patience runs out.
+                    // The world said "you touched something". The DOMAIN says what it suspects (a wall it knows, a
+                    // peer that spoke, a thing) and names the conclusion; the host only waits, asks and writes it.
                     string where = $"({outcome.Hit.X:0.0}, {outcome.Hit.Y:0.0})";
-                    if (KnowsWallAt(outcome.Hit.X, outcome.Hit.Y))
+                    var first = Suspect(outcome.Hit, heardAtDriveStart);
+                    if (first.Kind == "wall")
                     {
-                        if (wallBumps < RetriesAfterBump)
+                        // A wall I know: my own execution error — a graze, journaled; I have backed off, so I line up and
+                        // try the leg again while the domain's patience on this leg lasts.
+                        Produce("grazed", $"{key}:b{plan.Bumps}:graze:{plan.LegsLeft}:{Grazes(plan.Id) + 1}", MissionGrazed.Payload(plan.Id, outcome.Hit.X, outcome.Hit.Y));
+                        int grazesBefore = Grazes(plan.Id);
+                        await WaitUntilAsync(() => Grazes(plan.Id) > grazesBefore, ct);
+                        if (MayRetryLeg(plan.Id))
                         {
-                            wallBumps++;
-                            string retry = $"mission {plan.Id}: bumped into {outcome.Hit.With} at {where}, a wall I know — recovering, try {wallBumps}/{RetriesAfterBump}";
+                            string retry = $"mission {plan.Id}: grazed {outcome.Hit.With} at {where}, a wall I know — recovering, graze {Grazes(plan.Id)} on this leg";
                             Console.WriteLine($"[golem {golem}] {retry}");
                             feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", retry, DateTime.UtcNow));
                             continue;
                         }
-                        reason = $"still bumping into {outcome.Hit.With} at {where} after {RetriesAfterBump} tries";
+                        reason = $"still grazing {outcome.Hit.With} at {where} after {Grazes(plan.Id)} grazes: patience spent";
                     }
                     else
                     {
-                        // Something the map does not hold. The touch is journaled and told; then the golem
-                        // listens: did a peer bump there and then? A peer is a body that moves — coordinate,
-                        // never mark. Nobody? Then it is an obstacle: a mark (journaled, told), and the golem
-                        // feels for a way past it; both sides given up, the loop above decides the road anew.
+                        // Something the map does not hold. The touch is journaled and told; then the golem waits for
+                        // the peers to speak and asks the domain what it suspects. A peer: met, coordinate. Nobody: a
+                        // thing — marked (told), and the golem feels for a way past it; both sides given up, the loop
+                        // above decides the road anew.
                         string who = await BumpAndListenAsync(plan.Id, key, outcome.Hit, ct);
                         if (who != "")
                         {
@@ -570,7 +611,7 @@ public sealed class GolemChoreography
                         }
                         else
                         {
-                            probe ??= new Probe(plan.Id, plan.Passage, ros.LatestPose?.Theta ?? 0);
+                            probe ??= new Probe(plan.Id, plan.Passage, outcome.Hit.Heading);
                             if (await FeelForAWayPastAsync(plan.Id, key, probe, ct)) continue;
                             string give = $"mission {plan.Id}: no way past by feel, {probe.RightSteps} steps right and {probe.LeftSteps} left — deciding the road again with {Marks()} marks";
                             Console.WriteLine($"[golem {golem}] {give}");
@@ -654,41 +695,48 @@ public sealed class GolemChoreography
     // How long the golem listens, after telling its bump, for a peer telling a bump there and then.
     private static readonly TimeSpan Listen = TimeSpan.FromMilliseconds(2500);
 
-    // The touch protocol (Juan, 8-sep): journal the bump (the reaction tells every peer, with my name), then
-    // listen for a peer's bump near the same point. One heard: it was that peer. None: it was an obstacle —
-    // journal the mark (the reaction tells every peer, who learn it). Returns the peer's name, or "".
+    // The touch protocol, second version (Juan, 8-sep: "the domain decides, the host follows"): journal the bump
+    // (the reaction tells every peer, with my name), wait for the peers to speak, then ask the DOMAIN what it
+    // suspects — a peer that bumped near there and then, or a thing — and journal the conclusion it names: Met
+    // (history) or Mark (a thing with the touch's heading as its normal; the reaction tells the peers, who learn
+    // it). Returns the peer's name, or "".
     private int heardAtDriveStart;   // peers' bumps heard before the current drive began are older news than this touch
 
     private async Task<string> BumpAndListenAsync(int id, string key, Collision hit, CancellationToken ct)
     {
         int since = heardAtDriveStart;
         int before = Bumps(id);
-        string note = $"mission {id}: bumped into something at ({hit.X:0.0}, {hit.Y:0.0}) — nothing on my map there; telling the peers and listening";
+        string note = $"mission {id}: bumped into something at ({hit.X:0.0}, {hit.Y:0.0}) heading {hit.Heading:0.00} — nothing on my map there; telling the peers and listening";
         Console.WriteLine($"[golem {golem}] {note}");
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
-        Produce("bumped", $"{key}:bump:{before + 1}", MissionBumped.Payload(id, hit.X, hit.Y));
+        Produce("bumped", $"{key}:bump:{before + 1}", MissionBumped.Payload(id, hit.X, hit.Y, hit.Heading));
         await WaitUntilAsync(() => Bumps(id) > before, ct);
 
+        // the host owns the clock: the peers get the window to speak, then the domain is asked once
         var until = DateTime.UtcNow + Listen;
-        string who = HeardNear(hit.X, hit.Y, since);   // a peer may have told first, during this very drive
-        while (who == "" && DateTime.UtcNow < until && !ct.IsCancellationRequested)
+        var suspicion = Suspect(hit, since);
+        while (suspicion.Kind != "peer" && DateTime.UtcNow < until && !ct.IsCancellationRequested)
         {
             await Task.Delay(250, ct);
-            who = HeardNear(hit.X, hit.Y, since);
+            suspicion = Suspect(hit, since);
         }
-        if (who != "")
+        if (suspicion.Kind == "peer")
         {
-            string peer = $"mission {id}: {who} bumped there too — it was {who}, a body, not a thing";
+            int metBefore = MetCount();
+            string peer = $"mission {id}: the domain suspects {suspicion.Who} — it bumped there too: a body, not a thing ({suspicion.Conclusion})";
             Console.WriteLine($"[golem {golem}] {peer}");
             feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", peer, DateTime.UtcNow));
-            return who;
+            Produce("met", $"{golem}:met:{suspicion.Who}:{hit.X:0.00},{hit.Y:0.00}:{DateTime.UtcNow.Ticks}", PeerMet.Payload(suspicion.Who, hit.X, hit.Y));
+            await WaitUntilAsync(() => MetCount() > metBefore, ct);
+            return suspicion.Who;
         }
         int marksBefore = Marks();
-        string mark = $"mission {id}: nobody else bumped there — an obstacle: a mark at ({hit.X:0.0}, {hit.Y:0.0}), told to the peers";
+        string mark = $"mission {id}: the domain suspects a thing — nobody else bumped there: a mark at ({hit.X:0.0}, {hit.Y:0.0}) with its normal, told to the peers ({suspicion.Conclusion})";
         Console.WriteLine($"[golem {golem}] {mark}");
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", mark, DateTime.UtcNow));
-        Produce("marked", $"{golem}:mark:{hit.X:0.00},{hit.Y:0.00}:{DateTime.UtcNow.Ticks}", ObstacleMarked.Payload(hit.X, hit.Y));
-        await WaitUntilAsync(() => Marks() >= marksBefore, ct);
+        Produce("marked", $"{golem}:mark:{hit.X:0.00},{hit.Y:0.00}:{DateTime.UtcNow.Ticks}", ObstacleMarked.Payload(hit.X, hit.Y, hit.Heading));
+        // wait for the mark to be applied (a touch within a tenth of a unit of an old mark adds none: then the wait times out)
+        await WaitUntilAsync(() => Marks() > marksBefore, ct);
         return "";
     }
 
@@ -745,7 +793,7 @@ public sealed class GolemChoreography
         if (pose == null) return;
         double r = Radius();
         double hx = pose.X + r * Math.Cos(pose.Theta), hy = pose.Y + r * Math.Sin(pose.Theta);
-        Produce("bumped", $"{golem}:standing-bump:{DateTime.UtcNow.Ticks}", MissionBumped.Payload(0, hx, hy));
+        Produce("bumped", $"{golem}:standing-bump:{DateTime.UtcNow.Ticks}", MissionBumped.Payload(0, hx, hy, pose.Theta));
         string note = $"touched while standing at ({hx:0.0}, {hy:0.0}) — telling the peers";
         Console.WriteLine($"[golem {golem}] {note}");
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
@@ -805,7 +853,7 @@ public sealed class GolemChoreography
             if (!step.Reached)
             {
                 // the step itself met something: if it was not a wall, it is told and settled (a peer, or a mark); either way this side is done
-                if (step.Hit != null && !KnowsWallAt(step.Hit.X, step.Hit.Y))
+                if (step.Hit != null && Suspect(step.Hit, heardAtDriveStart).Kind != "wall")
                     await BumpAsync(id, key, step.Hit, ct);
                 if (right) probe.RightDone = true; else probe.LeftDone = true;
                 continue;
@@ -821,7 +869,7 @@ public sealed class GolemChoreography
             var run = await navigator.GoToAsync(ax, ay, 0.2, ct);
             if (run.Reached) return true;
             if (run.Hit == null) { if (right) probe.RightDone = true; else probe.LeftDone = true; continue; }   // a stall or a timeout: this side is not working
-            if (KnowsWallAt(run.Hit.X, run.Hit.Y)) { if (right) probe.RightDone = true; else probe.LeftDone = true; continue; }
+            if (Suspect(run.Hit, heardAtDriveStart).Kind == "wall") { if (right) probe.RightDone = true; else probe.LeftDone = true; continue; }
             await BumpAsync(id, key, run.Hit, ct);
         }
         return false;
@@ -1026,22 +1074,6 @@ public sealed class GolemChoreography
     }
 
     // Who, among the peers' bumps heard after a given count, bumped near this point; "" for nobody.
-    private string HeardNear(double x, double y, int sinceCount)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using(@"
-            @who = g.HeardNear(@x, @y, @since);
-        ")
-        .WithParameters(rented, p => {
-            p["x",     typeof(double)]                 = x;
-            p["y",     typeof(double)]                 = y;
-            p["since", typeof(int)]                    = sinceCount;
-            p[Parameter.Out, "who", typeof(string)]    = default;
-        })
-        .PerformQuery();
-        return rented["who"].GetValue<string>() ?? "";
-    }
-
     private int Marks()
     {
         using var rented = perf.Actor.RentedParameters();
@@ -1156,20 +1188,68 @@ public sealed class GolemChoreography
         return rented["linger"].GetValue<double>();
     }
 
-    // Does a touched point lie on a wall the golem knows? The map answers; the pose is the only telemetry.
-    private bool KnowsWallAt(double x, double y)
+    // What the domain suspects the body touched: a wall it knows, a peer that spoke since the leg began, or a
+    // thing — and the conclusion it names. The host never classifies; it asks.
+    private (string Kind, string Who, string Conclusion) Suspect(Collision hit, int since)
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @known = g.KnowsWallAt(@x, @y);
+            @kind = g.Suspect(@x, @y, @heading, @since).Kind;
+            @who = g.Suspect(@x, @y, @heading, @since).Who;
+            @verb = g.Suspect(@x, @y, @heading, @since).Conclusion;
         ")
         .WithParameters(rented, p => {
-            p["x", typeof(double)]                   = x;
-            p["y", typeof(double)]                   = y;
-            p[Parameter.Out, "known", typeof(bool)]  = default;
+            p["x",       typeof(double)]              = hit.X;
+            p["y",       typeof(double)]              = hit.Y;
+            p["heading", typeof(double)]              = hit.Heading;
+            p["since",   typeof(int)]                 = since;
+            p[Parameter.Out, "kind", typeof(string)]  = default;
+            p[Parameter.Out, "who",  typeof(string)]  = default;
+            p[Parameter.Out, "verb", typeof(string)]  = default;
         })
         .PerformQuery();
-        return rented["known"].GetValue<bool>();
+        return (rented["kind"].GetValue<string>() ?? "", rented["who"].GetValue<string>() ?? "", rented["verb"].GetValue<string>() ?? "");
+    }
+
+    private int Grazes(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @grazes = g.Grazes(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                     = id;
+            p[Parameter.Out, "grazes", typeof(int)]  = default;
+        })
+        .PerformQuery();
+        return rented["grazes"].GetValue<int>();
+    }
+
+    private bool MayRetryLeg(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @may = g.MayRetryLeg(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                   = id;
+            p[Parameter.Out, "may", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["may"].GetValue<bool>();
+    }
+
+    private int MetCount()
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @met = g.MetCount();
+        ")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "met", typeof(int)] = default;
+        })
+        .PerformQuery();
+        return rented["met"].GetValue<int>();
     }
 
     private bool IsSettled(int id)

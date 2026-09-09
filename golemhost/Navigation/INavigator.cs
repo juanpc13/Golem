@@ -21,8 +21,8 @@ public sealed class Outcome
 
     public static Outcome Failed(string reason) => new(reached: false, reason, null);
 
-    public static Outcome Collided(string with, double x, double y) =>
-        new(reached: false, $"collided with {with}", new Collision(with, x, y));
+    public static Outcome Collided(string with, double x, double y, double heading) =>
+        new(reached: false, $"collided with {with}", new Collision(with, x, y, heading));
 
     public bool Reached { get; }
     public string Reason { get; }
@@ -36,4 +36,6 @@ public sealed class Outcome
     }
 }
 
-public sealed record Collision(string With, double X, double Y);
+// What was hit (as the world names it), where the golem reckons the touch happened, and the heading the body had:
+// a bumper knows no more than "I touched something while heading this way" — the heading is the mark's normal.
+public sealed record Collision(string With, double X, double Y, double Heading);

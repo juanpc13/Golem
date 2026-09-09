@@ -13,6 +13,10 @@ namespace GolemHost.Domain.Robots;
 /// </summary>
 internal sealed class Body
 {
+    /// <summary>How close two touches must be, in space, for them to be one meeting of two bodies: two radii of a
+    /// body plus the error of estimating the point at the nose. (Was a literal inside HeardNear until 8-sep.)</summary>
+    internal const double MeetingReach = 1.2;
+
     private double radius;   // the disk it occupies — zero until embodied: a body that has no size yet is a point
     private double speed;    // cruise speed, world units per second
     private double linger;   // seconds it lingers at every stop a peer told it about (the follower's pacing)

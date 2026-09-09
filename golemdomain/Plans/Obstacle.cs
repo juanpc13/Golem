@@ -3,33 +3,74 @@ using GolemHost.Domain.Geometry;
 namespace GolemHost.Domain.Plans;
 
 /// <summary>
-/// An obstacle as the marks outline it — a HYPOTHESIS: marks close to one another are taken to be vertices of
-/// one thing (a crate, a piece of furniture, a wall nobody charted). One mark is a point, two a line, three
-/// or more a polygon, and every new touch refines the figure. Its vertices are the facts; the figure is the guess.
+/// An obstacle as the golem hypothesizes it from what its body touched — never journaled, always recomputed
+/// from the facts (paper 08: the facts are testimony, the figure is inference). Two truths of the domain,
+/// hence two kinds: a <see cref="Thing"/> outlined by marks, which the roads avoid; and a <see cref="Peer"/>,
+/// another body met on the way — transitory, kept as history, never planned around.
+/// </summary>
+internal abstract class Obstacle
+{
+    /// <summary>thing or peer.</summary>
+    internal abstract string Kind { get; }
+    internal abstract Position Center { get; }
+    internal abstract int Size { get; }
+    /// <summary>The figure: point, line or polygon.</summary>
+    internal abstract string Shape { get; }
+    /// <summary>Who it was, for a peer; "" for a thing.</summary>
+    internal virtual string Who => "";
+    /// <summary>The marks that outline it, ordered around the center so they can be joined; none for a peer.</summary>
+    internal abstract IReadOnlyList<Mark> Vertices();
+}
+
+/// <summary>
+/// A thing: marks close to one another taken to be vertices of one object (a crate, furniture, a wall nobody
+/// charted). One mark is a point, two a line, three or more a polygon, and every new touch refines the figure.
 /// <para>Origins: grouping touches by closeness is single-linkage clustering (union-find); keeping the set of
 /// contacts as a belief about what occupies space, rather than a map cell, is what contact-sensing planners call
-/// collision hypothesis sets (Saund &amp; Berenson, ISER 2018; carried into "The Blindfolded Robot", Saund,
-/// Choudhury, Srinivasa &amp; Berenson, ISRR 2019 — planning with contact feedback alone, our very case). The
-/// puppet's twist: the hypothesis is never journaled — it is recomputed from the marks, which are the only
-/// testimony (paper 08, inference without authority).</para>
+/// collision hypothesis sets (Saund &amp; Berenson, ISER 2018; "The Blindfolded Robot", Saund, Choudhury,
+/// Srinivasa &amp; Berenson, ISRR 2019 — planning with contact feedback alone, our very case).</para>
 /// </summary>
-internal sealed class Obstacle
+internal sealed class Thing : Obstacle
 {
     private readonly IReadOnlyList<Mark> vertices;
+    private readonly Position center;
 
-    internal Position Center { get; }
-    internal int Size => vertices.Count;
-    /// <summary>The figure the vertices draw: point, line or polygon.</summary>
-    internal string Shape => Size == 1 ? "point" : Size == 2 ? "line" : "polygon";
-
-    internal Obstacle(IReadOnlyList<Mark> vertices, Position center)
+    internal Thing(IReadOnlyList<Mark> vertices, Position center)
     {
-        if (vertices == null || vertices.Count == 0) throw new DomainException("an obstacle is outlined by at least one mark");
-        if (center == null) throw new DomainException("an obstacle has a center");
+        if (vertices == null || vertices.Count == 0) throw new DomainException("a thing is outlined by at least one mark");
+        if (center == null) throw new DomainException("a thing has a center");
         this.vertices = vertices;
-        Center = center;
+        this.center = center;
     }
 
-    /// <summary>The marks, ordered around the center so they can be joined into a figure.</summary>
-    internal IReadOnlyList<Mark> Vertices() => vertices;
+    internal override string Kind => "thing";
+    internal override Position Center => center;
+    internal override int Size => vertices.Count;
+    internal override string Shape => Size == 1 ? "point" : Size == 2 ? "line" : "polygon";
+    internal override IReadOnlyList<Mark> Vertices() => vertices;
+}
+
+/// <summary>
+/// A peer: another body the golem met — it touched something, a peer said it bumped there and then, so it was
+/// that peer. History, not geometry: a peer moves on, so nothing is planned around it.
+/// </summary>
+internal sealed class Peer : Obstacle
+{
+    private readonly string who;
+    private readonly Position at;
+
+    internal Peer(string who, Position at)
+    {
+        if (string.IsNullOrWhiteSpace(who)) throw new DomainException("a peer met has a name");
+        if (at == null) throw new DomainException("a peer was met somewhere");
+        this.who = who;
+        this.at = at;
+    }
+
+    internal override string Kind => "peer";
+    internal override string Who => who;
+    internal override Position Center => at;
+    internal override int Size => 1;
+    internal override string Shape => "point";
+    internal override IReadOnlyList<Mark> Vertices() => Array.Empty<Mark>();
 }

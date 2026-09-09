@@ -24,13 +24,15 @@ internal class Segment
     /// <summary>The heading of the run, radians counter-clockwise from +x.</summary>
     internal double Heading => From.HeadingTo(To);
 
-    /// <summary>How far a position lies from the closest point of this segment (zero when it lies on it).</summary>
-    internal double DistanceTo(Position p)
+    /// <summary>The point of this segment closest to a position.</summary>
+    internal Position ClosestTo(Position p)
     {
         double dx = To.X - From.X, dy = To.Y - From.Y;
         double length2 = dx * dx + dy * dy;
         double t = length2 < 1e-12 ? 0 : Math.Clamp(((p.X - From.X) * dx + (p.Y - From.Y) * dy) / length2, 0, 1);
-        double ox = From.X + t * dx - p.X, oy = From.Y + t * dy - p.Y;
-        return Math.Sqrt(ox * ox + oy * oy);
+        return new Position(From.X + t * dx, From.Y + t * dy);
     }
+
+    /// <summary>How far a position lies from the closest point of this segment (zero when it lies on it).</summary>
+    internal double DistanceTo(Position p) => ClosestTo(p).DistanceTo(p);
 }

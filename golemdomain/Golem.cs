@@ -74,8 +74,15 @@ internal sealed class Golem
     /// <summary>How many marks the map holds: points where a body touched something the plan does not hold.</summary>
     internal int MarkCount() => plan.MarkCount;
 
-    /// <summary>How many things the marks outline: marks close to one another are vertices of one obstacle.</summary>
+    /// <summary>How many obstacles the golem hypothesizes: the things the marks outline (marks close to one another
+    /// are vertices of one thing) plus the peers it met.</summary>
     internal int ObstacleCount() => plan.Obstacles().Count;
+
+    /// <summary>How many things the marks outline — the obstacles the roads avoid.</summary>
+    internal int ThingCount() => plan.Things().Count;
+
+    /// <summary>How many times the body met another body.</summary>
+    internal int MetCount() => plan.EncounterCount;
 
     /// <summary>Whether every token names a place or a point 'x,y' on the map — what a list of stops must be made of.</summary>
     internal bool AreStops(string[] stops)
@@ -137,19 +144,27 @@ internal sealed class Golem
     internal Maneuver Evasion(double x, double y, double heading, string strategy) =>
         EvasionStrategy.Named(strategy).From(new Position(x, y), heading);
 
-    // ---- touches: what the body met that the map does not hold ----
+    // ---- touches: the facts (what the body met), the hypothesis (what the golem suspects) and the conclusions ----
 
-    /// <summary>The body touched something the map does not hold, at (x, y), on this mission. A fact, told to the
-    /// peers: whether it was one of them or an obstacle is settled afterwards (Mark). Returns the mission id.</summary>
-    internal int Bump(int id, double x, double y)
+    /// <summary>The body touched something the map does not hold, at (x, y), heading that way, on this mission. A fact,
+    /// told to the peers; what it was is concluded afterwards (Mark or Met, by what the peers say). Returns the mission id.</summary>
+    internal int Bump(int id, double x, double y, double heading)
     {
         Find(id).Bump();
         return id;
     }
 
-    /// <summary>Something touched the body at (x, y) while it stood without a mission — a peer, most likely; told
-    /// to the peers so the one that moved knows it met a body. Returns how many such touches so far.</summary>
-    internal int Bump(double x, double y) => ++idleBumps;
+    /// <summary>Something touched the body at (x, y) while it stood without a mission, facing that way — a peer, most
+    /// likely; told to the peers so the one that moved knows it met a body. Returns how many such touches so far.</summary>
+    internal int Bump(double x, double y, double heading) => ++idleBumps;
+
+    /// <summary>The body grazed a wall the map KNOWS at (x, y), on this mission: its own execution error, no discovery.
+    /// Counted against the golem's patience on the leg (MayRetryLeg). Returns the mission id.</summary>
+    internal int Graze(int id, double x, double y)
+    {
+        Find(id).Graze();
+        return id;
+    }
 
     /// <summary>A peer says it bumped at (x, y): heard and kept, so a touch of my own there and then is known to be that peer.</summary>
     internal int Hear(string who, double x, double y)
@@ -158,15 +173,33 @@ internal sealed class Golem
         return heard.Count;
     }
 
-    /// <summary>The golem concludes what it touched was an obstacle (no peer bumped there and then): a mark on the map,
-    /// told to the peers. Returns how many marks it holds.</summary>
-    internal int Mark(double x, double y) => plan.AddMark(new Position(x, y));
+    /// <summary>The golem concludes what it touched was a thing (no peer bumped there and then): a mark on the map
+    /// with the heading of the touch as its normal, told to the peers. Returns how many marks it holds.</summary>
+    internal int Mark(double x, double y, double heading) => plan.AddMark(new Pose(x, y, heading));
 
-    /// <summary>A peer says an obstacle stands at (x, y): the golem learns the mark without the bruise. Returns how many marks it holds.</summary>
-    internal int Learn(double x, double y) => plan.AddMark(new Position(x, y));
+    /// <summary>A peer says a thing stands at (x, y), touched heading that way: the golem learns the mark without the
+    /// bruise. Returns how many marks it holds.</summary>
+    internal int Learn(double x, double y, double heading) => plan.AddMark(new Pose(x, y, heading));
+
+    /// <summary>The golem concludes what it touched at (x, y) was a peer — who said it bumped there and then. History,
+    /// kept among the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
+    internal int Met(string who, double x, double y) => plan.AddEncounter(who, new Position(x, y));
+
+    /// <summary>What the golem suspects its body touched at (x, y), heading that way, given what it has heard since
+    /// the given count: a wall it knows (Kind 'wall': conclude Graze), a peer that bumped near there and then
+    /// (Kind 'peer', Who: conclude Met), or a thing nobody charted (Kind 'thing': conclude Mark). The domain reasons;
+    /// the host waits for the peers to speak, asks, and writes the conclusion the suspicion names.</summary>
+    internal Suspicion Suspect(double x, double y, double heading, int sinceCount)
+    {
+        var at = new Position(x, y);
+        if (plan.IsWallAt(at, FloorPlan.WallTolerance)) return new WallTouched();
+        string who = HeardNear(x, y, sinceCount);
+        if (who != "") return new PeerMet(who);
+        return new ThingFound();
+    }
 
     internal int HeardCount() => heard.Count;
-    /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a body's diameter and change; "" for nobody.
+    /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a meeting's reach; "" for nobody.
     /// (Robotics resolves two bodies meeting with reciprocal velocity obstacles — van den Berg, Lin &amp; Manocha,
     /// ICRA 2008; ORCA 2011 — each taking half the avoidance from what it senses of the other. Our bodies sense
     /// nothing but a touch, so they resolve it by speech: both tell the fact, and a deterministic rule in the host
@@ -175,7 +208,7 @@ internal sealed class Golem
     {
         var at = new Position(x, y);
         for (int i = heard.Count - 1; i >= sinceCount && i >= 0; i--)
-            if (heard[i].At.DistanceTo(at) <= 1.2) return heard[i].Who;
+            if (heard[i].At.DistanceTo(at) <= Body.MeetingReach) return heard[i].Who;
         return "";
     }
 
@@ -229,6 +262,9 @@ internal sealed class Golem
     internal int Bumps(int id) => Find(id).Bumps;
     /// <summary>The body bumped since the road was last decided: the road may be decided again.</summary>
     internal bool HasBumpedSinceRoute(int id) => Find(id).BumpedSinceRoute;
+    internal int Grazes(int id) => Find(id).Grazes;
+    /// <summary>Whether the golem still retries the leg after grazing a known wall — its patience on this leg is not spent.</summary>
+    internal bool MayRetryLeg(int id) => Find(id).MayRetryLeg;
     /// <summary>The next leg's name: a passage to cross, or the place of the stop to reach.</summary>
     internal string NextPassage(int id) => Find(id).NextLeg.Name;
     internal bool NextIsStop(int id) => Find(id).NextLeg.IsStop;

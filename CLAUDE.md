@@ -52,6 +52,21 @@ Every observation must end as a note that lets us conclude and improve the domai
 | Maniobra de evasión | `Routes.Maneuver : Trajectory`, `Routes.EvasionStrategy` | `BackOff`, `StepAside(Side)`; the host's runtime probe still owns execution. |
 | Planos con nombre | `Plans.FloorPlans` | Hardcoded catalog (`arena`, `cross-corridors`, `ring-corridor`) rendered as the `map_v1` release text: the journal stays the truth. |
 
+## The domain is the brain (Juan, 8-sep-2026)
+
+"El único que toma las decisiones es el dominio, no el host." The domain decides
+everything the automaton does — the road, how a mission must end, the stages to
+continue, what a touch was, what to do about it — and writes those decisions in its
+journal. The host only carries them out (drives the body, waits, listens) and reports
+whether it could or not, so the domain resolves what follows. Consequences:
+- A decision found in host C# (a classification, a retry rule, who yields) is a
+  defect to migrate: it becomes a repertoire operation (a read the host asks, or a
+  verb the domain concludes with), never the other way round.
+- The host owns only what the papers give it: the clock, the wire, the body.
+- A Reaction may conclude for the domain (`Causation.Continue("g.Mark(...)")`), and
+  the engine can judge ABSENCE in a window (`None().Within(span)`, journal-clock): the
+  host's timers are candidates to disappear (NOTEBOOK, *protocolo de toques v2*).
+
 ## Doctrine (in this order of authority)
 
 1. Juan's words in the conversation.

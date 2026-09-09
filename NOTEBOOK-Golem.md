@@ -218,3 +218,276 @@ Lo que veníamos manejando (PLAN, *El lenguaje del golem*, *El mapa*, *El mapa d
 **Ajuste al dominio**: ninguno hoy. Propuesta concreta al PLAN, para Juan: `Bump(id, x, y, heading)` / `Mark(x, y, heading)` (o el rumbo como `expose`) para que la marca conozca la normal del toque; `FloorPlan.Fits` y el anillo de rodeo usarían el alcance solo hacia los lados y hacia adentro. Cambio de verbo → journals incompatibles: se hace cuando Juan lo apruebe y los golems renazcan.
 
 **Pendiente**: (1) el hallazgo 5 al PLAN como decisión; (2) repetir el escenario 2 con green (odometría de ruedas) para medir cuánto corrompe la pose cada golpe del tanteo, que es la pregunta abierta del 7-sep; (3) el seguidor que falla por "no road" hoy se queda quieto con la misión fallida: ¿debería reintentar el plan cuando lleguen marcas nuevas o cuando el líder se mueva? Es una regla del sujeto (verbo ensamblado en el host), no del repertorio.
+
+---
+
+## 2026-09-08 · Inventario del repertorio (commit c22ac22)
+
+**Contexto**: Juan pide ver todos los verbos y métodos actuales del dominio con su clasificación. Levantado con `grep` de los miembros `internal` de cada clase, no de memoria. Clasificación por plano (paper 0A): lo que el sujeto **journalea** (escrituras), lo que **consulta** (lecturas, nunca journaleadas), los **objetos que recorre** con `foreach` (sus propiedades cruzan como escalares por `print`) y las **operaciones internas** de cada repertorio con las que se ensambla todo. Cifras: 17 verbos de escritura (21 con sobrecargas), 51 lecturas en `Golem`, 12 tipos recorribles, ~60 operaciones internas, 17 constantes.
+
+### A. Verbos de escritura (journaleados; en voz del golem; todos devuelven escalar)
+
+| Grupo | Verbo (sobre `g`) | Devuelve | Guardia (DomainException) | Quién lo observa |
+|---|---|---|---|---|
+| Cuerpo (release `init`) | `Embody(radius)` `Cruise(speed)` `Linger(seconds)` | double | radio y velocidad > 0; linger ≥ 0 | — |
+| Mapa (release `map_v1`) | `Chart(name, x, y, w, h)` → `Place`; encadena `.DoorTo(place, x, y)` `.OpenTo(place)` | `Place` (encadenable) | nombre único, w/h > 0; pasaje entre dos lugares distintos; duplicados se ignoran | — |
+| Encargos | `MoveTo(id, x, y)` `MoveTo(id, place)` `MoveTo(id, stops[])` `Cover(id, stops[])` `Follow(x, y)` | int (id) | id nuevo y mayor al último; paradas en el mapa; `Follow` acuña su propio handle | `Follow` es el uptake de `PointVisited` |
+| Decisión | `Route(id, plan)` | int (tramos) | misión pendiente; una sola vez salvo tras `Bump`; termina en parada; cubre las paradas que faltan | Saga `MissionRouted` |
+| Avance | `Cross(id, passage)` `Reach(id, x, y)` | int (id) | el tramo siguiente debe ser ese pasaje / esa parada exacta; la última parada completa | `Reach` → `echo` → `tell PointVisited` |
+| Toques | `Bump(id, x, y)` `Bump(x, y)` `Hear(who, x, y)` `Mark(x, y)` `Learn(x, y)` | int (id / conteo) | `Bump(id)` exige misión pendiente; `Hear` exige quién; marcas a < 0.1 son una | `Bump` → `echo-bumped` (+`expose @me`) → `tell BumpedAt`; `Mark` → `echo-marked` → `tell ObstacleFound`; `Hear`/`Learn` son uptakes |
+| Cierre | `Fail(id, reason)` `Abandon(id, reason)` | int (id) | pendiente; razón no vacía | Saga |
+| Habla | `Announce(id)` | int (id) | alguna parada alcanzada | rodeo del bug 7 del motor |
+
+### B. Lecturas (consultas; nunca journalean; **T** = total, nunca falla; **G** = guardada, consultar antes lo indicado)
+
+| Grupo | Lectura | Devuelve | T/G |
+|---|---|---|---|
+| Cuerpo | `Radius()` `LingerAfterTold()` | double | T (0 antes del init) |
+| | `Speed()` | double | G: init aplicado |
+| Mapa | `PlaceCount()` `PassageCount()` `MarkCount()` `ObstacleCount()` | int | T |
+| | `KnowsPlace(name)` `IsOnMap(x, y)` `KnowsWallAt(x, y)` `FitsAt(x, y)` `HasRoomAt(x, y)` `AreStops(stops[])` | bool | T |
+| | `PlaceAt(x, y)` | string | G: `IsOnMap` |
+| | `Distance(from, to)` | double | G: lugares conocidos y algún camino |
+| | `Places()` | objetos `Place` | T (se recorre) |
+| Camino | `Plan(id, x, y)` | string (texto del plan) | G: `Knows(id)`, punto en el mapa, algún camino que quepa |
+| | `Evasion(x, y, heading, strategy)` | objeto `Maneuver` | G: estrategia `back-off` / `step-right` / `step-left` |
+| Toques | `HeardCount()` | int | T |
+| | `HeardNear(x, y, since)` | string ("" si nadie) | T |
+| Misiones | `NextHandle()` `Pending()` `Total()` `FollowingCount()` `NewestFollowingId()` | int | T (0 si nada) |
+| | `Knows(id)` `HasPendingMission()` | bool | T |
+| | `PendingIds()` | int[] | T |
+| | `IsPending(id)` `IsFollowing(id)` `WasAnnounced(id)` `IsRouted(id)` `HasBumpedSinceRoute(id)` `NextIsStop(id)` `HasNewerFollowing(id)` | bool | G: `Knows(id)` |
+| | `LegsLeft(id)` `StopsLeft(id)` `Bumps(id)` | int | G: `Knows(id)` |
+| | `StatusOf(id)` `NextPassage(id)` | string | G: `Knows(id)` |
+| Progreso | `RouteLength()` `DistanceLeft(x, y)` | double | T (sin camino: línea recta) |
+| | `RouteSeconds()` `SecondsLeft(x, y)` | double | G: `Speed()` |
+| Siguiente tramo | `NextId()` `NextX()` `NextY()` `NextApproachX()` `NextApproachY()` `NextExitX()` `NextExitY()` | int / double | G: `HasPendingMission()` |
+
+### C. Objetos que el sujeto recorre (`foreach`) y lo que exponen
+
+| Objeto (repertorio) | Propiedades (sin paréntesis) | Métodos (con paréntesis) |
+|---|---|---|
+| `Place` (Plans) | `Name X Y Width Height Center` | `Corners()` `Walls()` `Doors()` `Openings()` `Marks()` `Obstacles()`; `DoorTo()` `OpenTo()` (charting) |
+| `Doorway` (vista de puerta desde un lugar) | `To At Width` | — |
+| `Opening` (vista de frontera) | `To` | — |
+| `Wall : Segment` | `From To Length Midpoint Heading IsVertical IsHorizontal Thickness Height Place` | `Doors()` |
+| `Door : Passage` | `A B Name At Width Height` | `Jambs()` |
+| `OpenBoundary : Passage` | `A B Name Touches Edge Midpoint` | — |
+| `Location : Position` | `Label X Y` | — |
+| `Mark : Location` | `Label X Y Reach` | — |
+| `Obstacle` | `Center Size Shape` | `Vertices()` |
+| `Maneuver : Trajectory` | `Strategy Count IsEmpty StopCount` | `Legs()` |
+| `Leg` | `At Name Approach Exit IsStop` | — |
+| `Position` | `X Y` | — |
+
+### D. Operaciones internas de cada repertorio (no cuelgan de `g`; son con lo que se ensamblan los verbos)
+
+| Repertorio | Clase | Operaciones |
+|---|---|---|
+| Geometry | `Position` | `DistanceTo` `HeadingTo` `Along(heading, d)` `Moved(dx, dy)` |
+| | `Location` | ctor con `Label` (guardia: no vacío) |
+| | `Segment` | `Length` `Midpoint` `IsVertical` `IsHorizontal` `Heading` `DistanceTo(p)` |
+| Robots | `Body` | `Embody` `Cruise` `Linger` `Radius` `Speed()` `LingerAfterTold` |
+| | `Mission` | escrituras `Route(Trajectory)` `Bump()` `Cross(passage)` `Reach(x, y)` `Fail(why)` `Abandon(why)` `Announce()`; lecturas `IsPending()` `ReadStatus()` `ReadReason()` `IsRouted` `LegsLeft` `NextLeg` `StopsAhead` `StopsLeft` `Bumps` `BumpedSinceRoute`; datos `Id Stops Following ChoosesOrder Announced` |
+| | `MissionStatus` | conjunto cerrado `Pending Completed Failed Abandoned` |
+| | `HeardBump` | `Who At` |
+| Plans | `FloorPlan` | charting `AddPlace` `AddDoor` `AddOpening` `AddMark`; lecturas `PlaceCount` `PassageCount` `MarkCount` `Knows` `Places` `Doors` `Openings` `Marks` `DoorsJoining` `OpeningsJoining` `DoorsOf` `OpeningsOf` `MarksIn` `Obstacles()` `ObstaclesIn` `PlaceNamed` `HasOpeningBetween` `OpeningBetween` `IsOnMap` `PlaceAt` `PlacesOf`; geometría del cuerpo `Fits` `HasRoom` `IsWallAt`; camino `WithDoorCrossings`; programa `AsRelease(upgrade)` |
+| | `Place` | `Contains` `ContainsInset` `Touches` `SharedEdgeWith` `StepInto` (+ lo de la tabla C) |
+| | `Passage` → `Door` / `OpenBoundary` | `Joins(a)` `Joins(a, b)` `OtherSide` `BothCharted` `PlaceA` `PlaceB`; `Door.Jambs()` `Door.StepInto(side)`; `OpenBoundary.IsCrossedBy(u, v)` `CrossingPoint(u, v)` |
+| | `Wall` | `Holds(at, tolerance)` |
+| | `FloorPlans` (catálogo estático) | `Names()` `Named(name)` `Arena()` `CrossCorridors()` `RingCorridor()` |
+| Routes | `Trajectory` | `Legs()` `Count` `IsEmpty` `StopCount` `LegAt(i)` `Last` `StopsFrom(i)` `Segments(from)` `Length(from)` `AsPlan()` `Parse(text)` |
+| | `RoutePlanner(plan, radius[, cost])` | `Road(from, to)` `Road(from, stops)` `RoadLength` `BestOrder` (Dijkstra adentro) |
+| | `EdgeCost` → `DistanceCost` | `Name` `Between(a, b)` |
+| | `EvasionStrategy` → `BackOff` / `StepAside(Side)` | `Named(name)` `Names()` `From(here, heading)` → `Maneuver` |
+| | `Side` | conjunto cerrado `Right Left`; `Named` `Turn` |
+
+### E. Los números que el dominio tiene (constantes y literales)
+
+| Dónde | Nombre | Valor | Qué es |
+|---|---|---|---|
+| `FloorPlan` | `Height` | 0.5 | H del plano (las paredes de la arena) |
+| | `WallThickness` | 0 | la pared como línea |
+| | `DoorWidth` / `DoorGap` | 1.4 / 0.8 | hueco físico; a ≤ 0.8 del punto de puerta no hay pared |
+| | `DoorClearance` | 0.6 | aproximación y salida perpendiculares a la puerta |
+| | `OpeningMargin` | 0.5 | distancia a las esquinas al cruzar una frontera |
+| | `WallTolerance` | 0.3 | un toque a ≤ 0.3 de una pared es esa pared |
+| | `MarkReach` / `MarkMargin` | 0.25 / 0.1 | disco de la marca; clearance = reach + radio + margen (0.6 con r = 0.25) |
+| | `JoinWithin` | 1.0 | marcas a ≤ 1.0 son un obstáculo |
+| | `AddMark` | 0.1 | dos toques a < 0.1 son una marca |
+| `RoutePlanner` | anillo de rodeo | clearance + 0.08, 8 nodos | puntos por donde el cuerpo rodea una marca |
+| | salida desde marcas | radio − 0.05 | el arranque puede rozar una marca, nunca atravesarla |
+| | `BestOrder` | ≤ 7 paradas | fuerza bruta; después vecino más cercano |
+| `Golem.HeardNear` | (literal) | 1.2 | dos radios y el error del morro: "ese choque era él" |
+| `Leg.Detour` | `"around"` | — | nombre del tramo de rodeo |
+| `BackOff.Distance` | 0.9 | — | retroceso por el carril |
+| `StepAside.Step` / `Run` | 0.5 / 1.2 | — | paso lateral y avance del tanteo |
+
+**Conclusión**: la superficie del sujeto está donde debe (verbos pocos y en su voz; lecturas muchas y totales cuando se puede); los repertorios cargan la profundidad (paper 02: profundidad sobre superficie). Dos cosas saltan del inventario: (a) el `1.2` de `HeardNear` es el único número del dominio que vive como literal dentro de un método en vez de como constante con nombre: debe subir a constante (`FloorPlan`? no: es del cuerpo, `Body.MeetingReach`) en la próxima pasada; (b) `Golem` tiene 51 lecturas frente a 17 verbos: sano según los papers, pero varias lecturas guardadas por `Knows(id)` (`IsPending`, `IsRouted`, `StopsLeft`…) podrían vivir en un objeto `Mission` recorrible (`g.Missions()`), como ya se hizo con el mapa (`g.Places()`); es la misma decisión de Juan del 8-sep ("iterar sobre los objetos y printear sus propiedades") aplicada a las misiones.
+
+**Ajuste al dominio**: ninguno; inventario. Propuestas: (a) y (b) al PLAN.
+
+---
+
+## 2026-09-08 · Discusión de diseño: ¿renombrar por los papers? ¿fachada `Golem` o clases al journal?
+
+**Contexto**: dos preguntas de Juan tras ver el inventario. (1) Los papers de robótica resuelven problemas y proponen algoritmos: ¿qué proponen frente a lo nuestro, y hace falta renombrar métodos? (2) Todo son clases y módulos que se manejan aislados: ¿seguimos manteniendo una interfaz general del golem y nos especializamos del lado de las clases? ¿Esas clases deberían salir al journal o todo se maneja a lo interno?
+
+### 1. Nombres: lo que ellos dicen, lo que decimos, veredicto
+
+| Ellos (robótica) | Nosotros | Veredicto |
+|---|---|---|
+| *pose* = posición + rumbo (universal, ROS `geometry_msgs/Pose`) | `Position` (x, y); el rumbo viaja suelto como `heading` en `Evasion` y en el host | **Candidato real**: `Pose : Position` con `Heading`, en el repertorio Geometry. Lo pide el hallazgo del disco de la marca (la marca necesita la normal del toque). No es copiar estructura: es una palabra que dice lo que ya cargamos por separado. |
+| *waypoint* | `Position` / `Leg.At` | No: era nuestro nombre viejo (`Waypoint`) y Juan pidió POSICIÓN. |
+| *path* (geométrico) vs *trajectory* (con tiempo) | `Trajectory` es geométrica; el tiempo entra en el sujeto (`RouteSeconds`, `Speed`) | Divergencia consciente: el canon de Juan es "ruta o trayectoria". Se anota; no se renombra. Si algún día los tramos llevan velocidad, el nombre será exacto. |
+| *distinctive place* (Kuipers) | `Place` | Coincide. |
+| *landmark* | `Location` (posición con etiqueta) | Canon: ubicación → `Location`. Se mantiene. |
+| *contact point* / *collision* | `Mark` / `Bump` | Los nuestros son mejores para un cuerpo con bumper: `Bump` es el verbo en su voz. |
+| *footprint* (la forma del robot para planificar) | `Body.Radius` | Coincide en sustancia; no hace falta la palabra. |
+| *recovery behaviors* (Nav2: back up, spin, wait) | `EvasionStrategy` → `BackOff`, `StepAside` | Coincidencia exacta de concepto. Canon: "maniobra de evasión". Se mantiene `Evasion`; se anota `recovery` como sinónimo para quien venga de Nav2. |
+| *cost function* / *costmap* | `EdgeCost` / nada | `EdgeCost` es más honesto: costo por arista, sin mapa de costos (estructura). |
+| *boundary following* (Bug) | el tanteo (`StepAside` + avance) | El nuestro es acotado y redecide; no se renombra. |
+| *frontier* (Yamauchi) | — | Futuro (escenario 3). Adoptar la palabra cuando exista la cosa. |
+| *occupancy grid* | — | No: es la estructura que el paper 08 nos pide no journalear. |
+
+**Conclusión 1**: no hay renombres forzados. Un solo nombre nuevo se justifica, `Pose`, y solo cuando `Bump`/`Mark` lleven el rumbo (propuesta ya abierta). Los verbos siguen en voz del golem (decisión del 7-sep); los nombres de clase siguen el canon de Juan; donde la robótica tiene la misma idea con otra palabra, la nota `///` la cita y no la copia.
+
+### 2. Fachada `Golem` vs clases al journal
+
+**Hechos que mandan**:
+- El motor exige un **global raíz** para el estado (guía E14): `g = Golem()`. Ese es el sujeto del paper 0A: el que ensambla verbos con los repertorios.
+- Las **Reactions** y la **Saga** del host correlacionan por `[_:Golem].Reach($missionId, $x, $y)`, `[_:Golem].Mark($x, $y)` y por `expose` dentro de un comando con `@params` planos (reglas 1 y 2 del motor: un comando sin `@params` es invisible; un argumento anidado rompe el matcher). Todo el habla del golem cuelga de que el verbo esté en `g` con el **handle** como parámetro.
+- El motor **sí** encadena sobre objetos devueltos y **sí** liga propiedades heredadas (verificado hoy en producción): `g.Chart(...).DoorTo(...)` ya escribe en el journal operaciones de un objeto del repertorio (`Place`), pero solo dentro de un **release** (script literal, que ninguna reacción observa).
+- **No sabemos** si una reacción puede observar `g.Mission(@id).Cross(@passage)` (receptor encadenado) o `m = g.Mission(@id); m.Cross(@passage);` (variable). Es una prueba de motor, no una opinión.
+
+**Lo que dicen los papers**:
+- 0A: el repertorio no anticipa los verbos; el sujeto los ensambla y la definición vive en el journal. Una fachada que replica una a una las operaciones de los repertorios (`Bump` → `Mission.Bump`) es "superficie sin profundidad"; una que compone (`Route` = parsear + cruces de puerta + `Mission.Route`) es exactamente lo que 02 premia (β/α alto).
+- 08: la autoridad no cambia por dónde cuelgue el método; cambia por quién decide qué se observa. Da igual fachada u objeto.
+- 01: un actor-agregador sin fin es el god class; `Golem` no lo es (un golem por cuerpo, misiones que terminan). Pero una fachada de 70 miembros SÍ es ancha: la porosidad no está en que exista `g`, sino en que `g` repita lo que sus objetos ya saben.
+
+**Recomendación** (para decidir con Juan):
+1. **Mantener `Golem` como único sujeto y única superficie de escritura en runtime.** Los verbos journaleados siguen siendo `g.Verbo(@id, …)` con el handle: es lo que las reacciones y la Saga correlacionan, y es la identidad estable del paper 09. No pasar `Cross`/`Reach`/`Bump` a `Mission` mientras el motor no demuestre que observa receptores encadenados.
+2. **Sin interfaz C#.** "Interfaz general" = fachada concreta. El paper 09 y la guía piden cero interfaces declaradas; `Golem` es una clase.
+3. **Especializarse del lado de las clases, sí, pero por la vía de las lecturas**: como con `g.Places()`, exponer `g.Missions()` y que `Mission` sea recorrible (`Id`, `Status`, `StopsLeft`, `Legs()`, …), retirando de `g` las doce lecturas guardadas por `Knows(id)`. Las lecturas no journalean y no las observa nadie: mover ahí la especialización no arriesga nada y adelgaza la fachada donde está gorda.
+4. **Al journal salen solo los verbos del sujeto y los releases.** Las operaciones de los repertorios (`FloorPlan.AddMark`, `Mission.Cross`, `RoutePlanner.Road`) se manejan a lo interno, compuestas por `g`. Excepción vigente y sana: la cadena de charting dentro del release (`Chart(...).DoorTo(...)`), porque un release es programa literal sin observadores. Regla que propongo escribir en el PLAN: **"escritura encadenada sobre objetos solo en releases; en runtime, verbos sobre `g` con handle"**.
+5. **Probar antes de mover nada**: un scratch con el motor real que defina una reacción sobre `[_:Mission].Cross($passage)` y ejecute (a) `g.Mission(@id).Cross(@p)` y (b) `m = g.Mission(@id); m.Cross(@p);`. Si el motor observa alguna de las dos, la regla 4 se puede relajar; si no, queda como ley del motor (regla 10 de *Reglas del motor que aprendimos a golpes*). Es el laboratorio siguiente si Juan quiere abrir esta puerta.
+
+**Ajuste al dominio**: ninguno hoy. Propuestas al PLAN: `Pose`, `g.Missions()` con `Mission` recorrible, la regla de escritura encadenada, y la prueba del motor.
+
+---
+
+## 2026-09-08 · Diseño: la colisión como cadena hecho → reacción → hipótesis → conclusión, con el razonamiento en el dominio
+
+**Contexto**: Juan precisa la pregunta anterior. No es dónde cuelgan los métodos sino **quién razona**: "COLISIÓN > comando al journal > Reaction > se dispara el proceso para tomar una decisión en el módulo (quizá con una query para saber qué sigue) > la conclusión se guarda en el journal; esa conclusión también es una clase del dominio, algo que hereda de obstáculo… o descubrir que era otro robot y solo queda como historia… la idea es modelar la realidad con el único sensor que tenemos, el de colisión".
+
+**Dónde está hoy cada pieza** (leído del host, `GolemChoreography.BumpAndListenAsync`):
+
+| Paso de Juan | Hoy | Quién razona |
+|---|---|---|
+| Colisión | el navigator devuelve `Collided(with, x, y)`; el host estima el punto (pose + radio en el rumbo) | host |
+| ¿Pared conocida? | `g.KnowsWallAt(x, y)` (lectura del dominio) → reintento del tramo, **nada al journal** | host pregunta, dominio responde |
+| Comando al journal | `g.Bump(@id, @x, @y)` con `expose @x, @y, @me` | dominio (hecho) |
+| Reaction | `echo-bumped` → `tell BumpedAt` a cada peer; el peer hace `g.Hear(who, x, y)` | motor |
+| Decisión | el host **espera 2.5 s con su reloj**, pregunta `g.HeardNear(x, y, since)` cada 250 ms y decide en C#: alguien → "era un cuerpo", nadie → `g.Mark(x, y)` | **host** |
+| Conclusión al journal | `Mark(x, y)` solo si fue cosa; si fue un cuerpo **no se journalea nada** (la cesión es runtime) | dominio, a medias |
+| La clase de la conclusión | `Obstacle` derivada de las marcas: una sola clase, sin distinguir cosa de cuerpo ni de pared | dominio, sin jerarquía |
+
+**Lo que dicen los papers de esta cadena**: 03 (la partición): el verbo promete lo inmediato — que el toque quede registrado y expuesto — y lo diferido va a una Reaction; pero **el reloj es del host** (guía E31: orquestación, tiempo y azar son del host). 08: el hecho es testimonio (Bump, Hear), la hipótesis se deriva (Obstacle), y una **decisión** tomada sobre la hipótesis es un acto vivido que sí se journalea (como `Route`). 0A: el razonamiento es una **operación del repertorio** (profundidad) que el sujeto invoca; la cadena es un verbo ensamblado. 01: las conclusiones son **variantes**, no un `Kind` string.
+
+### La cadena, en términos del puppet
+
+```
+mundo: contacto ──► host estima el punto (pose + radio en el rumbo)
+  1. hecho        g.Bump(@id, @x, @y, @heading)     journal; expose x, y, heading, me
+  2. reacción     echo-bumped → tell BumpedAt        a cada peer (existe)
+                  peer: g.Hear(@who, @x, @y)         hecho en el journal del otro (existe)
+  3. hipótesis    g.Suspect(@x, @y, @heading, @since) LECTURA que devuelve una Suspicion:
+                    KnownWall  (a ≤ 0.3 de una pared del plano, fuera de sus puertas)
+                    MetPeer    (un Hear a ≤ 1.2 desde que empezó el tramo: who)
+                    Thing      (nadie: la marca, con su normal)
+                  el host solo aporta el tiempo: espera 2.5 s y pregunta una vez
+  4. conclusión   el verbo que la Suspicion nombra, en voz del golem:
+                    g.Mark(@x, @y, @heading)   "era una cosa"  → echo-marked → Learn en los peers (existe)
+                    g.Met(@who, @x, @y)        "era blue"      → NUEVO: hoy no queda historia
+                    (pared conocida)           reintento; ¿merece g.Graze(@x, @y)? pendiente del 7-sep
+  5. el obstáculo  Obstacle (hipótesis derivada de las marcas, nunca journaleada) se vuelve jerarquía:
+                    Thing  : figura de marcas (punto / línea / polígono), la que se planifica
+                    Peer   : el encuentro con un cuerpo, transitorio, solo historia: no se planifica
+```
+
+**Qué cambia respecto a hoy**: (a) la clasificación deja el C# del host y pasa al repertorio `Plans` (una operación `Suspect` que compone `IsWallAt`, `HeardNear` y las marcas); (b) la conclusión "era un robot" queda escrita (`Met`), porque hoy la historia se corta ahí; (c) `Obstacle` se abre en variantes por origen; (d) `Bump`/`Mark` llevan el rumbo, con lo que la marca conoce la normal y el hallazgo del disco se resuelve de paso. Lo que **no** cambia: el reloj de los 2.5 s sigue en el host (el dominio no espera); las Reactions siguen siendo las que hablan; los hechos siguen siendo `Bump`/`Hear`.
+
+**Variante sin reloj (para discutir)**: concluir `Mark` de inmediato en la reacción sobre `Bump` (`Causation.Continue("g.Mark(@x, @y, @heading)")`, el motor lo permite: `echo-reached` ya escribe `g.Announce` desde una reacción) y **retractar** por reacción sobre `Hear`: si llega un `Hear` a ≤ 1.2 de una marca propia reciente, `g.Met(@who, @x, @y)` reclasifica la marca como encuentro. El journal contaría "choqué, lo tomé por una cosa, oí a blue, era blue". Más fiel al paper 08 (la historia se resuelve en el camino, como dice Juan) y sin timer, pero propaga `Learn` a los peers antes de la retractación: haría falta `Unlearn` o que los peers también deriven. Se anota; la variante con reloj es la que cabe en el host de hoy.
+
+**Lo que hay que probar antes** (laboratorio, no opinión): (1) que una lectura del dominio pueda devolver un objeto de una jerarquía (`Suspicion` → `KnownWall`/`MetPeer`/`Thing`) y que el DSL imprima `suspicion.Kind` y `suspicion.Who` sin importar la variante en tiempo de ejecución (`DotAccess` resuelve polimórfico, dice el código del motor; falta verlo); (2) si una reacción puede encadenar `Seek Bump` → `ThenSeek Hear` con `.Within(2.5 s)` para detectar la **ausencia** de un `Hear` (si el motor lo da, el reloj también podría salir del host).
+
+**Ajuste al dominio**: ninguno hoy: `Bump`/`Mark` con rumbo y `Met` son verbos nuevos → al PLAN primero (regla del 7-sep). Propuesta al PLAN, *El protocolo de toques, segunda versión*: los verbos de arriba, la jerarquía `Obstacle` → `Thing`/`Peer`, la lectura `Suspect`, y las dos pruebas del motor. Journals incompatibles cuando se haga (firmas de `Bump`/`Mark`).
+
+**Decisión de Juan (misma tarde)**: "sí, es correcto: el único que toma las decisiones es el dominio, no el host; este reescribe en su journal la ruta, cómo debe terminar y las etapas para continuar; el host solo las sigue y dice si pudo o no". Fijado en `CLAUDE.md` (*The domain is the brain*) y en el PLAN (*El protocolo de toques, segunda versión*).
+
+---
+
+## 2026-09-08 · Laboratorio: el motor concluye por el golem (pruebas del protocolo de toques v2)
+
+**Contexto**: scratch `touchlab` (fuera del repo, en el scratchpad de la sesión; MSTest + `Ncubo.Puppeteer 2.0.1-beta.10017-portable.2` del localfeed; reproducible en minutos). Un repertorio de juguete `Lab` con `Bump(id, x, y)`, `Hear(who, x, y)`, `Mark(x, y)`, `Ping(n)` y una jerarquía `Suspicion` → `KnownWall` / `MetPeer(who)` / `Thing`. Actor real, storage IN_MEMORY, reacción `.Cue()` definida antes de `Start()`.
+
+**Observación** (5 pruebas, todas en verde al final):
+1. **Lectura polimórfica**: `print lab.Suspect('peer').Kind 'kind', lab.Suspect('peer').Who 'who'` → `peer`, `blue`; `foreach (s in lab.Suspicions()) { print s.Kind, s.Who }` sobre una lista mixta → `wall`/`peer`/`thing` con `green` en el peer. El DSL liga por el tipo en tiempo de ejecución; `Who` virtual con base `""` funciona. **La `Suspicion` como jerarquía es viable.**
+2. **Ausencia en ventana**: reacción `Seek("Bumped").One().OnMatch("[_:Lab].Bump($id, $x, $y)") .ThenFinalSeek("Heard").None().Within(2.5 s).OnMatch("[_:Lab].Hear($who, $hx, $hy)") .Causation.Continue("lab.Mark(@x, @y);")`. Tras `Bump`, 0.5 s: nada; **3.5 s de silencio: nada** (la ventana no se cierra con el reloj de pared); un `Ping` posterior → `Mark` escrito en ≤ 1 s. **La reacción concluyó y escribió un comando del dominio sin tell**: `Causation.Continue` con solo `lab.Mark(...)` vale.
+3. **Un `Hear` dentro de la ventana** → ningún `Mark`: el `None` muere con el primer evento contado. "Era un cuerpo".
+4. **`Where` de distancia**: con `"($hx - $x) * ($hx - $x) + ($hy - $y) * ($hy - $y) <= 1.44"` la prueba del `Hear` lejano FALLÓ: el `Hear` a 6 m contó como cercano y no hubo `Mark`. Sin excepción, sin aviso. Con `@hx`, `@x`… **pasa**: el `Hear` lejano no cuenta (hay `Mark`), el cercano sí (no hay `Mark`). Regla del motor: en `Where` las capturas van con `@`; con `$` el filtro no filtra y no avisa.
+5. Tiempos: cada prueba de ventana ≈ 4–5 s (la espera); la lectura polimórfica 59 ms.
+
+**Conclusión**:
+- Las dos piezas que faltaban para que **el dominio razone** existen en el motor: la hipótesis como objeto con variantes (lectura `Suspect`) y la conclusión escrita por una **reacción** sobre la ausencia o presencia de un `Hear` cercano. El C# de `BumpAndListenAsync` puede desaparecer como razonador.
+- El reloj sigue siendo del host en un sentido preciso: la ventana la cierra **la siguiente entrada del journal**. Un cuerpo que se queda quieto tras el toque no cierra nada; el host debe escribir su siguiente acto (o esperar la ventana con su reloj y escribirlo). Eso está bien: es exactamente "el host espera y reporta"; lo que ya no hace es decidir.
+- Un fallo silencioso (`$` en `Where`) es el tipo de cosa que solo se descubre midiendo: la prueba negativa (el `Hear` lejano) fue la que lo reveló. Mantener siempre el caso negativo en los laboratorios del motor.
+
+**Ajuste al dominio**: ninguno todavía; el PLAN ya tiene la sección con los verbos (`Bump`/`Mark` con rumbo, `Met`), la lectura `Suspect`, la jerarquía `Obstacle` → `Thing`/`Peer` y `Pose`. Reglas 10 y 11 añadidas a *Reglas del motor que aprendimos a golpes*.
+
+**Pendiente**: (1) implementar el protocolo v2 cuando Juan confirme los nombres (`Met`, `Suspect`, `Thing`/`Peer`) — journals renacen; (2) decidir quién escribe la entrada que cierra la ventana cuando el cuerpo se queda quieto (el siguiente acto del host es lo natural; un verbo solo para cerrar ventanas sería un síntoma infraestructural, paper 06); (3) mover el scratch `touchlab` al repo si queremos que las pruebas del motor vivan con el proyecto.
+
+**Juan (misma tarde)**: journals desechables, `Suspect` provisional (quizá se renombre), `Graze` sí y journaleado "para saber qué decisión tomará si continúa". → Implementado (entrada siguiente).
+
+---
+
+## 2026-09-08 · Implementación del protocolo de toques v2: el dominio razona, el host escribe lo que el dominio nombra
+
+**Contexto**: con el sí de Juan. Variante elegida: **reloj del host, razón del dominio** (variante A). La reacción que concluye por ausencia (`None().Within`) queda probada pero no se usa todavía, porque la ventana la cierra la siguiente entrada del journal y un cuerpo quieto tras el toque no escribe ninguna: habría que inventar un verbo solo para cerrar ventanas (síntoma, paper 06). El host espera 2.5 s, pregunta `g.Suspect(...)` y journalea el verbo que la sospecha nombra. Nada de la clasificación queda en C#.
+
+**Ajuste al dominio** (`golemdomain/`, 43 tests en verde):
+- `Geometry.Pose : Position` con `Heading`, `Forward`, `Ahead(p)`.
+- `Plans.Mark` ahora lleva `Heading` (la normal del toque) y decide `Blocks(center, radius)`: bloquea dentro de `Reach + radio + margen` **salvo** del lado por donde vino el cuerpo, libre a `radio + margen` (0.35 en vez de 0.6). `FloorPlan.Fits` y `RoutePlanner.Sees` (en el punto más cercano del tramo a la marca) usan `Blocks`. Test nuevo: a 0.4 por detrás de la marca el cuerpo cabe; a 0.25 no; lateral a 0.5 no, a 0.65 sí.
+- `Plans.Obstacle` abstracta → `Thing` (figura de marcas; la que se planifica) y `Peer` (encuentro con un cuerpo: `Who`; historia). `FloorPlan.Obstacles()` devuelve ambas; `Things()` solo las cosas. `Kind` es propiedad de la variante, no un campo.
+- `Plans.Suspicion` abstracta → `WallTouched` (Graze), `PeerMet(who)` (Met), `ThingFound` (Mark); cada variante nombra su `Conclusion`.
+- `Golem`: `Bump(id, x, y, heading)`, `Bump(x, y, heading)`, `Graze(id, x, y)`, `Mark(x, y, heading)`, `Learn(x, y, heading)`, `Met(who, x, y)`; lecturas `Suspect(x, y, heading, since)`, `Grazes(id)`, `MayRetryLeg(id)`, `ThingCount()`, `MetCount()`. `HeardNear` usa `Body.MeetingReach` (1.2, ya con nombre).
+- `Robots.Mission`: `Graze()` cuenta roces por misión y por tramo; `PatienceWithWalls = 3`; `MayRetryLeg`; el contador del tramo se reinicia en `Cross`/`Reach`/`Route`. **La paciencia con las paredes dejó de ser una constante del host.**
+
+**Ajuste al host** (`golemhost/`, compila): `Collision` lleva `Heading` (la pose al tocar; `DiffDriveNavigator`); mensajes `MissionBumped`/`ObstacleMarked` con rumbo, nuevos `PeerMet` ('E') y `MissionGrazed` ('G'); handlers `g.Met`, `g.Graze` (con Check pendiente); la reacción `echo-marked` casa `Mark($x, $y, $heading)` y el tell `ObstacleFound` viaja con rumbo → uptake `Learn(@x, @y, @heading)`. El lazo de colisión: `Suspect` primero; `wall` → `Graze` journaleado → `MayRetryLeg` decide reintento o `Fail("…patience spent")`; si no → `BumpAndListenAsync`, que journalea el `Bump`, espera la ventana consultando `Suspect`, y escribe **la conclusión que la sospecha nombra**: `Met` (→ coordinación) o `Mark` (→ tanteo). El tanteo pregunta `Suspect(...).Kind == "wall"` en vez de `KnowsWallAt`. Eliminados del host: `RetriesAfterBump`, `wallBumps`, `KnowsWallAt`.
+
+**Journals**: incompatibles (firmas de `Bump`/`Mark`/`Learn`); los tres archivados en `journal-legacy-2026-09-08-touch-v1/`. README actualizado. Verificación en vivo: entrada siguiente.
+
+---
+
+## 2026-09-08 · Laboratorio: el protocolo de toques v2 en vivo
+
+**Contexto**: `docker compose up -d --build` con journals nuevos (los tres nacen en la entrada 2). Docker Desktop estaba apagado y hubo que arrancarlo. Escenarios: red de la sala a la cocina (sin cruzar el centro), de la cocina al garaje (por el centro, donde está la caja sin marcar), otra vez al garaje desde junto a la caja, y contra la pared este del garaje; blue siguiendo a red; green solo escuchando.
+
+**Observación**:
+1. **Cocina desde la sala**: por el corredor oeste, sin toques; blue siguió y se orilló a la derecha. Cero marcas: el protocolo no inventa nada cuando nada se toca.
+2. **Garaje por el centro (misión 2 de red)**: `Bump(2, 4.9, 5.8, -1.37)` (entrada 20) → 2.5 s → `Suspect` = thing → `Mark(4.9, 5.8, -1.37)` (26) → `ObstacleFound` con rumbo → `Learn` en blue y green: **los tres mapas con la misma marca y la misma normal**. Tanteo: derecha bloqueada por la pared oeste del hall (el dominio, `HasRoomAt`), paso a la izquierda → segundo toque `(5.1, 5.7, 0.07)` (normal hacia el este: la cara oeste de la caja) → marca 2. Después **`Fail: no road from (4.8, 5.63) … past 1 marks`**. Dos defectos:
+   - *Dominio*: el cuerpo quedó a **0.19 m** del punto de su propia marca (la estimación "morro + radio" supone toque frontal; fue un roce de costado en la esquina noroeste de la caja) y la regla de arranque exigía 0.20: el planificador creía al cuerpo dentro de la cosa. **Regla nueva en `RoutePlanner.Sees`**: una marca dentro del propio radio del cuerpo es una estimación fallida; no le prohíbe salir mientras la carrera no se acerque a la marca más de lo que ya está (el punto más cercano es el arranque). El caso vivo quedó como test (`ABodyStandingInsideItsOwnMark_CanStillLeave_MovingAwayFromIt`, con las coordenadas exactas) y el test viejo que esperaba `Refuses` en la situación análoga cambió: ahora sale por donde entró y no atraviesa la marca.
+   - *Host*: "deciding the road again with 1 marks" se imprimió antes de que la segunda marca existiera: `WaitUntilAsync(() => Marks() >= marksBefore)` era siempre verdadero. Ahora `>` (con el timeout de 5 s del propio `WaitUntilAsync` para el caso de una marca duplicada que no suma).
+3. **Garaje desde junto a la caja (misión 3, tras redesplegar; journals compatibles, rehidratación limpia en 41/17/9)**: el planificador encontró la salida (`center~south@5.82,3 …`), tocó otra vez la cara oeste `(5.0, 5.3, -1.09)` → marca 3 → paso a la derecha → cruzó `center~south`, `south/garage`, redecidió (`another road garage@9,1.5`) y **llegó** (entrada 55). 27 s.
+4. **Pared conocida (misión 5, a (11.0, 1.5), sobre la línea de la pared este del garaje)**: `Suspect` = wall → **`g.Graze(5, 10.925, 1.500)`** ×3 (entradas 75, 76, 77: define de la acción 14 y tres invocaciones), `MayRetryLeg` verdadero dos veces, falso a la tercera → `Fail(5, 'still grazing wall_garage_e at (10.9, 1.5) after 3 grazes: patience spent')` (78). **La paciencia con las paredes la decidió el dominio**; en el host no queda constante. (Con (10.9, 1.5) no hubo roce: la llegada con tolerancia 0.25 frena antes de la pared.)
+5. **Blue, siguiendo a red al garaje**: cinco toques a la caja desde el norte y el este, cinco `Mark` con normales `-1.26, -2.88, -1.08, -2.10, -2.53` (las caras norte y este, apuntando hacia dentro), "no way past by feel, 1 right and 3 left — deciding the road again with 8 marks" → `another road center~south@6.33,3 …` → llegó. **Los tres mapas terminan con 8 marcas y UNA figura, un polígono de 8 vértices**, green por puro `Learn` (heard 9).
+6. Ningún encuentro entre cuerpos ocurrió (met 0 en los tres): `Met` queda verificado solo en tests.
+
+**Conclusión**:
+- La cadena de Juan está viva: colisión → hecho con rumbo → reacción (tell) → el dominio sospecha (`Suspect`) → la conclusión que la sospecha nombra, en el journal (`Mark`/`Graze`; `Met` pendiente de ocurrir) → el obstáculo como clase (`Thing` polígono de 8). El host ya no clasifica ni cuenta reintentos: espera, pregunta y escribe.
+- La normal cumplió: blue rodeó la caja con 8 marcas y encontró camino; con el disco de la mañana 5 marcas habían sellado el hall.
+- El error de estimación del punto de contacto (toque de costado tomado como frontal) es la fuente de marcas "dentro del cuerpo"; la regla de arranque lo absorbe, pero la cura de fondo sería estimar el punto con la dirección del movimiento y no con el morro, o un bumper con sectores (izquierda / frente / derecha), como en los robots aspiradora.
+
+**Ajuste al dominio**: `RoutePlanner.Sees` (regla de arranque para marcas dentro del radio) + test del caso vivo + test ajustado. Host: la espera por la marca aplicada. 44 tests en verde.
+
+**Pendiente**: (1) provocar un encuentro entre cuerpos para ver `Met` en vivo (dos misiones cruzadas en una puerta, como el 8-sep por la mañana); (2) el punto de contacto por dirección de movimiento o bumper por sectores → PLAN; (3) commit de todo esto cuando Juan lo pida.

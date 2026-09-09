@@ -26,6 +26,11 @@ internal sealed class Mission
     private int reached;                                 // stops reached so far
     private int bumps;                                   // times the body touched something the map did not hold, on this mission
     private int bumpsSinceRoute;                         // ...since the road was last decided: a reason to decide it again
+    private int grazes;                                  // times the body grazed a wall it knows, on this mission
+    private int grazesOnLeg;                             // ...on the leg being walked: the golem's patience with its own error
+
+    /// <summary>How many times the golem retries a leg after grazing a known wall before it gives the mission up.</summary>
+    internal const int PatienceWithWalls = 3;
 
     internal Mission(int id, IReadOnlyList<Position> stops, bool following, bool choosesOrder)
     {
@@ -50,6 +55,10 @@ internal sealed class Mission
     internal int StopsLeft => StopsAhead.Count();
     internal int Bumps => bumps;
     internal bool BumpedSinceRoute => bumpsSinceRoute > 0;
+    internal int Grazes => grazes;
+    internal int GrazesOnLeg => grazesOnLeg;
+    /// <summary>Whether the golem still retries the leg it is walking after grazing a known wall — patience not yet spent.</summary>
+    internal bool MayRetryLeg => IsPending() && grazesOnLeg < PatienceWithWalls;
 
     /// <summary>The golem decided its road: passages and stops, in order, the last stop last. A road already
     /// decided is decided again only after the body bumped into something on it — then the new road replaces
@@ -65,6 +74,7 @@ internal sealed class Mission
         road = fresh;
         nextLeg = 0;
         bumpsSinceRoute = 0;
+        grazesOnLeg = 0;
     }
 
     /// <summary>The body touched something the map does not hold, on this mission's road.</summary>
@@ -73,6 +83,15 @@ internal sealed class Mission
         MustBePending();
         bumps++;
         bumpsSinceRoute++;
+    }
+
+    /// <summary>The body grazed a wall the map knows, on this mission's road: its own execution error, counted
+    /// against its patience on the current leg.</summary>
+    internal void Graze()
+    {
+        MustBePending();
+        grazes++;
+        grazesOnLeg++;
     }
 
     /// <summary>The golem crossed the next passage of its road (or skirted a mark: the leg named 'around'). Returns what it crossed.</summary>
@@ -84,6 +103,7 @@ internal sealed class Mission
         if (leg.IsStop) throw new DomainException($"mission {Id} is heading to the stop '{leg.Name}', a stop, not a passage: reach it");
         if (leg.Name != passage) throw new DomainException($"mission {Id} is heading to '{leg.Name}', not '{passage}'");
         nextLeg++;
+        grazesOnLeg = 0;
         return passage;
     }
 
@@ -98,6 +118,7 @@ internal sealed class Mission
             throw new DomainException($"mission {Id}'s next stop is ({leg.At.X}, {leg.At.Y}), not ({x}, {y})");
         nextLeg++;
         reached++;
+        grazesOnLeg = 0;
         if (nextLeg == road.Count) status = MissionStatus.Completed;
     }
 

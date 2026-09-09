@@ -41,7 +41,8 @@ internal sealed class FloorPlan
 
     private readonly List<Place> places = new();
     private readonly List<Passage> passages = new();
-    private readonly List<Mark> marks = new();
+    private readonly List<Mark> marks = new();        // facts: where bodies touched what the plan does not hold
+    private readonly List<Peer> encounters = new();   // facts: where a body met another body (history, never planned around)
 
     // ---- charting ----
 
@@ -65,12 +66,20 @@ internal sealed class FloorPlan
         passages.Add(new OpenBoundary(this, a, b));
     }
 
-    /// <summary>A point where a body touched something the plan does not hold. Two touches within a tenth of a
-    /// unit are one mark. Returns how many marks the plan holds.</summary>
-    internal int AddMark(Position at)
+    /// <summary>A point where a body touched something the plan does not hold, with the heading of the touch (the
+    /// mark's normal). Two touches within a tenth of a unit are one mark. Returns how many marks the plan holds.</summary>
+    internal int AddMark(Pose touch)
     {
-        if (!marks.Any(m => m.DistanceTo(at) < 0.1)) marks.Add(new Mark(at.X, at.Y));
+        if (!marks.Any(m => m.DistanceTo(touch) < 0.1)) marks.Add(new Mark(touch.X, touch.Y, touch.Heading));
         return marks.Count;
+    }
+
+    /// <summary>A body met another body at a point: history, kept as a Peer among the obstacles, never planned around.
+    /// Returns how many encounters the plan holds.</summary>
+    internal int AddEncounter(string who, Position at)
+    {
+        encounters.Add(new Peer(who, at));
+        return encounters.Count;
     }
 
     // ---- the plan, read as objects ----
@@ -78,6 +87,7 @@ internal sealed class FloorPlan
     internal int PlaceCount => places.Count;
     internal int PassageCount => passages.Count;
     internal int MarkCount => marks.Count;
+    internal int EncounterCount => encounters.Count;
     internal bool Knows(string place) => places.Any(p => p.Name == place);
 
     internal IReadOnlyList<Place> Places => places;
@@ -99,8 +109,9 @@ internal sealed class FloorPlan
     /// <summary>The marks standing in a place (a mark on a shared wall stands in both).</summary>
     internal IReadOnlyList<Mark> MarksIn(Place place) => marks.Where(place.Contains).ToList();
 
-    /// <summary>The obstacles the marks outline: marks within JoinWithin of one another (directly or through
-    /// others) are vertices of one thing, ordered around its center so they can be joined into a figure.</summary>
+    /// <summary>The obstacles the golem hypothesizes: the things the marks outline — marks within JoinWithin of one
+    /// another (directly or through others) are vertices of one thing, ordered around its center so they can be
+    /// joined into a figure — followed by the peers it met. Derived every time from the facts; never stored.</summary>
     internal IReadOnlyList<Obstacle> Obstacles()
     {
         int n = marks.Count;
@@ -116,10 +127,14 @@ internal sealed class FloorPlan
             var members = group.Select(i => marks[i]).ToList();
             var center = new Position(members.Average(m => m.X), members.Average(m => m.Y));
             var ordered = members.OrderBy(m => Math.Atan2(m.Y - center.Y, m.X - center.X)).ToList();
-            obstacles.Add(new Obstacle(ordered, center));
+            obstacles.Add(new Thing(ordered, center));
         }
+        obstacles.AddRange(encounters);
         return obstacles;
     }
+
+    /// <summary>The things alone: the obstacles the roads avoid.</summary>
+    internal IReadOnlyList<Thing> Things() => Obstacles().OfType<Thing>().ToList();
 
     /// <summary>The obstacles whose center stands in a place.</summary>
     internal IReadOnlyList<Obstacle> ObstaclesIn(Place place) => Obstacles().Where(o => place.Contains(o.Center)).ToList();
@@ -154,11 +169,12 @@ internal sealed class FloorPlan
     }
 
     /// <summary>Whether a body of this radius stands clear at a point: inside a place, off every wall by its
-    /// radius plus a margin, and off every mark by the mark's reach plus its radius plus a margin.</summary>
+    /// radius plus a margin, and clear of every mark — off it by the mark's reach plus its radius plus a margin,
+    /// except on the side the touching body came from, which is free at a radius and a margin (the mark's normal).</summary>
     internal bool Fits(Position at, double radius)
     {
         if (!HasRoom(at, radius)) return false;
-        return !marks.Any(m => m.DistanceTo(at) < MarkReach + radius + MarkMargin);
+        return !marks.Any(m => m.Blocks(at, radius));
     }
 
     /// <summary>Whether the walls alone leave room for a body of this radius at a point — marks not counted:

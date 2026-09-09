@@ -21,6 +21,7 @@ namespace GolemHost.Domain.Tests;
 public class MissionAcceptanceTests
 {
     private PerformanceV2 perf;
+    private const double East = 0.0, North = 1.5708, West = 3.1416, South = -1.5708;   // headings of a touch
 
     [TestInitialize]
     public void AGolemIsBorn()
@@ -88,7 +89,7 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void TheMap_IsReadAsObjects_EachPlaceWithItsDoorsOpeningsAndMarks()
     {
-        Learn(10.25, 5.85);   // something in the east corridor
+        Learn(10.25, 5.85, South);   // something in the east corridor, touched heading south
 
         // the very query the panel runs: the golem's places, walked and printed, each with what it holds
         string json = perf.Actor.Using(@"
@@ -570,19 +571,19 @@ public class MissionAcceptanceTests
         Assert.AreEqual(0, Int("g.MarkCount()"));
         Assert.IsTrue(Bool("g.FitsAt(10.25, 5.5)"), "the corridor is clear as far as the map knows");
 
-        Bump(1, 10.25, 5.85);                       // the crate's face — or a peer: not known yet
+        Bump(1, 10.25, 5.85, South);                // the crate's face — or a peer: not known yet
         Assert.AreEqual(0, Int("g.MarkCount()"), "a bump is a touch, not yet a mark");
         Assert.AreEqual(1, Int("g.Bumps(1)"));
         Assert.IsTrue(Bool("g.HasBumpedSinceRoute(1)"));
         Assert.AreEqual("", Text("g.HeardNear(10.25, 5.85, 0)"), "no peer said it bumped there");
 
-        Assert.AreEqual(1, Int("g.Mark(10.25, 5.85)"), "nobody else bumped: the golem marks it");
+        Assert.AreEqual(1, Int("g.Mark(10.25, 5.85, -1.5708)"), "nobody else bumped: the golem marks it, with the heading of the touch as the mark's normal");
         Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the body no longer fits where the mark reaches");
         Assert.IsTrue(Bool("g.HasRoomAt(10.25, 5.5)"), "the walls alone still leave room there: marks are what the body feels around");
         Assert.IsFalse(Bool("g.HasRoomAt(9.7, 5.5)"), "too close to the corridor's wall for the body");
 
-        Assert.AreEqual(1, Int("g.Learn(10.25, 5.9)"), "a peer's touch within a tenth of a unit is the same mark");
-        Assert.AreEqual(2, Int("g.Learn(10.3, 6.6)"), "a peer's touch further along is another mark");
+        Assert.AreEqual(1, Int("g.Learn(10.25, 5.9, -1.5708)"), "a peer's touch within a tenth of a unit is the same mark");
+        Assert.AreEqual(2, Int("g.Learn(10.3, 6.6, -1.5708)"), "a peer's touch further along is another mark");
     }
 
     [TestMethod]
@@ -593,24 +594,24 @@ public class MissionAcceptanceTests
         Assert.AreEqual(1, Int("g.Hear('blue', 4.6, 9.5)"), "blue says it bumped in the kitchen's doorway");
         int heard = Int("g.HeardCount()");
 
-        Bump(1, 4.7, 9.5);                          // my own touch, right there
+        Bump(1, 4.7, 9.5, East);                    // my own touch, right there
         Assert.AreEqual("blue", Text("g.HeardNear(4.7, 9.5, 0)"), "blue's bump is within a body's diameter of mine: it was blue");
         Assert.AreEqual("", Text("g.HeardNear(4.7, 9.5, " + heard + ")"), "nothing heard after that count");
         Assert.AreEqual("", Text("g.HeardNear(10.25, 5.85, 0)"), "a bump far away is somebody else's business");
         Assert.AreEqual(0, Int("g.MarkCount()"), "meeting a body leaves no mark");
 
-        Assert.AreEqual(1, Int("g.Bump(4.9, 9.5)"), "a body standing idle that gets touched bumps too, without a mission");
-        Assert.AreEqual(2, Int("g.Bump(4.9, 9.5)"));
+        Assert.AreEqual(1, Int("g.Bump(4.9, 9.5, 0.0)"), "a body standing idle that gets touched bumps too, without a mission");
+        Assert.AreEqual(2, Int("g.Bump(4.9, 9.5, 0.0)"));
         Refuses("g.Hear('', 1.0, 1.0);", "needs to say who");
     }
 
     [TestMethod]
     public void MarksCloseTogether_AreJoinedIntoOneObstacle_WhoseVerticesOutlineIt()
     {
-        Learn(10.25, 5.85);    // the crate's north face
-        Learn(10.25, 5.15);    // its south face
-        Learn(9.9, 5.5);       // its west face
-        Learn(8.0, 9.5);       // something else, far away in the storage room
+        Learn(10.25, 5.85, South);    // the crate's north face
+        Learn(10.25, 5.15, North);    // its south face
+        Learn(9.9, 5.5, East);        // its west face
+        Learn(8.0, 9.5, East);        // something else, far away in the storage room
         Assert.AreEqual(4, Int("g.MarkCount()"));
         Assert.AreEqual(2, Int("g.ObstacleCount()"), "three touches on one thing, one on another");
 
@@ -643,7 +644,7 @@ public class MissionAcceptanceTests
         string before = Text("g.Plan(1, 9.0, 9.5)");
         StringAssert.Contains(before, "storage/east@10.25,8 > east/garage@10.25,3", "the east corridor is the shortest road");
 
-        Learn(10.25, 5.85);                          // a peer bumped into something in the middle of the corridor
+        Learn(10.25, 5.85, South);                   // a peer bumped into something in the middle of the corridor
 
         string after = Text("g.Plan(1, 9.0, 9.5)");
         Assert.IsFalse(after.Contains("east/garage"), "between the mark and the corridor's walls the body does not fit: " + after);
@@ -655,7 +656,7 @@ public class MissionAcceptanceTests
     public void AMarkInAWideRoom_IsSkirted_WithAroundLegs()
     {
         MoveTo(1, 10.2, 9.5);                        // across the storage room
-        Learn(9.0, 9.5);                             // something in the middle of it
+        Learn(9.0, 9.5, East);                       // something in the middle of it, touched heading east
 
         string plan = Text("g.Plan(1, 7.6, 9.5)");
         StringAssert.Contains(plan, "around@", "the body skirts the mark: " + plan);
@@ -675,8 +676,8 @@ public class MissionAcceptanceTests
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
         Refuses("g.Route(1, 'garage@9,1.5');", "already has its road");
 
-        Bump(1, 10.25, 5.85);                        // the crate, met halfway down the corridor
-        Mark(10.25, 5.85);                           // nobody else bumped: an obstacle
+        Bump(1, 10.25, 5.85, South);                 // the crate, met halfway down the corridor
+        Mark(10.25, 5.85, South);                    // nobody else bumped: an obstacle
         string again = Text("g.Plan(1, 10.25, 6.3)");   // from where the body backed off to
         Assert.IsFalse(again.Contains("east/garage"), "the corridor is closed by the mark: " + again);
         StringAssert.Contains(again, "storage/east@10.25,8", "back out the way it came");
@@ -690,13 +691,17 @@ public class MissionAcceptanceTests
     public void ABodyStandingAmongMarks_CanStillLeave_ButNotThroughThem()
     {
         MoveTo(1, 9.0, 1.5);                        // the garage
-        Learn(7.6, 9.3);                             // two touches on something right beside the body...
-        Learn(8.2, 9.3);
+        Learn(7.6, 9.3, South);                      // two touches on something right beside the body...
+        Learn(8.2, 9.3, South);
         string plan = Text("g.Plan(1, 7.9, 9.55)");  // ...which stands between them, in the storage room
         StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
 
-        Learn(10.25, 5.85);                          // the crate closes the corridor too
-        Refuses("g.Plan(1, 10.25, 6.0);", "fits a body of radius 0.25 past 3 marks");   // straight down through the crate: no
+        Learn(10.25, 5.85, South);                   // the crate closes the corridor too
+        // a body 0.15 north of that mark (it just backed off the crate; the touch was estimated a little short) leaves
+        // the way it came and takes the long way round — never straight down through the mark (the 8-sep live run)
+        string outNorth = Text("g.Plan(1, 10.25, 6.0)");
+        StringAssert.StartsWith(outNorth, "storage/east@10.25,8 > ", "back out through the door it came in by: " + outNorth);
+        Assert.IsFalse(outNorth.Contains("east/garage"), "not through the crate: " + outNorth);
     }
 
     [TestMethod]
@@ -704,10 +709,10 @@ public class MissionAcceptanceTests
     {
         MoveTo(1, 2.0, 9.5);                          // the kitchen, from the storage
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
-        Learn(4.0, 9.2);                              // marks close the kitchen/north doorway...
-        Learn(4.0, 9.8);
-        Learn(0.75, 8.2);                             // ...and the kitchen/west one
-        Learn(0.75, 7.8);
+        Learn(4.0, 9.2, East);                        // marks close the kitchen/north doorway...
+        Learn(4.0, 9.8, East);
+        Learn(0.75, 8.2, South);                      // ...and the kitchen/west one
+        Learn(0.75, 7.8, South);
         Refuses("g.Plan(1, 9.0, 9.5);", "no road");
         Assert.AreEqual(7.0, Double("g.DistanceLeft(9.0, 9.5)"), 0.001, "straight from (9, 9.5) to (2, 9.5): a read never refuses");
         Assert.IsTrue(Double("g.SecondsLeft(9.0, 9.5)") > 0);
@@ -717,16 +722,134 @@ public class MissionAcceptanceTests
     public void WhenNoRoadFitsTheBody_ThePlanSaysSo()
     {
         MoveTo(1, 9.0, 1.5);                        // the garage has two doors
-        Learn(7.0, 1.5);                             // something in the south/garage door
-        Learn(10.25, 3.0);                           // and something in the east/garage door
+        Learn(7.0, 1.5, East);                       // something in the south/garage door
+        Learn(10.25, 3.0, North);                    // and something in the east/garage door
         Refuses("g.Plan(1, 2.0, 1.5);", "fits a body of radius 0.25 past 2 marks");
+    }
+
+
+    // ---- the second touch protocol: the domain suspects, the golem concludes ----
+
+    [TestMethod]
+    public void WhatWasTouched_IsSuspectedByTheDomain_WallPeerOrThing()
+    {
+        // the domain reasons over its own facts: the map, and what the peers said since the leg began
+        string json = perf.Actor.Using(@"
+            print g.Suspect(0.05, 5.5, 3.1416, 0).Kind 'wall', g.Suspect(0.05, 5.5, 3.1416, 0).Conclusion 'wallVerb';
+            print g.Suspect(10.25, 5.9, -1.5708, 0).Kind 'thing', g.Suspect(10.25, 5.9, -1.5708, 0).Conclusion 'thingVerb', g.Suspect(10.25, 5.9, -1.5708, 0).Who 'nobody';
+        ").PerformQuery();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.AreEqual("wall", doc.RootElement.GetProperty("wall").GetString(), "the corridor's outer wall");
+        Assert.AreEqual("Graze", doc.RootElement.GetProperty("wallVerb").GetString(), "a wall I know: I grazed it");
+        Assert.AreEqual("thing", doc.RootElement.GetProperty("thing").GetString(), "nothing on the map, nobody heard");
+        Assert.AreEqual("Mark", doc.RootElement.GetProperty("thingVerb").GetString());
+        Assert.AreEqual("", doc.RootElement.GetProperty("nobody").GetString());
+
+        Int("g.Hear('blue', 4.6, 9.5)");
+        string peer = perf.Actor.Using(@"
+            print g.Suspect(4.7, 9.5, 0.0, 0).Kind 'kind', g.Suspect(4.7, 9.5, 0.0, 0).Who 'who', g.Suspect(4.7, 9.5, 0.0, 0).Conclusion 'verb';
+            print g.Suspect(4.7, 9.5, 0.0, 1).Kind 'later';
+        ").PerformQuery();
+        using var doc2 = System.Text.Json.JsonDocument.Parse(peer);
+        Assert.AreEqual("peer", doc2.RootElement.GetProperty("kind").GetString(), "blue bumped within a meeting's reach: it was blue");
+        Assert.AreEqual("blue", doc2.RootElement.GetProperty("who").GetString());
+        Assert.AreEqual("Met", doc2.RootElement.GetProperty("verb").GetString());
+        Assert.AreEqual("thing", doc2.RootElement.GetProperty("later").GetString(), "heard before the leg began: old news, not this touch");
+    }
+
+    [TestMethod]
+    public void GrazingAKnownWall_IsAFact_ThatSpendsTheGolemsPatienceOnTheLeg()
+    {
+        MoveTo(1, 2.0, 1.5);
+        Route(1, Text("g.Plan(1, 2.0, 9.5)"));   // kitchen/west > west/living > living
+        Assert.IsTrue(Bool("g.MayRetryLeg(1)"));
+
+        Graze(1, 0.05, 8.5);
+        Graze(1, 0.05, 8.4);
+        Assert.AreEqual(2, Int("g.Grazes(1)"));
+        Assert.IsTrue(Bool("g.MayRetryLeg(1)"), "two grazes: still patient");
+        Graze(1, 0.05, 8.6);
+        Assert.IsFalse(Bool("g.MayRetryLeg(1)"), "three grazes on one leg: patience spent, the mission is given up");
+        Assert.AreEqual(0, Int("g.MarkCount()"), "a graze leaves no mark: the wall was known");
+
+        Cross(1, "kitchen/west");
+        Assert.IsTrue(Bool("g.MayRetryLeg(1)"), "a new leg, fresh patience");
+        Assert.AreEqual(3, Int("g.Grazes(1)"), "but the mission remembers every graze");
+        Refuses("g.Graze(2, 1.0, 1.0);", "unknown mission");
+    }
+
+    [TestMethod]
+    public void MeetingAPeer_IsHistory_AmongTheObstacles_NeverGeometry()
+    {
+        Met("blue", 4.7, 9.5);
+        Learn(10.25, 5.85, South);
+
+        Assert.AreEqual(1, Int("g.MetCount()"));
+        Assert.AreEqual(2, Int("g.ObstacleCount()"), "a thing and a peer");
+        Assert.AreEqual(1, Int("g.ThingCount()"), "only the thing is planned around");
+        Assert.IsTrue(Bool("g.FitsAt(4.7, 9.5)"), "the peer moved on: the body fits where it was met");
+
+        string json = perf.Actor.Using(@"
+            foreach (places in g.Places()) {
+                print places.Name 'name';
+                foreach (obstacles in places.Obstacles()) { print obstacles.Kind 'kind', obstacles.Who 'who', obstacles.Shape 'shape', obstacles.Center.X 'cx'; }
+            }
+        ").PerformQuery();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var north = doc.RootElement.GetProperty("places")[1];
+        var peer = north.GetProperty("obstacles")[0];
+        Assert.AreEqual("peer", peer.GetProperty("kind").GetString(), "the encounter stands in the north hall as history");
+        Assert.AreEqual("blue", peer.GetProperty("who").GetString());
+        Assert.AreEqual("point", peer.GetProperty("shape").GetString());
+        var east = doc.RootElement.GetProperty("places")[5].GetProperty("obstacles")[0];
+        Assert.AreEqual("thing", east.GetProperty("kind").GetString());
+        Assert.AreEqual("", east.GetProperty("who").GetString());
+        Refuses("g.Met('', 1.0, 1.0);", "has a name");
+    }
+
+    [TestMethod]
+    public void ABodyStandingInsideItsOwnMark_CanStillLeave_MovingAwayFromIt()
+    {
+        // From the 8-sep live run: red grazed the crate's north-west corner with its side while heading south; the touch
+        // was estimated head-on, so the mark (4.94, 5.76) fell 0.19 from where the body then stood (4.8, 5.63) — inside
+        // its own radius. A body cannot be inside a thing: the mark forbids walking further in, not leaving.
+        MoveTo(1, 9.0, 1.5);                                                    // the garage
+        Mark(4.93672793175996, 5.75978159057928, -1.37257826652825);
+        Mark(5.14806941278059, 5.65085610890956, 0.0681849256515386);         // the second touch, stepping left into the crate's west face
+
+        string plan = Text("g.Plan(1, 4.8, 5.63)");
+        StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
+    }
+
+    [TestMethod]
+    public void AMarkKnowsItsNormal_TheSideTheBodyCameFromIsFree()
+    {
+        Learn(5.5, 5.85, South);   // the crate's north face, touched by a body heading south: the thing lies south of the point
+
+        Assert.IsFalse(Bool("g.FitsAt(5.5, 5.5)"), "beyond the mark, along its normal: inside the thing");
+        Assert.IsFalse(Bool("g.FitsAt(5.0, 5.85)"), "half a metre along the surface: within the mark's reach");
+        Assert.IsTrue(Bool("g.FitsAt(4.85, 5.85)"), "0.65 along the surface: past the reach");
+        Assert.IsTrue(Bool("g.FitsAt(5.5, 6.25)"), "0.4 back the way the body came: a radius and a margin clear of the surface — free (the old disc said no)");
+        Assert.IsFalse(Bool("g.FitsAt(5.5, 6.1)"), "0.25 back: the body would touch the surface again");
     }
 
     // ---- helpers: the same perform shapes the host uses ----
 
-    private void Bump(int id, double x, double y) =>
+    private void Bump(int id, double x, double y, double heading) =>
         perf.Actor.Using(@"
-            g.Bump(@id, @x, @y);
+            g.Bump(@id, @x, @y, @heading);
+        ")
+        .WithParameters(p => {
+            p["id",      typeof(int)]    = id;
+            p["x",       typeof(double)] = x;
+            p["y",       typeof(double)] = y;
+            p["heading", typeof(double)] = heading;
+        })
+        .PerformCommand();
+
+    private void Graze(int id, double x, double y) =>
+        perf.Actor.Using(@"
+            g.Graze(@id, @x, @y);
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
@@ -735,23 +858,36 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    private void Mark(double x, double y) =>
+    private void Mark(double x, double y, double heading) =>
         perf.Actor.Using(@"
-            g.Mark(@x, @y);
+            g.Mark(@x, @y, @heading);
         ")
         .WithParameters(p => {
-            p["x", typeof(double)] = x;
-            p["y", typeof(double)] = y;
+            p["x",       typeof(double)] = x;
+            p["y",       typeof(double)] = y;
+            p["heading", typeof(double)] = heading;
         })
         .PerformCommand();
 
-    private void Learn(double x, double y) =>
+    private void Learn(double x, double y, double heading) =>
         perf.Actor.Using(@"
-            g.Learn(@x, @y);
+            g.Learn(@x, @y, @heading);
         ")
         .WithParameters(p => {
-            p["x", typeof(double)] = x;
-            p["y", typeof(double)] = y;
+            p["x",       typeof(double)] = x;
+            p["y",       typeof(double)] = y;
+            p["heading", typeof(double)] = heading;
+        })
+        .PerformCommand();
+
+    private void Met(string who, double x, double y) =>
+        perf.Actor.Using(@"
+            g.Met(@who, @x, @y);
+        ")
+        .WithParameters(p => {
+            p["who", typeof(string)] = who;
+            p["x",   typeof(double)] = x;
+            p["y",   typeof(double)] = y;
         })
         .PerformCommand();
 

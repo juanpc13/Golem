@@ -119,10 +119,12 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Route(id, plan)` | The road decided from where the body stands, passages and stops in order: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. Between stops it is always the shortest road. |
 | `Cross(id, passage)` | A door or open boundary crossed. |
 | `Reach(id, x, y)` | A stop reached. Reaching the last one completes the mission — there is no separate "complete". |
-| `Bump(id, x, y)` · `Bump(x, y)` | The body touched something the map does not hold — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is settled afterwards. |
+| `Bump(id, x, y, heading)` · `Bump(x, y, heading)` | The body touched something the map does not hold, heading that way — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is concluded afterwards, by the domain. |
 | `Hear(who, x, y)` | A peer told it bumped at a point. A touch of my own there and then was that peer: a body, not a thing. |
-| `Mark(x, y)` | Nobody else bumped there: the touch was an obstacle, a **mark** on the map of touches, told to every peer. The golem then feels for a way past (a step right, then left, a body's width at a time) and, failing that, decides its road again around the marks. |
-| `Learn(x, y)` | A peer told of a mark: the golem learns it without the bruise, and plans around it too. |
+| `Graze(id, x, y)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the mission up. |
+| `Mark(x, y, heading)` | The domain suspected a thing (nobody else bumped there and then): a **mark** on the map of touches with the heading as its normal, told to every peer. The golem then feels for a way past (a step right, then left, a body's width at a time) and, failing that, decides its road again around the marks. |
+| `Met(who, x, y)` | The domain suspected a peer: the body met that peer there. History among the obstacles (a `Peer`), never geometry. |
+| `Learn(x, y, heading)` | A peer told of a mark: the golem learns it without the bruise, and plans around it too. |
 | `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
 | `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
 

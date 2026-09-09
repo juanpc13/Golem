@@ -48,8 +48,9 @@ public sealed class DiffDriveNavigator : INavigator
                 double r = bodyRadius();
                 double hitX = atTouch == null ? targetX : atTouch.X + r * Math.Cos(atTouch.Theta);
                 double hitY = atTouch == null ? targetY : atTouch.Y + r * Math.Sin(atTouch.Theta);
+                double touchHeading = atTouch == null ? Math.Atan2(targetY - (ros.LatestPose?.Y ?? targetY), targetX - (ros.LatestPose?.X ?? targetX)) : atTouch.Theta;
                 await BackOffAsync(touch, ct);
-                return Outcome.Collided(touch.With, hitX, hitY);
+                return Outcome.Collided(touch.With, hitX, hitY, touchHeading);
             }
 
             var pose = ros.LatestPose;

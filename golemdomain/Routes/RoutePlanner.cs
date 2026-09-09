@@ -153,7 +153,7 @@ internal sealed class RoutePlanner
             foreach (var v in nodes)
             {
                 if (done.Contains(v) || v == u) continue;
-                if (!Sees(u, v, clearance)) continue;
+                if (!Sees(u, v)) continue;
                 double edge = cost.Between(u.At, v.At);
                 if (dist[u] + edge < dist[v]) { dist[v] = dist[u] + edge; prev[v] = u; }
             }
@@ -191,20 +191,28 @@ internal sealed class RoutePlanner
 
     // Two nodes see each other when they share a place (a straight line inside a rectangle),
     // or when they stand in two places joined by an opening and the straight line between
-    // them crosses that open boundary — and, either way, the line keeps clear of every mark.
-    // The start may stand inside a mark's clearance (the body just backed off it, maybe from
-    // several): the first run out is judged by the body's own radius — it may not run THROUGH a
-    // mark, but it may brush past one at the distance it already stands from things.
-    private bool Sees(Node u, Node v, double clearance)
+    // them crosses that open boundary — and, either way, the line keeps clear of every mark
+    // (judged at the run's closest point to the mark, on the mark's own terms: its reach along the
+    // surface, its normal toward the free side). The start may stand inside a mark's clearance (the
+    // body just backed off it, maybe from several): the first run out is judged by the body's own
+    // radius — it may not run THROUGH a mark, but it may brush past one at the distance it already
+    // stands from things.
+    private bool Sees(Node u, Node v)
     {
         bool related = u.Places.Intersect(v.Places).Any() || OpeningCrossed(u, v) != null;
         if (!related) return false;
         var run = new Segment(u.At, v.At);
         foreach (var m in plan.Marks)
         {
-            double along = run.DistanceTo(m);
-            if (along >= clearance) continue;
-            if (u.Kind == NodeKind.Start && along >= radius - 0.05) continue;
+            if (!m.Blocks(run.ClosestTo(m), radius)) continue;
+            if (u.Kind == NodeKind.Start)
+            {
+                // The body stands where it stands. A mark within its own radius is an estimate gone wrong (the
+                // touch was taken head-on, it was a side graze): it cannot forbid the body from leaving, only
+                // from walking further into it — a run that never comes closer to the mark than the start is fine.
+                if (u.At.DistanceTo(m) < radius && run.DistanceTo(m) >= u.At.DistanceTo(m) - 1e-9) continue;
+                if (run.DistanceTo(m) >= radius - 0.05) continue;
+            }
             return false;
         }
         return true;
