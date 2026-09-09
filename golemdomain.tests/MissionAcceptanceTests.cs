@@ -591,7 +591,7 @@ public class MissionAcceptanceTests
     {
         Visit(1, 9.0, 1.5);
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
-        Assert.AreEqual(1, Int("g.HearBump('blue', 4.6, 9.5)"), "blue says it bumped in the kitchen's doorway");
+        Assert.AreEqual(1, Int("g.HearBump('blue', 4.6, 9.5, 5.1, 9.5)"), "blue says it bumped in the kitchen's doorway, standing just past it");
         int heard = Int("g.HeardBumpCount()");
 
         Bump(1, 4.7, 9.5, East);                    // my own touch, right there
@@ -602,7 +602,7 @@ public class MissionAcceptanceTests
 
         Assert.AreEqual(1, Int("g.Bump(4.9, 9.5, 0.0)"), "a body standing idle that gets touched bumps too, without a mission");
         Assert.AreEqual(2, Int("g.Bump(4.9, 9.5, 0.0)"));
-        Refuses("g.HearBump('', 1.0, 1.0);", "needs to say who");
+        Refuses("g.HearBump('', 1.0, 1.0, 1.0, 1.0);", "needs to say who");
     }
 
     [TestMethod]
@@ -809,6 +809,43 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("g.IsOrdered(1)"));
     }
 
+
+    [TestMethod]
+    public void MeetingAPeer_TheRoadStepsOutOfItsWay_AndTheStepIsALegLikeAnyOther()
+    {
+        // red drives east across the kitchen toward the north hall; blue tells it bumped in the doorway and
+        // stands just past it. Knowing where blue is, red's road starts by stepping out of the way.
+        Visit(1, "north");
+        Int("g.HearBump('blue', 4.6, 9.5, 5.1, 9.5)");
+
+        string road = Text("g.PlanPast(1, 'blue', 4.6, 9.5, 0.0)");
+        StringAssert.StartsWith(road, "aside@", "the first leg is the courtesy step: " + road);
+        StringAssert.EndsWith(road, "> north@5.5,9.5", "and then the errand goes on");
+
+        // to its own right, facing east, is south — and away from blue, who stands ahead
+        var step = road.Split('>')[0].Trim();
+        Assert.AreEqual("aside@4.6,9", step, "a body's width to its right, off the line it was on");
+
+        // the step is a leg to cross, never a stop: reaching it must not complete the errand
+        Route(1, road);
+        Assert.IsFalse(Bool("g.OrderIsStop(1)"));
+        Assert.AreEqual("aside", Text("g.OrderPassage(1)"));
+        Order(1, 4.6, 9.0);
+        Cross(1, "aside");
+        Assert.AreEqual("pending", Text("g.StatusOf(1)"), "stepping aside is not arriving");
+        Assert.AreEqual(1, Int("g.StopsLeft(1)"));
+    }
+
+    [TestMethod]
+    public void WithNowhereToStepAside_TheRoadIsThePlainOne()
+    {
+        Visit(1, "north");
+        Int("g.HearBump('blue', 4.6, 9.5, 5.1, 9.5)");
+        // hemmed in against the kitchen's north wall: neither side leaves room for the body
+        string road = Text("g.PlanPast(1, 'blue', 2.0, 10.9, 1.5708)");
+        Assert.IsFalse(road.Contains("aside@"), "no room to be polite: the plain road, and the meeting is settled by waiting: " + road);
+    }
+
     // ---- the second touch protocol: the domain suspects, the golem concludes ----
 
     [TestMethod]
@@ -826,7 +863,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual("Mark", doc.RootElement.GetProperty("thingVerb").GetString());
         Assert.AreEqual("", doc.RootElement.GetProperty("nobody").GetString());
 
-        Int("g.HearBump('blue', 4.6, 9.5)");
+        Int("g.HearBump('blue', 4.6, 9.5, 5.1, 9.5)");
         string peer = perf.Actor.Using(@"
             print g.Suspect(4.7, 9.5, 0.0, 0).Kind 'kind', g.Suspect(4.7, 9.5, 0.0, 0).Who 'who', g.Suspect(4.7, 9.5, 0.0, 0).Conclusion 'verb';
             print g.Suspect(4.7, 9.5, 0.0, 1).Kind 'later';

@@ -137,6 +137,40 @@ internal sealed class Golem
         return trajectory.Count;
     }
 
+    /// <summary>The road out of a peer's way and on to the stops still ahead, as the journal writes it:
+    /// "aside@4.6,10.3 > kitchen/north@4,9.5 > kitchen@2,9.5". The first leg is the courtesy step — a body's
+    /// width to ONE SIDE of where the golem faces, chosen so it moves away from the peer and where its own body
+    /// fits; both bodies step to their own right when they can, which is how two of them pass instead of shove.
+    /// The peer's position is what it told when it bumped (HearBump); without it, or with nowhere to step, the
+    /// road is the plain one from here.</summary>
+    internal string PlanPast(int id, string who, double x, double y, double heading)
+    {
+        var mission = Find(id);
+        var me = new Pose(x, y, heading);
+        var ahead = mission.StopsAhead.ToList();
+        var planner = Planner();
+        var aside = StepOutOfTheWayOf(who, me);
+        if (aside == null) return planner.Road(me, ahead).AsPlan();
+        return $"{Leg.Courtesy}@{Fmt(aside.X)},{Fmt(aside.Y)} > " + planner.Road(aside, ahead).AsPlan();
+    }
+
+    // A body's width to one side of where the golem faces: its own right first (so two bodies facing each other
+    // separate), then its left. The step must fit the body and must not walk INTO the peer.
+    private Position StepOutOfTheWayOf(string who, Pose me)
+    {
+        Position peer = null;
+        for (int i = heard.Count - 1; i >= 0; i--)
+            if (heard[i].Who == who) { peer = heard[i].PeerAt; break; }
+        foreach (var side in new[] { Side.Right, Side.Left })
+        {
+            var step = new StepAside(side).From(me, me.Heading).Legs()[0].At;
+            if (!plan.Fits(step, body.Radius)) continue;
+            if (peer != null && step.DistanceTo(peer) <= me.DistanceTo(peer)) continue;
+            return step;
+        }
+        return null;
+    }
+
     /// <summary>The golem tells the host where to drive: one point, one segment — "take the body exactly here".
     /// The order the host carries out; it must be the point the road holds next (or the stop, on an errand walked
     /// without a road). Written by a reaction, never by the host: the host does not choose where to go. Returns the
@@ -194,11 +228,12 @@ internal sealed class Golem
         return id;
     }
 
-    /// <summary>A peer says it bumped at (x, y): heard and kept, so a touch of my own there and then is known to be that peer.
-    /// The named counterpart of LearnMark, which hears of a MARK; this one hears of a BUMP.</summary>
-    internal int HearBump(string who, double x, double y)
+    /// <summary>A peer says it bumped at (x, y) while it stood at (px, py): heard and kept, so a touch of my own
+    /// there and then is known to be that peer — and so that, once we know we met, I can step out of ITS way
+    /// knowing where it is. The named counterpart of LearnMark, which hears of a MARK; this one hears of a BUMP.</summary>
+    internal int HearBump(string who, double x, double y, double px, double py)
     {
-        heard.Add(new HeardBump(who, new Position(x, y)));
+        heard.Add(new HeardBump(who, new Position(x, y), new Position(px, py)));
         return heard.Count;
     }
 

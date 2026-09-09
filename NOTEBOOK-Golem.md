@@ -780,3 +780,39 @@ Cinco toques, cinco marcas, cinco recálculos, y la misión completada. Los tres
 
 **Aparte, un incidente de herramientas**: al abrir `Golem.sln`, Visual Studio 18 reescribió la solución y **le borró al proyecto de tests la referencia al dominio**, con lo que la solución dejó de compilar. Se restauró la referencia. Vigilar si vuelve a pasar al reabrir.
 
+---
+
+## 2026-09-09 · El encuentro entre cuerpos: comparten posición y cada uno se aparta, journaleado
+
+**Contexto**: Juan, sobre la rama del `Met`: "cuando hace `g.Bump` y resulta ser otro robot, necesito que se compartan su posición actual para poder hacer otro `g.MoveTo` a la par, para que eviten golpearse entre ellos cuando retomen su camino". Era la última cortesía que el host hacía a escondidas: retroceder 0.9 y hacerse 0.8 a un lado, sin escribir nada.
+
+**Ajuste al dominio**:
+- `HeardBump` guarda además **dónde estaba el compañero** cuando lo contó (`PeerAt`), y el verbo pasa a `HearBump(who, x, y, px, py)`: el punto del toque y la posición de quien lo cuenta. Firma nueva → journals renacen.
+- `Leg` aprende un nombre más: **`aside`** (`Leg.Courtesy`), el tramo que se aparta de un cuerpo. No es parada, así que cumplirlo no completa el encargo: se reporta con `Cross(id, 'aside')`.
+- Lectura nueva **`PlanPast(id, who, x, y, heading)`**: el camino para pasar a ese compañero — el paso de cortesía primero y después el encargo. El paso es de un ancho de cuerpo hacia **su propia derecha** (y si no cabe, a la izquierda), elegido para **alejarse** de donde el compañero dijo estar y donde el propio cuerpo quepa (`Fits`). Que los dos vayan a su derecha es lo que hace que se cruzen en vez de empujarse. Si no hay lado que sirva, devuelve el camino normal y el encuentro se resuelve esperando.
+- 50 tests (dos nuevos: el camino que se aparta con su geometría exacta, y el caso sin lado disponible).
+
+**Ajuste al host**: el toque expone también la pose, el tell lleva cinco valores y el uptake es `g.HearBump(@who, @x, @y, @px, @py)`. Al concluir `Met`, el golem **decide un camino** con `PlanPast` y lo journalea como `Route`; el paso se ordena y se reporta como cualquier tramo. Se borraron `CoordinateWithAsync` y `BackAwayAsync`: la cesión silenciosa ya no existe.
+
+**Observación en vivo** (journals nuevos; blue y red cruzándose en la cocina). Diario de blue:
+
+```
+g.Bump(6, 3.069, 10.233, 0.548); Expose …
+tell BumpedAt with 3.069, 10.233, 'blue', 2.895, 10.137 to red     ← con MI posición
+g.HearBump('red', 3.632, 10.523, 3.426, 10.382);                   ← red dice dónde está
+g.Met('red', 3.069, 10.233);                                       ← era red
+g.Route(6, 'aside@3.12,9.69 > kitchen@3.5,10.5');                  ← el recálculo que se aparta
+g.MoveTo(6, 3.12, 9.69);                                           ← el paso, ordenado
+g.Cross(6, 'aside');                                               ← cumplido
+g.MoveTo(6, 3.5, 10.5);                                            ← retoma su camino
+g.Reach(6, 3.5, 10.5);                                             ← llega
+```
+
+Y en el diario de red, la otra mitad: `HearBump('blue', …, 2.895, 10.137)` y su propio `Bump` contado con su posición.
+
+**Defecto encontrado y corregido en el mismo laboratorio**: la primera corrida journaleó el `Met` pero **no** el camino de cortesía. Causa: la clave de idempotencia del `Route` se armaba con el conteo de toques leído al principio del turno, ya viejo, así que coincidía con la del primer `Route` y el motor la descartó **en silencio** (regla 7a del motor, otra vez). Ahora la clave lleva un conteo fresco y el número de encuentro. Lección repetida: una clave repetida no falla, desaparece.
+
+**Conclusión**: la cadena que Juan pidió está viva y entera en el diario — toqué, lo conté con mi posición, oí la suya, era un cuerpo, decido apartarme, me aparto, retomo. Ya no hay metros que el diario no explique, salvo dos cortesías que quedan: el seguidor orillándose al llegar y el cuerpo parado que se hace a un lado cuando lo tocan. Ambas son del mismo patrón y se cierran igual.
+
+**Pendiente**: (1) esas dos cortesías; (2) el `docker kill` a media ruta.
+

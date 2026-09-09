@@ -170,6 +170,9 @@ public sealed class MissionBumped : IDispatchMessage
     public double X { get; private init; }
     public double Y { get; private init; }
     public double Heading { get; private init; }
+    // Where the body itself stood when it touched: what a peer needs to step out of ITS way.
+    public double PoseX { get; private init; }
+    public double PoseY { get; private init; }
 
     public static IDispatchMessage Deserialize(string raw)
     {
@@ -179,12 +182,14 @@ public sealed class MissionBumped : IDispatchMessage
             Id = int.Parse(parts[0], CultureInfo.InvariantCulture),
             X = double.Parse(parts[1], CultureInfo.InvariantCulture),
             Y = double.Parse(parts[2], CultureInfo.InvariantCulture),
-            Heading = double.Parse(parts[3], CultureInfo.InvariantCulture)
+            Heading = double.Parse(parts[3], CultureInfo.InvariantCulture),
+            PoseX = double.Parse(parts[4], CultureInfo.InvariantCulture),
+            PoseY = double.Parse(parts[5], CultureInfo.InvariantCulture)
         };
     }
 
-    public static string Payload(int id, double x, double y, double heading) =>
-        $"{id}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}|{heading.ToString("R", CultureInfo.InvariantCulture)}";
+    public static string Payload(int id, double x, double y, double heading, double poseX, double poseY) =>
+        $"{id}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}|{heading.ToString("R", CultureInfo.InvariantCulture)}|{poseX.ToString("R", CultureInfo.InvariantCulture)}|{poseY.ToString("R", CultureInfo.InvariantCulture)}";
 }
 
 // The world said no: a collision, a stall, no road.
