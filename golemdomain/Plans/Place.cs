@@ -67,9 +67,8 @@ internal sealed class Place
 
     internal IReadOnlyList<Doorway> Doors() => plan.DoorsOf(this);
     internal IReadOnlyList<Opening> Openings() => plan.OpeningsOf(this);
-    internal IReadOnlyList<Mark> Marks() => plan.MarksIn(this);
-    /// <summary>The obstacles the marks in this place outline: joined vertices, the figure of what stands here uncharted.</summary>
-    internal IReadOnlyList<Obstacle> Obstacles() => plan.ObstaclesIn(this);
+    // What was touched here is not the plan's to answer: ask the golem for its obstacles (g.Obstacles()), which
+    // name the zone they stand in.
 
     // ---- charting (the release chain) ----
 

@@ -12,6 +12,8 @@ internal abstract class Obstacle
 {
     /// <summary>thing or peer.</summary>
     internal abstract string Kind { get; }
+    /// <summary>The place its centre stands in, so a table can name the zone; "" when it stands nowhere the map holds.</summary>
+    internal abstract string Where { get; }
     internal abstract Position Center { get; }
     internal abstract int Size { get; }
     /// <summary>The figure: point, line or polygon.</summary>
@@ -34,16 +36,19 @@ internal sealed class Thing : Obstacle
 {
     private readonly IReadOnlyList<Mark> vertices;
     private readonly Position center;
+    private readonly string where;
 
-    internal Thing(IReadOnlyList<Mark> vertices, Position center)
+    internal Thing(IReadOnlyList<Mark> vertices, Position center, string where)
     {
         if (vertices == null || vertices.Count == 0) throw new DomainException("a thing is outlined by at least one mark");
         if (center == null) throw new DomainException("a thing has a center");
         this.vertices = vertices;
         this.center = center;
+        this.where = where ?? "";
     }
 
     internal override string Kind => "thing";
+    internal override string Where => where;
     internal override Position Center => center;
     internal override int Size => vertices.Count;
     internal override string Shape => Size == 1 ? "point" : Size == 2 ? "line" : "polygon";
@@ -58,16 +63,19 @@ internal sealed class Peer : Obstacle
 {
     private readonly string who;
     private readonly Position at;
+    private readonly string where;
 
-    internal Peer(string who, Position at)
+    internal Peer(string who, Position at, string where)
     {
         if (string.IsNullOrWhiteSpace(who)) throw new DomainException("a peer met has a name");
         if (at == null) throw new DomainException("a peer was met somewhere");
         this.who = who;
         this.at = at;
+        this.where = where ?? "";
     }
 
     internal override string Kind => "peer";
+    internal override string Where => where;
     internal override string Who => who;
     internal override Position Center => at;
     internal override int Size => 1;

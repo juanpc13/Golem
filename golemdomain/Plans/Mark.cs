@@ -24,7 +24,7 @@ internal sealed class Mark : Location
 
     /// <summary>The heading of the touch: the normal into the thing.</summary>
     internal double Heading { get; }
-    internal double Reach => FloorPlan.MarkReach;
+    internal double Reach => ObstacleMap.MarkReach;
 
     /// <summary>How far beyond the mark a position lies, along the normal (negative: on the side the body came from).</summary>
     internal double Ahead(Position p) => (p.X - X) * Math.Cos(Heading) + (p.Y - Y) * Math.Sin(Heading);
@@ -34,7 +34,7 @@ internal sealed class Mark : Location
     /// from, a radius and a margin clear of the surface.</summary>
     internal bool Blocks(Position center, double radius)
     {
-        if (DistanceTo(center) >= Reach + radius + FloorPlan.MarkMargin) return false;
-        return Ahead(center) > -(radius + FloorPlan.MarkMargin);
+        if (DistanceTo(center) >= Reach + radius + ObstacleMap.MarkMargin) return false;
+        return Ahead(center) > -(radius + ObstacleMap.MarkMargin);
     }
 }

@@ -6,10 +6,12 @@ using GolemHost.Domain.Routes;
 namespace GolemHost.Domain.Plans;
 
 /// <summary>
-/// A floor plan — Juan's MAPA / PLANO: one plane (no levels yet, no layers yet) holding the places the golem
-/// knows, the passages between them (doors and open boundaries) and the marks where bodies touched what the
-/// plan does not hold. It answers where a point stands, whether a body fits there, whether a touched point
-/// is a wall it knows — and lends its geometry to the <see cref="RoutePlanner"/>, which finds the roads.
+/// A floor plan — Juan's MAPA / PLANO: the map module. One plane (no levels yet, no layers yet) holding the
+/// places the golem was told about and the passages between them (doors and open boundaries). It answers where
+/// a point stands, whether the WALLS leave room for a body there, whether a touched point is a wall it knows —
+/// and lends its geometry to the <see cref="RoutePlanner"/>, which finds the roads. What the bodies LEARNED by
+/// touching is not here: that is the obstacles module (<see cref="ObstacleMap"/>), and a road is found by
+/// consulting both.
 /// Rooms are rectangles, so a straight line inside a room never crosses a wall. The plan also writes itself
 /// as the release the journal charts it with (<see cref="AsRelease"/>): the journal stays the only truth.
 /// <para>Origins: a map of named places joined by passages is a topological map (Kuipers &amp; Byun, Robotics and
@@ -32,17 +34,11 @@ internal sealed class FloorPlan
     internal const double OpeningMargin = 0.5;
     // How far from a wall's line a touched point may fall and still be that wall (its thickness, the pose's error).
     internal const double WallTolerance = 0.3;
-    // A mark is a point where a body touched something: whatever stands there is taken to reach at least
-    // this far around the point; a body passes it at its own radius plus a margin.
-    internal const double MarkReach = 0.25;
-    internal const double MarkMargin = 0.1;
-    // Two marks this close were made on the same thing: joined, they become vertices of one obstacle.
-    internal const double JoinWithin = 1.0;
+    // The margin a body keeps from a wall, beyond its own radius.
+    internal const double BodyMargin = 0.1;
 
     private readonly List<Place> places = new();
     private readonly List<Passage> passages = new();
-    private readonly List<Mark> marks = new();        // facts: where bodies touched what the plan does not hold
-    private readonly List<Peer> encounters = new();   // facts: where a body met another body (history, never planned around)
 
     // ---- charting ----
 
@@ -66,34 +62,15 @@ internal sealed class FloorPlan
         passages.Add(new OpenBoundary(this, a, b));
     }
 
-    /// <summary>A point where a body touched something the plan does not hold, with the heading of the touch (the
-    /// mark's normal). Two touches within a tenth of a unit are one mark. Returns how many marks the plan holds.</summary>
-    internal int AddMark(Pose touch)
-    {
-        if (!marks.Any(m => m.DistanceTo(touch) < 0.1)) marks.Add(new Mark(touch.X, touch.Y, touch.Heading));
-        return marks.Count;
-    }
-
-    /// <summary>A body met another body at a point: history, kept as a Peer among the obstacles, never planned around.
-    /// Returns how many encounters the plan holds.</summary>
-    internal int AddEncounter(string who, Position at)
-    {
-        encounters.Add(new Peer(who, at));
-        return encounters.Count;
-    }
-
     // ---- the plan, read as objects ----
 
     internal int PlaceCount => places.Count;
     internal int PassageCount => passages.Count;
-    internal int MarkCount => marks.Count;
-    internal int EncounterCount => encounters.Count;
     internal bool Knows(string place) => places.Any(p => p.Name == place);
 
     internal IReadOnlyList<Place> Places => places;
     internal IEnumerable<Door> Doors => passages.OfType<Door>();
     internal IEnumerable<OpenBoundary> Openings => passages.OfType<OpenBoundary>();
-    internal IReadOnlyList<Mark> Marks => marks;
 
     internal IEnumerable<Door> DoorsJoining(string place) => Doors.Where(d => d.Joins(place));
     internal IEnumerable<OpenBoundary> OpeningsJoining(string place) => Openings.Where(o => o.Joins(place));
@@ -105,39 +82,6 @@ internal sealed class FloorPlan
     /// <summary>The open boundaries of a place: the place across each one.</summary>
     internal IReadOnlyList<Opening> OpeningsOf(Place place) =>
         OpeningsJoining(place.Name).Select(o => new Opening(o.OtherSide(place.Name))).ToList();
-
-    /// <summary>The marks standing in a place (a mark on a shared wall stands in both).</summary>
-    internal IReadOnlyList<Mark> MarksIn(Place place) => marks.Where(place.Contains).ToList();
-
-    /// <summary>The obstacles the golem hypothesizes: the things the marks outline — marks within JoinWithin of one
-    /// another (directly or through others) are vertices of one thing, ordered around its center so they can be
-    /// joined into a figure — followed by the peers it met. Derived every time from the facts; never stored.</summary>
-    internal IReadOnlyList<Obstacle> Obstacles()
-    {
-        int n = marks.Count;
-        var parent = Enumerable.Range(0, n).ToArray();
-        int Root(int i) { while (parent[i] != i) i = parent[i] = parent[parent[i]]; return i; }
-        for (int i = 0; i < n; i++)
-            for (int j = i + 1; j < n; j++)
-                if (marks[i].DistanceTo(marks[j]) <= JoinWithin) parent[Root(i)] = Root(j);
-
-        var obstacles = new List<Obstacle>();
-        foreach (var group in Enumerable.Range(0, n).GroupBy(Root).OrderBy(g => g.Min()))
-        {
-            var members = group.Select(i => marks[i]).ToList();
-            var center = new Position(members.Average(m => m.X), members.Average(m => m.Y));
-            var ordered = members.OrderBy(m => Math.Atan2(m.Y - center.Y, m.X - center.X)).ToList();
-            obstacles.Add(new Thing(ordered, center));
-        }
-        obstacles.AddRange(encounters);
-        return obstacles;
-    }
-
-    /// <summary>The things alone: the obstacles the roads avoid.</summary>
-    internal IReadOnlyList<Thing> Things() => Obstacles().OfType<Thing>().ToList();
-
-    /// <summary>The obstacles whose center stands in a place.</summary>
-    internal IReadOnlyList<Obstacle> ObstaclesIn(Place place) => Obstacles().Where(o => place.Contains(o.Center)).ToList();
 
     internal Place PlaceNamed(string name)
     {
@@ -152,6 +96,14 @@ internal sealed class FloorPlan
     // ---- where things stand ----
 
     internal bool IsOnMap(Position at) => places.Any(p => p.Contains(at));
+
+    /// <summary>The place a point stands in, or "" when the map holds nothing there (a solid block, off the floor):
+    /// what a table needs to name the zone without refusing.</summary>
+    internal string ZoneOf(Position at)
+    {
+        foreach (var p in places) if (p.Contains(at)) return p.Name;
+        return "";
+    }
 
     /// <summary>The place a point stands in. A point on a shared wall belongs to the first declared.</summary>
     internal Place PlaceAt(Position at)
@@ -168,18 +120,10 @@ internal sealed class FloorPlan
         return names;
     }
 
-    /// <summary>Whether a body of this radius stands clear at a point: inside a place, off every wall by its
-    /// radius plus a margin, and clear of every mark — off it by the mark's reach plus its radius plus a margin,
-    /// except on the side the touching body came from, which is free at a radius and a margin (the mark's normal).</summary>
-    internal bool Fits(Position at, double radius)
-    {
-        if (!HasRoom(at, radius)) return false;
-        return !marks.Any(m => m.Blocks(at, radius));
-    }
-
-    /// <summary>Whether the walls alone leave room for a body of this radius at a point — marks not counted:
-    /// the question a body asks while feeling its way around one.</summary>
-    internal bool HasRoom(Position at, double radius) => places.Any(p => p.ContainsInset(at, radius + MarkMargin));
+    /// <summary>Whether the WALLS leave room for a body of this radius at a point: inside a place and off every
+    /// wall by its radius plus a margin. What was learned by touching is the obstacles module's answer, not this
+    /// one's — and this is the question a body asks while feeling its way around something.</summary>
+    internal bool HasRoom(Position at, double radius) => places.Any(p => p.ContainsInset(at, radius + BodyMargin));
 
     /// <summary>Whether a point lies on a wall the plan knows: within tolerance of a wall of some place and not in
     /// one of that wall's doorways. The corner of a solid block is known through the perpendicular walls that meet at it.</summary>

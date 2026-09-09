@@ -101,6 +101,8 @@ public class GolemController : Controller
     // it. The engine renders each foreach as an array named after the loop variable, nested where the
     // loop is nested — places, and within a place: doors, opens, marks; a place with none of something
     // simply lacks that key. The golem hands out its objects and never renders a document itself.
+    // The floor plan as the golem was told it: places, doors and open boundaries. What its bodies TOUCHED is
+    // the other module and has its own endpoint (/obstacles), which also names the zone of each figure.
     [HttpGet("map")]
     public IActionResult Map() =>
         Content(perf.Actor.Using(@"
@@ -112,14 +114,23 @@ public class GolemController : Controller
                 foreach (opens in places.Openings()) {
                     print opens.To 'to';
                 }
-                foreach (marks in places.Marks()) {
-                    print marks.X 'x', marks.Y 'y', marks.Reach 'r';
-                }
-                foreach (obstacles in places.Obstacles()) {
-                    print obstacles.Size 'size', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
-                    foreach (vertices in obstacles.Vertices()) {
-                        print vertices.X 'x', vertices.Y 'y';
-                    }
+            }
+        ")
+        .PerformQuery(), "application/json");
+
+    // The obstacles the golem hypothesizes, as a flat list for a table: one row per obstacle — its kind, the
+    // zone it stands in, the figure its vertices draw, its centre — and under it one row per vertex, the touch
+    // that outlined it with its normal. A thing is geometry the roads avoid; a peer is a body it met, history.
+    // One query walking the golem's own objects: the table is drawn from them, never from a document it rendered.
+    [HttpGet("obstacles")]
+    public IActionResult Obstacles() =>
+        Content(perf.Actor.Using(@"
+            print g.ObstacleCount() 'total', g.ThingCount() 'things', g.MetCount() 'met', g.MarkCount() 'marks';
+            foreach (obstacles in g.Obstacles()) {
+                print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
+                      obstacles.Who 'who', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
+                foreach (vertices in obstacles.Vertices()) {
+                    print vertices.X 'x', vertices.Y 'y', vertices.Heading 'normal', vertices.Reach 'reach';
                 }
             }
         ")

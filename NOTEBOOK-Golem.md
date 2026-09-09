@@ -816,3 +816,36 @@ Y en el diario de red, la otra mitad: `HearBump('blue', …, 2.895, 10.137)` y s
 
 **Pendiente**: (1) esas dos cortesías; (2) el `docker kill` a media ruta.
 
+---
+
+## 2026-09-09 · El módulo de obstáculos, aparte del módulo del mapa
+
+**Contexto**: Juan pide dos cosas encadenadas. Primero: "algo como `g.Obstacles()` y que retorne la lista de cuáles son, y cada obstáculo con cada vértice… que si uno hace GET al controller, en la UI salga como una tabla, y así poder ver un segundo elemento de otro obstáculo pero con otros vértices en otra zona". Después, el fondo: "dentro de `class Golem` la idea es ir creando el módulo de obstáculos, el módulo, y así cada uno de cada uno, para encontrar la ruta más corta entre todos los puntos acorde al módulo del mapa".
+
+**Observación (el defecto)**: los obstáculos solo se alcanzaban lugar por lugar (`places.Obstacles()`), y peor: `FloorPlan` guardaba a la vez **el plano** (lo que al golem le contaron: lugares, puertas, paredes) y **lo aprendido** (las marcas de los toques y los encuentros). Dos cosas de naturaleza distinta en una sola clase: el plano no cambia, lo aprendido cambia con cada golpe. Es la porosidad estructural que la guía llama aplanar dos colaboradores en uno (E26).
+
+**Ajuste al dominio**:
+- Nace **`Plans.ObstacleMap`**, el módulo de obstáculos: guarda los **hechos** (marcas con su normal, encuentros) y **deriva** las hipótesis (`All()`, `Things()`, `In(place)`), responde si algo aprendido estorba (`Blocks`) y se apoya en el plano solo para nombrar la zona. Sus constantes viajan con él: `MarkReach`, `MarkMargin`, `JoinWithin`, `SameTouch`.
+- **`FloorPlan` queda como el módulo del mapa**, y solo eso: lugares, pasajes, paredes, `HasRoom` (lo que las paredes dejan), `IsWallAt`, `ZoneOf`, `WithDoorCrossings`, `AsRelease`. Ya no sabe qué se tocó. Su margen propio se llama `BodyMargin`.
+- **`Golem` sostiene los dos módulos** y los compone: `FitsAt` es "las paredes dejan espacio Y lo aprendido no estorba", y el planificador se construye con ambos — `new RoutePlanner(plan, learned, radius)` —, que es literalmente lo que Juan pidió: la ruta más corta se busca consultando el módulo del mapa y el de obstáculos.
+- **`Place` deja de responder por lo tocado**: se retiraron `Place.Marks()` y `Place.Obstacles()`. Lo aprendido se lee plano y con su zona.
+- Lectura nueva **`g.Obstacles()`**: todos los obstáculos, cada uno con `Kind`, `Where` (la zona), `Shape`, `Size`, `Who`, `Center` y `Vertices()`, y cada vértice con su normal y su alcance. `Obstacle.Where` es propiedad de la variante, la rellena el módulo al derivarla.
+- 51 tests: tres se reescribieron para leer plano en vez de por lugar, y uno nuevo comprueba la tabla entera (dos cosas en zonas distintas con sus vértices, y el peer sin ninguno).
+
+**Ajuste al host**: `GET /obstacles` con una sola query que recorre `g.Obstacles()` — una fila por obstáculo y una por vértice. El panel tiene su **tabla** y, de la misma lista, pinta las figuras rojas del minimapa; `/map` volvió a ser solo el plano.
+
+**Verificado en vivo**, tabla del panel de red:
+
+```
+thing · line     | kitchen | 2 vertexes | centre (0.87, 8.58)
+  • vertex       |         | (0.96, 8.57) | normal -2.32 rad · reach 0.25
+  • vertex       |         | (0.79, 8.58) | normal  1.45 rad · reach 0.25
+thing · polygon  | center  | 5 vertexes | centre (5.58, 5.74)
+  • vertex ×5    |         | …           | cada uno con su normal
+peer · blue      | kitchen | 1 vertex   | centre (0.75, 8.54)
+```
+
+**Aclaración que quedó fijada (Juan preguntó si `Bump` alimenta el módulo)**: no. `Bump` es el hecho del toque — cuenta, anula la orden y expone el punto para el habla —, y quienes alimentan el módulo son `Mark` (mi conclusión) y `LearnMark` (la de un compañero). Es deliberado: en el instante del toque no se sabe si fue un robot, y si `Bump` marcara, cada encuentro dejaría un obstáculo fantasma permanente en los tres mapas — exactamente el error del 8-sep, tres marcas fantasma en una puerta. Lo que sí es cierto, y ahora explícito en el código, es que **el módulo guía al robot entero**: el planificador lo consulta en cada camino. La cadena es `Bump` → `Mark`/`LearnMark` → módulo de obstáculos → planificador.
+
+**Pendiente**: (1) las dos cortesías que faltan por journalear (el seguidor orillándose, el parado que se hace a un lado); (2) el `docker kill` a media ruta; (3) cuando lleguen las capas del mapa, el módulo de obstáculos ya es una de ellas — la capa de lo aprendido sobre la capa de lo contado.
+

@@ -17,8 +17,8 @@
   h1 { font-size:1.05rem; margin:0; }
   .badge { font-family:ui-monospace, monospace; font-size:12.5px; color:var(--muted); }
   .badge b { color:var(--ink); font-weight:600; }
-  main { display:grid; grid-template-columns:300px 1fr; gap:20px; padding:20px 22px;
-         max-width:1100px; }
+  main { display:grid; grid-template-columns:340px minmax(0, 1fr); gap:22px; padding:20px 22px;
+         max-width:1280px; margin:0 auto; align-items:start; }
   @media (max-width:760px) { main { grid-template-columns:1fr; } }
 
   section h2 { font-size:0.8rem; text-transform:uppercase; letter-spacing:0.1em;
@@ -39,6 +39,11 @@
   button.danger { background:#4a2430; color:#f0b9b9; border:1px solid #7a3a44; }
   button.danger:active { background:#6a3040; }
   .hint { font-size:12px; color:var(--muted); margin:0; }
+  details.hint > summary { cursor:pointer; list-style:none; padding:2px 0; }
+  details.hint > summary::-webkit-details-marker { display:none }
+  details.hint > summary::before { content:'▸'; margin-right:6px; }
+  details.hint[open] > summary::before { content:'▾'; margin-right:6px; }
+  details.hint > p { margin:6px 0 0; }
   .stops { margin:0; padding-left:22px; font-family:ui-monospace, monospace; font-size:13px; min-height:18px; }
   .stops li { display:flex; gap:10px; align-items:center; padding:2px 0; }
   .stops li .drop { cursor:pointer; color:var(--muted); }
@@ -61,6 +66,15 @@
   li.flash { animation: flash 1.2s ease-out; }
   @keyframes flash { from { border-color:var(--clay); background:#2a2438; } }
   @media (prefers-reduced-motion: reduce) { li.flash { animation:none; } }
+  #obstacles { width: 100%; border-collapse: collapse; font-size: 12px }
+  #obstacles td { padding: 3px 6px; border-bottom: 1px solid #1e2a3a; white-space: nowrap }
+  #obstacles tr.thing td, #obstacles tr.peer td { font-weight: 600 }
+  #obstacles tr.thing td:first-child { color: #ff8a7a }
+  #obstacles tr.peer td:first-child { color: #7ab8ff }
+  #obstacles tr.vertex td { color: #8fa3b8; font-weight: 400; padding-left: 22px }
+  #obstacles td:nth-child(2) { color: #8fa3b8; font-weight: 400 }
+  #obstacles td:last-child { text-align: right }
+  #obstacles tr.none td { color: #6b7d91 }
 </style>
 </head>
 <body>
@@ -81,7 +95,7 @@
     <h2>Operations</h2>
     <div class="card ops">
       <canvas id="map" width="300" height="300" title="click to add a stop here"></canvas>
-      <p class="hint">The floor plan is the golem's own map, released into its journal. Click a room or press a
+      <details class="hint"><summary>How the map, the stops and the marks work</summary><p>The floor plan is the golem's own map, released into its journal. Click a room or press a
       place to add a stop, then send the golem through the stops <b>in that order</b> (<code>Visit</code>) or let
       it <b>choose the order</b> that makes the whole road shortest (<code>Cover</code>). Between stops it always
       takes the shortest road through the doors and open boundaries, journals it, and journals every passage
@@ -89,7 +103,7 @@
       bumps into there becomes a red <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.LearnMark</code>
       it); marks close together are joined as the vertices of one <b>obstacle</b>, the figure of the thing nobody charted.
       The golem feels for a way past, right then left, and if none fits its body it decides the road again
-      around the marks. Only when no road fits does the mission fail.</p>
+      around the marks. Only when no road fits does the mission fail.</p></details>
       <div class="row" id="places"></div>
       <div class="row">
         <input id="x" type="number" step="0.5" value="5.5">
@@ -114,6 +128,15 @@
   </section>
 
   <section>
+    <h2>Obstacles</h2>
+    <div class="card" style="margin-bottom:20px">
+      <p class="hint">What the golem HYPOTHESIZES from what its bodies touched — one query on <code>/obstacles</code>
+      walking <code>g.Obstacles()</code>. A <b>thing</b> is geometry the roads avoid: its vertices are the marks that
+      outlined it, each with the normal of the touch. A <b>peer</b> is a body it met — history, never planned around.
+      The marks are facts; the figure is the guess, and every new touch refines it.</p>
+      <table id="obstacles"><tbody></tbody></table>
+    </div>
+
     <h2>PerformQuery</h2>
     <div class="card ops" style="margin-bottom:20px">
       <div class="row">
@@ -140,11 +163,11 @@
         <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.OrderPassage(g.NextId()) 'heading', g.OrderIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
-      <p class="hint">Queries read the golem's in-memory state and never touch the journal.
+      <details class="hint"><summary>Why a query must stay read-only</summary><p>Queries read the golem's in-memory state and never touch the journal.
       Keep them read-only: a mutating call here would change memory without journaling it,
       and the change evaporates on the next rehydration. Distances follow the map's passages:
       <code>g.Distance('kitchen', 'garage')</code> is the shortest road through the doors, and the header's
-      <i>route left · eta</i> comes from <code>/progress</code>, which only adds the road from where the body stands.</p>
+      <i>route left · eta</i> comes from <code>/progress</code>, which only adds the road from where the body stands.</p></details>
     </div>
 
     <h2>Journal — live</h2>
@@ -285,14 +308,39 @@ map.addEventListener('click', (ev) => {
   addStop(`${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`);
 });
 
+// The obstacles, as a table AND as the red figures on the map: one query on /obstacles, one list. The golem
+// hands out its objects (Thing, Peer) and the query prints their properties; nothing here is invented.
+let learned = [];
+async function drawObstacles() {
+  let d;
+  try { d = await (await fetch('/obstacles')).json(); } catch (e) { return; }
+  const rows = [];
+  const items = Array.isArray(d.obstacles) ? d.obstacles : [];
+  learned = items;                       // the canvas paints what the bodies touched from this same list
+  for (const o of items) {
+    const what = o.kind === 'peer' ? `peer &middot; ${o.who}` : `thing &middot; ${o.shape}`;
+    rows.push(`<tr class="${o.kind}"><td>${what}</td><td>${o.zone || '&mdash;'}</td>` +
+              `<td>${o.size} vertex${o.size === 1 ? '' : 'es'}</td>` +
+              `<td>centre (${(+o.cx).toFixed(2)}, ${(+o.cy).toFixed(2)})</td></tr>`);
+    for (const v of (o.vertices || []))
+      rows.push(`<tr class="vertex"><td>&#8226; vertex</td><td></td>` +
+                `<td>(${(+v.x).toFixed(2)}, ${(+v.y).toFixed(2)})</td>` +
+                `<td>normal ${(+v.normal).toFixed(2)} rad &middot; reach ${(+v.reach).toFixed(2)}</td></tr>`);
+  }
+  if (!rows.length) rows.push('<tr class="none"><td colspan="4">nothing touched yet: no obstacle hypothesized</td></tr>');
+  document.querySelector('#obstacles tbody').innerHTML = rows.join('');
+  if (typeof drawMap === 'function') drawMap();
+}
+drawObstacles();
+setInterval(drawObstacles, 4000);
+
 // The floor plan, as the golem knows it: one query on /map walks the golem's Place objects and prints their
 // properties, and inside each place its Doors(), Openings() and Marks() — the engine renders each loop as an
 // array named after its variable. A place with none of something simply lacks that key. One "+ place" button per place.
 async function loadMap() {
   try {
     const m = await (await fetch('/map')).json();
-    plan = { places: (m.places || []).map(p => ({ ...p, doors: p.doors || [], opens: p.opens || [], marks: p.marks || [],
-                                                  obstacles: (p.obstacles || []).map(o => ({ ...o, vertices: o.vertices || [] })) })) };
+    plan = { places: (m.places || []).map(p => ({ ...p, doors: p.doors || [], opens: p.opens || [] })) };
     const holder = document.getElementById('places');
     holder.innerHTML = '';
     for (const p of plan.places) {
@@ -341,23 +389,6 @@ function drawMap() {
         }
         mctx.setLineDash([]); mctx.lineWidth = 2;
       }
-      // marks: where a body touched something the plan does not hold — the map of touches
-      for (const m of a.marks) {
-        const r = Math.max(4, m.r / WORLD * w);
-        mctx.fillStyle = 'rgba(224,119,119,0.45)'; mctx.strokeStyle = 'rgba(224,119,119,0.95)'; mctx.lineWidth = 1.5;
-        mctx.beginPath(); mctx.arc(toPx(m.x), toPy(m.y), r, 0, 7); mctx.fill(); mctx.stroke();
-      }
-      // obstacles: marks close to one another, joined as vertices — two make a line, three or more a shape
-      for (const o of a.obstacles) {
-        const v = o.vertices;
-        if (v.length < 2) continue;
-        mctx.strokeStyle = 'rgba(240,150,150,1)'; mctx.fillStyle = 'rgba(224,119,119,0.25)'; mctx.lineWidth = 2;
-        mctx.beginPath(); mctx.moveTo(toPx(v[0].x), toPy(v[0].y));
-        for (let i = 1; i < v.length; i++) mctx.lineTo(toPx(v[i].x), toPy(v[i].y));
-        if (v.length >= 3) { mctx.closePath(); mctx.fill(); }
-        mctx.stroke();
-        for (const p of v) { mctx.fillStyle = 'rgba(240,150,150,1)'; mctx.beginPath(); mctx.arc(toPx(p.x), toPy(p.y), 2.5, 0, 7); mctx.fill(); }
-      }
       // doors: a gap in the wall, marked in clay; on this place's vertical edge, or on a horizontal one
       for (const d of a.doors) {
         mctx.strokeStyle = '#dfa563'; mctx.lineWidth = 4;
@@ -387,6 +418,24 @@ function drawMap() {
     mctx.beginPath(); mctx.arc(tx, ty, 6, 0, 7); mctx.stroke();
     mctx.beginPath(); mctx.moveTo(tx, ty);
     mctx.lineTo(tx + 10 * Math.cos(lastTruth.theta), ty - 10 * Math.sin(lastTruth.theta)); mctx.stroke();
+  }
+  // what the bodies LEARNED, from the obstacles module's own list: each mark as a red disc, and the vertices
+  // of each thing joined — two make a line, three or more a figure. A peer is not painted: bodies move on.
+  for (const o of learned) {
+    if (o.kind !== 'thing') continue;
+    const v = o.vertices || [];
+    for (const m of v) {
+      const r = Math.max(4, (+m.reach) / WORLD * w);
+      mctx.fillStyle = 'rgba(224,119,119,0.45)'; mctx.strokeStyle = 'rgba(224,119,119,0.95)'; mctx.lineWidth = 1.5;
+      mctx.beginPath(); mctx.arc(toPx(m.x), toPy(m.y), r, 0, 7); mctx.fill(); mctx.stroke();
+    }
+    if (v.length < 2) continue;
+    mctx.strokeStyle = 'rgba(240,150,150,1)'; mctx.fillStyle = 'rgba(224,119,119,0.25)'; mctx.lineWidth = 2;
+    mctx.beginPath(); mctx.moveTo(toPx(v[0].x), toPy(v[0].y));
+    for (let i = 1; i < v.length; i++) mctx.lineTo(toPx(v[i].x), toPy(v[i].y));
+    if (v.length >= 3) { mctx.closePath(); mctx.fill(); }
+    mctx.stroke();
+    for (const q of v) { mctx.fillStyle = 'rgba(240,150,150,1)'; mctx.beginPath(); mctx.arc(toPx(q.x), toPy(q.y), 2.5, 0, 7); mctx.fill(); }
   }
   // the body where the golem believes it is
   if (lastPose) {

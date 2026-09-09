@@ -23,20 +23,26 @@ namespace GolemHost.Domain.Routes;
 internal sealed class RoutePlanner
 {
     private readonly FloorPlan plan;
+    private readonly ObstacleMap learned;
     private readonly double radius;
     private readonly EdgeCost cost;
 
-    internal RoutePlanner(FloorPlan plan, double radius) : this(plan, radius, new DistanceCost()) { }
+    internal RoutePlanner(FloorPlan plan, ObstacleMap learned, double radius) : this(plan, learned, radius, new DistanceCost()) { }
 
-    internal RoutePlanner(FloorPlan plan, double radius, EdgeCost cost)
+    internal RoutePlanner(FloorPlan plan, ObstacleMap learned, double radius, EdgeCost cost)
     {
         if (plan == null) throw new DomainException("a planner needs a floor plan");
+        if (learned == null) throw new DomainException("a planner needs to know what the bodies learned");
         if (radius < 0) throw new DomainException("a body's radius cannot be negative");
         if (cost == null) throw new DomainException("a planner needs to know what an edge costs");
         this.plan = plan;
+        this.learned = learned;
         this.radius = radius;
         this.cost = cost;
     }
+
+    // A point is clear when the walls leave room AND nothing learned stands there.
+    private bool Fits(Position at) => plan.HasRoom(at, radius) && !learned.Blocks(at, radius);
 
     /// <summary>The shortest road from one point to another through the passages: the legs to walk, the stop last.</summary>
     internal Trajectory Road(Position from, Position to) => Road(from, new[] { to });
@@ -117,7 +123,7 @@ internal sealed class RoutePlanner
 
     private List<Leg> RawRoad(Position from, Position to)
     {
-        double clearance = FloorPlan.MarkReach + radius + FloorPlan.MarkMargin;
+        double clearance = ObstacleMap.MarkReach + radius + ObstacleMap.MarkMargin;
         var start = new Node(from, plan.PlacesOf(from), NodeKind.Start);
         var goal = new Node(to, plan.PlacesOf(to), NodeKind.Goal);
         var nodes = new List<Node> { start };
@@ -128,13 +134,13 @@ internal sealed class RoutePlanner
             if (o.Touches) nodes.Add(new Node(o.Midpoint, new[] { o.A, o.B }, o));
         // around every mark, the points a body of this radius could pass through — only where it fits
         // (a ring a little wider than the clearance, so the run between two neighbouring points stays clear)
-        foreach (var m in plan.Marks)
+        foreach (var m in learned.Marks)
             for (int k = 0; k < 8; k++)
             {
                 double angle = k * Math.PI / 4;
                 var p = new Position(m.X + (clearance + 0.08) * Math.Cos(angle), m.Y + (clearance + 0.08) * Math.Sin(angle));
-                if (!plan.Fits(p, radius)) continue;
-                nodes.Add(new Node(p, plan.Places.Where(q => q.ContainsInset(p, radius + FloorPlan.MarkMargin)).Select(q => q.Name).ToArray(), NodeKind.Detour));
+                if (!Fits(p)) continue;
+                nodes.Add(new Node(p, plan.Places.Where(q => q.ContainsInset(p, radius + ObstacleMap.MarkMargin)).Select(q => q.Name).ToArray(), NodeKind.Detour));
             }
         nodes.Add(goal);
 
@@ -159,9 +165,9 @@ internal sealed class RoutePlanner
             }
         }
         if (double.IsPositiveInfinity(dist[goal]))
-            throw new DomainException(plan.MarkCount == 0
+            throw new DomainException(learned.MarkCount == 0
                 ? $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) through the map"
-                : $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) that fits a body of radius {Fmt(radius)} past {plan.MarkCount} marks");
+                : $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) that fits a body of radius {Fmt(radius)} past {learned.MarkCount} marks");
 
         var legs = new List<Leg>();
         for (Node n = goal; n != start; n = prev[n])
@@ -202,7 +208,7 @@ internal sealed class RoutePlanner
         bool related = u.Places.Intersect(v.Places).Any() || OpeningCrossed(u, v) != null;
         if (!related) return false;
         var run = new Segment(u.At, v.At);
-        foreach (var m in plan.Marks)
+        foreach (var m in learned.Marks)
         {
             if (!m.Blocks(run.ClosestTo(m), radius)) continue;
             if (u.Kind == NodeKind.Start)

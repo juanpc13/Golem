@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using Choreography.Theater;
 using GolemHost.Domain;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -87,17 +88,14 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
-    public void TheMap_IsReadAsObjects_EachPlaceWithItsDoorsOpeningsAndMarks()
+    public void TheMap_IsReadAsObjects_EachPlaceWithItsDoorsAndOpenings()
     {
-        LearnMark(10.25, 5.85, South);   // something in the east corridor, touched heading south
-
         // the very query the panel runs: the golem's places, walked and printed, each with what it holds
         string json = perf.Actor.Using(@"
             foreach (places in g.Places()) {
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h', places.Center.X 'cx', places.Center.Y 'cy';
                 foreach (doors in places.Doors()) { print doors.To 'to', doors.At.X 'x', doors.At.Y 'y'; }
                 foreach (opens in places.Openings()) { print opens.To 'to'; }
-                foreach (marks in places.Marks()) { print marks.X 'x', marks.Y 'y', marks.Reach 'r'; }
             }
         ").PerformQuery();
 
@@ -115,11 +113,9 @@ public class MissionAcceptanceTests
         Assert.IsFalse(kitchen.TryGetProperty("opens", out _), "a place with no open boundary simply lacks the key");
 
         Assert.AreEqual("center", places[1].GetProperty("opens")[0].GetProperty("to").GetString(), "north opens to the center");
-        var east = places[5];
-        Assert.AreEqual("east", east.GetProperty("name").GetString());
-        Assert.AreEqual(1, east.GetProperty("marks").GetArrayLength(), "the mark stands in the east corridor");
-        Assert.AreEqual(0.25, east.GetProperty("marks")[0].GetProperty("r").GetDouble(), 0.001);
-        Assert.IsFalse(places[0].TryGetProperty("marks", out _), "and nowhere else");
+        Assert.AreEqual("east", places[5].GetProperty("name").GetString());
+        // what the bodies touched is NOT the map's to answer: it is the obstacles module, read flat with its zone
+
     }
 
     [TestMethod]
@@ -616,25 +612,21 @@ public class MissionAcceptanceTests
         Assert.AreEqual(2, Int("g.ObstacleCount()"), "three touches on one thing, one on another");
 
         string json = perf.Actor.Using(@"
-            foreach (places in g.Places()) {
-                print places.Name 'name';
-                foreach (obstacles in places.Obstacles()) {
-                    print obstacles.Size 'size', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
-                    foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y'; }
-                }
+            foreach (obstacles in g.Obstacles()) {
+                print obstacles.Where 'zone', obstacles.Size 'size', obstacles.Shape 'shape', obstacles.Center.X 'cx';
+                foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y'; }
             }
         ").PerformQuery();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var places = doc.RootElement.GetProperty("places");
-        var east = places[5];
-        Assert.AreEqual("east", east.GetProperty("name").GetString());
-        var crate = east.GetProperty("obstacles")[0];
-        Assert.AreEqual(3, crate.GetProperty("size").GetInt32(), "the three touches outline one obstacle in the corridor");
+        var list = doc.RootElement.GetProperty("obstacles");
+        Assert.AreEqual(2, list.GetArrayLength());
+        var crate = list[0];
+        Assert.AreEqual("east", crate.GetProperty("zone").GetString(), "the crate stands in the east corridor");
+        Assert.AreEqual(3, crate.GetProperty("size").GetInt32(), "the three touches outline one obstacle");
         Assert.AreEqual(3, crate.GetProperty("vertices").GetArrayLength());
-        Assert.AreEqual(10.13, crate.GetProperty("cx").GetDouble(), 0.01, "centered among its vertices");
-        var storage = places[2];
-        Assert.AreEqual(1, storage.GetProperty("obstacles")[0].GetProperty("size").GetInt32(), "one touch is a point, not a figure yet");
-        Assert.IsFalse(places[0].TryGetProperty("obstacles", out _), "the kitchen holds none");
+        Assert.AreEqual(10.13, crate.GetProperty("cx").GetDouble(), 0.01, "centred among its vertices");
+        Assert.AreEqual("storage", list[1].GetProperty("zone").GetString());
+        Assert.AreEqual("point", list[1].GetProperty("shape").GetString(), "one touch is a point, not a figure yet");
     }
 
     [TestMethod]
@@ -846,6 +838,51 @@ public class MissionAcceptanceTests
         Assert.IsFalse(road.Contains("aside@"), "no room to be polite: the plain road, and the meeting is settled by waiting: " + road);
     }
 
+
+    [TestMethod]
+    public void TheObstacles_AreReadAsAFlatList_EachWithItsZoneAndItsVertices()
+    {
+        LearnMark(10.25, 5.85, South);      // three touches on the crate of the east corridor
+        LearnMark(10.25, 5.15, North);
+        LearnMark(9.9, 5.5, East);
+        LearnMark(2.0, 9.5, East);          // something else, a room away
+        Met("blue", 4.7, 9.5);              // and a body met in the north hall
+
+        // the very query the panel's table runs: one row per obstacle, one per vertex under it
+        string json = perf.Actor.Using(@"
+            print g.ObstacleCount() 'total';
+            foreach (obstacles in g.Obstacles()) {
+                print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size', obstacles.Who 'who';
+                foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y', vertices.Heading 'normal'; }
+            }
+        ").PerformQuery();
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.AreEqual(3, doc.RootElement.GetProperty("total").GetInt32(), "two things and one peer");
+        var list = doc.RootElement.GetProperty("obstacles");
+        Assert.AreEqual(3, list.GetArrayLength());
+
+        var crate = list[0];
+        Assert.AreEqual("thing", crate.GetProperty("kind").GetString());
+        Assert.AreEqual("east", crate.GetProperty("zone").GetString(), "the flat list says the zone: no need to walk the places");
+        Assert.AreEqual("polygon", crate.GetProperty("shape").GetString());
+        Assert.AreEqual(3, crate.GetProperty("vertices").GetArrayLength(), "its three touches, each with the normal");
+        var normals = crate.GetProperty("vertices").EnumerateArray().Select(v => v.GetProperty("normal").GetDouble()).ToList();
+        Assert.IsTrue(normals.Any(n => Math.Abs(n - South) < 0.001) && normals.Any(n => Math.Abs(n - North) < 0.001),
+            "each vertex keeps the normal of ITS touch: the faces are told apart, whatever order they are drawn in");
+
+        var other = list[1];
+        Assert.AreEqual("kitchen", other.GetProperty("zone").GetString(), "another obstacle, other vertices, another zone");
+        Assert.AreEqual("point", other.GetProperty("shape").GetString());
+        Assert.AreEqual(1, other.GetProperty("vertices").GetArrayLength());
+
+        var peer = list[2];
+        Assert.AreEqual("peer", peer.GetProperty("kind").GetString());
+        Assert.AreEqual("blue", peer.GetProperty("who").GetString());
+        Assert.AreEqual("north", peer.GetProperty("zone").GetString());
+        Assert.IsFalse(peer.TryGetProperty("vertices", out _), "a peer outlines nothing: bodies move on");
+    }
+
     // ---- the second touch protocol: the domain suspects, the golem concludes ----
 
     [TestMethod]
@@ -908,20 +945,19 @@ public class MissionAcceptanceTests
         Assert.IsTrue(Bool("g.FitsAt(4.7, 9.5)"), "the peer moved on: the body fits where it was met");
 
         string json = perf.Actor.Using(@"
-            foreach (places in g.Places()) {
-                print places.Name 'name';
-                foreach (obstacles in places.Obstacles()) { print obstacles.Kind 'kind', obstacles.Who 'who', obstacles.Shape 'shape', obstacles.Center.X 'cx'; }
-            }
+            foreach (obstacles in g.Obstacles()) { print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Who 'who', obstacles.Shape 'shape'; }
         ").PerformQuery();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var north = doc.RootElement.GetProperty("places")[1];
-        var peer = north.GetProperty("obstacles")[0];
-        Assert.AreEqual("peer", peer.GetProperty("kind").GetString(), "the encounter stands in the north hall as history");
+        var list = doc.RootElement.GetProperty("obstacles");
+        var thing = list[0];
+        Assert.AreEqual("thing", thing.GetProperty("kind").GetString(), "the things come first");
+        Assert.AreEqual("east", thing.GetProperty("zone").GetString());
+        Assert.AreEqual("", thing.GetProperty("who").GetString());
+        var peer = list[1];
+        Assert.AreEqual("peer", peer.GetProperty("kind").GetString(), "and the peers after them, as history");
         Assert.AreEqual("blue", peer.GetProperty("who").GetString());
+        Assert.AreEqual("north", peer.GetProperty("zone").GetString(), "the encounter stands in the north hall");
         Assert.AreEqual("point", peer.GetProperty("shape").GetString());
-        var east = doc.RootElement.GetProperty("places")[5].GetProperty("obstacles")[0];
-        Assert.AreEqual("thing", east.GetProperty("kind").GetString());
-        Assert.AreEqual("", east.GetProperty("who").GetString());
         Refuses("g.Met('', 1.0, 1.0);", "has a name");
     }
 

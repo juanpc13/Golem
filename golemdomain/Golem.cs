@@ -16,12 +16,13 @@ internal sealed class Golem
 {
     private readonly List<Mission> missions = new();
     private readonly Body body = new();
-    private readonly FloorPlan plan = new();
+    private readonly FloorPlan plan = new();          // the map module: what the golem was told
+    private readonly ObstacleMap learned;             // the obstacles module: what its bodies touched
     private readonly List<HeardBump> heard = new();   // peers' bumps, as they told them: who, and where
     private int idleBumps;       // times something touched the body while it stood without a mission
     private int lastHandle;      // a handle names one mission forever — even after letting go (idempotency keys hang on it)
 
-    internal Golem() { }
+    internal Golem() => learned = new ObstacleMap(plan);
 
     // ---- the body (issued by upgrade releases) ----
 
@@ -66,23 +67,34 @@ internal sealed class Golem
     internal double Distance(string from, string to) => Planner().RoadLength(plan.PlaceNamed(from).Center, plan.PlaceNamed(to).Center);
 
     /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark.</summary>
-    internal bool FitsAt(double x, double y) => plan.Fits(new Position(x, y), body.Radius);
+    internal bool FitsAt(double x, double y)
+    {
+        var at = new Position(x, y);
+        return plan.HasRoom(at, body.Radius) && !learned.Blocks(at, body.Radius);
+    }
 
     /// <summary>Whether the walls alone leave room for this body at a point — what it asks while feeling around a mark.</summary>
     internal bool HasRoomAt(double x, double y) => plan.HasRoom(new Position(x, y), body.Radius);
 
     /// <summary>How many marks the map holds: points where a body touched something the plan does not hold.</summary>
-    internal int MarkCount() => plan.MarkCount;
+    internal int MarkCount() => learned.MarkCount;
 
     /// <summary>How many obstacles the golem hypothesizes: the things the marks outline (marks close to one another
     /// are vertices of one thing) plus the peers it met.</summary>
-    internal int ObstacleCount() => plan.Obstacles().Count;
+    internal int ObstacleCount() => learned.All().Count;
+
+    /// <summary>Every obstacle the golem hypothesizes, whatever place it stands in: the things the marks outline
+    /// and the peers it met, each knowing its kind, its zone, its figure, its centre and its vertices. Walked with
+    /// foreach, one row per obstacle and one per vertex —
+    /// <c>foreach (obstacles in g.Obstacles()) { print obstacles.Kind 'kind', obstacles.Where 'zone'; foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y'; } }</c>
+    /// — so a table can be drawn from the golem's own objects, never from a document it rendered.</summary>
+    internal IReadOnlyList<Obstacle> Obstacles() => learned.All();
 
     /// <summary>How many things the marks outline — the obstacles the roads avoid.</summary>
-    internal int ThingCount() => plan.Things().Count;
+    internal int ThingCount() => learned.Things().Count;
 
     /// <summary>How many times the body met another body.</summary>
-    internal int MetCount() => plan.EncounterCount;
+    internal int MetCount() => learned.EncounterCount;
 
     /// <summary>Whether every token names a place or a point 'x,y' on the map — what a list of stops must be made of.</summary>
     internal bool AreStops(string[] stops)
@@ -164,7 +176,7 @@ internal sealed class Golem
         foreach (var side in new[] { Side.Right, Side.Left })
         {
             var step = new StepAside(side).From(me, me.Heading).Legs()[0].At;
-            if (!plan.Fits(step, body.Radius)) continue;
+            if (!FitsAt(step.X, step.Y)) continue;
             if (peer != null && step.DistanceTo(peer) <= me.DistanceTo(peer)) continue;
             return step;
         }
@@ -239,15 +251,15 @@ internal sealed class Golem
 
     /// <summary>The golem concludes what it touched was a thing (no peer bumped there and then): a mark on the map
     /// with the heading of the touch as its normal, told to the peers. Returns how many marks it holds.</summary>
-    internal int Mark(double x, double y, double heading) => plan.AddMark(new Pose(x, y, heading));
+    internal int Mark(double x, double y, double heading) => learned.Mark(new Pose(x, y, heading));
 
     /// <summary>A peer says a thing stands at (x, y), touched heading that way: the golem learns the mark without the
     /// bruise. Returns how many marks it holds.</summary>
-    internal int LearnMark(double x, double y, double heading) => plan.AddMark(new Pose(x, y, heading));
+    internal int LearnMark(double x, double y, double heading) => learned.Mark(new Pose(x, y, heading));
 
     /// <summary>The golem concludes what it touched at (x, y) was a peer — who said it bumped there and then. History,
     /// kept among the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
-    internal int Met(string who, double x, double y) => plan.AddEncounter(who, new Position(x, y));
+    internal int Met(string who, double x, double y) => learned.Meet(who, new Position(x, y));
 
     /// <summary>What the golem suspects its body touched at (x, y), heading that way, given what it has heard since
     /// the given count: a wall it knows (Kind 'wall': conclude Graze), a peer that bumped near there and then
@@ -402,7 +414,9 @@ internal sealed class Golem
     // ---- inside ----
 
     // The planner for this body over this plan: the plan's geometry and the body's radius, distance as the cost.
-    private RoutePlanner Planner() => new(plan, body.Radius);
+    // The planner for this body: the map module says where the walls and doors are, the obstacles module what
+    // nobody charted, and between the two it finds the shortest road.
+    private RoutePlanner Planner() => new(plan, learned, body.Radius);
 
     private int Entrust(int id, IReadOnlyList<Position> stops, bool following, bool choosesOrder)
     {
