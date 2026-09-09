@@ -507,3 +507,72 @@ mundo: contacto ──► host estima el punto (pose + radio en el rumbo)
 **Conclusión**: el par de uptakes queda legible en el journal — se oye un **bump** (`HearBump`), se aprende una **marca** (`Learn`). Un renombre pequeño sirvió de barrido: la migración de ayer había dejado código del host que ya no decidía nada pero seguía preguntando.
 
 **Pendiente**: si Juan quiere la simetría completa, `Learn(x, y, heading)` → `LearnMark(x, y, heading)`; es otro renombre de verbo journaleado (journals renacen otra vez). Sin decidir.
+
+---
+
+## 2026-09-09 · Laboratorio: la ruta como cola de posiciones que bombea una reacción
+
+**Contexto**: Juan plantea el diseño: "todo esto es como una cola de posiciones; si defino un Route, una reaction se da cuenta y tendría que escribir su MoveTo para llegar a la primera posición… al final la Route es una serie de MoveTo y el robot retroalimenta diciendo que ya llegó; si ya llegó Reach, entonces la reaction le da el siguiente punto". Y lo cierra: "el MoveTo es casi que solo delegarle esa tarea al host; el host debe ser lo más básico posible, no toma decisiones, solo comunica lo que pudo o no hacer" y "cada Reaction le da retroalimentación al dominio para ver qué es lo siguiente que debería hacer el robot acorde al dominio". Antes de tocar el dominio, se mide la mecánica en el scratch `touchlab` con un repertorio de juguete (`Convoy`: `Errand`, `Route` como cola, `Head` como desencolado, `Reach`, `Announce`).
+
+**Observación** (4 pruebas, todas en verde; `dotnet test --filter ClassName~RouteQueueProbe`):
+
+| # | Lo que se midió | Resultado |
+|---|---|---|
+| P1 | Una reacción sobre `Route` escribe el primer paso en el journal del propio actor | Sí: `Causation.Continue("convoy.Head(@id);")` sin tell. Tras el `Route`, el punto vigente es el primero de la cola |
+| P2 | Una reacción sobre `Reach` escribe el paso siguiente, y la cadena recorre la cola entera | Sí. Historia journaleada: `errand:1 route:3 head:1 reach:1 head:2 reach:2 head:3 reach:3`. El host solo leyó el punto vigente y reportó llegada |
+| P3 | Dos reacciones distintas observan el MISMO `Reach` | Sí: la bomba y el eco dispararon las dos (`announce` intercalado en la historia). No hay exclusión entre reacciones sobre el mismo patrón |
+| P4 | La cadena sobrevive un reinicio a media cola | Sí, y **sin re-disparar**: al rehidratar, entradas 13 → 13 (el cursor durable no repitió la bomba sobre los `Reach` viejos), estado intacto (2 pasos, 1 llegada), y el `Reach` siguiente volvió a bombear. La conducción terminó cruzando el reinicio |
+| P5 | Qué cuesta el último `Reach`, cuando ya no queda cola | La guarda `if (convoy.HasNext(@id)) { … }` dentro del script impide que el dominio "vaya a ninguna parte" (0 pasos vacíos), **pero la entrada del script se escribe igual**: el último `Reach` cuesta 2 entradas (11 → 13), una de ellas un no-op |
+
+Costo medido: una conducción de 3 puntos con 2 reacciones = 19 entradas (incluye defines, el encargo y los ecos). Frente al esquema de hoy, **una entrada más por tramo** (el paso), más la del no-op final.
+
+**Conclusión**:
+- El diseño de Juan es realizable con este motor, tal cual, y la pieza que más preocupaba (rehidratar a media cola) es la que mejor salió: el checkpoint durable no repite pasos ya dados y la cadena se reanuda sola. Eso hace la conducción **reanudable por construcción**, algo que hoy depende del lazo del host.
+- Se cae la duda de la regla 7: no hace falta que nadie observe lo que la reacción escribe. La cadena alterna — el host escribe el reporte (`Reach`, observable), la reacción escribe la orden (`MoveTo`, que nadie necesita observar).
+- **Consecuencia de nombres** (de las dos aclaraciones de Juan): el paso de la cola **es** el `MoveTo` — la orden que se le delega al host, "lleva el cuerpo exactamente a este punto". Entonces `MoveTo` deja de ser el encargo del operador y ese encargo necesita nombre propio. El reparto queda: encargo del operador (nombre por decidir) → `Route` (la decisión: la cola) → `MoveTo` (la orden al host, escrita por la reacción) → `Reach`/`Cross`/`Bump`/`Graze` (lo que el host pudo o no pudo).
+- La regla general que Juan enuncia — "cada reacción le pregunta al dominio qué sigue" — cierra la arquitectura: **el host tiene exactamente dos deberes, cumplir el `MoveTo` vigente y reportar el desenlace**; todo lo demás es reacción más dominio. Las tres cadenas quedan simétricas: `Reach` → siguiente `MoveTo` (o misión completa); `Bump` → `Mark`/`Met` y después `Route` de nuevo o el paso siguiente del tanteo; `Graze` → reintento del mismo `MoveTo` o `Fail` cuando se agota la paciencia.
+
+**Ajuste al dominio**: ninguno todavía. El laboratorio vive en el scratchpad (`touchlab/RouteQueueProbe.cs`), fuera del repo.
+
+**Pendiente**: (1) el nombre del encargo del operador, que es lo único que bloquea (candidatos: `Visit(id, …)` para el encargo ordenado, dejando `Cover` y `Follow` como están); (2) decidir si `Cross` sobrevive como "este paso era una puerta" o se deduce del nombre del punto; (3) el no-op del final: vivir con él, o que el último paso lo escriba el propio `Reach` cuando completa; (4) implementar, con journals nuevos.
+
+---
+
+## 2026-09-09 · Auditoría del dominio contra la guía `puppeteer-domain-modeling` (E1–E45)
+
+**Contexto**: Juan pide validar si el dominio respeta la guía. Se leyó la guía completa (`repos/Skills/puppeteer/training-lab/guides/puppeteer-domain-modeling/SKILL.md`, 1401 líneas, entradas E1–E45) y se auditó `golemdomain/` regla por regla, con verificación mecánica (grep) donde la regla es mecánica y juicio donde es de diseño. El host se revisó solo para las reglas que lo tocan (E20, E31, E38).
+
+**Observación — lo que cumple, con evidencia**:
+
+| Entradas | Regla | Evidencia |
+|---|---|---|
+| E2, E15, E42 | Todo `internal`, sin base marcadora ni atributo; un solo público | único `public` en todo el assembly: `GolemDomain.Assembly`; cero `: Objeto` / `[Puppet]` |
+| E23 | Sin igualdad de valor, sin `record`/`struct`, sin colecciones con clave por valor | cero `Equals`/`GetHashCode`/`IEquatable`/`==`/`record`/`readonly struct`. Los únicos `Dictionary`/`HashSet` (`RoutePlanner` 142–143) llevan como clave el `Node` privado **sin** igualdad: clave por identidad, que E23 permite explícitamente |
+| E6, E31, E44 | Ni E/S, ni reloj, ni azar en el dominio | cero `File.`/`Console.`/`DateTime`/`Random`/`Environment.`. Pose, rumbo y `who` se **reciben** |
+| E7, E8 | Sin hilos ni asincronía | cero `lock`/`Task`/`async`/`Interlocked`/`Concurrent` |
+| E9 | Sin `out`; resultado explícito | los dos `out` son de `double.TryParse` dentro de un privado. Portadores: `Suspicion`, `Trajectory` |
+| E37, E38 | La persistencia ES el journal; sinks fuera | cero repositorio/`Save`/`Insert`. `Golem.Domain.csproj` no tiene **ninguna** referencia |
+| E20 | El endpoint es contrato, no host con campo | el host usa el namespace del dominio **una vez** (`Program.cs:4`, para `GolemDomain.Assembly`); nunca instancia un `Golem` |
+| E45 | Sin `null`/`?` en la superficie | cero anotaciones nullable; ausencia = `""` (`HeardBumpNear`, `Suspicion.Who`, `Obstacle.Who`) |
+| E21 (cobertura) | Todo tipo con `///` de rol | cero clases sin resumen |
+| E11, E43 | La herencia lleva verdad; hojas selladas, bases abiertas | `Location : Position`, `Mark : Location`, `Wall : Segment`, `Pose : Position`, `Maneuver : Trajectory`; bases abiertas (`Passage`, `Obstacle`, `Suspicion`, `EdgeCost`, `EvasionStrategy`, `Trajectory`), hojas `sealed` |
+| E16 | Conjuntos cerrados con ctor privado; los seleccionados desde el borde con resolver | `MissionStatus` (interno, sin resolver: el borde solo ve `StatusOf()`), `Side.Named`, `EvasionStrategy.Named` (resolver total-con-throw) |
+| E41 | Polaridad de lecturas | registro por id lanza + consulta de reconocimiento (`Find` ↔ `Knows`); accesor de opcional lanza + consulta de presencia (`NextId/NextX…` ↔ `HasPendingMission`); rangos densos totales (`IsOnMap`, `KnowsWallAt`, `FitsAt`, `HasRoomAt`) |
+| E19, E22, E14 | Extensión con su predicado; conjunto validado antes de mutar; estado como global raíz | `Place.Contains`/`ContainsInset`; `Mission.Route` y `Golem.Entrust` validan todo antes de tocar nada; `g = Golem()` |
+
+**Sobre E3 (forma de retorno) y `g.Places()` / `g.Evasion()` / `g.Suspect()`**: la regla dice que un retorno de consulta que **cruza el perform** debe ser de forma de cable (escalar, arreglo primitivo o proyección), nunca un portador de colección del dominio. No lo violamos: esos objetos **no cruzan** el perform, los recorre el script con `foreach` y lo único que cruza son los `print` escalares (verificado en el motor el 8-sep y en producción). La guía contempla justo esa distinción, "interno vs cruza el cable"; nuestra variante es el `foreach` sobre objetos del dominio dentro de la query.
+
+**Observación — desviaciones, ordenadas por severidad**:
+
+1. **E40/E16 — un tipo decidido parseando un string.** `Routes/Leg.cs:21`: `IsStop => Name != Detour && !Name.Contains('/') && !Name.Contains('~')`. La clase de tramo (puerta, frontera, rodeo, parada) es un conjunto cerrado escondido en el nombre, y `Mission.Cross`/`Reach` ramifican sobre él. La guía nombra esta forma como anti-patrón: "dentro del dominio se trafica en símbolos, nunca en strings; un string de tipo vive solo en el borde". Arreglo: variantes `DoorLeg`/`OpeningLeg`/`DetourLeg`/`StopLeg`. El texto del plan en el journal no cambia (es el programa; las variantes se reconstruyen al releerlo). Ya estaba propuesto en el PLAN.
+2. **E01/E39 — `Mission` es una clase ancha.** `reason` vacío salvo en `failed`/`abandoned`; `Following` y `ChoosesOrder` como banderas. La guía pide separar definición, ocurrencia e identidad y usar subtipo solo donde hay comportamiento; el paper 01 pide variante por desenlace. Ya estaba propuesto.
+3. **E41 — `Golem.PlaceAt(x, y)` lanza sobre una clave de rango denso.** La guía: rango denso → total (respuesta vacía); lanzar es para registros por id. Evidencia de que ya lo tratamos como guardado: el host lo envuelve en `if (g.IsOnMap(@x, @y))`. Arreglo barato: que la lectura del sujeto devuelva `""` fuera del mapa (el `PlaceAt` interno del plano sigue lanzando, que ahí sí protege al planificador).
+4. **E17/E45 — un centinela sin nombre.** `Routes/RoutePlanner.cs:172`: `OpeningCrossed(...)?.Name ?? "?"`. Un tramo llamado `"?"` cuando no se puede decir qué frontera se cruzó: string mágico más camino de `null` interno. Arreglo: nombrarlo o hacer imposible el caso.
+5. **E24/E25 — sin copias defensivas.** `FloorPlan.Places`/`Marks`, `Obstacle.Vertices()`, `Wall.Doors()`, `Trajectory.Legs()` entregan la lista de respaldo como `IReadOnlyList`. La guía pide clon defensivo, nunca el arreglo de respaldo. Riesgo real bajo (el DSL solo recorre), pero un llamador interno podría castear de vuelta.
+6. **E9 — `Suspicion.Conclusion` devuelve el nombre de un verbo como string** ("Graze"/"Met"/"Mark"). Es una pista que el host puede ignorar; nada obliga la correspondencia. Alternativa: dejar solo `Kind` y que el host mapee, o hacer de la conclusión un conjunto cerrado.
+
+**Excepción deliberada, no defecto**: E21 acota los comentarios en archivo al `///` de rol más notas breves propias del repo, y manda el resto (justificar una decisión, re-explicar doctrina) a la nota de diseño. Nuestros bloques `<para>Origins: …</para>` citan papers de robótica y explican en qué diferimos: eso excede el límite. **Los pidió Juan explícitamente** el 8-sep ("agrega notas en el código del origen de la técnica o el autor"), y su palabra es la autoridad 1 sobre la guía. Queda como excepción registrada.
+
+**Conclusión**: el dominio respeta la guía en todo lo que es mecánicamente verificable (visibilidad, identidad sin igualdad, pureza, ausencia de repositorio, nulos fuera de la superficie, polaridad de lecturas, sellado, conjuntos cerrados) y en las reglas de diseño que la guía marca como columna (extensión con su predicado, validar-antes-de-mutar, valores recibidos, estado como global raíz, herencia con verdad de dominio). Las seis desviaciones son de dos clases: dos de deuda estructural que ya estaban en el PLAN (tramo y misión como variantes) y cuatro chicas y locales. Ninguna toca el journal salvo la 1 y la 2.
+
+**Ajuste al dominio**: ninguno en esta entrada; es auditoría. Pendientes de decisión de Juan: (a) las cuatro chicas (3–6), que no rompen journals y se pueden hacer de una; (b) las dos estructurales (1–2), que sí renuevan journals.
