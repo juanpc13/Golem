@@ -737,3 +737,46 @@ Y el encargo a un punto del mismo cuarto arrancó con `Visit` y `MoveTo`, sin `R
 
 **También**: nace `Golem.sln` con los tres proyectos (`golemdomain`, `golemdomain.tests`, `golemhost`), así `dotnet build Golem.sln` y `dotnet test Golem.sln` cubren todo de una vez. 48 tests.
 
+---
+
+## 2026-09-09 · El rodeo también se journalea: la marca dispara el recálculo, no un baile a ciegas
+
+**Contexto**: Juan mira el diario tras un choque y nota que el cuerpo se mueve a la derecha sin que ninguna línea lo explique: "quién lo está manejando, no veo los comandos de MoveTo". Y dice qué esperaría: "un `g.Bump`, luego el tell, y luego otro `MoveTo`, como si se agregó una coordenada de emergencia o como un recálculo para evitar el obstáculo".
+
+**Observación (el defecto)**: cuatro trozos del host llamaban al navegador **directo**, sin journalear: el paso lateral del tanteo (0.5 m), el avance en el carril nuevo (1.2 m), el retroceso al ceder (0.9 m) y el hacerse a un lado (0.8 m). Las distancias y los topes eran constantes del host. Y el dato que lo delataba: el dominio **ya tenía** la maniobra modelada (`Maneuver`, `EvasionStrategy`, la lectura `g.Evasion`) y el host **no la usaba ni una vez**. Con la conducción normal ya contada en el diario, el contraste era evidente: rehidratando ese journal no se podía reconstruir por dónde anduvo el cuerpo.
+
+**Ajuste (host, ninguna firma del dominio cambia; journals compatibles)**: no hacía falta un verbo nuevo. El planificador **ya** mete la coordenada de emergencia — los tramos `around@x,y` que rodean una marca — solo que el host no lo dejaba recalcular hasta haber tanteado a ciegas los dos lados. Se quitó ese gatillo:
+- Una marca nueva **recalcula el camino de inmediato** (`reRoute` cuando hay toque y marcas nuevas, sin esperar al tanteo).
+- El tanteo por tacto pasa a ser **el último recurso**, y solo donde corresponde: cuando el planificador dice que ningún camino cabe. Si el tacto encuentra hueco, el golem decide otra vez desde donde quedó; si no, la misión falla como antes.
+
+**Verificado en vivo** (journals nuevos, red al hall norte cruzando el centro donde está la caja):
+
+```
+ 3  g.Visit(1, 'north');
+ 5  g.Route(1, 'living/south@4,1.5 > center~south@4.5,3 > north~center@5.5,8 > north@5.5,9.5');
+ 7  g.MoveTo(1, 4, 1.5);
+ 9  g.Cross(1, 'living/south');
+10  g.MoveTo(1, 4.5, 3);
+11  g.Cross(1, 'center~south');
+12  g.MoveTo(1, 5.5, 8);
+14  g.Bump(1, 4.943, 5.266, 1.372);          ← toqué algo
+16  tell BumpedAt … to blue      (+ acks de blue y green)
+20  g.Mark(4.943, 5.266, 1.372);             ← era una cosa
+22  tell ObstacleFound …         (+ acks)
+25  g.Route(1, 'north~center@5.26,8 > north@5.5,9.5');    ← el RECÁLCULO
+26  g.MoveTo(1, 5.26, 8);                    ← la coordenada nueva, ya evitando la marca
+27  g.Bump(1, 4.961, 5.853, 1.320);          ← la caja es más ancha que un paso: otra vez
+31  g.Mark(4.961, 5.853, 1.320);
+…
+84  g.MoveTo(1, 5.5, 9.5);
+86  g.Reach(1, 5.5, 9.5);                    ← llegó, rodeando por el corredor este
+```
+
+Cinco toques, cinco marcas, cinco recálculos, y la misión completada. Los tres golems terminan con las cinco marcas y **una figura**; blue y green la aprendieron sin golpearse.
+
+**Conclusión**: la cadena que Juan esperaba es la que ahora ocurre, y no hizo falta inventar nada — bastó dejar que el planificador hiciera su trabajo en el momento en que aprende algo nuevo. El diario explica cada metro que recorre el cuerpo. Lo que queda sin journalear es solo el tacto del último recurso y las cortesías entre cuerpos (retroceder, orillarse), que son maniobras del cuerpo y no decisiones de camino; el candidato natural es que usen `g.Evasion` y se escriban como órdenes.
+
+**Pendiente**: (1) que el tanteo y las cortesías pasen por `g.Evasion` y se journaleen; (2) el `docker kill` a media ruta.
+
+**Aparte, un incidente de herramientas**: al abrir `Golem.sln`, Visual Studio 18 reescribió la solución y **le borró al proyecto de tests la referencia al dominio**, con lo que la solución dejó de compilar. Se restauró la referencia. Vigilar si vuelve a pasar al reabrir.
+

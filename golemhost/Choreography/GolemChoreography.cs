@@ -532,9 +532,8 @@ public sealed class GolemChoreography
             // something on it, the map holds marks it did not hold when the road was decided (a bump that
             // turned out to be a peer leaves none: same road), and feeling past it, right and left, found
             // no way: the next road skirts the marks or goes round; when no road fits the body, the mission fails.
-            bool feltEverything = probe != null && probe.MissionId == plan.Id && probe.Exhausted;
             bool newMarks = marksAtRoute < 0 || Marks() != marksAtRoute;
-            bool reRoute = plan.BumpedSinceRoute && (newMarks || gaveWay) && (probe == null || probe.MissionId != plan.Id || feltEverything);
+            bool reRoute = plan.BumpedSinceRoute && (newMarks || gaveWay);
             if (!plan.Routed || reRoute)
             {
                 var here = ros.LatestPose;
@@ -554,6 +553,20 @@ public sealed class GolemChoreography
                 }
                 catch (Exception ex)
                 {
+                    // No road fits the body past the marks. Before giving the mission up, the body feels its way:
+                    // the map is pessimistic by a margin, and a touch may find the gap the plan cannot see. Each
+                    // touch on the way is journaled like any other, so the feeling is told even if it fails.
+                    if (plan.BumpedSinceRoute)
+                    {
+                        probe ??= new Probe(plan.Id, plan.Passage, lane);
+                        if (await FeelForAWayPastAsync(plan.Id, key, probe, ct))
+                        {
+                            string felt = $"mission {plan.Id}: no road on the map, but a way by feel — deciding the road again from here";
+                            Console.WriteLine($"[golem {golem}] {felt}");
+                            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", felt, DateTime.UtcNow));
+                            continue;
+                        }
+                    }
                     Produce("failed", $"{key}:failed", MissionFailed.Payload(plan.Id, "no road: " + Reason(ex)));
                     if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(2), ct);
                     continue;
@@ -654,11 +667,10 @@ public sealed class GolemChoreography
                         }
                         else
                         {
-                            probe ??= new Probe(plan.Id, plan.Passage, outcome.Hit.Heading);
-                            if (await FeelForAWayPastAsync(plan.Id, key, probe, ct)) continue;
-                            string give = $"mission {plan.Id}: no way past by feel, {probe.RightSteps} steps right and {probe.LeftSteps} left — deciding the road again with {Marks()} marks";
-                            Console.WriteLine($"[golem {golem}] {give}");
-                            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", give, DateTime.UtcNow));
+                            // A thing, now marked. Nothing to invent here: the golem decides its road again and the
+                            // planner puts the way round the mark in it — the emergency point the journal will name
+                            // as an 'around' leg and order like any other. Feeling by touch is the LAST resort, and
+                            // only when no road fits at all (below, where the planner refuses).
                             continue;
                         }
                     }
