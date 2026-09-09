@@ -55,7 +55,7 @@ public class FloorPlanCatalogTests
         // from the northwest room to the southeast one: out a door into an aisle, through the crossing (two open
         // boundaries), along the other aisle and in through a door — never through a wall. The two ways round
         // (north then east, west then south) are the same length: the planner may take either.
-        MoveTo(1, "southeast");
+        Visit(1, "southeast");
         string plan = Text("g.Plan(1, 2.375, 8.625)");
         StringAssert.StartsWith(plan, "northwest/");
         Assert.AreEqual(2, plan.Split("crossing~").Length - 1, "in through one aisle, out through the other: " + plan);
@@ -79,13 +79,13 @@ public class FloorPlanCatalogTests
         // neighbouring rooms are joined directly: center to center through the door they share
         Assert.AreEqual(4.0, Double("g.Distance('northwest', 'northeast')"), 0.01, "two metres to the door, two more to the neighbour's center");
         // the corridor runs all the way round: from one stretch into the next through an open boundary, no door
-        MoveTo(1, new[] { "9,10.25" });                    // the east end of the north corridor
+        Visit(1, new[] { "9,10.25" });                    // the east end of the north corridor
         string plan = Text("g.Plan(1, 0.75, 10.25)");       // from the northwest corner of the ring
         StringAssert.StartsWith(plan, "west-corridor~north-corridor@1.5,10.2");
         StringAssert.EndsWith(plan, "> north-corridor@9,10.25");
         Assert.IsFalse(plan.Contains('/'), "along the corridor, through no door: " + plan);
         // and cutting through a room beats going round when it is shorter: the planner takes the rooms' doors
-        MoveTo(2, "east-corridor");
+        Visit(2, "east-corridor");
         string across = Text("g.Plan(2, 0.75, 10.25)");
         StringAssert.Contains(across, "northeast/north-corridor@7.5,9.5 > northeast/east-corridor@9.5,7.5", "through the northeast room: " + across);
     }
@@ -117,9 +117,9 @@ public class FloorPlanCatalogTests
         .PerformCommand();
     }
 
-    private void MoveTo(int id, string[] stops) =>
+    private void Visit(int id, string[] stops) =>
         perf.Actor.Using(@"
-            g.MoveTo(@id, @stops);
+            g.Visit(@id, @stops);
         ")
         .WithParameters(p => {
             p["id",    typeof(int)]      = id;
@@ -127,9 +127,9 @@ public class FloorPlanCatalogTests
         })
         .PerformCommand();
 
-    private void MoveTo(int id, string place) =>
+    private void Visit(int id, string place) =>
         perf.Actor.Using(@"
-            g.MoveTo(@id, @place);
+            g.Visit(@id, @place);
         ")
         .WithParameters(p => {
             p["id",    typeof(int)]    = id;

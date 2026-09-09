@@ -178,7 +178,7 @@ public sealed class GolemChoreography
         {
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id) && g.NextIsStop(@id) == false && g.NextPassage(@id) == @passage) Error 'that is not the passage ahead';
+                    Check(g.Knows(@id) && g.IsPending(@id) && g.OrderIsStop(@id) == false && g.OrderPassage(@id) == @passage) Error 'that is not the passage ahead';
                 ",
                 @"
                     g.Cross(@id, @passage);
@@ -195,7 +195,7 @@ public sealed class GolemChoreography
         {
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id) && g.NextId() == @id && g.NextIsStop(@id) && g.NextX() == @x && g.NextY() == @y) Error 'that is not the stop ahead';
+                    Check(g.Knows(@id) && g.IsPending(@id) && g.OrderIsStop(@id) && g.OrderX(@id) == @x && g.OrderY(@id) == @y) Error 'that is not the stop ahead';
                 ",
                 @"
                     g.Reach(@id, @x, @y);
@@ -207,6 +207,27 @@ public sealed class GolemChoreography
             })
             .PerformCheckThenCommand();
             Settle(refused, $"mission {m.Id} reached the stop ({m.X:0.0}, {m.Y:0.0})");
+        });
+
+        // The order: where the body must drive next. The host does not choose it — it reads the point the
+        // golem's queue holds next and writes it down, so the drive is told by the journal and not by this loop.
+        // Repeating the same point is legal: after a touch the golem may hand the same order back.
+        dispatch.On<MissionOrdered>((actor, m) =>
+        {
+            string refused = actor.Using(
+                @"
+                    Check(g.Knows(@id) && g.IsPending(@id) && g.HasNextPoint(@id)) Error 'no point to head to';
+                ",
+                @"
+                    g.MoveTo(@id, @x, @y);
+                ")
+            .WithParameters(p => {
+                p["id", typeof(int)]    = m.Id;
+                p["x",  typeof(double)] = m.X;
+                p["y",  typeof(double)] = m.Y;
+            })
+            .PerformCheckThenCommand();
+            Settle(refused, $"mission {m.Id}: heading to ({m.X:0.0}, {m.Y:0.0})");
         });
 
         // Deciding the road can happen more than once per mission — again after every bump that
@@ -368,7 +389,7 @@ public sealed class GolemChoreography
             .Told("BumpedAt").With<double>("x").With<double>("y").With<string>("who")
                 .Command("g.HearBump(@who, @x, @y);")
             .Told("ObstacleFound").With<double>("x").With<double>("y").With<double>("heading")
-                .Command("g.Learn(@x, @y, @heading);")
+                .Command("g.LearnMark(@x, @y, @heading);")
             .Start();
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
             $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
@@ -385,6 +406,7 @@ public sealed class GolemChoreography
         int tag = kind switch
         {
             "routed"    => MissionRouted.TypeId,
+            "ordered"   => MissionOrdered.TypeId,
             "crossed"   => PassageCrossed.TypeId,
             "reached"   => StopReached.TypeId,
             "bumped"    => MissionBumped.TypeId,
@@ -481,6 +503,7 @@ public sealed class GolemChoreography
         int yields = 0;        // times the golem waited for a peer on the current leg
         int marksAtRoute = -1; // how many marks the map held when the current road was decided
         bool gaveWay = false;  // the body moved off its road to let a peer pass: the road is decided again from where it stands
+        int orders = 0;        // orders written, so a repeated point after a touch is not taken for a redelivery
         Probe probe = null;    // the feeling-past state on the current leg, after a bump into the unknown
         while (!ct.IsCancellationRequested)
         {
@@ -511,10 +534,19 @@ public sealed class GolemChoreography
             // no way: the next road skirts the marks or goes round; when no road fits the body, the mission fails.
             bool feltEverything = probe != null && probe.MissionId == plan.Id && probe.Exhausted;
             bool newMarks = marksAtRoute < 0 || Marks() != marksAtRoute;
-            if (!plan.Routed || (plan.BumpedSinceRoute && (newMarks || gaveWay) && (probe == null || probe.MissionId != plan.Id || feltEverything)))
+            bool reRoute = plan.BumpedSinceRoute && (newMarks || gaveWay) && (probe == null || probe.MissionId != plan.Id || feltEverything);
+            if (!plan.Routed || reRoute)
             {
                 var here = ros.LatestPose;
                 if (here == null) { await Task.Delay(200, ct); continue; }
+                // Is there a road to decide at all? The domain answers with the pose the host carries: an errand
+                // one segment away has none — the golem heads straight there and no road is written.
+                if (!plan.Routed && !reRoute && !NeedsRoad(plan.Id, here.X, here.Y))
+                {
+                    // nothing to decide: fall through and say where to drive
+                }
+                else
+                {
                 string road;
                 try
                 {
@@ -534,6 +566,18 @@ public sealed class GolemChoreography
                 marksAtRoute = Marks();
                 gaveWay = false;
                 probe = null;
+                continue;
+                }
+            }
+
+            // The golem says where the body must go: the point its queue holds next. The host reads it and
+            // writes it down; it never picks one. A touch voids the standing order, so this is also how the
+            // drive resumes after a graze or a bump.
+            if (!plan.Ordered)
+            {
+                orders++;
+                Produce("ordered", $"{key}:b{plan.Bumps}:order:{orders}", MissionOrdered.Payload(plan.Id, plan.X, plan.Y));
+                if (!await WaitUntilAsync(() => IsOrdered(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(1), ct);
                 continue;
             }
 
@@ -578,18 +622,17 @@ public sealed class GolemChoreography
                     var first = Suspect(outcome.Hit, heardAtDriveStart);
                     if (first.Kind == "wall")
                     {
-                        // A wall I know: my own execution error — a graze, journaled; I have backed off, so I line up and
-                        // try the leg again while the domain's patience on this leg lasts.
-                        Produce("grazed", $"{key}:b{plan.Bumps}:graze:{plan.LegsLeft}:{Grazes(plan.Id) + 1}", MissionGrazed.Payload(plan.Id, outcome.Hit.X, outcome.Hit.Y));
+                        // A wall I know: my own execution error. The host reports it and waits: the golem either hands
+                        // the order back (line up and try the leg again) or ends the mission. Neither is the host's call.
                         int grazesBefore = Grazes(plan.Id);
+                        string note = $"mission {plan.Id}: grazed {outcome.Hit.With} at {where}, a wall I know — telling the golem";
+                        Console.WriteLine($"[golem {golem}] {note}");
+                        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
+                        Produce("grazed", $"{key}:b{plan.Bumps}:graze:{grazesBefore + 1}",
+                                MissionGrazed.Payload(plan.Id, outcome.Hit.X, outcome.Hit.Y));
                         await WaitUntilAsync(() => Grazes(plan.Id) > grazesBefore, ct);
-                        if (MayRetryLeg(plan.Id))
-                        {
-                            string retry = $"mission {plan.Id}: grazed {outcome.Hit.With} at {where}, a wall I know — recovering, graze {Grazes(plan.Id)} on this leg";
-                            Console.WriteLine($"[golem {golem}] {retry}");
-                            feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", retry, DateTime.UtcNow));
-                            continue;
-                        }
+                        // the golem decides whether its patience with its own error is spent; the host obeys
+                        if (MayRetryLeg(plan.Id)) continue;
                         reason = $"still grazing {outcome.Hit.With} at {where} after {Grazes(plan.Id)} grazes: patience spent";
                     }
                     else
@@ -979,28 +1022,30 @@ public sealed class GolemChoreography
     // Typed reads: Out parameters through the rent-lease (never parsing print).
     // ------------------------------------------------------------------
     private (bool Has, int Id, double X, double Y, double ApproachX, double ApproachY, double ExitX, double ExitY,
-             bool Routed, int LegsLeft, string Passage, bool IsStop, bool Following, int Newer, int Bumps, bool BumpedSinceRoute) ReadPlan()
+             bool Routed, int LegsLeft, string Passage, bool IsStop, bool Following, int Newer, int Bumps, bool BumpedSinceRoute,
+             bool Ordered) ReadPlan()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
             @has = g.HasPendingMission();
             if (g.HasPendingMission()) {
                 @id = g.NextId();
-                @x = g.NextX();
-                @y = g.NextY();
-                @ax = g.NextApproachX();
-                @ay = g.NextApproachY();
-                @ex = g.NextExitX();
-                @ey = g.NextExitY();
+                @x = g.OrderX();
+                @y = g.OrderY();
+                @ax = g.OrderApproachX();
+                @ay = g.OrderApproachY();
+                @ex = g.OrderExitX();
+                @ey = g.OrderExitY();
                 @routed = g.IsRouted(g.NextId());
                 @legs = g.LegsLeft(g.NextId());
-                @passage = g.NextPassage(g.NextId());
-                @stop = g.NextIsStop(g.NextId());
+                @passage = g.OrderPassage(g.NextId());
+                @stop = g.OrderIsStop(g.NextId());
                 @following = g.IsFollowing(g.NextId());
                 @newer = 0;
                 if (g.HasNewerFollowing(g.NextId())) { @newer = g.NewestFollowingId(); }
                 @bumps = g.Bumps(g.NextId());
                 @bumped = g.HasBumpedSinceRoute(g.NextId());
+                @ordered = g.IsOrdered(g.NextId());
             }
         ")
         .WithParameters(rented, p => {
@@ -1020,6 +1065,7 @@ public sealed class GolemChoreography
             p[Parameter.Out, "newer",     typeof(int)]    = default;
             p[Parameter.Out, "bumps",     typeof(int)]    = default;
             p[Parameter.Out, "bumped",    typeof(bool)]   = default;
+            p[Parameter.Out, "ordered",   typeof(bool)]   = default;
         })
         .PerformQuery();
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
@@ -1029,7 +1075,8 @@ public sealed class GolemChoreography
                 rented["routed"].GetValue<bool>(), rented["legs"].GetValue<int>(),
                 rented["passage"].GetValue<string>() ?? "", rented["stop"].GetValue<bool>(),
                 rented["following"].GetValue<bool>(), rented["newer"].GetValue<int>(),
-                rented["bumps"].GetValue<int>(), rented["bumped"].GetValue<bool>());
+                rented["bumps"].GetValue<int>(), rented["bumped"].GetValue<bool>(),
+                rented["ordered"].GetValue<bool>());
     }
 
     private int Bumps(int id)
@@ -1211,18 +1258,20 @@ public sealed class GolemChoreography
         return (rented["kind"].GetValue<string>() ?? "", rented["who"].GetValue<string>() ?? "", rented["verb"].GetValue<string>() ?? "");
     }
 
-    private int Grazes(int id)
+    private bool NeedsRoad(int id, double x, double y)
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @grazes = g.Grazes(@id);
+            @needs = g.NeedsRoad(@id, @x, @y);
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                     = id;
-            p[Parameter.Out, "grazes", typeof(int)]  = default;
+            p["x",  typeof(double)]                  = x;
+            p["y",  typeof(double)]                  = y;
+            p[Parameter.Out, "needs", typeof(bool)]  = default;
         })
         .PerformQuery();
-        return rented["grazes"].GetValue<int>();
+        return rented["needs"].GetValue<bool>();
     }
 
     private bool MayRetryLeg(int id)
@@ -1237,6 +1286,34 @@ public sealed class GolemChoreography
         })
         .PerformQuery();
         return rented["may"].GetValue<bool>();
+    }
+
+    private bool IsOrdered(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @ordered = g.IsOrdered(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                       = id;
+            p[Parameter.Out, "ordered", typeof(bool)]  = default;
+        })
+        .PerformQuery();
+        return rented["ordered"].GetValue<bool>();
+    }
+
+    private int Grazes(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @grazes = g.Grazes(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                     = id;
+            p[Parameter.Out, "grazes", typeof(int)]  = default;
+        })
+        .PerformQuery();
+        return rented["grazes"].GetValue<int>();
     }
 
     private int MetCount()

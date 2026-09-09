@@ -41,13 +41,14 @@ in [CLAUDE.md](CLAUDE.md).
   tells (`g.Bump(1, 4.5, 9.5)`), then listens: a peer that says it bumped there and then is a body,
   not a thing — the two coordinate (the name that sorts first has the way, the other backs down its
   lane and steps aside), and no mark is made; nobody? then it was an obstacle, a mark on its map
-  (`g.Mark`), told to every peer (`g.Learn`), and the golem feels for a way past, right then left,
+  (`g.Mark`), told to every peer (`g.LearnMark`), and the golem feels for a way past, right then left,
   before deciding its road again around the marks. Only when no road fits its body does the mission fail.
 - **The map is knowledge.** Each golem carries a floor plan in its journal (release `map_v1`) and plans
   the shortest road through doors and open boundaries. The map does not know about the crate standing in
   the middle of the center hall — that is the point.
 - **The journal is the only truth.** Pose and contacts are ephemeral telemetry. Transitions are journaled:
-  `MoveTo`, `Cover`, `Follow` (the entrusting), `Route` (the road decided), `Cross` and `Reach` (progress; the
+  `Visit`, `Cover`, `Follow` (the entrusting), `Route` (the road decided as a queue of points), `MoveTo` (the order the
+  golem gives the host, one point at a time), `Cross` and `Reach` (progress; the
   last stop reached completes the mission), `Fail` and `Abandon` (the ending). Kill a golem mid-mission and
   it rehydrates and resumes from where its body stands.
 - **Speech is a reaction.** Red tells blue every stop it reaches; blue takes each told point as a mission of
@@ -91,7 +92,7 @@ curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"sto
 Its shortest road from the kitchen to the garage cuts through the center hall, where a crate the map never
 heard of stands — the journal will say so: a mark, a few steps aside to feel for a way past it, and either
 the way found or another road. The panels do the same with a stop composer: click rooms or press places
-to collect stops, then *MoveTo* or *Cover*.
+to collect stops, then *Visit* or *Cover*.
 
 To watch the physics without the picture (the GUI's software rendering costs five or six CPU cores),
 set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
@@ -113,10 +114,11 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 
 | Verb | Meaning |
 |---|---|
-| `MoveTo(id, place)` · `MoveTo(id, x, y)` · `MoveTo(id, stops)` | The operator sends the golem to a place, a point, or through several stops **in that order** (`{'kitchen', '9,8', 'garage'}`). Handles are minted by the actor and never reused. |
+| `Visit(id, place)` · `Visit(id, x, y)` · `Visit(id, stops)` | The operator sends the golem to a place, a point, or through several stops **in that order** (`{'kitchen', '9,8', 'garage'}`). Handles are minted by the actor and never reused. |
 | `Cover(id, stops)` | Several stops, and the golem **chooses the order** that makes the whole road shortest. |
 | `Follow(x, y)` | The golem follows its leader to a point a peer says it reached (handle minted inside). |
-| `Route(id, plan)` | The road decided from where the body stands, passages and stops in order: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. Between stops it is always the shortest road. |
+| `Route(id, plan)` | The road decided from where the body stands, as a QUEUE of points — passages and stops in order: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. Between stops it is always the shortest road. An errand one segment away has no road to decide and gets none. |
+| `MoveTo(id, x, y)` | The order the golem gives the host: take the body exactly here. One point of the queue, written by a Reaction — never by the host, which does not choose where to go. |
 | `Cross(id, passage)` | A door or open boundary crossed. |
 | `Reach(id, x, y)` | A stop reached. Reaching the last one completes the mission — there is no separate "complete". |
 | `Bump(id, x, y, heading)` · `Bump(x, y, heading)` | The body touched something the map does not hold, heading that way — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is concluded afterwards, by the domain. |
@@ -124,7 +126,7 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Graze(id, x, y)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the mission up. |
 | `Mark(x, y, heading)` | The domain suspected a thing (nobody else bumped there and then): a **mark** on the map of touches with the heading as its normal, told to every peer. The golem then feels for a way past (a step right, then left, a body's width at a time) and, failing that, decides its road again around the marks. |
 | `Met(who, x, y)` | The domain suspected a peer: the body met that peer there. History among the obstacles (a `Peer`), never geometry. |
-| `Learn(x, y, heading)` | A peer told of a mark: the golem learns it without the bruise, and plans around it too. |
+| `LearnMark(x, y, heading)` | A peer told of a mark: the golem learns it without the bruise, and plans around it too. |
 | `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
 | `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
 

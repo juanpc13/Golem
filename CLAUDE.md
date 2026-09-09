@@ -114,7 +114,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
   contacts are ephemeral telemetry, transitions are journaled — entrusting (MoveTo/
   Cover/Follow), the road (Route, again after bumps), progress (Cross/Reach: the last
-  Reach completes), touches (Bump: the fact, told; HearBump: a peer's bump; Mark/Learn: the map
+  Reach completes), touches (Bump: the fact, told; HearBump: a peer's bump; Mark/LearnMark: the map
   of marks — a touch nobody else reported), the ending (Fail/Abandon) —
   every write goes through one serial Dispatch, tells are reaction-only. The golem's map (release `map_v1`: Chart/DoorTo/OpenTo) is its
   knowledge; what the simulator reports (a collision with a crate) is reality. The

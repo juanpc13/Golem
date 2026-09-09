@@ -92,16 +92,16 @@ internal sealed class Golem
         return true;
     }
 
-    // ---- missions: the entrusting ----
+    // ---- missions: the entrusting (the operator's voice) ----
 
     /// <summary>The operator sends the golem to a point. A repeated or spent handle is a caller bug.</summary>
-    internal int MoveTo(int id, double x, double y) => Entrust(id, new[] { new Position(x, y) }, following: false, choosesOrder: false);
+    internal int Visit(int id, double x, double y) => Entrust(id, new[] { new Position(x, y) }, following: false, choosesOrder: false);
 
     /// <summary>The operator sends the golem to a place: its center.</summary>
-    internal int MoveTo(int id, string place) => Entrust(id, new[] { plan.PlaceNamed(place).Center }, following: false, choosesOrder: false);
+    internal int Visit(int id, string place) => Entrust(id, new[] { plan.PlaceNamed(place).Center }, following: false, choosesOrder: false);
 
     /// <summary>The operator sends the golem through several stops, in this order. A stop is a place name or a point 'x,y'.</summary>
-    internal int MoveTo(int id, string[] stops) => Entrust(id, Stops(stops), following: false, choosesOrder: false);
+    internal int Visit(int id, string[] stops) => Entrust(id, Stops(stops), following: false, choosesOrder: false);
 
     /// <summary>The operator sends the golem through several stops and lets it choose the order that makes the road shortest.</summary>
     internal int Cover(int id, string[] stops) => Entrust(id, Stops(stops), following: false, choosesOrder: true);
@@ -137,6 +137,34 @@ internal sealed class Golem
         return trajectory.Count;
     }
 
+    /// <summary>The golem tells the host where to drive: one point, one segment — "take the body exactly here".
+    /// The order the host carries out; it must be the point the road holds next (or the stop, on an errand walked
+    /// without a road). Written by a reaction, never by the host: the host does not choose where to go. Returns the
+    /// mission id.</summary>
+    internal int MoveTo(int id, double x, double y)
+    {
+        Find(id).MoveTo(x, y);
+        return id;
+    }
+
+    /// <summary>Whether the mission still has a point to head to — the guard the arrival command asks before
+    /// exposing the next one, so a spent queue orders nothing.</summary>
+    internal bool HasNextPoint(int id) => Find(id).HasNextPoint;
+
+    /// <summary>Whether the golem has already said where the host must drive: an order is standing.</summary>
+    internal bool IsOrdered(int id) => Find(id).IsOrdered;
+
+    /// <summary>Whether getting from (x, y) through the stops ahead takes more than one segment — that is, whether
+    /// there is a road to decide at all. An errand to a point in the same room, with nothing in between, has none:
+    /// the golem heads straight there and no Route is written.</summary>
+    internal bool NeedsRoad(int id, double x, double y)
+    {
+        var mission = Find(id);
+        if (mission.IsRouted) return false;
+        try { return Planner().Road(new Position(x, y), mission.StopsAhead.ToList()).Count > 1; }
+        catch (DomainException) { return true; }   // no straight way: deciding a road is exactly what is needed
+    }
+
     /// <summary>The evasion maneuver a strategy ('back-off', 'step-right', 'step-left') plans from where the body
     /// stands and the heading it had when it touched something: a trajectory to walk with foreach —
     /// <c>foreach (legs in g.Evasion(@x, @y, @heading, 'step-right').Legs()) { print legs.Name 'leg', legs.At.X 'x', legs.At.Y 'y'; }</c>.
@@ -167,7 +195,7 @@ internal sealed class Golem
     }
 
     /// <summary>A peer says it bumped at (x, y): heard and kept, so a touch of my own there and then is known to be that peer.
-    /// The named counterpart of Learn, which hears of a MARK; this one hears of a BUMP.</summary>
+    /// The named counterpart of LearnMark, which hears of a MARK; this one hears of a BUMP.</summary>
     internal int HearBump(string who, double x, double y)
     {
         heard.Add(new HeardBump(who, new Position(x, y)));
@@ -180,7 +208,7 @@ internal sealed class Golem
 
     /// <summary>A peer says a thing stands at (x, y), touched heading that way: the golem learns the mark without the
     /// bruise. Returns how many marks it holds.</summary>
-    internal int Learn(double x, double y, double heading) => plan.AddMark(new Pose(x, y, heading));
+    internal int LearnMark(double x, double y, double heading) => plan.AddMark(new Pose(x, y, heading));
 
     /// <summary>The golem concludes what it touched at (x, y) was a peer — who said it bumped there and then. History,
     /// kept among the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
@@ -268,8 +296,8 @@ internal sealed class Golem
     /// <summary>Whether the golem still retries the leg after grazing a known wall — its patience on this leg is not spent.</summary>
     internal bool MayRetryLeg(int id) => Find(id).MayRetryLeg;
     /// <summary>The next leg's name: a passage to cross, or the place of the stop to reach.</summary>
-    internal string NextPassage(int id) => Find(id).NextLeg.Name;
-    internal bool NextIsStop(int id) => Find(id).NextLeg.IsStop;
+    internal string OrderPassage(int id) => Find(id).NextLeg.Name;
+    internal bool OrderIsStop(int id) => Find(id).NextLeg.IsStop;
     internal bool HasPendingMission() => missions.Any(m => m.IsPending());
     internal int Pending() => missions.Count(m => m.IsPending());
     internal int[] PendingIds() => missions.Where(m => m.IsPending()).Select(m => m.Id).ToArray();
@@ -323,14 +351,18 @@ internal sealed class Golem
 
     internal int NextId() => NextPending().Id;
     /// <summary>Where the body should head now: the next leg of the road when routed, the first stop before that.</summary>
-    internal double NextX() => NextPending().NextLeg.At.X;
-    internal double NextY() => NextPending().NextLeg.At.Y;
+    internal double OrderX() => NextPending().NextLeg.At.X;
+    internal double OrderY() => NextPending().NextLeg.At.Y;
+
+    /// <summary>Where a GIVEN mission heads next — what the order must name. Consult Knows(id) and HasNextPoint(id).</summary>
+    internal double OrderX(int id) => Find(id).NextLeg.At.X;
+    internal double OrderY(int id) => Find(id).NextLeg.At.Y;
     /// <summary>How the next leg is walked: line up at the approach, end at the exit. For a door they stand off the wall on
     /// either side (the body crosses it straight); for an opening or a stop they are the point itself.</summary>
-    internal double NextApproachX() => NextPending().NextLeg.Approach.X;
-    internal double NextApproachY() => NextPending().NextLeg.Approach.Y;
-    internal double NextExitX() => NextPending().NextLeg.Exit.X;
-    internal double NextExitY() => NextPending().NextLeg.Exit.Y;
+    internal double OrderApproachX() => NextPending().NextLeg.Approach.X;
+    internal double OrderApproachY() => NextPending().NextLeg.Approach.Y;
+    internal double OrderExitX() => NextPending().NextLeg.Exit.X;
+    internal double OrderExitY() => NextPending().NextLeg.Exit.Y;
 
     // ---- inside ----
 

@@ -534,6 +534,27 @@ Costo medido: una conducción de 3 puntos con 2 reacciones = 19 entradas (incluy
 
 **Ajuste al dominio**: ninguno todavía. El laboratorio vive en el scratchpad (`touchlab/RouteQueueProbe.cs`), fuera del repo.
 
+---
+
+## 2026-09-09 · Fase 0: cómo viaja el punto hasta la orden (`expose`)
+
+**Contexto**: para que la orden se journalee como `MoveTo(id, x, y)` y no como `MoveTo(id)`, la reacción tiene que **capturar** el punto siguiente, y de un reporte de llegada solo captura el punto ya alcanzado. El único canal posible es el `expose` que escribe el comando de llegada. Cuatro preguntas al motor (`touchlab/ExposeProbe.cs`, repertorio de juguete `Relay`).
+
+| # | Pregunta | Resultado |
+|---|---|---|
+| Q1 | ¿`expose` acepta un valor **calculado** (`expose relay.NextX() nx`)? | El comando se acepta y **aislado funciona** (dos corridas, 263 y 308 ms), pero corriendo junto a las otras pruebas la reacción no disparó en 5 s. No se entiende; **se descarta esta forma** |
+| Q2 | ¿Puede el comando asignar a un parámetro y exponerlo? | **Sí, siempre**: `@nx = relay.NextX(); expose @id id, @nx nx, @ny ny;` La reacción captura y escribe `moveto:6.19,3` — el punto SIGUIENTE, no el alcanzado |
+| Q3 | ¿Puede el `expose` ir dentro de un `if`? | **Sí** |
+| Q4 | Con la cola agotada, ¿qué cuesta el último reporte? | **Nada**: si no hay siguiente, no se expone, la reacción **no dispara** y no se escribe entrada. Medido: la última llegada movió el journal 11 → 12, solo el reporte |
+
+**Conclusión**:
+- La orden **puede llevar el punto**: `g.MoveTo(1, 6.19, 3)` en el diario, no un `MoveTo(1)` mudo. Se usa la forma de Q2 (parámetros) con la guarda de Q3, que es la que pasó en todas las configuraciones.
+- **Q4 borra el costo que el plan daba por hecho**: la entrada no-op del final no existe si la guarda vive en el comando en vez de en el script de la reacción. El diseño mejora y el plan se corrige.
+- La reacción casa por la **forma del `expose`** (`expose $id id, $nx nx, $ny ny;`), como ya hace `echo-bumped` en el host. Los nombres expuestos deben ser únicos por cadena para que dos reacciones no se pisen.
+- Anomalía anotada, no resuelta: Q1 depende de con quién corra. Sospecha (sin probar): la espera activa consultando cada 100 ms compite con el hilo de la reacción. Evitar la forma y, en los laboratorios, no encuestar tan seguido.
+
+**Ajuste al dominio**: ninguno; es la medición que habilita la fase 1.
+
 **Pendiente**: (1) el nombre del encargo del operador, que es lo único que bloquea (candidatos: `Visit(id, …)` para el encargo ordenado, dejando `Cover` y `Follow` como están); (2) decidir si `Cross` sobrevive como "este paso era una puerta" o se deduce del nombre del punto; (3) el no-op del final: vivir con él, o que el último paso lo escriba el propio `Reach` cuando completa; (4) implementar, con journals nuevos.
 
 ---
@@ -576,3 +597,143 @@ Costo medido: una conducción de 3 puntos con 2 reacciones = 19 entradas (incluy
 **Conclusión**: el dominio respeta la guía en todo lo que es mecánicamente verificable (visibilidad, identidad sin igualdad, pureza, ausencia de repositorio, nulos fuera de la superficie, polaridad de lecturas, sellado, conjuntos cerrados) y en las reglas de diseño que la guía marca como columna (extensión con su predicado, validar-antes-de-mutar, valores recibidos, estado como global raíz, herencia con verdad de dominio). Las seis desviaciones son de dos clases: dos de deuda estructural que ya estaban en el PLAN (tramo y misión como variantes) y cuatro chicas y locales. Ninguna toca el journal salvo la 1 y la 2.
 
 **Ajuste al dominio**: ninguno en esta entrada; es auditoría. Pendientes de decisión de Juan: (a) las cuatro chicas (3–6), que no rompen journals y se pueden hacer de una; (b) las dos estructurales (1–2), que sí renuevan journals.
+
+---
+
+## 2026-09-09 · Fases 1 a 3: la cola de posiciones, en el dominio y en el host
+
+**Contexto**: Juan: "arranca primero con la parte de navegación y luego vemos mejor lo de colisiones". Se implementan las fases 1 (dominio), 2 (la bomba) y 3 (el host) del plan `PLAN-ruta-como-cola.md`. La cadena de colisiones se deja como está.
+
+**Ajuste al dominio**:
+- `MoveTo(id, …)` como encargo pasa a **`Visit(id, …)`**, tres sobrecargas, mismo cuerpo.
+- Nace **`MoveTo(id, x, y)`**: la orden. Guarda: debe ser el punto que la cola tiene por delante; repetirla se permite (tras un toque el mismo punto puede volver a ordenarse), saltarse un punto no. Queda como **orden vigente** en la misión, que `Cross`/`Reach` limpian al cumplirse y `Route` anula al cambiar la cola.
+- `Reach` **ya no exige camino**: un encargo a un punto a un solo segmento se camina derecho y la última parada completa igual.
+- Lecturas nuevas: `HasNextPoint(id)` (la guarda de la bomba), `IsOrdered(id)` (¿hay orden vigente?), `NeedsRoad(id, x, y)` (¿hay camino que decidir, o es un solo segmento?), y `NextX(id)`/`NextY(id)` por misión — las sin argumento responden por la PRIMERA misión pendiente, que no es la misma cuando hay varias en cola.
+- 47 tests (tres nuevos: la orden y su guarda, el encargo de un solo segmento, varias paradas sin camino).
+
+**Ajuste al host**:
+- **Una sola bomba**, no dos ni tres: los tres comandos que entregan un punto siguiente (`Route`, `Cross`, `Reach`) exponen la misma forma, `expose @id id, @nx nx, @ny ny`, y una única reacción `pump-order` la casa y escribe `g.MoveTo(@id, @nx, @ny)`. Mejor de lo planeado.
+- El lazo **no conduce sin orden**: si no hay orden vigente, espera. Y solo decide `Route` cuando el dominio dice que hay camino que decidir.
+- El encargo directo se resuelve en el controlador, que es quien tiene la pose: `g.Visit(...)` seguido de `if (g.NeedsRoad(...) == false) { … expose … }`. Si no hay pose, no expone y el lazo decide un `Route`: los dos caminos convergen.
+
+**Observación en vivo** (journals archivados en `journal-legacy-2026-09-09-visit/`, los tres nacen en la entrada 1). Red de la sala al garaje, tres puntos, leído crudo del journal:
+
+```
+ 5  g.Route(1, 'living/south@4,1.5 > south/garage@7,1.5 > garage@9,1.5');  + expose
+ 6..8  (define de la orden) g.MoveTo(1, 4, 1.5);        ← la bomba
+ 9  g.Cross(1, 'living/south'); If (g.HasNextPoint(1)) { … Expose … }
+10  g.MoveTo(1, 7, 1.5);                                 ← la bomba
+11  g.Cross(1, 'south/garage'); …
+12  g.MoveTo(1, 9, 1.5);                                 ← la bomba
+14  g.Reach(1, 9, 1.5); If (g.HasNextPoint(1)) { … }     ← cola agotada: no expone, no hay orden
+```
+
+Y el encargo de un solo segmento, red ya en el garaje enviado a otro punto del garaje:
+
+```
+27  g.Visit(2, 10, 2.4); If (g.NeedsRoad(2, 8.76, 1.5) == false) { … Expose … }
+28  g.MoveTo(2, 10, 2.4);                                ← la bomba, sin Route
+29  g.Reach(2, 10, 2.4);
+```
+
+`g.IsRouted(2)` responde `false`: **no hubo `Route`**, que era la objeción de Juan del día anterior. Y el último reporte de cada misión no dejó entrada inútil, como predijo la fase 0. Blue siguió a red las dos veces, chocó con la caja del hall en el camino, la marcó y red y green la aprendieron: **la cadena de colisiones sigue intacta** con el modelo nuevo.
+
+**Conclusión**: la conducción entera se lee en el diario, y el host dejó de elegir a dónde ir: espera la orden, conduce, reporta. Lo que queda del lazo son las decisiones que aún no migran, todas de la cadena de colisiones (tanteo, cesión, reintento), que es justo lo que Juan dejó para después.
+
+**Pendiente**: fase 4, las cadenas de `Bump` y `Graze` con la misma forma; el `docker kill` a media ruta para ver la bomba reanudarse en el mundo real; y las decisiones 2 y 3 del plan (`LearnMark`, renombrar `Next*` a `Order*`), sin urgencia.
+
+---
+
+## 2026-09-09 · Fase 4 y cierre del plan: las dos cadenas de la colisión también las decide el dominio
+
+**Contexto**: Juan pide implementar el plan entero para poder ir a probar. Se completa la fase 4 (las cadenas de `Graze` y de la conclusión de un toque) y se toman las tres decisiones abiertas del plan.
+
+**Ajuste al dominio**:
+- **Un toque anula la orden vigente**: `Bump()` y `Graze()` ponen la orden en nada. El cuerpo no vuelve a conducir por su cuenta; espera a que el golem diga otra vez a dónde va. Es lo que cierra el círculo: sin esto el host seguía re-conduciendo la orden vieja después de chocar.
+- Decisión 2 tomada: `Learn(x, y, heading)` → **`LearnMark(x, y, heading)`**. El par de uptakes queda `HearBump` / `LearnMark`: se oye un choque, se aprende una marca.
+- Decisión 3 tomada: las lecturas que dicen a dónde va el cuerpo pasan de `Next*` a **`Order*`** (`OrderX`, `OrderY`, `OrderApproachX/Y`, `OrderExitX/Y`, `OrderIsStop`, `OrderPassage`), porque ya no significan "el siguiente tramo" sino "la orden que estoy cumpliendo". `NextId`, `NextHandle` y `HasNextPoint` se quedan: hablan de la misión y de la cola, no de la orden.
+- 48 tests.
+
+**Ajuste al host**:
+- El comando `Graze` pregunta al dominio qué sigue: si hay paciencia, expone el punto y **la bomba devuelve la orden**; si se agotó, expone otra forma (`spent`, `why`) y una reacción nueva, `give-up-on-wall`, escribe el `Fail`. El host ya no cuenta reintentos ni decide el final: reporta y espera.
+- Los comandos `Mark` y `Met` exponen el punto vigente, así que **la conclusión de un toque devuelve la orden**. Para eso los mensajes `ObstacleMarked` y `PeerMet` llevan ahora la misión.
+- Se borró del host la lectura `MayRetryLeg`: la paciencia es asunto del dominio.
+
+**Observación en vivo** (journals nuevos, los tres nacen en la entrada 1). Journal de red contra la pared este del garaje, leído crudo:
+
+```
+20  g.MoveTo(2, 11, 1.5);                                   ← la orden
+22  g.Graze(2, 10.918…, 1.5); If (g.MayRetryLeg(2)) { … }
+23  g.MoveTo(2, 11, 1.5);                                   ← la reacción devuelve la orden
+24  g.Graze(2, 10.916…, 1.5); …
+25  g.MoveTo(2, 11, 1.5);                                   ← otra vez
+28  g.Graze(2, 10.903…, 1.5); …                             ← la tercera: no expone la orden
+30  g.Fail(2, 'still grazing wall_garage_e at (10.9, 1.5): patience spent');   ← give-up-on-wall
+```
+
+Y el journal de blue chocando con la caja del hall, en el mismo modelo:
+
+```
+g.Bump(1, 5.027…, 5.839…, -1.73); Expose …
+tell BumpedAt with 5.027…, 5.839…, 'blue' to red …
+g.Mark(5.027…, 5.839…, -1.73); If (g.Knows(1) && g.HasNextPoint(1)) { … Expose … }
+g.MoveTo(1, 6.19, 3);                                        ← la conclusión devuelve la orden
+g.Cross(1, 'center~south'); …
+g.MoveTo(1, 7, 1.5);
+g.Route(1, 'garage@9,1.5'); …                                ← otra ruta tras el tanteo, y vuelve a bombear
+g.MoveTo(1, 9, 1.5);
+g.Reach(1, 9, 1.5);
+```
+
+Cierre: los tres golems con 3 marcas y una figura, nada pendiente, `Fail` por paciencia agotada escrito por una reacción, y ni un reintento decidido por el host.
+
+**Conclusión**: el plan queda implementado salvo dos cosas que siguen siendo runtime del host y que el plan nunca prometió mover: el **tanteo** (paso lateral y avance) y la **cesión** ante un compañero con su tope de cuatro cesiones (`MaxYields`). Son maniobras del cuerpo, no decisiones de camino; migrarlas sería el mismo patrón (paciencia en el dominio, orden devuelta por reacción) y queda anotado como el siguiente candidato.
+
+**Pendiente**: (1) `MaxYields` y el tanteo, si Juan quiere el mismo tratamiento; (2) el `docker kill` a media ruta, que es la única prueba de la fase 5 que falta.
+
+---
+
+## 2026-09-09 · El diario vuelve a ser actos: la orden la escribe el host (opción C)
+
+**Contexto**: Juan lee su journal y pregunta por qué aparecen `If (g.NeedsRoad(…))` y `If (g.HasNextPoint(…))` dentro de los comandos. La respuesta honesta: es maquinaria. Una reacción solo usa lo que captura, y del reporte de llegada captura el punto ya alcanzado, no el siguiente; `expose` era el único canal, y la guarda evitaba una entrada vacía al final. El costo: una entrada que debería ser un acto quedaba con un aparato pegado atrás.
+
+Se le presentaron tres formas: (A) la de entonces; (B) actos limpios con la maquinaria en la bomba y la orden sin coordenadas; (C) el host lee al dominio a dónde ir y escribe la orden, sin reacción. **Juan eligió C.**
+
+**Ajuste**:
+- Fuera el `expose` y el `if` de `Visit`, `Route`, `Cross`, `Reach`, `Mark`, `Met` y `Graze`. Los dos `expose` que quedan son los del `Bump`, que alimentan el habla con los compañeros: esos sí son su propósito.
+- Fuera las dos reacciones de bombeo (`pump-order`, `give-up-on-wall`). Quedan las tres de habla (`echo-reached`, `echo-bumped`, `echo-marked`).
+- Nace el mensaje `MissionOrdered` y su handler: el host **lee** `g.OrderX/OrderY` y journalea `g.MoveTo(id, x, y)`. Un solo punto del lazo lo hace, y por ahí pasan todas las cadenas: arranque, tras cruzar, tras llegar, tras un roce y tras un toque, porque `Bump` y `Graze` anulan la orden.
+- El veredicto de la pared vuelve a leerse con `g.MayRetryLeg(id)`: el dominio decide, el host escribe el `Fail`.
+
+**Observación en vivo** (journals nuevos). Encargo largo, red a la cocina:
+
+```
+ 3  g.Visit(1, 'kitchen');
+ 5  g.Route(1, 'west/living@0.75,3 > kitchen/west@0.75,8 > kitchen@2,9.5');
+ 7  g.MoveTo(1, 0.75, 3);
+ 9  g.Cross(1, 'west/living');
+10  g.MoveTo(1, 0.75, 8);
+11  g.Cross(1, 'kitchen/west');
+12  g.MoveTo(1, 2, 9.5);
+14  g.Reach(1, 2, 9.5);
+16  g.Announce(1); tell PointVisited …
+```
+
+Roce contra la pared oeste de la cocina:
+
+```
+87  g.MoveTo(3, 0.02, 9.5);
+89  g.Graze(3, 0.099, 9.475);
+90  g.MoveTo(3, 0.02, 9.5);      ← la orden, otra vez
+91  g.Graze(3, 0.100, 9.476);
+92  g.MoveTo(3, 0.02, 9.5);
+93  g.Graze(3, 0.089, 9.480);    ← la tercera
+95  g.Fail(3, 'still grazing wall_kitchen_w at (0.1, 9.5) after 3 grazes: patience spent');
+```
+
+Y el encargo a un punto del mismo cuarto arrancó con `Visit` y `MoveTo`, sin `Route` (entrada 45). Susto propio: vi después un `Route` de un solo punto para esa misión y lo tomé por defecto; era correcto — venía de ceder el paso a blue, y quien se aparta de su línea decide de nuevo desde donde quedó.
+
+**Conclusión**: cada línea del diario es un acto. Lo que se pierde frente al diseño de la mañana es que la secuencia ya no la lleva una reacción sino el lazo del host, que **no decide**: lee el punto que el dominio nombra y lo escribe. El principio de Juan se sostiene, la maquinaria sale del diario, y el modelo es más simple (dos reacciones menos).
+
+**También**: nace `Golem.sln` con los tres proyectos (`golemdomain`, `golemdomain.tests`, `golemhost`), así `dotnet build Golem.sln` y `dotnet test Golem.sln` cubren todo de una vez. 48 tests.
+

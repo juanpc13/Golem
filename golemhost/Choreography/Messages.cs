@@ -8,6 +8,29 @@ namespace GolemHost.Choreography;
 // TypeId tag — so the wire layout is decided in exactly one place. Deserialize
 // parses raw[1..] (raw[0] is the tag).
 
+// The order: the golem tells the host where to drive next — one point of its queue.
+public sealed class MissionOrdered : IDispatchMessage
+{
+    public static int TypeId => 'O';
+    public int Id { get; private init; }
+    public double X { get; private init; }
+    public double Y { get; private init; }
+
+    public static IDispatchMessage Deserialize(string raw)
+    {
+        var parts = raw[1..].Split('|');
+        return new MissionOrdered
+        {
+            Id = int.Parse(parts[0], CultureInfo.InvariantCulture),
+            X = double.Parse(parts[1], CultureInfo.InvariantCulture),
+            Y = double.Parse(parts[2], CultureInfo.InvariantCulture)
+        };
+    }
+
+    public static string Payload(int id, double x, double y) =>
+        $"{id}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}";
+}
+
 // The golem decided the road of a mission: the plan as the journal will read it.
 public sealed class MissionRouted : IDispatchMessage
 {
@@ -124,7 +147,6 @@ public sealed class MissionGrazed : IDispatchMessage
     public int Id { get; private init; }
     public double X { get; private init; }
     public double Y { get; private init; }
-
     public static IDispatchMessage Deserialize(string raw)
     {
         var parts = raw[1..].Split('|');

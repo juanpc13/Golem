@@ -24,6 +24,7 @@ internal sealed class Mission
     private Trajectory road = new(Array.Empty<Leg>());   // the road decided at start: passages to cross and stops to reach, in order
     private int nextLeg;
     private int reached;                                 // stops reached so far
+    private Position order;                              // the standing order: the point the golem told the host to drive to
     private int bumps;                                   // times the body touched something the map did not hold, on this mission
     private int bumpsSinceRoute;                         // ...since the road was last decided: a reason to decide it again
     private int grazes;                                  // times the body grazed a wall it knows, on this mission
@@ -49,7 +50,26 @@ internal sealed class Mission
 
     internal bool IsRouted => !road.IsEmpty;
     internal int LegsLeft => road.Count - nextLeg;
-    internal Leg NextLeg => IsRouted ? road.LegAt(nextLeg) : new Leg(Stops[0], "");
+    /// <summary>The leg being walked: once routed, the leg the cursor stands on; before that, the stop itself
+    /// (an errand one segment away is walked without deciding a road).</summary>
+    internal Leg NextLeg => IsRouted ? road.LegAt(nextLeg) : new Leg(Stops.Skip(reached).First(), "");
+    /// <summary>Whether there is still a point to head to: a leg ahead once routed, a stop ahead before that.</summary>
+    internal bool HasNextPoint => IsPending() && (IsRouted ? nextLeg < road.Count : reached < Stops.Count);
+    /// <summary>Whether the golem has already told the host where to drive: the standing order.</summary>
+    internal bool IsOrdered => order != null;
+
+    /// <summary>The golem tells the host where to drive: the point it must be the next one of the road (or the
+    /// next stop, on an errand walked without a road). Repeating the same order is allowed — after a touch the
+    /// same point may be ordered again; what it may never do is skip a point.</summary>
+    internal void MoveTo(double x, double y)
+    {
+        MustBePending();
+        if (!HasNextPoint) throw new DomainException($"mission {Id} has no point left to head to");
+        var point = NextLeg.At;
+        if (Math.Abs(point.X - x) > 1e-6 || Math.Abs(point.Y - y) > 1e-6)
+            throw new DomainException($"mission {Id} heads to ({point.X}, {point.Y}), not to ({x}, {y})");
+        order = new Position(x, y);
+    }
     /// <summary>Stops not reached yet: the stop legs ahead once routed, every stop before that.</summary>
     internal IEnumerable<Position> StopsAhead => IsRouted ? road.StopsFrom(nextLeg) : Stops.Skip(reached);
     internal int StopsLeft => StopsAhead.Count();
@@ -75,6 +95,7 @@ internal sealed class Mission
         nextLeg = 0;
         bumpsSinceRoute = 0;
         grazesOnLeg = 0;
+        order = null;          // a new queue voids the standing order: the golem must say where it heads now
     }
 
     /// <summary>The body touched something the map does not hold, on this mission's road.</summary>
@@ -83,6 +104,7 @@ internal sealed class Mission
         MustBePending();
         bumps++;
         bumpsSinceRoute++;
+        order = null;          // what the body met voids the order: the golem says again where it heads, once it knows what it was
     }
 
     /// <summary>The body grazed a wall the map knows, on this mission's road: its own execution error, counted
@@ -92,6 +114,7 @@ internal sealed class Mission
         MustBePending();
         grazes++;
         grazesOnLeg++;
+        order = null;          // the same: either the golem hands the order back, or it gives the mission up
     }
 
     /// <summary>The golem crossed the next passage of its road (or skirted a mark: the leg named 'around'). Returns what it crossed.</summary>
@@ -104,22 +127,24 @@ internal sealed class Mission
         if (leg.Name != passage) throw new DomainException($"mission {Id} is heading to '{leg.Name}', not '{passage}'");
         nextLeg++;
         grazesOnLeg = 0;
+        order = null;          // the order was carried out: the golem owes the next one
         return passage;
     }
 
-    /// <summary>The golem reached the next stop of its road. Reaching the last one completes the mission.</summary>
+    /// <summary>The golem reached the stop it was heading to. Reaching the last one completes the mission. A road
+    /// is not required: an errand one segment away is walked straight, so there was nothing to decide.</summary>
     internal void Reach(double x, double y)
     {
         MustBePending();
-        if (!IsRouted) throw new DomainException($"mission {Id} has no road to reach a stop along");
-        var leg = road.LegAt(nextLeg);
-        if (!leg.IsStop) throw new DomainException($"mission {Id} is heading to the passage '{leg.Name}': cross it, no stop is next");
+        var leg = NextLeg;
+        if (IsRouted && !leg.IsStop) throw new DomainException($"mission {Id} is heading to the passage '{leg.Name}': cross it, no stop is next");
         if (Math.Abs(leg.At.X - x) > 1e-6 || Math.Abs(leg.At.Y - y) > 1e-6)
             throw new DomainException($"mission {Id}'s next stop is ({leg.At.X}, {leg.At.Y}), not ({x}, {y})");
-        nextLeg++;
+        if (IsRouted) nextLeg++;
         reached++;
         grazesOnLeg = 0;
-        if (nextLeg == road.Count) status = MissionStatus.Completed;
+        order = null;
+        if (IsRouted ? nextLeg == road.Count : reached == Stops.Count) status = MissionStatus.Completed;
     }
 
     // ---- the ending ----

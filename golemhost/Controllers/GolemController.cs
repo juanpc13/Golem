@@ -33,7 +33,7 @@ public class GolemController : Controller
                     Check(g.KnowsPlace(@place)) Error 'no such place on the map';
                 ",
                 @"
-                    g.MoveTo(@id, @place);
+                    g.Visit(@id, @place);
                 ")
             .WithParameters(p => {
                 p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
@@ -50,7 +50,7 @@ public class GolemController : Controller
                     Check(g.IsOnMap(@x, @y)) Error 'that point is nowhere on the map';
                 ",
                 @"
-                    g.MoveTo(@id, @x, @y);
+                    g.Visit(@id, @x, @y);
                 ")
             .WithParameters(p => {
                 p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
@@ -67,7 +67,7 @@ public class GolemController : Controller
                 Check(g.AreStops(@stops)) Error 'a stop is neither a place nor a point on the map';
             ",
             @"
-                g.MoveTo(@id, @stops);
+                g.Visit(@id, @stops);
             ")
         .WithParameters(p => {
             p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
@@ -161,7 +161,7 @@ public class GolemController : Controller
         perf.Actor.Using(@"
             print g.Pending() 'pending', g.Total() 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
-                print g.NextId() 'nextId', g.NextX() 'nextX', g.NextY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft';
+                print g.NextId() 'nextId', g.OrderX() 'nextX', g.OrderY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft';
             }
         ")
         .PerformQuery();

@@ -82,11 +82,11 @@
     <div class="card ops">
       <canvas id="map" width="300" height="300" title="click to add a stop here"></canvas>
       <p class="hint">The floor plan is the golem's own map, released into its journal. Click a room or press a
-      place to add a stop, then send the golem through the stops <b>in that order</b> (<code>MoveTo</code>) or let
+      place to add a stop, then send the golem through the stops <b>in that order</b> (<code>Visit</code>) or let
       it <b>choose the order</b> that makes the whole road shortest (<code>Cover</code>). Between stops it always
       takes the shortest road through the doors and open boundaries, journals it, and journals every passage
       crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body
-      bumps into there becomes a red <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.Learn</code>
+      bumps into there becomes a red <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.LearnMark</code>
       it); marks close together are joined as the vertices of one <b>obstacle</b>, the figure of the thing nobody charted.
       The golem feels for a way past, right then left, and if none fits its body it decides the road again
       around the marks. Only when no road fits does the mission fail.</p>
@@ -98,7 +98,7 @@
       </div>
       <ol id="stops" class="stops"></ol>
       <div class="row">
-        <button id="move" class="place">MoveTo · in this order</button>
+        <button id="move" class="place">Visit · in this order</button>
         <button id="cover" class="place">Cover · shortest order</button>
         <button id="clear">Clear</button>
       </div>
@@ -137,7 +137,7 @@
         <button data-q="g.HeardBumpCount()">HeardBumpCount()</button>
         <button data-q="{ foreach (places in g.Places()) { print places.Name 'name'; foreach (doors in places.Doors()) { print doors.To 'to'; } } }">Places as objects</button>
         <button data-q="g.FitsAt(10.25, 5.5)">FitsAt(10.25, 5.5)</button>
-        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.NextPassage(g.NextId()) 'heading', g.NextIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
+        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.OrderPassage(g.NextId()) 'heading', g.OrderIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <p class="hint">Queries read the golem's in-memory state and never touch the journal.
@@ -201,7 +201,7 @@ function row(e) {
   if (journaled) paintFact(e);
 }
 
-// The map follows the journal: a record carrying a point (MoveTo, Follow, Reach) places a marker.
+// The map follows the journal: a record carrying a point (Visit, MoveTo, Follow, Reach) places a marker.
 function paintFact(e) {
   let doc;
   try { doc = JSON.parse(e.Note); } catch { return; }
@@ -229,8 +229,8 @@ function renderStops() {
 }
 function addStop(stop) { stops.push(stop); renderStops(); }
 
-// MoveTo walks the stops in the order given (a single place or point takes the plain form, so the
-// journal reads g.MoveTo(7, 'kitchen')); Cover lets the golem choose the order.
+// Visit walks the stops in the order given (a single place or point takes the plain form, so the
+// journal reads g.Visit(7, 'kitchen')); Cover lets the golem choose the order.
 async function send(kind) {
   const out = document.getElementById('qout');
   if (stops.length === 0) { out.textContent = 'add a stop first'; return; }
