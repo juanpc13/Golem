@@ -14,7 +14,7 @@ namespace GolemHost.Domain.Robots;
 internal sealed class Body
 {
     /// <summary>How close two touches must be, in space, for them to be one meeting of two bodies: two radii of a
-    /// body plus the error of estimating the point at the nose. (Was a literal inside HeardNear until 8-sep.)</summary>
+    /// body plus the error of estimating the point at the nose. (Was a literal inside the read that answers who bumped near a point, until 8-sep.)</summary>
     internal const double MeetingReach = 1.2;
 
     private double radius;   // the disk it occupies — zero until embodied: a body that has no size yet is a point

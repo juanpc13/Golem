@@ -366,7 +366,7 @@ public sealed class GolemChoreography
             .Told("PointVisited").With<double>("x").With<double>("y")
                 .Command("g.Follow(@x, @y);")
             .Told("BumpedAt").With<double>("x").With<double>("y").With<string>("who")
-                .Command("g.Hear(@who, @x, @y);")
+                .Command("g.HearBump(@who, @x, @y);")
             .Told("ObstacleFound").With<double>("x").With<double>("y").With<double>("heading")
                 .Command("g.Learn(@x, @y, @heading);")
             .Start();
@@ -555,7 +555,7 @@ public sealed class GolemChoreography
             // A door is crossed straight: line up in front of it, then run through to the far side.
             // The map says where those two points are; an opening or a stop is a single run.
             Outcome outcome = Outcome.Arrived;
-            heardAtDriveStart = HeardCount();
+            heardAtDriveStart = HeardBumpCount();
             var from = ros.LatestPose;
             if (from != null)
                 lane = (plan.ApproachX != plan.ExitX || plan.ApproachY != plan.ExitY)
@@ -847,7 +847,7 @@ public sealed class GolemChoreography
             string trying = $"mission {id}: feeling for a way past — a step {side} to ({tx:0.0}, {ty:0.0})";
             Console.WriteLine($"[golem {golem}] {trying}");
             feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", trying, DateTime.UtcNow));
-            heardAtDriveStart = HeardCount();
+            heardAtDriveStart = HeardBumpCount();
             var step = await navigator.GoToAsync(tx, ty, 0.12, ct);
             if (right) probe.RightSteps++; else probe.LeftSteps++;
             if (!step.Reached)
@@ -865,7 +865,7 @@ public sealed class GolemChoreography
             // step itself is blocked or the steps run out.
             double ax = tx + AheadRun * Math.Cos(th), ay = ty + AheadRun * Math.Sin(th);
             if (!HasRoomAt(ax, ay)) return true;   // no lane ahead: still, the leg is worth trying from here
-            heardAtDriveStart = HeardCount();
+            heardAtDriveStart = HeardBumpCount();
             var run = await navigator.GoToAsync(ax, ay, 0.2, ct);
             if (run.Reached) return true;
             if (run.Hit == null) { if (right) probe.RightDone = true; else probe.LeftDone = true; continue; }   // a stall or a timeout: this side is not working
@@ -1060,11 +1060,11 @@ public sealed class GolemChoreography
         return rented["bumped"].GetValue<bool>();
     }
 
-    private int HeardCount()
+    private int HeardBumpCount()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @heard = g.HeardCount();
+            @heard = g.HeardBumpCount();
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "heard", typeof(int)] = default;

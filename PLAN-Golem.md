@@ -62,7 +62,7 @@ Un mundo compartido con física real, N cuerpos declarados en el plano del mundo
 | Avance | `Cross(id, passage)` `Reach(id, x, y)` | crucé, llegué; alcanzar la última parada completa la misión |
 | Cierre | `Fail(id, reason)` `Abandon(id, reason)` | el mundo dijo no; la solté (un punto contado más nuevo, o el operador soltó todo) |
 | Toques | `Bump(id, x, y)` `Bump(x, y)` | toqué algo que mi mapa no tiene, en camino o parado; un hecho que se cuenta, y se resuelve después |
-| | `Hear(who, x, y)` | un compañero me contó que chocó ahí: si yo choqué ahí mismo, era él |
+| | `HearBump(who, x, y)` | un compañero me contó que chocó ahí: si yo choqué ahí mismo, era él (se llamó `Hear` hasta el 9-sep) |
 | | `Mark(x, y)` `Learn(x, y)` | nadie más chocó: era un obstáculo, una marca (y se cuenta); un compañero me contó una marca |
 | Habla | `Announce(id)` | rodeo del motor (elisión del tell), hasta que lo corrijan |
 
@@ -141,7 +141,7 @@ Juan entregó la documentación del dominio (robot, POSICIÓN, mapa/plano, espac
 
 | Grupo | Verbo | Se lee |
 |---|---|---|
-| Hechos | `Bump(id, x, y, heading)` `Bump(x, y, heading)` `Hear(who, x, y)` | toqué algo con este rumbo; me tocaron parado; un compañero chocó ahí |
+| Hechos | `Bump(id, x, y, heading)` `Bump(x, y, heading)` `HearBump(who, x, y)` | toqué algo con este rumbo; me tocaron parado; un compañero chocó ahí |
 | Conclusiones (las escribe la REACCIÓN, en voz del golem) | `Mark(x, y, heading)` | nadie estaba ahí: era una cosa; la marca conoce su normal |
 | | `Met(who, x, y)` | era un compañero: queda la historia, no hay obstáculo |
 | Lectura | `Suspect(x, y, heading, since)` → `Suspicion` (`Kind`, `Who`) | lo que el dominio cree que fue: pared conocida, compañero, cosa |

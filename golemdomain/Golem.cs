@@ -166,8 +166,9 @@ internal sealed class Golem
         return id;
     }
 
-    /// <summary>A peer says it bumped at (x, y): heard and kept, so a touch of my own there and then is known to be that peer.</summary>
-    internal int Hear(string who, double x, double y)
+    /// <summary>A peer says it bumped at (x, y): heard and kept, so a touch of my own there and then is known to be that peer.
+    /// The named counterpart of Learn, which hears of a MARK; this one hears of a BUMP.</summary>
+    internal int HearBump(string who, double x, double y)
     {
         heard.Add(new HeardBump(who, new Position(x, y)));
         return heard.Count;
@@ -193,18 +194,19 @@ internal sealed class Golem
     {
         var at = new Position(x, y);
         if (plan.IsWallAt(at, FloorPlan.WallTolerance)) return new WallTouched();
-        string who = HeardNear(x, y, sinceCount);
+        string who = HeardBumpNear(x, y, sinceCount);
         if (who != "") return new PeerMet(who);
         return new ThingFound();
     }
 
-    internal int HeardCount() => heard.Count;
+    /// <summary>How many bumps peers have told about so far — the count a leg starts from, so older news is not taken for this touch.</summary>
+    internal int HeardBumpCount() => heard.Count;
     /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a meeting's reach; "" for nobody.
     /// (Robotics resolves two bodies meeting with reciprocal velocity obstacles — van den Berg, Lin &amp; Manocha,
     /// ICRA 2008; ORCA 2011 — each taking half the avoidance from what it senses of the other. Our bodies sense
     /// nothing but a touch, so they resolve it by speech: both tell the fact, and a deterministic rule in the host
     /// decides who yields. Same problem, solved with the puppet's means.)</summary>
-    internal string HeardNear(double x, double y, int sinceCount)
+    internal string HeardBumpNear(double x, double y, int sinceCount)
     {
         var at = new Position(x, y);
         for (int i = heard.Count - 1; i >= sinceCount && i >= 0; i--)

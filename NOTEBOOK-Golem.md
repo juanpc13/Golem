@@ -491,3 +491,19 @@ mundo: contacto ──► host estima el punto (pose + radio en el rumbo)
 **Ajuste al dominio**: `RoutePlanner.Sees` (regla de arranque para marcas dentro del radio) + test del caso vivo + test ajustado. Host: la espera por la marca aplicada. 44 tests en verde.
 
 **Pendiente**: (1) provocar un encuentro entre cuerpos para ver `Met` en vivo (dos misiones cruzadas en una puerta, como el 8-sep por la mañana); (2) el punto de contacto por dirección de movimiento o bumper por sectores → PLAN; (3) commit de todo esto cuando Juan lo pida.
+
+---
+
+## 2026-09-09 · `Hear` pasa a llamarse `HearBump` (y lo que el renombre destapó)
+
+**Contexto**: Juan pide renombrar "el método de learn o hear dependiendo cuál es el que habla del bump". De los dos uptakes, el que recibe un **bump** contado por un compañero es `Hear`; `Learn` recibe una **marca**. Solo se renombra el primero.
+
+**Ajuste al dominio**: `Hear(who, x, y)` → **`HearBump(who, x, y)`**, y con él las dos lecturas que le siguen (regla del 7-sep: las lecturas siguen a su verbo): `HeardCount()` → `HeardBumpCount()`, `HeardNear(x, y, since)` → `HeardBumpNear(x, y, since)`. `Learn(x, y, heading)` se queda como está: habla de una marca, no de un toque. El uptake del host pasa a `g.HearBump(@who, @x, @y);`; el botón del panel y las tablas de verbos de README, PLAN y `CLAUDE.md` quedan al día.
+
+**Observación** (lo que el renombre destapó, que es lo que justifica la nota): el host aún tenía su propio helper `HeardNear(x, y, since)` — una consulta a `g.HeardNear` — **muerto desde la migración a `Suspect`** de ayer: nadie lo llamaba. Era el último resto del host preguntando "¿quién chocó cerca?" para clasificar él mismo. Eliminado. El host solo pregunta ya `g.Suspect(...)`, que es la hipótesis del dominio.
+
+**Verificación en vivo** (journals archivados en `journal-legacy-2026-09-09-hear/`, los tres golems nacen en la entrada 1): red al garaje por el sur, sin toques. Blue, siguiéndolo, cruza el hall central y choca tres veces con la caja: cada `Bump` viaja como `tell BumpedAt` y en los journals de red y green aparece **`g.HearBump('blue', 5.41…, 5.85…)`** (leído crudo del carril *Journal — live*), seguido de `g.Learn(5.41…, 5.85…, -1.68)` cuando blue concluye la marca. Cierre: los tres con 3 marcas y 1 `Thing`; `HeardBumpCount()` 3 en red y green, 0 en blue (quien choca no se oye a sí mismo). 44 tests en verde, host compila.
+
+**Conclusión**: el par de uptakes queda legible en el journal — se oye un **bump** (`HearBump`), se aprende una **marca** (`Learn`). Un renombre pequeño sirvió de barrido: la migración de ayer había dejado código del host que ya no decidía nada pero seguía preguntando.
+
+**Pendiente**: si Juan quiere la simetría completa, `Learn(x, y, heading)` → `LearnMark(x, y, heading)`; es otro renombre de verbo journaleado (journals renacen otra vez). Sin decidir.

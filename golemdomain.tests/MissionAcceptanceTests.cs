@@ -575,7 +575,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(0, Int("g.MarkCount()"), "a bump is a touch, not yet a mark");
         Assert.AreEqual(1, Int("g.Bumps(1)"));
         Assert.IsTrue(Bool("g.HasBumpedSinceRoute(1)"));
-        Assert.AreEqual("", Text("g.HeardNear(10.25, 5.85, 0)"), "no peer said it bumped there");
+        Assert.AreEqual("", Text("g.HeardBumpNear(10.25, 5.85, 0)"), "no peer said it bumped there");
 
         Assert.AreEqual(1, Int("g.Mark(10.25, 5.85, -1.5708)"), "nobody else bumped: the golem marks it, with the heading of the touch as the mark's normal");
         Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the body no longer fits where the mark reaches");
@@ -591,18 +591,18 @@ public class MissionAcceptanceTests
     {
         MoveTo(1, 9.0, 1.5);
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
-        Assert.AreEqual(1, Int("g.Hear('blue', 4.6, 9.5)"), "blue says it bumped in the kitchen's doorway");
-        int heard = Int("g.HeardCount()");
+        Assert.AreEqual(1, Int("g.HearBump('blue', 4.6, 9.5)"), "blue says it bumped in the kitchen's doorway");
+        int heard = Int("g.HeardBumpCount()");
 
         Bump(1, 4.7, 9.5, East);                    // my own touch, right there
-        Assert.AreEqual("blue", Text("g.HeardNear(4.7, 9.5, 0)"), "blue's bump is within a body's diameter of mine: it was blue");
-        Assert.AreEqual("", Text("g.HeardNear(4.7, 9.5, " + heard + ")"), "nothing heard after that count");
-        Assert.AreEqual("", Text("g.HeardNear(10.25, 5.85, 0)"), "a bump far away is somebody else's business");
+        Assert.AreEqual("blue", Text("g.HeardBumpNear(4.7, 9.5, 0)"), "blue's bump is within a body's diameter of mine: it was blue");
+        Assert.AreEqual("", Text("g.HeardBumpNear(4.7, 9.5, " + heard + ")"), "nothing heard after that count");
+        Assert.AreEqual("", Text("g.HeardBumpNear(10.25, 5.85, 0)"), "a bump far away is somebody else's business");
         Assert.AreEqual(0, Int("g.MarkCount()"), "meeting a body leaves no mark");
 
         Assert.AreEqual(1, Int("g.Bump(4.9, 9.5, 0.0)"), "a body standing idle that gets touched bumps too, without a mission");
         Assert.AreEqual(2, Int("g.Bump(4.9, 9.5, 0.0)"));
-        Refuses("g.Hear('', 1.0, 1.0);", "needs to say who");
+        Refuses("g.HearBump('', 1.0, 1.0);", "needs to say who");
     }
 
     [TestMethod]
@@ -745,7 +745,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual("Mark", doc.RootElement.GetProperty("thingVerb").GetString());
         Assert.AreEqual("", doc.RootElement.GetProperty("nobody").GetString());
 
-        Int("g.Hear('blue', 4.6, 9.5)");
+        Int("g.HearBump('blue', 4.6, 9.5)");
         string peer = perf.Actor.Using(@"
             print g.Suspect(4.7, 9.5, 0.0, 0).Kind 'kind', g.Suspect(4.7, 9.5, 0.0, 0).Who 'who', g.Suspect(4.7, 9.5, 0.0, 0).Conclusion 'verb';
             print g.Suspect(4.7, 9.5, 0.0, 1).Kind 'later';
