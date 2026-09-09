@@ -90,6 +90,49 @@ internal sealed class ObstacleMap
     /// <summary>The obstacles whose centre stands in a place.</summary>
     internal IReadOnlyList<Obstacle> In(Place place) => All().Where(o => place.Contains(o.Center)).ToList();
 
+    // ---- forgetting: something that was there is not there any more ----
+
+    /// <summary>Whether an obstacle stands at a point — its centre or any of its vertices within JoinWithin of
+    /// it. What the operator consults before saying it is gone.</summary>
+    internal bool KnowsAt(Position at) => Nearest(at) != null;
+
+    /// <summary>Someone took it away: the golem forgets the obstacle standing there and, with it, EVERY fact that
+    /// outlined it — all its marks at once, because they were vertices of one thing and the thing is gone. A body
+    /// may pass there again, and if it touches something it will be a NEW obstacle, outlined by new marks.
+    /// Returns how many facts were dropped; zero when nothing stands there.
+    /// <para>The map forgets, the journal does not: the act of forgetting is journaled like any other, so the
+    /// history still says what was believed and when it stopped being believed.</para></summary>
+    internal int Forget(Position at)
+    {
+        var target = Nearest(at);
+        if (target == null) return 0;
+        if (target is Thing thing)
+        {
+            int had = marks.Count;
+            foreach (var vertex in thing.Vertices()) marks.Remove(vertex);   // the very marks it holds: compared by identity
+            return had - marks.Count;
+        }
+        int met = encounters.Count;
+        encounters.RemoveAll(e => e.Center.DistanceTo(target.Center) < SameTouch);
+        return met - encounters.Count;
+    }
+
+    // The obstacle a point names: the closest one whose centre or one of whose vertices lies within JoinWithin.
+    private Obstacle Nearest(Position at)
+    {
+        Obstacle best = null;
+        double closest = double.PositiveInfinity;
+        foreach (var o in All())
+        {
+            double d = o.Center.DistanceTo(at);
+            foreach (var v in o.Vertices()) d = Math.Min(d, v.DistanceTo(at));
+            if (d > JoinWithin || d >= closest) continue;
+            closest = d;
+            best = o;
+        }
+        return best;
+    }
+
     // ---- what it says to whoever looks for a road ----
 
     /// <summary>Whether what has been learned stands in the way of a body of this radius at a point: any mark

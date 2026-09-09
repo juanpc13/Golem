@@ -261,6 +261,17 @@ internal sealed class Golem
     /// kept among the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
     internal int Met(string who, double x, double y) => learned.Meet(who, new Position(x, y));
 
+    /// <summary>The operator says what stood at (x, y) is gone — somebody took it away — and the golem forgets the
+    /// obstacle there with EVERY mark that outlined it: a body may pass again, and a touch after this is a NEW
+    /// obstacle. Told to the peers, who forget it too. Returns how many facts it dropped.</summary>
+    internal int Forget(double x, double y) => learned.Forget(new Position(x, y));
+
+    /// <summary>A peer says what stood at (x, y) is gone: the golem forgets it too, without having gone to see.</summary>
+    internal int LearnForget(double x, double y) => learned.Forget(new Position(x, y));
+
+    /// <summary>Whether the golem holds an obstacle at (x, y) — what to consult before saying it is gone.</summary>
+    internal bool KnowsObstacleAt(double x, double y) => learned.KnowsAt(new Position(x, y));
+
     /// <summary>What the golem suspects its body touched at (x, y), heading that way, given what it has heard since
     /// the given count: a wall it knows (Kind 'wall': conclude Graze), a peer that bumped near there and then
     /// (Kind 'peer', Who: conclude Met), or a thing nobody charted (Kind 'thing': conclude Mark). The domain reasons;

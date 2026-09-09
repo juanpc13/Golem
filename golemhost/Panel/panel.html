@@ -75,6 +75,9 @@
   #obstacles td:nth-child(2) { color: #8fa3b8; font-weight: 400 }
   #obstacles td:last-child { text-align: right }
   #obstacles tr.none td { color: #6b7d91 }
+  #obstacles button.gone { font: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer;
+        color: var(--muted); background: transparent; border: 1px solid #2b3a4d; border-radius: 5px }
+  #obstacles button.gone:hover { color: var(--ink); border-color: #47597a }
 </style>
 </head>
 <body>
@@ -321,18 +324,29 @@ async function drawObstacles() {
     const what = o.kind === 'peer' ? `peer &middot; ${o.who}` : `thing &middot; ${o.shape}`;
     rows.push(`<tr class="${o.kind}"><td>${what}</td><td>${o.zone || '&mdash;'}</td>` +
               `<td>${o.size} vertex${o.size === 1 ? '' : 'es'}</td>` +
-              `<td>centre (${(+o.cx).toFixed(2)}, ${(+o.cy).toFixed(2)})</td></tr>`);
+              `<td>centre (${(+o.cx).toFixed(2)}, ${(+o.cy).toFixed(2)})</td>` +
+              `<td><button class="gone" data-x="${o.cx}" data-y="${o.cy}" title="somebody took it away: forget it, with every vertex">gone</button></td></tr>`);
     for (const v of (o.vertices || []))
       rows.push(`<tr class="vertex"><td>&#8226; vertex</td><td></td>` +
                 `<td>(${(+v.x).toFixed(2)}, ${(+v.y).toFixed(2)})</td>` +
-                `<td>normal ${(+v.normal).toFixed(2)} rad &middot; reach ${(+v.reach).toFixed(2)}</td></tr>`);
+                `<td>normal ${(+v.normal).toFixed(2)} rad &middot; reach ${(+v.reach).toFixed(2)}</td><td></td></tr>`);
   }
-  if (!rows.length) rows.push('<tr class="none"><td colspan="4">nothing touched yet: no obstacle hypothesized</td></tr>');
+  if (!rows.length) rows.push('<tr class="none"><td colspan="5">nothing touched yet: no obstacle hypothesized</td></tr>');
   document.querySelector('#obstacles tbody').innerHTML = rows.join('');
   if (typeof drawMap === 'function') drawMap();
 }
 drawObstacles();
 setInterval(drawObstacles, 4000);
+
+// "gone": somebody took that obstacle away. The golem forgets it with every vertex and tells its peers;
+// from here on a body may pass, and a touch there would be a NEW obstacle.
+document.getElementById('obstacles').addEventListener('click', async ev => {
+  const b = ev.target.closest('button.gone');
+  if (!b) return;
+  b.disabled = true;
+  try { await fetch(`/forget?x=${b.dataset.x}&y=${b.dataset.y}`, { method: 'POST' }); } catch (e) {}
+  drawObstacles();
+});
 
 // The floor plan, as the golem knows it: one query on /map walks the golem's Place objects and prints their
 // properties, and inside each place its Doors(), Openings() and Marks() — the engine renders each loop as an

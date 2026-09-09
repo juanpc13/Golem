@@ -107,6 +107,18 @@ public sealed class GolemChoreography
                     ")
                 .Causation.Continue(bumped);
 
+            // Somebody took a thing away: the fleet must forget it together, or one golem would keep skirting
+            // what another can already drive through.
+            string forgotten = string.Join("\n", peers.Select(p =>
+                $"tell ObstacleGone with @x, @y to {p} once 'gone-{golem}-' + @x + ',' + @y + '-{p}';"));
+            perf.Actor.Reactions.DefineReaction("echo-forgotten")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Forgotten").One()
+                    .OnMatch(@"
+                        [_:Golem].Forget($x, $y)
+                    ")
+                .Causation.Continue(forgotten);
+
             string marked = string.Join("\n", peers.Select(p =>
                 $"tell ObstacleFound with @x, @y, @heading to {p} once 'obstacle-{golem}-' + @x + ',' + @y + '-{p}';"));
             perf.Actor.Reactions.DefineReaction("echo-marked")
@@ -394,6 +406,8 @@ public sealed class GolemChoreography
                 .Command("g.HearBump(@who, @x, @y, @px, @py);")
             .Told("ObstacleFound").With<double>("x").With<double>("y").With<double>("heading")
                 .Command("g.LearnMark(@x, @y, @heading);")
+            .Told("ObstacleGone").With<double>("x").With<double>("y")
+                .Command("g.LearnForget(@x, @y);")
             .Start();
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
             $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));

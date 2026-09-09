@@ -883,6 +883,48 @@ public class MissionAcceptanceTests
         Assert.IsFalse(peer.TryGetProperty("vertices", out _), "a peer outlines nothing: bodies move on");
     }
 
+
+    [TestMethod]
+    public void WhenSomethingIsTakenAway_TheGolemForgetsItWithEveryVertex_AndANewTouchIsANewObstacle()
+    {
+        LearnMark(10.25, 5.85, South);        // three touches on the crate of the east corridor
+        LearnMark(10.25, 5.15, North);
+        LearnMark(9.9, 5.5, East);
+        LearnMark(2.0, 9.5, East);            // and something else, a room away
+        Assert.AreEqual(2, Int("g.ObstacleCount()"));
+        Assert.AreEqual(4, Int("g.MarkCount()"));
+        Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the crate is in the way");
+
+        Assert.IsTrue(Bool("g.KnowsObstacleAt(10.13, 5.5)"), "asked by its centre");
+        Assert.IsTrue(Bool("g.KnowsObstacleAt(9.9, 5.5)"), "or by one of its vertices");
+        Assert.IsFalse(Bool("g.KnowsObstacleAt(5.5, 5.5)"), "and nothing stands in the middle of the centre hall");
+
+        Assert.AreEqual(3, Int("g.Forget(10.13, 5.5)"), "the three marks that outlined it go at once");
+        Assert.AreEqual(1, Int("g.ObstacleCount()"), "the other obstacle is untouched");
+        Assert.AreEqual(1, Int("g.MarkCount()"));
+        Assert.IsTrue(Bool("g.FitsAt(10.25, 5.5)"), "a body may pass there again");
+        Assert.AreEqual(0, Int("g.Forget(10.13, 5.5)"), "forgetting nothing drops nothing: it is not a refusal");
+
+        // whatever is touched there next is a NEW obstacle, outlined by new marks
+        LearnMark(10.25, 5.5, South);
+        Assert.AreEqual(2, Int("g.ObstacleCount()"));
+        Assert.AreEqual(2, Int("g.ThingCount()"), "the new thing stands on its own, with nothing of the old one");
+        Assert.AreEqual(2, Int("g.MarkCount()"), "one mark of the new thing, one of the untouched one");
+    }
+
+    [TestMethod]
+    public void ForgettingAnEncounter_DropsThatPeer_AndLeavesTheThings()
+    {
+        Met("blue", 4.7, 9.5);
+        LearnMark(10.25, 5.85, South);
+        Assert.AreEqual(2, Int("g.ObstacleCount()"));
+
+        Assert.AreEqual(1, Int("g.Forget(4.7, 9.5)"), "the encounter is dropped");
+        Assert.AreEqual(0, Int("g.MetCount()"));
+        Assert.AreEqual(1, Int("g.ThingCount()"), "and the thing stays");
+        Assert.AreEqual(1, Int("g.MarkCount()"));
+    }
+
     // ---- the second touch protocol: the domain suspects, the golem concludes ----
 
     [TestMethod]

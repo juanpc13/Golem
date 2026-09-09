@@ -849,3 +849,24 @@ peer · blue      | kitchen | 1 vertex   | centre (0.75, 8.54)
 
 **Pendiente**: (1) las dos cortesías que faltan por journalear (el seguidor orillándose, el parado que se hace a un lado); (2) el `docker kill` a media ruta; (3) cuando lleguen las capas del mapa, el módulo de obstáculos ya es una de ellas — la capa de lo aprendido sobre la capa de lo contado.
 
+---
+
+## 2026-09-09 · Olvidar un obstáculo: lo quitaron, y con él se van todos sus vértices
+
+**Contexto**: Juan: "quiero que los Obstacles me permitan deshabilitar/eliminar uno con todos sus vértices asociados, porque ya lo quitaron el obstáculo y ahora ya puede pasar; los que estaban marcados ahora ya no están disponibles; si vuelve a chocar con algo eso ya es otro Obstacle nuevo".
+
+**Ajuste al dominio**:
+- `ObstacleMap.Forget(at)`: encuentra el obstáculo que ese punto nombra — el más cercano por su centro **o por cualquiera de sus vértices**, dentro de `JoinWithin` — y suelta **todos** sus hechos de una vez: las marcas que lo dibujaban, porque eran vértices de una sola cosa y la cosa ya no está. Si lo que hay ahí es un encuentro con un compañero, suelta ese encuentro. Devuelve cuántos hechos soltó; cero cuando no hay nada, que no es un rechazo.
+- `ObstacleMap.KnowsAt(at)`: la lectura que se consulta antes de decir que ya no está.
+- Verbos del golem: **`Forget(x, y)`** (el operador dice que lo quitaron) y **`LearnForget(x, y)`** (un compañero me lo contó), más la lectura `KnowsObstacleAt(x, y)`. El par queda simétrico con `Mark`/`LearnMark`.
+- **El mapa olvida, el journal no**: el acto de olvidar se journalea como cualquier otro, así que la historia sigue diciendo qué se creyó y cuándo se dejó de creer. Es la misma regla de `Abandon`.
+- Lo nuevo que pasa gratis: un toque posterior en ese sitio forma **otro** obstáculo, con marcas nuevas, porque los grupos se derivan de los hechos que quedan.
+- 53 tests (dos nuevos: olvidar una cosa con sus tres vértices y que un toque después sea otra cosa; olvidar un encuentro sin tocar las cosas).
+
+**Ajuste al host**: `POST /forget?x=&y=` con `Check(g.KnowsObstacleAt(...))` antes del comando — 409 si no hay nada ahí, 400 sin coordenadas, las dos verificadas en vivo. Reacción **`echo-forgotten`** sobre `Forget` → `tell ObstacleGone` a cada compañero → uptake `g.LearnForget`. Sin eso la flota quedaría inconsistente: uno pasando por donde otro sigue rodeando. Y en el panel, cada fila de obstáculo tiene su botón **gone**.
+
+**Aparte, la UI**: la sección de obstáculos rompía la rejilla de dos columnas del panel — se metía en la segunda celda y empujaba la consola a la columna angosta de 300 px. La tabla vive ahora dentro de la columna ancha; la rejilla se centra (`margin:0 auto`, 1280 px), la barra lateral pasó a 340 px y las dos explicaciones largas se pliegan (`<details>`), así ninguna columna es un muro de texto de 1400 px. Tres tropiezos propios en el camino, todos de escritura de archivos y ninguno del diseño: un ancla de CSS que no existía, un escape `B8` que Python leyó como octal y dejó un carácter de control en el archivo, y un `
+` que se partió dentro de un literal de C#. Lección: verificar el archivo escrito, no solo que el script no falle.
+
+**Pendiente**: (1) que el olvido caduque solo (una marca vieja que nadie confirma), si algún día hace falta; (2) las dos cortesías sin journalear; (3) el `docker kill` a media ruta.
+

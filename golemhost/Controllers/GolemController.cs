@@ -136,6 +136,29 @@ public class GolemController : Controller
         ")
         .PerformQuery(), "application/json");
 
+    // Somebody took it away: the golem forgets the obstacle standing there, with every mark that outlined it.
+    // A reaction tells the peers, who forget it too. From here on a body may pass, and if it touches something
+    // that is a NEW obstacle with new marks — nothing of the old one survives in the map (the journal keeps
+    // both acts: what was believed, and when it stopped being believed).
+    [HttpPost("forget")]
+    public IActionResult Forget([FromQuery] double? x, [FromQuery] double? y)
+    {
+        if (!(x.HasValue && y.HasValue) || !double.IsFinite(x.Value) || !double.IsFinite(y.Value))
+            return BadRequest("x and y must both be finite numbers");
+        return Refusable(perf.Actor.Using(
+            @"
+                Check(g.KnowsObstacleAt(@x, @y)) Error 'the golem holds no obstacle there';
+            ",
+            @"
+                g.Forget(@x, @y);
+            ")
+        .WithParameters(p => {
+            p["x", typeof(double)] = x.Value;
+            p["y", typeof(double)] = y.Value;
+        })
+        .PerformCheckThenCommand());
+    }
+
     [HttpGet("state")]
     public IActionResult MissionBoard() => Content(Board(), "application/json");
 
