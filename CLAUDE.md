@@ -75,8 +75,9 @@ whether it could or not, so the domain resolves what follows. Consequences:
   (Juan, 10-sep: "evitemos parámetros primitivos si tenemos las instancias reales").
 - **A command template is a braced block, step by step, values as `@params`** (Juan, 10-sep): the object is
   found or built from the parameters, named after what it is, then handed to the act —
-  `{ point = map.Find(@area); g.Visit(@id, point); }`, `{ door = map.FindDoor(@a, @b); g.Cross(@id, door); }`,
-  `{ g.Route(@id); door1 = map.FindDoor(@a1, @b1); at1 = Position(@x1, @y1); g.Via(@id, door1, at1); … }`.
+  `{ point = map.Find(@area); g.Visit(@id, point); g.Route(@id); door1 = map.FindDoor(@la1, @lb1); at1 = Position(@lx1, @ly1); g.Via(@id, door1, at1); … stop3 = Position(@lx3, @ly3); g.Stop(@id, stop3); }`
+  — the errand and its whole plan, one entry. The host walks the plan in memory (the cursor is telemetry,
+  like the pose) and journals only what fulfils it (`Reach`) or interrupts it (`Bump`, `Graze`).
   Names: one stop is `point`, several are `point1`, `point2`… (no numeral when there is only one; legs and
   their `@params` count from 1, as a person counts them) — Juan, 10-sep.
   The braces matter: an assignment at the top level of a command becomes a global of the actor (Fase 0,
@@ -129,9 +130,14 @@ whether it could or not, so the domain resolves what follows. Consequences:
 
 ## Architecture in one breath
 
-- `sim/` — the world: Gazebo Fortress in kiosk mode (noVNC :6080, rosbridge ws :9090).
-  Reality is GENERATED from `sim/world/plan.json` at image build (walls, doors, solid
-  blocks, bodies with contact sensors, obstacles the golems' map does not know).
+- `sim/` — the world: Gazebo Fortress in kiosk mode (noVNC :6080; the crate lever's
+  buttons WITH that picture on :6081; rosbridge ws :9090). Reality is GENERATED from
+  `sim/world/plan.json` at image build (walls, doors, solid blocks, bodies with contact
+  sensors); its `obstacles` are empty on purpose since 10-sep — a crate is pressed into
+  the RUNNING world by `sim/bridge/crates.py` (west corridor, central hall, east corridor,
+  one big crate that shuts the hall wall to wall, clear all) through Gazebo's
+  `/world/arena/create` and `/remove`, so every test starts from a clean floor. A lab
+  lever, never domain: the golems' map still knows nothing of what stands there.
 - `GolemDomain/` — the pure domain, one assembly, namespaces `GolemDomain` (`Golem`, the
   subject), `.Geometry`, `.Robots`, `.Maps` (information), `.Layouts` (the map on the plane),
   `.Touches` (what was learned by touching), `.Routes` (see glossary). The engine binds
@@ -143,9 +149,12 @@ whether it could or not, so the domain resolves what follows. Consequences:
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech).
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
   contacts are ephemeral telemetry, transitions are journaled — entrusting (MoveTo/
-  Cover/Follow with a `Position` or an area name, one act per stop), the road (Route, then Via /
-  Around / Aside / Stop, one act per leg, again after bumps), the order (MoveTo with a `Position`),
-  progress (Cross with a passage of the map, Pass with a point, Reach flat: the last Reach completes),
+  Cover/Follow with a `Position` or an area found, one act per stop) WITH its whole plan in the same
+  entry (Route, then Via / Around / Aside / Stop, one act per leg — asked of the golem with `g.Preview`
+  before the command), progress (Reach only: a stop reached implies the legs before it were walked; the
+  last Reach completes — walking a door or a point is NOT journaled, Juan 10-sep: "no estar diciéndole
+  cada cosa que va haciendo"), the interruption (Bump/Graze: the plan stops, another Route replaces what
+  was left; also when the golem wakes with a plan underway),
   touches (Bump: the fact, told; HearBump: a peer's bump; Mark/LearnMark: the marks — a touch nobody
   else reported; Forget/LearnForget), the ending (Fail/Abandon) — every write goes through one serial
   Dispatch, tells are reaction-only. The releases build the modules (`body_v1`, `warehouse_v1`, `init`);

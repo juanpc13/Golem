@@ -1,5 +1,5 @@
 {
-  "_": "Reality, as the simulator builds it (see build_world.py). The golems carry their OWN copy of places, doors and opens in their journal (release map_v1) — the obstacles they do not know: hitting one is a real collision the map never contemplated.",
+  "_": "Reality, as the simulator builds it (see build_world.py). Obstacles are EMPTY on purpose since 10-sep: the kiosk's four buttons (bridge/crates.py, :6081) put a crate in the west corridor, the central hall or the east corridor while the world RUNS, and take them away, so every test starts from a clean floor. The golems carry their OWN copy of places, doors and opens in their journal (release map_v1) — the obstacles they do not know: hitting one is a real collision the map never contemplated.",
   "world": "arena",
   "places": [
     { "name": "kitchen", "x": 0,   "y": 8, "w": 4,   "h": 3 },
@@ -31,7 +31,5 @@
     { "name": "red",   "x": 2.5,  "y": 2.5,  "yaw": 0, "color": "0.85 0.20 0.20" },
     { "name": "green", "x": 10.0, "y": 10.5, "yaw": 0, "color": "0.15 0.65 0.30" }
   ],
-  "obstacles": [
-    { "name": "crate", "x": 5.5, "y": 5.5, "w": 0.7, "d": 0.7, "h": 0.5, "color": "0.72 0.50 0.25" }
-  ]
+  "obstacles": []
 }

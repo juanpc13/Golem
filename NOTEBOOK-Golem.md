@@ -1102,3 +1102,51 @@ blue  3: { point1 = map.Find('kitchen'); g.Visit(1, point1); point2 = Position(9
      15: { point = Position(9,1.5); g.Follow(point); }
 ```
 Las dos misiones completaron; 53 tests.
+
+---
+
+## 2026-09-10 · El plan entero en una entrada; el journal calla mientras se camina
+
+**Contexto**: Juan: "la idea es justo no crear demasiados rows en el journal; con un solo [comando] podemos tener toda la ruta y seguir ese plan de punto, pero no estar diciéndole cada cosa que va haciendo el robot; solo si hizo bump, ese sí interrumpe el flujo de todos los puntos que mandó el primer comando con el plan entero". Aprobó los cinco puntos propuestos: `Reach` por parada se queda; el avance vive en el host mientras ejecuta; reiniciar a media ruta decide la ruta de nuevo; mueren las lecturas de la orden; `Graze` interrumpe igual que `Bump`.
+
+**Ajuste al dominio**: `Mission.Reach(x, y)` acepta cualquier parada por delante y avanza el cursor hasta ella (los tramos anteriores se caminaron); `MayRoute` mientras esté pendiente (una ruta nueva reemplaza lo que quedaba); mueren `MoveTo`, `Cross`, `Pass`, la orden y sus lecturas. Nacen `Golem.Preview(fromX, fromY, xs[], ys[], cover)` (la ruta de un encargo que aún no existe — arrays de primitivos como parámetros, que el motor sí acepta), `RoadAhead(id)` (los tramos por delante con su aproximación y su salida), `IsStopAhead(id, x, y)` (la guarda de `Reach`), `HeadingTo/HeadsToAStop/HeadingX/HeadingY` (lecturas del panel) y `PlannedEndX/Y` (dónde termina el último plan pendiente: el punto de partida de un encargo encolado).
+
+**Ajuste al host**: el controller pregunta `g.Preview` y escribe encargo y plan en una entrada; el lazo toma el plan con `RoadAhead`, lo recorre en memoria tramo a tramo (aproximación y salida en cada puerta), y escribe solo `Reach` (guarda `IsStopAhead`), `Bump`/`Graze` y, tras ellos, otra ruta. Al despertar con una misión pendiente decide la ruta de nuevo desde su pose, una vez. Mueren los mensajes `MissionOrdered` y `PassageCrossed`. Los `@params` de los tramos se llaman `la`, `lb`, `lx`, `ly` para no chocar con los de las paradas.
+
+**Observación en vivo** (journals en `journal-legacy-20260910-plan/`; red a `garage`, blue a `kitchen` y `garage` con `storage` encolada detrás):
+```
+red  3: { point = map.Find('garage'); g.Visit(1, point); g.Route(1); door1 = map.FindDoor('living', 'south'); at1 = Position(4,1.5); g.Via(1, door1, at1); door2 = … }
+     7: g.Reach(1, 9, 1.5);
+blue 3: { point1 = map.Find('kitchen'); g.Visit(1, point1); point2 = map.Find('garage'); g.Visit(1, point2); g.Route(1); door1 = map.FindDoor('kitchen', 'north'); … }
+     5: { point = map.Find('storage'); g.Visit(2, point); g.Route(2); door1 = map.FindDoor('east', 'garage'); at1 = Position(10.25,3); … }   ← planeada desde el garage, donde acabará la misión 1
+     9: g.Reach(1, 2, 9.5);
+    13: g.Bump(1, 5.80, 5.88, -1.43);   19: g.Mark(…);
+    25: { g.Route(1); around1 = Position(6.48,5.88); g.Around(1, around1); opening2 = map.FindOpening('center', 'south'); … }
+    28: g.Bump(1, 8.51, 1.50, …);  33: g.Met('red', …);  35: { g.Route(1); aside1 = Position(8.25,1.0); g.Aside(1, aside1); stop2 = Position(9,1.5); g.Stop(1, stop2); }
+    43: g.Reach(1, 9, 1.5);
+    53: { g.Route(2); … }   54: g.Reach(2, 9, 9.5);
+```
+Ni un `MoveTo`, `Cross` o `Pass`. Cuatro misiones completadas entre los dos, una de ellas encolada; un choque con la caja del centro recalculado con `Around`; un encuentro con red en el garage resuelto con `Met` y `Aside` (dos veces); ninguna variable intermedia en la raíz (`point`, `point1`, `door1`, `at1`, `stop2`: "has not been defined"). El único defecto: la regla del despertar disparó una ruta redundante en la primera misión tras el arranque (`woke` valía true desde el boot); corregido: solo despierta con plan en curso si ya había una misión pendiente al arrancar.
+
+**Conclusión**: de unas cuarenta filas por misión a cuatro o cinco: la decisión entera, las paradas cumplidas, y los toques con su nueva decisión. La doctrina se sostiene: el dominio decide el plan y lo escribe completo; el host lo obedece en silencio y reporta lo que lo cumple o lo interrumpe. Lo que se perdió, a sabiendas: el journal ya no dice en qué tramo iba el cuerpo entre dos paradas — al despertar, el golem decide la ruta de nuevo desde donde está.
+
+---
+
+## 2026-09-10 · La palanca de cajas: botones en la ventana del kiosko
+
+**Contexto**: Juan pide botones en la ventana de noVNC para probar mejor sobre el simulador: una caja al oeste, otra al centro, otra al este, una que limpia, y —al ver que funcionaba— una quinta caja **grande** que bloquee del todo el hall central. Las cajas deben aparecer en tiempo real, sin reconstruir la imagen.
+
+**Observación**:
+1. **El servidor de noVNC no ejecuta nada.** `websockify --web=/usr/lib/novnc 80 localhost:5902` sirve archivos estáticos y el websocket de la pantalla: un botón en esa página necesita a alguien que reciba la orden. Descartados el menú de openbox (es clic derecho, no botones) y una barra flotante con `yad` (pelearía el z-order con la ventana de Gazebo, que nace maximizada).
+2. **Gazebo Fortress acepta modelos en caliente.** Los servicios del mundo existen en la corrida: `/world/arena/create`, `/remove`, `/set_pose`. Probados en el contenedor vivo: `create` con un SDF en línea devolvió `data: true` y `ign model --list` mostró el modelo; `remove` por nombre lo quitó.
+3. **Gotcha del formato**: el SDF viaja dentro de una cadena del text-format de protobuf, así que **una comilla doble la cierra**. Con `<?xml version="1.0"?>` la petición falló (`Expected identifier, got: 1.0`); con los atributos XML entre **comillas simples** (`<sdf version='1.6'>`) y sin encabezado XML, pasa limpio.
+4. **Los servicios se llaman como `ubuntu`**, no como root: el mismo gotcha de memoria compartida de Fast DDS anotado el 3-sep. El servidor corre dentro de la sesión del kiosko, que ya es de ese usuario.
+5. **Verificado en vivo (tres puntos)**: cada botón pone su caja y el de limpiar las quita (`{"placed": ["center","east","west"]}` → `{"placed": []}`, cero modelos `crate_*`). La página pinta en ámbar los botones cuyas cajas están puestas, y el estado se pregunta **al mundo** (`ign model --list`), no a una variable del servidor: dice la verdad aunque el servidor se reinicie.
+6. **La prueba que cerró el círculo**: caja en el hall central y red enviado a la cocina cruzándolo. Chocó en (5.2, 5.0), el dominio sospechó una cosa, la marcó con su normal, la contó a los peers, decidió **otro camino** con dos tramos de rodeo y llegó a la parada. La caja puesta con un botón produce el escenario que antes exigía reconstruir la imagen.
+7. **La caja grande** (pedido de Juan, sin volver a correr robots): 2.8 × 0.7 centrada en (5.5, 5.5). El hall va de x=4.0 a 7.0, así que la caja ocupa de 4.10 a 6.90 y deja **0.10 m por lado**; el cuerpo mide 0.5 de ancho, de modo que no pasa por ninguno de los dos costados: el atajo del centro queda cerrado. Es la única grande; se pinta más oscura. **Se excluye con la caja chica del centro** (comparten el punto: poner una quita la otra, para que no queden una dentro de la otra). Verificada por servicio y a la vista: `{"placed": ["big"]}`, modelo `crate_big`, y el hall atravesado de pared a pared en la imagen. Ningún robot se movió para esta prueba.
+
+**Conclusión**: el obstáculo deja de ser propiedad del build y pasa a ser palanca del laboratorio, que es lo que hacía falta para provocar el protocolo de toques a voluntad. La página del kiosko es ahora la de la palanca (:6081) con la imagen de Gazebo embebida; la imagen desnuda sigue en :6080. Las cajas viven solo en el mundo corriendo: al recrear el contenedor, el piso vuelve a estar limpio (el plano ya no trae ninguna).
+
+**Ajuste al dominio**: **ninguno, a propósito.** Esto es infraestructura del operador (paper 06: síntoma infraestructural, no dominio): el golem no sabe que existen los botones, y las cajas siguen siendo realidad que su mapa no contempla. Archivos: `sim/bridge/crates.py` (servidor de la palanca y su página, tabla `SPOTS` de cuatro puntos), `sim/kiosk/kiosk.sh` (lo arranca junto al teleport, también en modo headless), `sim/Dockerfile` (lo copia), `docker-compose.yml` (publica :6081), `sim/world/plan.json` (la caja fija SALE: `obstacles: []`, para que cada prueba empiece con el piso limpio y el botón del centro tenga dónde poner la suya).
+
+**Pendiente**: (1) el contenedor corriendo lleva la versión de cuatro puntos aplicada en caliente (`docker cp` + reinicio de ese solo proceso, para no reiniciar el mundo mientras Juan trabajaba); **la imagen se queda con tres hasta el próximo `docker compose up -d --build`**, que la hornea; (2) los journals vivos conservan marcas de la caja fija que ya no existe — creencia obsoleta, se vio en que red planificó un rodeo antes de chocar; limpiarlos cuando Juan quiera; (3) si hacen falta más puntos, `SPOTS` crece sola: el nombre del punto es lo único que viaja en la petición, nunca una coordenada; (4) un botón que EMPUJE una caja sería `set_pose` sobre el mismo nombre, si alguna vez se quiere el obstáculo móvil.

@@ -49,10 +49,11 @@ in [CLAUDE.md](CLAUDE.md).
   does not know about the crate standing in the middle of the center hall — that is the point; what the bodies
   learn by touching lives in another module, `collisions`.
 - **The journal is the only truth.** Pose and contacts are ephemeral telemetry. Transitions are journaled:
-  `Visit`, `Cover`, `Follow` (the entrusting), `Route` (the road decided as a queue of points), `MoveTo` (the order the
-  golem gives the host, one point at a time), `Cross` and `Reach` (progress; the
-  last stop reached completes the mission), `Fail` and `Abandon` (the ending). Kill a golem mid-mission and
-  it rehydrates and resumes from where its body stands.
+  `Visit`, `Cover`, `Follow` (the entrusting) together with `Route` and its legs (the whole plan, in the same
+  entry), `Reach` (a stop reached: the legs before it were walked; the last one completes the mission), `Bump`
+  and `Graze` (a touch interrupts the plan; another `Route` replaces what was left), `Fail` and `Abandon` (the
+  ending). Walking a door or a point is not journaled: the plan said it, the body did it. Kill a golem
+  mid-mission and it rehydrates, decides its road again from where its body stands, and goes on.
 - **Speech is a reaction.** Red tells blue every stop it reaches; blue takes each told point as a mission of
   its own, follows, stops a body's length short of the leader, and abandons stale told points when newer
   ones arrive (catching up, not retracing).
@@ -116,13 +117,11 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 
 | Verb | Meaning |
 |---|---|
-| `Visit(id, place)` · `Visit(id, x, y)` · `Visit(id, stops)` | The operator sends the golem to a place, a point, or through several stops **in that order** (`{'kitchen', '9,8', 'garage'}`). Handles are minted by the actor and never reused. |
+| `Visit(id, area)` · `Visit(id, point)` | The operator sends the golem to a place, a point, or through several stops **in that order** (`{'kitchen', '9,8', 'garage'}`). Handles are minted by the actor and never reused. |
 | `Cover(id, stops)` | Several stops, and the golem **chooses the order** that makes the whole road shortest. |
 | `Follow(x, y)` | The golem follows its leader to a point a peer says it reached (handle minted inside). |
-| `Route(id, plan)` | The road decided from where the body stands, as a QUEUE of points — passages and stops in order: `kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5`. Between stops it is always the shortest road. An errand one segment away has no road to decide and gets none. |
-| `MoveTo(id, x, y)` | The order the golem gives the host: take the body exactly here. One point of the queue, written by a Reaction — never by the host, which does not choose where to go. |
-| `Cross(id, passage)` | A door or open boundary crossed. |
-| `Reach(id, x, y)` | A stop reached. Reaching the last one completes the mission — there is no separate "complete". |
+| `Route(id)` · `Via(id, passage, at)` · `Around(id, at)` · `Aside(id, at)` · `Stop(id, at)` | The plan, one act per leg in the same entry as the errand: passages to cross (a door or an opening of the map, found), points to pass (around a mark, aside from a peer) and stops to reach, in order. Between stops it is always the shortest road. An errand one segment away has no road to decide and gets none. |
+| `Reach(id, x, y)` | A stop reached: the legs before it were walked, whatever they were. Reaching the last one completes the mission — there is no separate "complete". Told to the follower. |
 | `Bump(id, x, y, heading)` · `Bump(x, y, heading)` | The body touched something the map does not hold, heading that way — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is concluded afterwards, by the domain. |
 | `HearBump(who, x, y)` | A peer told it bumped at a point. A touch of my own there and then was that peer: a body, not a thing. |
 | `Graze(id, x, y)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the mission up. |
@@ -138,7 +137,7 @@ concrete map, each area found once and told what it is in one train (`map = MapL
 map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
 map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the
 abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `g.Visit(1, Position(9.0, 8.0))`,
-`g.Cross(1, map.DoorBetween('kitchen', 'north'))`, the road one act per leg (`g.Route(1); g.Via(…); g.Stop(…)`)
+the plan one act per leg in the errand's own entry (`g.Route(1); door1 = map.FindDoor('kitchen', 'north'); at1 = Position(4.0, 9.5); g.Via(1, door1, at1); … g.Stop(1, stop3);`)
 — except what is told to the peers, which travels flat. Evolve the golem by appending a release, never by
 editing an applied one.
 

@@ -161,12 +161,13 @@ internal sealed class Golem
     }
 
     /// <summary>The golem starts deciding a mission's road: the acts that follow (Via, Around, Aside, Stop) are its
-    /// legs, in order, the last stop last — all in one journal entry. A road already decided is decided again only
-    /// after the body bumped into something on it. Returns the mission id.</summary>
+    /// legs, in order, the last stop last — all in one journal entry, with the errand itself when it is new. A new
+    /// road replaces what was left of the old one: after a bump, or when the golem wakes with a plan underway.
+    /// Returns the mission id.</summary>
     internal int Route(int id)
     {
         var mission = Find(id);
-        if (!mission.MayRoute) throw new DomainException($"mission {id} already has its road");
+        if (!mission.MayRoute) throw new DomainException($"mission {id} is not pending: no road to decide");
         drafting[id] = new List<Leg>();
         return id;
     }
@@ -211,32 +212,32 @@ internal sealed class Golem
         return draft.Count;
     }
 
-    /// <summary>The golem tells the host where to drive: one point, one segment — "take the body exactly here".
-    /// The order the host carries out; it must be the point the road holds next (or the stop, on an errand walked
-    /// without a road). Returns the mission id.</summary>
-    internal int MoveTo(int id, Position at)
+    /// <summary>The road a NEW errand would take, before it exists: from a point, through stops given as two arrays
+    /// (x and y, in order — or in the order the golem chooses, for a Cover), for this body over this map and what it
+    /// learned. What the operator's command reads to write the errand and its whole plan in one entry.</summary>
+    internal Trajectory Preview(double fromX, double fromY, double[] xs, double[] ys, bool choosesOrder)
     {
-        if (at == null) throw new DomainException($"mission {id}'s order needs a point");
-        Find(id).MoveTo(at.X, at.Y);
-        return id;
+        if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length) throw new DomainException("a preview needs its stops as two arrays of the same length");
+        var from = new Position(fromX, fromY);
+        var stops = xs.Select((x, i) => new Position(x, ys[i])).ToList();
+        foreach (var stop in stops)
+            if (!layout.IsOnMap(stop)) throw new DomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
+        var planner = Planner();
+        return planner.Road(from, choosesOrder ? planner.BestOrder(from, stops) : stops);
     }
 
-    /// <summary>Whether the mission still has a point to head to — what to consult before ordering, so a spent queue orders nothing.</summary>
-    internal bool HasNextPoint(int id) => Find(id).HasNextPoint;
+    /// <summary>The plan ahead of a mission: every leg not yet known to be walked, each with how it is walked (line up
+    /// at the approach, end at the exit). What the host takes to walk the plan in its memory, leg by leg, journaling
+    /// nothing but what changes the plan or fulfils it.</summary>
+    internal Trajectory RoadAhead(int id) => new(Find(id).LegsAhead);
 
-    /// <summary>Whether the golem has already said where the host must drive: an order is standing.</summary>
-    internal bool IsOrdered(int id) => Find(id).IsOrdered;
+    /// <summary>Whether a stop of the mission lies ahead at (x, y) — what to consult before saying it was reached.</summary>
+    internal bool IsStopAhead(int id, double x, double y) => Find(id).IsStopAhead(x, y);
 
-    /// <summary>Whether getting from (x, y) through the stops ahead takes more than one segment — that is, whether
-    /// there is a road to decide at all. An errand to a point in the same zone, with nothing in between, has none:
-    /// the golem heads straight there and no Route is written.</summary>
-    internal bool NeedsRoad(int id, double x, double y)
-    {
-        var mission = Find(id);
-        if (mission.IsRouted) return false;
-        try { return Planner().Road(new Position(x, y), mission.StopsAhead.ToList()).Count > 1; }
-        catch (DomainException) { return true; }   // no straight way: deciding a road is exactly what is needed
-    }
+    /// <summary>Where the last pending mission ends: the point a NEW errand's plan should start from when the golem is
+    /// busy — it will stand there when the new errand comes up. Consult HasPendingMission first.</summary>
+    internal double PlannedEndX() => LastPending().StopsAhead.Last().X;
+    internal double PlannedEndY() => LastPending().StopsAhead.Last().Y;
 
     /// <summary>The evasion maneuver a strategy ('back-off', 'step-right', 'step-left') plans from where the body
     /// stands and the heading it had when it touched something: a trajectory to walk with foreach. A read: the
@@ -308,27 +309,10 @@ internal sealed class Golem
     /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a meeting's reach; "" for nobody.</summary>
     internal string HeardBumpNear(double x, double y, int sinceCount) => collisions.HeardNear(new Position(x, y), sinceCount);
 
-    // ---- missions: the progress ----
+    // ---- missions: the progress — only what fulfils the plan is journaled ----
 
-    /// <summary>The golem crossed the next passage of its road — a door or an opening of its map. Returns the mission id.</summary>
-    internal int Cross(int id, Passage passage)
-    {
-        if (passage == null) throw new DomainException($"mission {id} crosses a passage of the map");
-        Find(id).Cross(passage.Name);
-        return id;
-    }
-
-    /// <summary>The golem passed the next point of its road that is neither a passage nor a stop: a detour around a
-    /// mark, or a courtesy step out of a peer's way. Returns the mission id.</summary>
-    internal int Pass(int id, Position at)
-    {
-        if (at == null) throw new DomainException($"mission {id} passes a point");
-        Find(id).Pass(at);
-        return id;
-    }
-
-    /// <summary>The golem reached the next stop of its road; reaching the last one completes the mission. Told to the
-    /// peers, so it travels flat. Returns the mission id.</summary>
+    /// <summary>The golem reached a stop of its road: the legs before it were walked, whatever they were; reaching the
+    /// last one completes the mission. Told to the peers, so it travels flat. Returns the mission id.</summary>
     internal int Reach(int id, double x, double y)
     {
         Find(id).Reach(x, y);
@@ -374,11 +358,11 @@ internal sealed class Golem
     internal int Grazes(int id) => Find(id).Grazes;
     /// <summary>Whether the golem still retries the leg after grazing a known wall — its patience on this leg is not spent.</summary>
     internal bool MayRetryLeg(int id) => Find(id).MayRetryLeg;
-    /// <summary>The next leg's name: a passage to cross, around/aside for a point to pass, or the zone of the stop to reach.</summary>
-    internal string OrderPassage(int id) => Find(id).NextLeg.Name;
-    /// <summary>The next leg's kind: door, opening, around, aside or stop.</summary>
-    internal string OrderKind(int id) => Find(id).NextLeg.Kind;
-    internal bool OrderIsStop(int id) => Find(id).NextLeg.IsStop;
+    /// <summary>What the mission heads to first: a passage's name, around/aside for a point, or the zone of the stop.</summary>
+    internal string HeadingTo(int id) => Find(id).NextLeg.Name;
+    /// <summary>The kind of the leg ahead: door, opening, around, aside or stop.</summary>
+    internal string HeadingKind(int id) => Find(id).NextLeg.Kind;
+    internal bool HeadsToAStop(int id) => Find(id).NextLeg.IsStop;
     internal bool HasPendingMission() => missions.Any(m => m.IsPending());
     internal int Pending() => missions.Count(m => m.IsPending());
     internal int[] PendingIds() => missions.Where(m => m.IsPending()).Select(m => m.Id).ToArray();
@@ -431,19 +415,9 @@ internal sealed class Golem
     // ---- reads (guarded: consult HasPendingMission() first) ----
 
     internal int NextId() => NextPending().Id;
-    /// <summary>Where the body should head now: the next leg of the road when routed, the first stop before that.</summary>
-    internal double OrderX() => NextPending().NextLeg.At.X;
-    internal double OrderY() => NextPending().NextLeg.At.Y;
-
-    /// <summary>Where a GIVEN mission heads next — what the order must name. Consult Knows(id) and HasNextPoint(id).</summary>
-    internal double OrderX(int id) => Find(id).NextLeg.At.X;
-    internal double OrderY(int id) => Find(id).NextLeg.At.Y;
-    /// <summary>How the next leg is walked: line up at the approach, end at the exit. For a door they stand off the wall on
-    /// either side (the body crosses it straight); for an opening or a stop they are the point itself.</summary>
-    internal double OrderApproachX() => NextPending().NextLeg.Approach.X;
-    internal double OrderApproachY() => NextPending().NextLeg.Approach.Y;
-    internal double OrderExitX() => NextPending().NextLeg.Exit.X;
-    internal double OrderExitY() => NextPending().NextLeg.Exit.Y;
+    /// <summary>Where the body heads now: the first leg ahead of the next pending mission.</summary>
+    internal double HeadingX() => NextPending().NextLeg.At.X;
+    internal double HeadingY() => NextPending().NextLeg.At.Y;
 
     // ---- inside ----
 
@@ -472,6 +446,13 @@ internal sealed class Golem
     {
         foreach (Mission m in missions)
             if (m.IsPending()) return m;
+        throw new DomainException("no pending mission: consult HasPendingMission() first");
+    }
+
+    private Mission LastPending()
+    {
+        for (int i = missions.Count - 1; i >= 0; i--)
+            if (missions[i].IsPending()) return missions[i];
         throw new DomainException("no pending mission: consult HasPendingMission() first");
     }
 

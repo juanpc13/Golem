@@ -8,29 +8,6 @@ namespace GolemAPI.Choreography;
 // TypeId tag — so the wire layout is decided in exactly one place. Deserialize
 // parses raw[1..] (raw[0] is the tag).
 
-// The order: the golem tells the host where to drive next — one point of its queue.
-public sealed class MissionOrdered : IDispatchMessage
-{
-    public static int TypeId => 'O';
-    public int Id { get; private init; }
-    public double X { get; private init; }
-    public double Y { get; private init; }
-
-    public static IDispatchMessage Deserialize(string raw)
-    {
-        var parts = raw[1..].Split('|');
-        return new MissionOrdered
-        {
-            Id = int.Parse(parts[0], CultureInfo.InvariantCulture),
-            X = double.Parse(parts[1], CultureInfo.InvariantCulture),
-            Y = double.Parse(parts[2], CultureInfo.InvariantCulture)
-        };
-    }
-
-    public static string Payload(int id, double x, double y) =>
-        $"{id}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}";
-}
-
 // The golem decided the road of a mission: its legs, as RoadLeg encodes them — written back as one act per leg.
 public sealed class MissionRouted : IDispatchMessage
 {
@@ -49,32 +26,6 @@ public sealed class MissionRouted : IDispatchMessage
     }
 
     public static string Payload(int id, string road) => $"{id}|{road}";
-}
-
-// The body crossed the next leg of a mission's road that is not a stop: a passage (kitchen/north, north~center)
-// or a point to pass (around, aside) — the point travels too, so the act can name it.
-public sealed class PassageCrossed : IDispatchMessage
-{
-    public static int TypeId => 'P';
-    public int Id { get; private init; }
-    public string Passage { get; private init; } = "";
-    public double X { get; private init; }
-    public double Y { get; private init; }
-
-    public static IDispatchMessage Deserialize(string raw)
-    {
-        var parts = raw[1..].Split('|');
-        return new PassageCrossed
-        {
-            Id = int.Parse(parts[0], CultureInfo.InvariantCulture),
-            Passage = parts[1],
-            X = double.Parse(parts[2], CultureInfo.InvariantCulture),
-            Y = double.Parse(parts[3], CultureInfo.InvariantCulture)
-        };
-    }
-
-    public static string Payload(int id, string passage, double x, double y) =>
-        $"{id}|{passage}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}";
 }
 
 // The body reached the next stop of a mission's road (the last one completes the mission).

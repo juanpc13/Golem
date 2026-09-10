@@ -53,7 +53,7 @@
   /* journal feed */
   #feed, #events { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;
           overflow-y:auto; font-family:ui-monospace, monospace; font-size:13px; }
-  #feed { max-height:44vh; }
+  #feed { max-height:66vh; }
   #events { max-height:22vh; }
   #feed li, #events li { display:flex; gap:10px; align-items:baseline; padding:7px 10px;
              border-radius:8px; background:var(--surface); border:1px solid var(--line); }
@@ -131,7 +131,16 @@
   </section>
 
   <section>
-    <h2>Obstacles</h2>
+    <h2>Journal — live</h2>
+    <ul id="feed"></ul>
+    <p class="hint" style="margin-top:8px">
+      Everything the journal receives, record by record, as it lands: the release chain, each
+      <code>define action</code> (the template), each action (the template with its arguments), the
+      tells, the acks and the verdicts. The tag at the right is the record kind. At boot the whole
+      diary is replayed here first.
+    </p>
+
+    <h2 style="margin-top:20px">Obstacles</h2>
     <div class="card" style="margin-bottom:20px">
       <p class="hint">What the golem HYPOTHESIZES from what its bodies touched — one query on <code>/obstacles</code>
       walking <code>g.Obstacles()</code>. A <b>thing</b> is geometry the roads avoid: its vertices are the marks that
@@ -140,7 +149,13 @@
       <table id="obstacles"><tbody></tbody></table>
     </div>
 
-    <h2>PerformQuery</h2>
+    <h2 style="margin-top:20px">Runtime events</h2>
+    <ul id="events"></ul>
+    <p class="hint" style="margin-top:8px">
+      Ephemeral facts (roads chosen, legs started, holds, membrane, lifecycle) — they never touch the journal.
+    </p>
+
+    <h2 style="margin-top:20px">PerformQuery</h2>
     <div class="card ops" style="margin-bottom:20px">
       <div class="row">
         <input id="q" type="text" style="flex:1; width:auto" spellcheck="false"
@@ -168,7 +183,7 @@
         <button data-q="collisions.MarkCount">collisions.MarkCount</button>
         <button data-q="body.Radius">body.Radius</button>
         <button data-q="g.FitsAt(10.25, 5.5)">FitsAt(10.25, 5.5)</button>
-        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.OrderPassage(g.NextId()) 'heading', g.OrderIsStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
+        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.HeadingTo(g.NextId()) 'heading', g.HeadsToAStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <details class="hint"><summary>Why a query must stay read-only</summary><p>Queries read the golem's in-memory state and never touch the journal.
@@ -178,20 +193,6 @@
       <i>route left · eta</i> comes from <code>/progress</code>, which only adds the road from where the body stands.</p></details>
     </div>
 
-    <h2>Journal — live</h2>
-    <ul id="feed"></ul>
-    <p class="hint" style="margin-top:8px">
-      Everything the journal receives, record by record, as it lands: the release chain, each
-      <code>define action</code> (the template), each action (the template with its arguments), the
-      tells, the acks and the verdicts. The tag at the right is the record kind. At boot the whole
-      diary is replayed here first.
-    </p>
-
-    <h2 style="margin-top:20px">Runtime events</h2>
-    <ul id="events"></ul>
-    <p class="hint" style="margin-top:8px">
-      Ephemeral facts (roads chosen, legs started, holds, membrane, lifecycle) — they never touch the journal.
-    </p>
   </section>
 </main>
 

@@ -186,44 +186,11 @@ public sealed class GolemChoreography
         // Crossing a passage and reaching a stop happen as many times per mission as the road has
         // legs: REPEATED events, so they are plain command handlers (idempotent per message id — one
         // id per leg), NOT saga steps: a saga runs a given step once per key and silently drops a repeat.
-        dispatch.On<PassageCrossed>((actor, m) =>
-        {
-            // a door or an opening is an object of the map; a detour or a courtesy step is a point passed
-            string kind = m.Passage.Contains('/') ? "door" : m.Passage.Contains('~') ? "opening" : "point";
-            // step by step inside braces: the object is found or built from the @params, named, then used —
-            // and the name dies with the block (an assignment outside braces would become a global of the actor)
-            string act = kind == "door" ? "{ door = map.FindDoor(@a, @b); g.Cross(@id, door); }"
-                       : kind == "opening" ? "{ opening = map.FindOpening(@a, @b); g.Cross(@id, opening); }"
-                       : "{ point = Position(@x, @y); g.Pass(@id, point); }";
-            var ab = kind == "point" ? new[] { "", "" } : m.Passage.Split(kind == "door" ? '/' : '~');
-            string refused = actor.Using(
-                @"
-                    Check(g.Knows(@id) && g.IsPending(@id) && g.OrderIsStop(@id) == false && g.OrderPassage(@id) == @passage) Error 'that is not the passage ahead';
-                ",
-                act)
-            .WithParameters(p => {
-                p["id",      typeof(int)]    = m.Id;
-                p["passage", typeof(string)] = m.Passage;
-                if (kind == "point")
-                {
-                    p["x", typeof(double)] = m.X;
-                    p["y", typeof(double)] = m.Y;
-                }
-                else
-                {
-                    p["a", typeof(string)] = ab[0];
-                    p["b", typeof(string)] = ab[1];
-                }
-            })
-            .PerformCheckThenCommand();
-            Settle(refused, $"mission {m.Id} {(kind == "point" ? "passed" : "crossed")} {m.Passage}");
-        });
-
         dispatch.On<StopReached>((actor, m) =>
         {
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id) && g.OrderIsStop(@id) && g.OrderX(@id) == @x && g.OrderY(@id) == @y) Error 'that is not the stop ahead';
+                    Check(g.Knows(@id) && g.IsPending(@id) && g.IsStopAhead(@id, @x, @y)) Error 'that is not a stop ahead';
                 ",
                 @"
                     g.Reach(@id, @x, @y);
@@ -237,30 +204,6 @@ public sealed class GolemChoreography
             Settle(refused, $"mission {m.Id} reached the stop ({m.X:0.0}, {m.Y:0.0})");
         });
 
-        // The order: where the body must drive next. The host does not choose it — it reads the point the
-        // golem's queue holds next and writes it down, so the drive is told by the journal and not by this loop.
-        // Repeating the same point is legal: after a touch the golem may hand the same order back.
-        dispatch.On<MissionOrdered>((actor, m) =>
-        {
-            string refused = actor.Using(
-                @"
-                    Check(g.Knows(@id) && g.IsPending(@id) && g.HasNextPoint(@id)) Error 'no point to head to';
-                ",
-                @"
-                    {
-                        point = Position(@x, @y);
-                        g.MoveTo(@id, point);
-                    }
-                ")
-            .WithParameters(p => {
-                p["id", typeof(int)]    = m.Id;
-                p["x",  typeof(double)] = m.X;
-                p["y",  typeof(double)] = m.Y;
-            })
-            .PerformCheckThenCommand();
-            Settle(refused, $"mission {m.Id}: heading to ({m.X:0.0}, {m.Y:0.0})");
-        });
-
         // Deciding the road can happen more than once per mission — again after every bump that
         // closed the way — so it is a plain handler too, guarded by the domain's own rule.
         dispatch.On<MissionRouted>((actor, m) =>
@@ -270,22 +213,12 @@ public sealed class GolemChoreography
             var legs = RoadLeg.Decode(m.Road);
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id) && (g.IsRouted(@id) == false || g.HasBumpedSinceRoute(@id))) Error 'mission already has its road';
+                    Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                 ",
                 RoadLeg.Script(legs))
             .WithParameters(p => {
                 p["id", typeof(int)] = m.Id;
-                for (int i = 0; i < legs.Count; i++)
-                {
-                    int n = i + 1;
-                    p[$"x{n}", typeof(double)] = legs[i].X;
-                    p[$"y{n}", typeof(double)] = legs[i].Y;
-                    if (legs[i].Kind == "door" || legs[i].Kind == "opening")
-                    {
-                        p[$"a{n}", typeof(string)] = legs[i].A;
-                        p[$"b{n}", typeof(string)] = legs[i].B;
-                    }
-                }
+                RoadLeg.Bind(p, legs);
             })
             .PerformCheckThenCommand();
             Settle(refused, $"mission {m.Id} takes the road {RoadLeg.Describe(legs)}");
@@ -454,8 +387,6 @@ public sealed class GolemChoreography
         int tag = kind switch
         {
             "routed"    => MissionRouted.TypeId,
-            "ordered"   => MissionOrdered.TypeId,
-            "crossed"   => PassageCrossed.TypeId,
             "reached"   => StopReached.TypeId,
             "bumped"    => MissionBumped.TypeId,
             "marked"    => ObstacleMarked.TypeId,
@@ -547,11 +478,17 @@ public sealed class GolemChoreography
     public async Task RunAsync(CancellationToken ct)
     {
         int announcedFor = 0;
-        string announcedLeg = null;
+        int announcedLeg = -1;
         int yields = 0;        // times the golem waited for a peer on the current leg
-        int marksAtRoute = -1; // how many marks the map held when the current road was decided
+        int marksAtRoute = -1; // how many marks the map held when the current plan was decided
         bool gaveWay = false;  // the body moved off its road to let a peer pass: the road is decided again from where it stands
-        int orders = 0;        // orders written, so a repeated point after a touch is not taken for a redelivery
+        // A plan underway at boot (a mission already pending when the golem woke) is decided again from where the
+        // body stands — it may be anywhere. A mission that arrives later comes with its plan and is walked as it came.
+        bool woke = ReadPlan().Has;
+        List<RoadLeg> legs = null;   // the plan ahead, as the golem handed it out — walked here, in memory, leg by leg
+        int legsFor = 0;             // the mission that plan belongs to
+        int plans = 0;               // plans taken up, so a stop reached on a later plan is never taken for a redelivery
+        int cursor = 0;              // the leg being walked
         Probe probe = null;    // the feeling-past state on the current leg, after a bump into the unknown
         while (!ct.IsCancellationRequested)
         {
@@ -576,24 +513,16 @@ public sealed class GolemChoreography
                 continue;
             }
 
-            // The road is decided when the mission comes up — and decided AGAIN when the body bumped into
-            // something on it, the map holds marks it did not hold when the road was decided (a bump that
-            // turned out to be a peer leaves none: same road), and feeling past it, right and left, found
-            // no way: the next road skirts the marks or goes round; when no road fits the body, the mission fails.
+            // The plan is written whole and walked in silence (Juan, 10-sep). It is decided HERE only when the mission
+            // has none (a followed point), when the body bumped into something on it (the plan is interrupted: another
+            // road from where the body stands, past the marks it did not know), or when the golem woke up with a plan
+            // underway (its body may be anywhere). A mission that arrived with its plan is walked as it came.
             bool newMarks = marksAtRoute < 0 || Marks() != marksAtRoute;
             bool reRoute = plan.BumpedSinceRoute && (newMarks || gaveWay);
-            if (!plan.Routed || reRoute)
+            if (!plan.Routed || reRoute || (woke && plan.Routed))
             {
                 var here = ros.LatestPose;
                 if (here == null) { await Task.Delay(200, ct); continue; }
-                // Is there a road to decide at all? The domain answers with the pose the host carries: an errand
-                // one segment away has none — the golem heads straight there and no road is written.
-                if (!plan.Routed && !reRoute && !NeedsRoad(plan.Id, here.X, here.Y))
-                {
-                    // nothing to decide: fall through and say where to drive
-                }
-                else
-                {
                 List<RoadLeg> road;
                 try
                 {
@@ -606,7 +535,7 @@ public sealed class GolemChoreography
                     // touch on the way is journaled like any other, so the feeling is told even if it fails.
                     if (plan.BumpedSinceRoute)
                     {
-                        probe ??= new Probe(plan.Id, plan.Passage, lane);
+                        probe ??= new Probe(plan.Id, legs != null && cursor < legs.Count ? LegName(legs[cursor]) : "", lane);
                         if (await FeelForAWayPastAsync(plan.Id, key, probe, ct))
                         {
                             string felt = $"mission {plan.Id}: no road on the map, but a way by feel — deciding the road again from here";
@@ -619,57 +548,72 @@ public sealed class GolemChoreography
                     if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(2), ct);
                     continue;
                 }
-                string verb = plan.Routed ? "another road" : "road";
+                string verb = !plan.Routed ? "road" : woke ? "road again, awake with a plan underway" : "another road";
                 Console.WriteLine($"[golem {golem}] mission {plan.Id}: {verb} {RoadLeg.Describe(road)}");
                 feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: {verb} {RoadLeg.Describe(road)}", DateTime.UtcNow));
-                Produce("routed", $"{key}:routed:{plan.Bumps}", MissionRouted.Payload(plan.Id, RoadLeg.Encode(road)));
+                Produce("routed", $"{key}:routed:{plan.Bumps}:{(woke ? "woke" : "")}{Marks()}", MissionRouted.Payload(plan.Id, RoadLeg.Encode(road)));
                 await WaitUntilAsync(() => IsRouted(plan.Id) && !HasBumpedSinceRoute(plan.Id), ct);
                 marksAtRoute = Marks();
                 gaveWay = false;
                 probe = null;
+                woke = false;
+                legs = null;
                 continue;
-                }
             }
+            woke = false;
 
-            // The golem says where the body must go: the point its queue holds next. The host reads it and
-            // writes it down; it never picks one. A touch voids the standing order, so this is also how the
-            // drive resumes after a graze or a bump.
-            if (!plan.Ordered)
+            // Take up the plan: every leg ahead, with how each is walked. From here on the host walks it in memory
+            // and comes back to the journal only for what fulfils it (a stop reached) or interrupts it (a touch).
+            if (legs == null || legsFor != plan.Id)
             {
-                orders++;
-                Produce("ordered", $"{key}:b{plan.Bumps}:order:{orders}", MissionOrdered.Payload(plan.Id, plan.X, plan.Y));
-                if (!await WaitUntilAsync(() => IsOrdered(plan.Id), ct)) await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                legs = RoadAhead(plan.Id);
+                legsFor = plan.Id;
+                cursor = 0;
+                plans++;
+                marksAtRoute = Marks();
+                if (legs.Count == 0) { await Task.Delay(500, ct); legs = null; continue; }
+                string taken = $"mission {plan.Id}: walking the plan — {RoadLeg.Describe(legs)}";
+                Console.WriteLine($"[golem {golem}] {taken}");
+                feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", taken, DateTime.UtcNow));
+            }
+            if (cursor >= legs.Count)
+            {
+                // every leg walked: the last stop reached settles the mission; if the journal says otherwise, re-read
+                if (!await WaitUntilAsync(() => IsSettled(plan.Id), ct)) legs = null;
                 continue;
             }
+            var leg = legs[cursor];
+            bool lastStop = leg.Kind == "stop" && legs.Skip(cursor + 1).All(l => l.Kind != "stop");
 
             // The last stop of a followed mission is met a body's length short: the leader may still be there.
-            bool standoff = plan.Following && plan.LegsLeft == 1;
-            if (announcedFor != plan.Id || announcedLeg != plan.Passage)
+            bool standoff = plan.Following && lastStop;
+            if (announcedFor != plan.Id || announcedLeg != cursor)
             {
                 announcedFor = plan.Id;
-                announcedLeg = plan.Passage;
+                announcedLeg = cursor;
                 yields = 0;
                 probe = null;
-                string what = plan.IsStop ? $"heading to the stop in {plan.Passage}"
-                            : plan.Passage == "around" ? "heading around a mark" : $"heading to the passage {plan.Passage}";
+                string what = leg.Kind == "stop" ? "heading to a stop"
+                            : leg.Kind == "around" ? "heading around a mark"
+                            : leg.Kind == "aside" ? "stepping aside" : $"heading to the passage {LegName(leg)}";
                 if (standoff) what += $", stopping {LeaderStandoff:0.0} short of the leader's spot";
-                Console.WriteLine($"[golem {golem}] mission {plan.Id}: {what} ({plan.X:0.0}, {plan.Y:0.0})");
-                feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: {what} ({plan.X:0.0}, {plan.Y:0.0})", DateTime.UtcNow));
+                Console.WriteLine($"[golem {golem}] mission {plan.Id}: {what} ({leg.X:0.0}, {leg.Y:0.0}) — leg {cursor + 1} of {legs.Count}");
+                feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: {what} ({leg.X:0.0}, {leg.Y:0.0}) — leg {cursor + 1} of {legs.Count}", DateTime.UtcNow));
             }
 
             // A door is crossed straight: line up in front of it, then run through to the far side.
-            // The map says where those two points are; an opening or a stop is a single run.
+            // The plan says where those two points are; an opening, a point or a stop is a single run.
             Outcome outcome = Outcome.Arrived;
             heardAtDriveStart = HeardBumpCount();
             var from = ros.LatestPose;
             if (from != null)
-                lane = (plan.ApproachX != plan.ExitX || plan.ApproachY != plan.ExitY)
-                    ? Math.Atan2(plan.ExitY - plan.ApproachY, plan.ExitX - plan.ApproachX)
-                    : Math.Atan2(plan.ExitY - from.Y, plan.ExitX - from.X);
-            if (plan.ApproachX != plan.ExitX || plan.ApproachY != plan.ExitY)
-                outcome = await navigator.GoToAsync(plan.ApproachX, plan.ApproachY, LineUpWithin, ct);
+                lane = leg.IsCrossedStraight
+                    ? Math.Atan2(leg.EY - leg.AY, leg.EX - leg.AX)
+                    : Math.Atan2(leg.EY - from.Y, leg.EX - from.X);
+            if (leg.IsCrossedStraight)
+                outcome = await navigator.GoToAsync(leg.AX, leg.AY, LineUpWithin, ct);
             if (outcome.Reached && !ct.IsCancellationRequested)
-                outcome = await navigator.GoToAsync(plan.ExitX, plan.ExitY, standoff ? LeaderStandoff : ArriveWithin, ct);
+                outcome = await navigator.GoToAsync(leg.EX, leg.EY, standoff ? LeaderStandoff : ArriveWithin, ct);
             if (ct.IsCancellationRequested) break;
 
             if (!outcome.Reached)
@@ -683,8 +627,8 @@ public sealed class GolemChoreography
                     var first = Suspect(outcome.Hit, heardAtDriveStart);
                     if (first.Kind == "wall")
                     {
-                        // A wall I know: my own execution error. The host reports it and waits: the golem either hands
-                        // the order back (line up and try the leg again) or ends the mission. Neither is the host's call.
+                        // A wall I know: my own execution error. The host reports it and waits: the golem either keeps
+                        // its patience (the leg is tried again) or has spent it (the mission ends). Neither is the host's call.
                         int grazesBefore = Grazes(plan.Id);
                         string note = $"mission {plan.Id}: grazed {outcome.Hit.With} at {where}, a wall I know — telling the golem";
                         Console.WriteLine($"[golem {golem}] {note}");
@@ -692,7 +636,6 @@ public sealed class GolemChoreography
                         Produce("grazed", $"{key}:b{plan.Bumps}:graze:{grazesBefore + 1}",
                                 MissionGrazed.Payload(plan.Id, outcome.Hit.X, outcome.Hit.Y));
                         await WaitUntilAsync(() => Grazes(plan.Id) > grazesBefore, ct);
-                        // the golem decides whether its patience with its own error is spent; the host obeys
                         if (MayRetryLeg(plan.Id)) continue;
                         reason = $"still grazing {outcome.Hit.With} at {where} after {Grazes(plan.Id)} grazes: patience spent";
                     }
@@ -700,40 +643,37 @@ public sealed class GolemChoreography
                     {
                         // Something the map does not hold. The touch is journaled and told; then the golem waits for
                         // the peers to speak and asks the domain what it suspects. A peer: met, coordinate. Nobody: a
-                        // thing — marked (told), and the golem feels for a way past it; both sides given up, the loop
-                        // above decides the road anew.
+                        // thing — marked (told), and the plan is interrupted: the loop above decides another road.
                         string who = await BumpAndListenAsync(plan.Id, key, outcome.Hit, ct);
                         if (who != "")
                         {
                             if (yields < MaxYields)
                             {
                                 yields++;
-                                // It was a body, and it told where it stands. Nothing to invent and nothing to
-                                // hide: the golem decides a road that steps out of its way — the courtesy step is
-                                // the first leg (aside@x,y), ordered and reported like any other. Both bodies do
-                                // this, each to its own right, which is how two of them pass instead of shove.
+                                // It was a body, and it told where it stands. The golem decides a road that steps out of
+                                // its way — the courtesy step is the first leg (aside), walked like any other. Both bodies
+                                // do this, each to its own right, which is how two of them pass instead of shove.
                                 var mine = ros.LatestPose;
                                 if (mine == null) { await Task.Delay(200, ct); continue; }
                                 var past = RoadPast(plan.Id, who, mine.X, mine.Y, lane);
                                 string note = $"mission {plan.Id}: met {who} at {where} — stepping out of its way: {RoadLeg.Describe(past)}";
                                 Console.WriteLine($"[golem {golem}] {note}");
                                 feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));
-                                // the bump count read at the top of the turn is STALE by now (this very touch bumped
-                                // it), and a repeated key is dropped in silence: name the road by what it answers to
                                 Produce("routed", $"{key}:routed:{Bumps(plan.Id)}:met{yields}", MissionRouted.Payload(plan.Id, RoadLeg.Encode(past)));
                                 await WaitUntilAsync(() => IsRouted(plan.Id) && !HasBumpedSinceRoute(plan.Id), ct);
                                 marksAtRoute = Marks();
                                 probe = null;
+                                legs = null;
                                 continue;
                             }
                             reason = $"blocked by {who} at {where} after meeting it {MaxYields} times";
                         }
                         else
                         {
-                            // A thing, now marked. Nothing to invent here: the golem decides its road again and the
-                            // planner puts the way round the mark in it — the emergency point the journal will name
-                            // as an 'around' leg and order like any other. Feeling by touch is the LAST resort, and
-                            // only when no road fits at all (below, where the planner refuses).
+                            // A thing, now marked: the plan is interrupted. The golem decides its road again and the
+                            // planner puts the way round the mark in it — an 'around' leg, walked like any other.
+                            // Feeling by touch is the LAST resort, only when no road fits at all (above, where the planner refuses).
+                            legs = null;
                             continue;
                         }
                     }
@@ -743,25 +683,26 @@ public sealed class GolemChoreography
                 continue;
             }
 
-            // One message id per leg — of THIS road: a road decided again after bumps counts its legs anew,
-            // so the bump count tells the roads apart.
-            if (!plan.IsStop)
+            // A passage crossed or a point passed is walked in silence: the plan said it, the body did it.
+            if (leg.Kind != "stop")
             {
-                Produce("crossed", $"{key}:b{plan.Bumps}:cross:{plan.LegsLeft}", PassageCrossed.Payload(plan.Id, plan.Passage, plan.X, plan.Y));
-                await WaitUntilAsync(() => LegsLeft(plan.Id) < plan.LegsLeft, ct);
+                cursor++;
                 continue;
             }
 
-            bool last = plan.LegsLeft == 1;
-            Produce("reached", $"{key}:b{plan.Bumps}:reach:{plan.LegsLeft}", StopReached.Payload(plan.Id, plan.X, plan.Y));
-            if (!await WaitUntilAsync(() => last ? IsSettled(plan.Id) : LegsLeft(plan.Id) < plan.LegsLeft, ct))
+            // A stop reached is journaled: it fulfils part of the plan (the legs before it were walked) and tells the
+            // peers; the last one completes the mission. One message id per stop of THIS plan.
+            int stopsBefore = plan.StopsLeft;
+            Produce("reached", $"{key}:p{plans}:reach:{cursor}", StopReached.Payload(plan.Id, leg.X, leg.Y));
+            if (!await WaitUntilAsync(() => lastStop ? IsSettled(plan.Id) : StopsLeft(plan.Id) < stopsBefore, ct))
                 await Task.Delay(TimeSpan.FromSeconds(2), ct); // never re-drive on a timeout; back off and re-read
-            if (!last) continue;
+            cursor++;
+            if (!lastStop) continue;
 
             ReportLocalization(plan.Id);
 
             // Pacing: a stop a peer told us about is a stop that peer is already past. Lingering there
-            // a while keeps the leader's lead. How long is the golem's own property (the init release);
+            // a while keeps the leader's lead. How long is the golem's own property (the body release);
             // the pause itself is runtime — the mission is settled and nothing about the wait belongs
             // in the journal. And the follower pulls over first: its standoff spot lies on the line the
             // leader walked in on, which is the line the leader walks out on.
@@ -771,14 +712,16 @@ public sealed class GolemChoreography
                 var hold = TimeSpan.FromSeconds(LingerAfterTold());
                 if (hold > TimeSpan.Zero)
                 {
-                    Console.WriteLine($"[golem {golem}] lingering {hold.TotalSeconds:0} s at ({plan.X:0.0}, {plan.Y:0.0}) to keep the leader's lead");
+                    Console.WriteLine($"[golem {golem}] lingering {hold.TotalSeconds:0} s at ({leg.X:0.0}, {leg.Y:0.0}) to keep the leader's lead");
                     feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
-                        $"lingering {hold.TotalSeconds:0} s at ({plan.X:0.0}, {plan.Y:0.0}) to keep the leader's lead", DateTime.UtcNow));
+                        $"lingering {hold.TotalSeconds:0} s at ({leg.X:0.0}, {leg.Y:0.0}) to keep the leader's lead", DateTime.UtcNow));
                     await StandAsync(hold, ct);
                 }
             }
         }
     }
+
+    private static string LegName(RoadLeg leg) => leg.Kind switch { "door" => $"{leg.A}/{leg.B}", "opening" => $"{leg.A}~{leg.B}", _ => leg.Kind };
 
     private static string Reason(Exception ex)
     {
@@ -1058,62 +1001,57 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     // Typed reads: Out parameters through the rent-lease (never parsing print).
     // ------------------------------------------------------------------
-    private (bool Has, int Id, double X, double Y, double ApproachX, double ApproachY, double ExitX, double ExitY,
-             bool Routed, int LegsLeft, string Passage, bool IsStop, bool Following, int Newer, int Bumps, bool BumpedSinceRoute,
-             bool Ordered) ReadPlan()
+    private (bool Has, int Id, bool Routed, int StopsLeft, bool Following, int Newer, int Bumps, bool BumpedSinceRoute) ReadPlan()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
             @has = g.HasPendingMission();
             if (g.HasPendingMission()) {
                 @id = g.NextId();
-                @x = g.OrderX();
-                @y = g.OrderY();
-                @ax = g.OrderApproachX();
-                @ay = g.OrderApproachY();
-                @ex = g.OrderExitX();
-                @ey = g.OrderExitY();
                 @routed = g.IsRouted(g.NextId());
-                @legs = g.LegsLeft(g.NextId());
-                @passage = g.OrderPassage(g.NextId());
-                @stop = g.OrderIsStop(g.NextId());
+                @stops = g.StopsLeft(g.NextId());
                 @following = g.IsFollowing(g.NextId());
                 @newer = 0;
                 if (g.HasNewerFollowing(g.NextId())) { @newer = g.NewestFollowingId(); }
                 @bumps = g.Bumps(g.NextId());
                 @bumped = g.HasBumpedSinceRoute(g.NextId());
-                @ordered = g.IsOrdered(g.NextId());
             }
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "has",       typeof(bool)]   = default;
             p[Parameter.Out, "id",        typeof(int)]    = default;
-            p[Parameter.Out, "x",         typeof(double)] = default;
-            p[Parameter.Out, "y",         typeof(double)] = default;
-            p[Parameter.Out, "ax",        typeof(double)] = default;
-            p[Parameter.Out, "ay",        typeof(double)] = default;
-            p[Parameter.Out, "ex",        typeof(double)] = default;
-            p[Parameter.Out, "ey",        typeof(double)] = default;
             p[Parameter.Out, "routed",    typeof(bool)]   = default;
-            p[Parameter.Out, "legs",      typeof(int)]    = default;
-            p[Parameter.Out, "passage",   typeof(string)] = default;
-            p[Parameter.Out, "stop",      typeof(bool)]   = default;
+            p[Parameter.Out, "stops",     typeof(int)]    = default;
             p[Parameter.Out, "following", typeof(bool)]   = default;
             p[Parameter.Out, "newer",     typeof(int)]    = default;
             p[Parameter.Out, "bumps",     typeof(int)]    = default;
             p[Parameter.Out, "bumped",    typeof(bool)]   = default;
-            p[Parameter.Out, "ordered",   typeof(bool)]   = default;
         })
         .PerformQuery();
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
-                rented["x"].GetValue<double>(), rented["y"].GetValue<double>(),
-                rented["ax"].GetValue<double>(), rented["ay"].GetValue<double>(),
-                rented["ex"].GetValue<double>(), rented["ey"].GetValue<double>(),
-                rented["routed"].GetValue<bool>(), rented["legs"].GetValue<int>(),
-                rented["passage"].GetValue<string>() ?? "", rented["stop"].GetValue<bool>(),
+                rented["routed"].GetValue<bool>(), rented["stops"].GetValue<int>(),
                 rented["following"].GetValue<bool>(), rented["newer"].GetValue<int>(),
-                rented["bumps"].GetValue<int>(), rented["bumped"].GetValue<bool>(),
-                rented["ordered"].GetValue<bool>());
+                rented["bumps"].GetValue<int>(), rented["bumped"].GetValue<bool>());
+    }
+
+    // The plan ahead of a mission, as the golem hands it out: every leg not yet known to be walked, with how each is walked.
+    private List<RoadLeg> RoadAhead(int id) =>
+        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.RoadAhead(@id).Legs()) { " + RoadLeg.PrintLegs + " }")
+        .WithParameters(p => { p["id", typeof(int)] = id; })
+        .PerformQuery());
+
+    private int StopsLeft(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @stops = g.StopsLeft(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                   = id;
+            p[Parameter.Out, "stops", typeof(int)] = default;
+        })
+        .PerformQuery();
+        return rented["stops"].GetValue<int>();
     }
 
     private int Bumps(int id)
@@ -1190,11 +1128,7 @@ public sealed class GolemChoreography
     // The road from where the body stands, as the golem's own objects: a query walks the legs and prints what
     // each one is; the host carries them to the act that writes them, inventing nothing.
     private List<RoadLeg> RoadFrom(int id, double x, double y) =>
-        RoadLeg.FromQuery(perf.Actor.Using(@"
-            foreach (legs in g.Road(@id, @x, @y).Legs()) {
-                print legs.Kind 'kind', legs.A 'a', legs.B 'b', legs.At.X 'x', legs.At.Y 'y';
-            }
-        ")
+        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.Road(@id, @x, @y).Legs()) { " + RoadLeg.PrintLegs + " }")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
             p["x",  typeof(double)] = x;
@@ -1293,29 +1227,9 @@ public sealed class GolemChoreography
         return (rented["kind"].GetValue<string>() ?? "", rented["who"].GetValue<string>() ?? "", rented["verb"].GetValue<string>() ?? "");
     }
 
-    private bool NeedsRoad(int id, double x, double y)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using(@"
-            @needs = g.NeedsRoad(@id, @x, @y);
-        ")
-        .WithParameters(rented, p => {
-            p["id", typeof(int)]                     = id;
-            p["x",  typeof(double)]                  = x;
-            p["y",  typeof(double)]                  = y;
-            p[Parameter.Out, "needs", typeof(bool)]  = default;
-        })
-        .PerformQuery();
-        return rented["needs"].GetValue<bool>();
-    }
-
     // The road out of a peer's way: the golem answers with the courtesy step first and then its errand.
     private List<RoadLeg> RoadPast(int id, string who, double x, double y, double heading) =>
-        RoadLeg.FromQuery(perf.Actor.Using(@"
-            foreach (legs in g.RoadPast(@id, @who, @x, @y, @heading).Legs()) {
-                print legs.Kind 'kind', legs.A 'a', legs.B 'b', legs.At.X 'x', legs.At.Y 'y';
-            }
-        ")
+        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.RoadPast(@id, @who, @x, @y, @heading).Legs()) { " + RoadLeg.PrintLegs + " }")
         .WithParameters(p => {
             p["id",      typeof(int)]    = id;
             p["who",     typeof(string)] = who;
@@ -1337,20 +1251,6 @@ public sealed class GolemChoreography
         })
         .PerformQuery();
         return rented["may"].GetValue<bool>();
-    }
-
-    private bool IsOrdered(int id)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using(@"
-            @ordered = g.IsOrdered(@id);
-        ")
-        .WithParameters(rented, p => {
-            p["id", typeof(int)]                       = id;
-            p[Parameter.Out, "ordered", typeof(bool)]  = default;
-        })
-        .PerformQuery();
-        return rented["ordered"].GetValue<bool>();
     }
 
     private int Grazes(int id)

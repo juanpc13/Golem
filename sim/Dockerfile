@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ros-humble-rosb
 COPY world/ /world/
 RUN python3 /world/build_world.py /world/plan.json /world
 
-COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh bridge/teleport.py /golem/
+COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh bridge/teleport.py bridge/crates.py /golem/
 # The entrypoint copies /root/.config into the user's home on every boot,
 # so the openbox config is planted in /root and arrives on its own.
 COPY kiosk/rc.xml /root/.config/openbox/rc.xml

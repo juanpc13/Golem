@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Choreography.Theater;
+using GolemAPI.Choreography;
 using GolemAPI.Membrane;
 using Microsoft.AspNetCore.Mvc;
 using Puppeteer;
@@ -48,13 +49,75 @@ public class GolemController : Controller
         return Errand("Cover", stops);
     }
 
-    // The errand as the journal writes it: one act per stop, all in ONE command — an area by its name, a point as
-    // a Position built from @params (no list of strings encoding positions). The check refuses the whole errand
-    // before anything is journaled when a stop is neither an area nor a point on the map.
+    // The errand as the journal writes it — the stops AND the whole plan, in ONE entry (Juan, 10-sep: "con un solo
+    // [comando] podemos tener toda la ruta y seguir ese plan de punto"): each stop found or built from its @params
+    // (one is `point`, several are `point1`, `point2`…), then Route and one act per leg. The plan is asked of the
+    // golem beforehand (g.Preview: a read, in this same request), from where the body stands — or, when the golem is
+    // busy, from where its last pending mission ends, since that is where it will stand when this one comes up.
     private IActionResult Errand(string verb, string[] stops)
     {
-        // inside braces, step by step: each stop is found or built from its @params, named, then entrusted
-        // one stop is `point`; several are `point1`, `point2`… (Juan, 10-sep) — and so are their @params
+        // where each stop is: an area's centre, or the point itself
+        var xs = new double[stops.Length];
+        var ys = new double[stops.Length];
+        for (int i = 0; i < stops.Length; i++)
+        {
+            if (IsPoint(stops[i]))
+            {
+                var xy = stops[i].Split(',');
+                xs[i] = double.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture);
+                ys[i] = double.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                try
+                {
+                    using var centre = System.Text.Json.JsonDocument.Parse(perf.Actor.Using("print map.Find(@area).Center.X 'x', map.Find(@area).Center.Y 'y';")
+                        .WithParameters(p => { p["area", typeof(string)] = stops[i]; }).PerformQuery());
+                    xs[i] = centre.RootElement.GetProperty("x").GetDouble();
+                    ys[i] = centre.RootElement.GetProperty("y").GetDouble();
+                }
+                catch (Exception) { return Conflict($"'{stops[i]}' is neither an area nor a point on the map"); }
+            }
+        }
+
+        // where the plan starts: the body, or the end of the plan the golem is already on
+        var pose = ros.LatestPose;
+        double fromX, fromY;
+        using (var busy = System.Text.Json.JsonDocument.Parse(perf.Actor.Using(@"
+            print g.HasPendingMission() 'busy';
+            if (g.HasPendingMission()) { print g.PlannedEndX() 'x', g.PlannedEndY() 'y'; }
+        ").PerformQuery()))
+        {
+            if (busy.RootElement.GetProperty("busy").GetBoolean())
+            {
+                fromX = busy.RootElement.GetProperty("x").GetDouble();
+                fromY = busy.RootElement.GetProperty("y").GetDouble();
+            }
+            else
+            {
+                if (pose == null) return StatusCode(503, "no telemetry from the body yet: the plan needs a starting point");
+                fromX = pose.X;
+                fromY = pose.Y;
+            }
+        }
+
+        // the plan, asked of the golem: the whole road through the stops, in the order given or the one it chooses
+        List<RoadLeg> legs;
+        try
+        {
+            legs = RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.Preview(@fx, @fy, @xs, @ys, @cover).Legs()) { " + RoadLeg.PrintLegs + " }")
+                .WithParameters(p => {
+                    p["fx",    typeof(double)]   = fromX;
+                    p["fy",    typeof(double)]   = fromY;
+                    p["xs",    typeof(double[])] = xs;
+                    p["ys",    typeof(double[])] = ys;
+                    p["cover", typeof(bool)]     = verb == "Cover";
+                })
+                .PerformQuery());
+        }
+        catch (Exception ex) { return Conflict("no road: " + Innermost(ex)); }
+
+        // one entry: the stops, then the plan
         var check = new System.Text.StringBuilder("Check(");
         var acts = new System.Text.StringBuilder("{\n");
         for (int i = 0; i < stops.Length; i++)
@@ -72,6 +135,7 @@ public class GolemController : Controller
                 acts.Append($"    point{n} = map.Find(@area{n});\n    g.{verb}(@id, point{n});\n");
             }
         }
+        acts.Append(RoadLeg.Acts(legs));
         acts.Append("}\n");
         check.Append(") Error 'a stop is neither an area nor a point on the map';");
         return Refusable(perf.Actor.Using(check.ToString(), acts.ToString())
@@ -82,14 +146,20 @@ public class GolemController : Controller
                 string n = stops.Length == 1 ? "" : (i + 1).ToString();
                 if (IsPoint(stops[i]))
                 {
-                    var xy = stops[i].Split(',');
-                    p[$"x{n}", typeof(double)] = double.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture);
-                    p[$"y{n}", typeof(double)] = double.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture);
+                    p[$"x{n}", typeof(double)] = xs[i];
+                    p[$"y{n}", typeof(double)] = ys[i];
                 }
                 else p[$"area{n}", typeof(string)] = stops[i];
             }
+            RoadLeg.Bind(p, legs);
         })
         .PerformCheckThenCommand());
+    }
+
+    private static string Innermost(Exception ex)
+    {
+        while (ex.InnerException != null) ex = ex.InnerException;
+        return ex.Message;
     }
 
     private static bool IsPoint(string token)
@@ -201,7 +271,7 @@ public class GolemController : Controller
         perf.Actor.Using(@"
             print g.Pending() 'pending', g.Total() 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
-                print g.NextId() 'nextId', g.OrderX() 'nextX', g.OrderY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft';
+                print g.NextId() 'nextId', g.HeadingX() 'nextX', g.HeadingY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft';
             }
         ")
         .PerformQuery();
