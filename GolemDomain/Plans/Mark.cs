@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>
 /// A mark: the location where a body touched something the plan does not hold, and the heading it had when

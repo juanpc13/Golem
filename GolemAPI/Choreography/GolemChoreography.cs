@@ -2,12 +2,12 @@ using System.Globalization;
 using Choreography.Input;
 using Choreography.Told;
 using Choreography.Transport.Brokered;
-using GolemHost.Membrane;
-using GolemHost.Navigation;
-using GolemHost.Panel;
+using GolemAPI.Membrane;
+using GolemAPI.Navigation;
+using GolemAPI.Panel;
 using Puppeteer;
 
-namespace GolemHost.Choreography;
+namespace GolemAPI.Choreography;
 
 // The golem's choreography. The mission loop hands each pending mission to the
 // navigator (the body's locomotion, behind a seam) one leg at a time — passages to cross,

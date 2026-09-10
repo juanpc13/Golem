@@ -1,6 +1,6 @@
-using GolemHost.Membrane;
+using GolemAPI.Membrane;
 
-namespace GolemHost.Navigation;
+namespace GolemAPI.Navigation;
 
 // Drives a differential-drive body to a point with a plain proportional controller over
 // rosbridge telemetry — in a world that is now real. Failure is defined here, and the first

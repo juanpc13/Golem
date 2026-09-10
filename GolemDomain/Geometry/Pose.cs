@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Geometry;
+namespace GolemDomain.Geometry;
 
 /// <summary>
 /// A pose: a position together with a heading — where a body stands and which way it faces, radians

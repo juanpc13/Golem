@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Geometry;
+namespace GolemDomain.Geometry;
 
 /// <summary>
 /// A segment: a straight run from one position to another — the robot's basic displacement from position i to

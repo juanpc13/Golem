@@ -104,7 +104,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - `sim/` — the world: Gazebo Fortress in kiosk mode (noVNC :6080, rosbridge ws :9090).
   Reality is GENERATED from `sim/world/plan.json` at image build (walls, doors, solid
   blocks, bodies with contact sensors, obstacles the golems' map does not know).
-- `GolemDomain/` — the pure domain, one assembly, namespaces `GolemHost.Domain`
+- `GolemDomain/` — the pure domain, one assembly, namespaces `GolemDomain`
   (`Golem`, the aggregate the DSL instantiates), `.Geometry`, `.Robots`, `.Plans`,
   `.Routes` (see glossary). The engine binds classes by SIMPLE name: every class
   name in the assembly must be unique. Tests see internals (`InternalsVisibleTo`).

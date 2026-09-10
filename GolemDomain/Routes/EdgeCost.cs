@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Routes;
+namespace GolemDomain.Routes;
 
 /// <summary>
 /// What an edge of the road graph costs: generic by design (time, risk, energy could come), the distance

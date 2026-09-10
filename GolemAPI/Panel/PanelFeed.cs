@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 
-namespace GolemHost.Panel;
+namespace GolemAPI.Panel;
 
 // One journal event as the panel sees it. Kind: "command" (journaled),
 // "runtime" (ephemeral, never journaled), "info" (lifecycle).

@@ -1,7 +1,7 @@
 using System.IO.Hashing;
 using System.Text;
 
-namespace GolemHost.Panel;
+namespace GolemAPI.Panel;
 
 // DEBUG-grade reader of one journal record's wire frame, mirrored from the
 // engine's BinaryEventCodec (FileSystem backend, phase-4 Action split):

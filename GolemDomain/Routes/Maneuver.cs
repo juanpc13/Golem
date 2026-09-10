@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Routes;
+namespace GolemDomain.Routes;
 
 /// <summary>
 /// An evasion maneuver: a trajectory of a special kind — not the road to a stop but the moves a body makes

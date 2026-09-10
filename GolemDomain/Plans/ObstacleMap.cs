@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>
 /// The obstacles module — what the bodies LEARNED by touching, as opposed to the <see cref="FloorPlan"/>, which

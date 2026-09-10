@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text;
-using GolemHost.Domain.Geometry;
-using GolemHost.Domain.Routes;
+using GolemDomain.Geometry;
+using GolemDomain.Routes;
 
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>
 /// A floor plan — Juan's MAPA / PLANO: the map module. One plane (no levels yet, no layers yet) holding the

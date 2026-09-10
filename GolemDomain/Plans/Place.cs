@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>
 /// A place — Juan's ESPACIO / HABITACIÓN: a named room of the floor plan, an axis-aligned rectangle today (a

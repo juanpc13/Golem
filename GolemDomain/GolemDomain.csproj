@@ -2,7 +2,7 @@
 
   <!-- The pure domain: plain C# puppets, no Puppeteer, no ASP.NET, no I/O.
        Hosts reference it; it references nothing (domain-modeling guide E38).
-       Namespaces: GolemHost.Domain (the Golem aggregate the DSL instantiates),
+       Namespaces: GolemDomain (the Golem aggregate the DSL instantiates),
        .Geometry (Position, Location, Segment), .Robots (Body, Mission),
        .Plans (FloorPlan, Place, Wall, Door, OpenBoundary, Mark, Obstacle, the
        FloorPlans catalog), .Routes (Trajectory, Leg, RoutePlanner, Maneuver).
@@ -11,7 +11,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>GolemHost.Domain</RootNamespace>
+    <RootNamespace>GolemDomain</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

@@ -2,7 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
-namespace GolemHost.Membrane;
+namespace GolemAPI.Membrane;
 
 public sealed record Pose(double X, double Y, double Theta);
 

@@ -1,7 +1,7 @@
 using System.Globalization;
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Routes;
+namespace GolemDomain.Routes;
 
 /// <summary>
 /// A trajectory — Juan's RUTA / TRAYECTORIA: the ordered legs a body walks, one straight segment from each

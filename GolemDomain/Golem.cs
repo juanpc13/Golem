@@ -1,10 +1,10 @@
 using System.Globalization;
-using GolemHost.Domain.Geometry;
-using GolemHost.Domain.Plans;
-using GolemHost.Domain.Robots;
-using GolemHost.Domain.Routes;
+using GolemDomain.Geometry;
+using GolemDomain.Plans;
+using GolemDomain.Robots;
+using GolemDomain.Routes;
 
-namespace GolemHost.Domain;
+namespace GolemDomain;
 
 /// <summary>
 /// The golem: the robot's mind — the executor that is entrusted missions, carries them out over its floor

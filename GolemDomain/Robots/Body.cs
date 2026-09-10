@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Robots;
+namespace GolemDomain.Robots;
 
 /// <summary>
 /// The robot's body as the golem knows it: the properties released into the journal — the radius of the disk

@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>
 /// A wall: a boundary of a place that is not declared open — a straight segment of (today) no thickness on

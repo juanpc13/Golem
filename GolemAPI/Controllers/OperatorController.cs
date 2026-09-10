@@ -1,11 +1,11 @@
 using System.Text.Json;
 using Choreography.Theater;
-using GolemHost.Choreography;
-using GolemHost.Membrane;
-using GolemHost.Panel;
+using GolemAPI.Choreography;
+using GolemAPI.Membrane;
+using GolemAPI.Panel;
 using Microsoft.AspNetCore.Mvc;
 
-namespace GolemHost.Controllers;
+namespace GolemAPI.Controllers;
 
 // The operator's face on the golem — not the golem's own verbs: the debug panel,
 // host telemetry, the live projection feed, an ad-hoc query console for the lab,

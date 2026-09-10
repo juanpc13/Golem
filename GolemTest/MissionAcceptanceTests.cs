@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Linq;
 using Choreography.Theater;
-using GolemHost.Domain;
+using GolemDomain;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puppeteer;
 
-namespace GolemHost.Domain.Tests;
+namespace GolemTest;
 
 // End-to-end through the perform: a real actor, a journal (in memory), the same
 // release chain the host runs, typed assertions via Out parameters.
@@ -32,7 +32,7 @@ public class MissionAcceptanceTests
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         // One actor and one store per test: the in-memory store is shared by name.
         string name = "golem-under-test-" + Guid.NewGuid().ToString("N");
-        perf = new PerformanceV2(name, GolemDomain.Assembly);
+        perf = new PerformanceV2(name, DomainLibrary.Assembly);
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
         perf.Actor.Using(@"

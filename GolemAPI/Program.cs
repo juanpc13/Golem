@@ -1,10 +1,10 @@
 using Choreography.Theater;
-using GolemHost;
-using GolemHost.Choreography;
-using GolemHost.Domain;
-using GolemHost.Membrane;
-using GolemHost.Navigation;
-using GolemHost.Panel;
+using GolemAPI;
+using GolemAPI.Choreography;
+using GolemDomain;
+using GolemAPI.Membrane;
+using GolemAPI.Navigation;
+using GolemAPI.Panel;
 using Puppeteer;
 
 // The DSL renders numbers into the journal with the current culture: pin it, or a
@@ -42,7 +42,7 @@ var ct = shutdown.Token;
 
 // --- The actor. Storage first; then the tell transport and every Reaction, because
 //     Start is what arms them and runs the release chain (OnHydrated). ---
-var perf = new GolemPerformance(golem, GolemDomain.Assembly);
+var perf = new GolemPerformance(golem, DomainLibrary.Assembly);
 perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
 
 var ros = new Rosbridge(rosbridgeUrl, body, poseSource);

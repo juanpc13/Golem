@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Routes;
+namespace GolemDomain.Routes;
 
 /// <summary>
 /// One stretch of a trajectory: where to go next, and how the journal names it — a door (kitchen/north), an

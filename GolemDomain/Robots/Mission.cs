@@ -1,7 +1,7 @@
-using GolemHost.Domain.Geometry;
-using GolemHost.Domain.Routes;
+using GolemDomain.Geometry;
+using GolemDomain.Routes;
 
-namespace GolemHost.Domain.Robots;
+namespace GolemDomain.Robots;
 
 /// <summary>
 /// A task entrusted to the golem: the stops to reach (one, or several), who ordered it, whether the

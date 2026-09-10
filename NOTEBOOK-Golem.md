@@ -882,3 +882,15 @@ peer · blue      | kitchen | 1 vertex   | centre (0.75, 8.54)
 
 **Observación**: `dotnet test Golem.sln` → 53 en verde en `GolemTest.dll`. Desplegado con la imagen nueva: los tres paneles responden y los journals rehidrataron intactos con el assembly renombrado (blue en la entrada 82, red con sus 5 marcas). **Conclusión**: el motor liga las clases por nombre simple, no por assembly — el journal no sabe cómo se llama el `.dll` que lo interpreta, que es exactamente lo que el paper 09 (*identity precedes staging*) pide del dominio.
 
+---
+
+## 2026-09-10 · Los namespaces también: GolemDomain.* y GolemAPI.*
+
+**Contexto**: Juan, tras el renombre de proyectos: "renombra también los namespaces a GolemAPI y GolemDomain".
+
+**Ajuste**: `GolemHost.Domain` → `GolemDomain` (y `.Geometry`, `.Plans`, `.Robots`, `.Routes` debajo), `GolemHost.Domain.Tests` → `GolemTest`, `GolemHost` y `GolemHost.{Choreography, Controllers, Membrane, Navigation, Panel}` → `GolemAPI.*`. `RootNamespace` del dominio a `GolemDomain`. Documentación viva (`CLAUDE.md`, `PLAN-Golem.md`) al día.
+
+**El choque previsto y su salida**: la clase pública `GolemDomain` (el asa del assembly para el actor) quedaría dentro de un namespace con su mismo nombre, y en C# eso hace que `GolemDomain.Assembly` se resuelva contra el namespace y no contra la clase. Pasa a llamarse **`DomainLibrary`** (`DomainLibrary.Assembly`), en `GolemDomain/DomainLibrary.cs`; es lo único que el host y los tests toman del assembly, tres usos.
+
+**Observación**: 53 tests en verde; desplegado, los tres paneles responden y los journals rehidrataron intactos (red con sus 5 marcas). **Conclusión**: el journal tampoco sabe de namespaces — el DSL escribe `Golem()`, `[_:Golem]`, y el motor liga por nombre simple. Renombrar proyectos, assemblies y namespaces no tocó una sola entrada: la identidad del dominio está en sus verbos, no en su montaje (paper 09).
+

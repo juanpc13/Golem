@@ -1,7 +1,7 @@
 using System.Globalization;
 using Choreography.Dispatch;
 
-namespace GolemHost.Choreography;
+namespace GolemAPI.Choreography;
 
 // The golem's ops messages (consume-and-dispatch guide). Producers emit a bare
 // payload plus a "kind" header; the InputRouting at the boundary prepends the

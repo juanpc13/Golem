@@ -1,4 +1,4 @@
-namespace GolemHost.Navigation;
+namespace GolemAPI.Navigation;
 
 // The seam between the golem and its body's locomotion. The golem asks for a point — and
 // says how close counts: a leg's waypoint is met tightly, a leader's spot at a standoff —

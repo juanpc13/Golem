@@ -1,8 +1,8 @@
 using System.Globalization;
-using GolemHost.Domain.Geometry;
-using GolemHost.Domain.Plans;
+using GolemDomain.Geometry;
+using GolemDomain.Plans;
 
-namespace GolemHost.Domain.Routes;
+namespace GolemDomain.Routes;
 
 /// <summary>
 /// The route planner: the shortest road between two points of a floor plan, for a body of a given radius —

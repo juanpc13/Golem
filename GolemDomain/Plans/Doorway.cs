@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>A door as one place sees it: the place across, where the door stands, how wide it is. Read, never written.</summary>
 internal sealed class Doorway

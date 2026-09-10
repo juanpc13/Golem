@@ -1,7 +1,7 @@
-using GolemHost.Membrane;
+using GolemAPI.Membrane;
 using Microsoft.AspNetCore.Mvc;
 
-namespace GolemHost.Controllers;
+namespace GolemAPI.Controllers;
 
 // The receiving side of the HttpBroker wire: a peer golem POSTs one broker record;
 // Deliver fans it out to whoever subscribed the topic locally. A 2xx means a

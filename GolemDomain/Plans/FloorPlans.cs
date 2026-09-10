@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>
 /// The catalog of floor plans with a name, hardcoded with the same classes the golem charts with. A named plan

@@ -1,11 +1,11 @@
 using System.Globalization;
 using Choreography.Theater;
-using GolemHost.Domain;
-using GolemHost.Domain.Plans;
+using GolemDomain;
+using GolemDomain.Plans;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puppeteer;
 
-namespace GolemHost.Domain.Tests;
+namespace GolemTest;
 
 // The catalog of named floor plans (FloorPlans): each one is built with the domain's own classes and reaches a
 // golem's journal as the release text it renders — so the journal, not the code, keeps the map. Every test
@@ -103,7 +103,7 @@ public class FloorPlanCatalogTests
     private void Born(string mapRelease)
     {
         string name = "golem-under-test-" + Guid.NewGuid().ToString("N");
-        perf = new PerformanceV2(name, GolemDomain.Assembly);
+        perf = new PerformanceV2(name, DomainLibrary.Assembly);
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
         perf.Actor.Using(@"

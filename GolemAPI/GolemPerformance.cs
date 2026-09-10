@@ -1,7 +1,7 @@
 using System.Reflection;
 using Choreography.Theater;
 
-namespace GolemHost;
+namespace GolemAPI;
 
 // The golem's Performance. Initialization is versioned INSIDE the actor through the
 // hydration hooks (hosting-environments guide, "Seed / migration idiom"): OnHydrated

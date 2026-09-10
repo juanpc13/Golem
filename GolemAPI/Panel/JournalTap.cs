@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace GolemHost.Panel;
+namespace GolemAPI.Panel;
 
 // The panel's journal lane, fed by the journal itself: every record the framework
 // writes — defines (templates), actions (their arguments), literal scripts (the release

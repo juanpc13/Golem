@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Robots;
+namespace GolemDomain.Robots;
 
 /// <summary>The life of a mission: a closed set, one instance per member, compared by identity.</summary>
 internal sealed class MissionStatus

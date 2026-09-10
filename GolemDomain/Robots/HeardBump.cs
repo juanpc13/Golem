@@ -1,6 +1,6 @@
-using GolemHost.Domain.Geometry;
+using GolemDomain.Geometry;
 
-namespace GolemHost.Domain.Robots;
+namespace GolemDomain.Robots;
 
 /// <summary>
 /// A bump a peer told about: who bumped, where the touch was, and where that peer stood when it told. Kept for

@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Geometry;
+namespace GolemDomain.Geometry;
 
 /// <summary>
 /// A position: the coordinate (x, y) on the world's Euclidean plane — Juan's POSICIÓN. Everything the robot's

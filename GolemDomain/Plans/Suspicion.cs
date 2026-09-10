@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Plans;
+namespace GolemDomain.Plans;
 
 /// <summary>
 /// What the golem suspects its body touched — the hypothesis the domain forms from its own facts, so that the

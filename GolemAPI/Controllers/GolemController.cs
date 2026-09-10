@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Choreography.Theater;
-using GolemHost.Membrane;
+using GolemAPI.Membrane;
 using Microsoft.AspNetCore.Mvc;
 using Puppeteer;
 
-namespace GolemHost.Controllers;
+namespace GolemAPI.Controllers;
 
 // The golem's own verbs, as endpoints (output-and-controller guide): C# validates
 // the inputs, the actor is reused, the request values become @params, and the

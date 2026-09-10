@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Choreography.Transport.Brokered;
 
-namespace GolemHost.Membrane;
+namespace GolemAPI.Membrane;
 
 // One broker record on the wire — the contract TellController receives.
 public sealed record Frame(string Topic, string Key, Dictionary<string, string> Headers, string Value);

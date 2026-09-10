@@ -1,4 +1,4 @@
-namespace GolemHost.Domain.Geometry;
+namespace GolemDomain.Geometry;
 
 /// <summary>
 /// A location — Juan's UBICACIÓN: a position where something stands that the map can name. The corner of a
