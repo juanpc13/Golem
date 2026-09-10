@@ -76,9 +76,9 @@ public class MissionAcceptanceTests
     {
         Assert.AreEqual(9, Int("g.PlaceCount()"));
         Assert.AreEqual(10, Int("g.PassageCount()"), "eight doors and two open boundaries");
-        Assert.AreEqual("kitchen", Text("g.PlaceAt(2.0, 9.5)"));
-        Assert.AreEqual("center", Text("g.PlaceAt(5.5, 5.5)"));
-        Assert.AreEqual("west", Text("g.PlaceAt(0.75, 5.5)"));
+        Assert.AreEqual("kitchen", Text("g.PlaceAt(2.0, 9.5).Name"));
+        Assert.AreEqual("center", Text("g.PlaceAt(5.5, 5.5).Name"));
+        Assert.AreEqual("west", Text("g.PlaceAt(0.75, 5.5).Name"));
         Assert.IsFalse(Bool("g.IsOnMap(3.0, 5.0)"), "the left block is solid: nowhere on the map");
         Assert.IsFalse(Bool("g.IsOnMap(11.5, 5.0)"), "beyond the east wall");
     }
@@ -206,7 +206,7 @@ public class MissionAcceptanceTests
         double throughTheCenter = 2.0 + Math.Sqrt(4.5) + Math.Sqrt((cross - 5.5) * (cross - 5.5) + 25)
                                   + Math.Sqrt((7 - cross) * (7 - cross) + 2.25) + 2.0;      // ~12.87
         double aroundByTheWest = 2 * Math.Sqrt(3.8125) + 5.0 + Math.Sqrt(12.8125) + 3.0 + 2.0; // ~15.5
-        double road = Double("g.Distance('kitchen', 'garage')");
+        double road = Double("g.Distance(map.Find('kitchen'), map.Find('garage'))");
         Assert.AreEqual(throughTheCenter, road, 0.01);
         Assert.IsTrue(road < aroundByTheWest, "the ring is the long way round");
     }
@@ -217,7 +217,7 @@ public class MissionAcceptanceTests
         // kitchen (2,9.5) -> door (0.75,8) -> west corridor -> door (0.75,3) -> living (2,1.5)
         double byTheWestCorridor = 2 * Math.Sqrt(3.8125) + 5.0;                  // ~8.9
         double throughTheCenter = 2.0 + Math.Sqrt(4.5) + 5.0 + Math.Sqrt(4.5) + 2.0; // ~13.2
-        double road = Double("g.Distance('kitchen', 'living')");
+        double road = Double("g.Distance(map.Find('kitchen'), map.Find('living'))");
         Assert.AreEqual(byTheWestCorridor, road, 0.01);
         Assert.IsTrue(road < throughTheCenter, "for this pair the corridor beats the shortcut");
     }
@@ -256,7 +256,7 @@ public class MissionAcceptanceTests
 
         Assert.AreEqual(9.0, Double("g.OrderX()"), 0.001);
         Assert.AreEqual(9.5, Double("g.OrderY()"), 0.001);
-        Refuses("g.Visit(2, 'attic');", "unknown area 'attic'");
+        Refuses("g.Visit(2, map.Find('attic'));", "unknown area 'attic'");
     }
 
     [TestMethod]
@@ -291,7 +291,7 @@ public class MissionAcceptanceTests
         Visit(1, new[] { "kitchen", "9,8" });
         Assert.AreEqual(2, Int("g.StopsLeft(1)"));
 
-        Refuses("g.Visit(2, 'attic');", "unknown area 'attic'");
+        Refuses("g.Visit(2, map.Find('attic'));", "unknown area 'attic'");
         Refuses("g.Visit(2, Position(3.0, 5.0));", "nowhere on the map");
         Assert.IsTrue(Bool("g.KnowsPlace('kitchen')"));
         Assert.IsFalse(Bool("g.KnowsPlace('attic')"));
@@ -344,14 +344,14 @@ public class MissionAcceptanceTests
         Cross(1, "kitchen/west");
         Assert.AreEqual(2, Int("g.LegsLeft(1)"));
         Assert.AreEqual(3.0, Double("g.OrderY()"), 0.001);
-        Refuses("g.Cross(1, map.DoorBetween('kitchen', 'west'));", "is heading to 'west/living'");
+        Refuses("g.Cross(1, map.FindDoor('kitchen', 'west'));", "is heading to 'west/living'");
         Refuses("g.Reach(1, 0.75, 3.0);", "cross it, no stop is next");
 
         Cross(1, "west/living");
         Assert.AreEqual(1, Int("g.LegsLeft(1)"));
         Assert.IsTrue(Bool("g.OrderIsStop(1)"));
         Assert.AreEqual("living", Text("g.OrderPassage(1)"), "the last leg is the stop, named by its place");
-        Refuses("g.Cross(1, map.DoorBetween('west', 'living'));", "a stop, not a passage");
+        Refuses("g.Cross(1, map.FindDoor('west', 'living'));", "a stop, not a passage");
         Refuses("g.Reach(1, 2.0, 2.0);", "next stop is (2, 1.5)");
 
         Reach(1, 2.0, 1.5);
@@ -1107,7 +1107,7 @@ public class MissionAcceptanceTests
 
     private void Visit(int id, string place) =>
         perf.Actor.Using(@"
-            g.Visit(@id, @place);
+            g.Visit(@id, map.Find(@place));
         ")
         .WithParameters(p => {
             p["id",    typeof(int)]    = id;
@@ -1124,7 +1124,7 @@ public class MissionAcceptanceTests
     {
         var script = new System.Text.StringBuilder();
         for (int i = 0; i < stops.Length; i++)
-            script.Append(IsPoint(stops[i]) ? $"g.{verb}(@id, Position(@x{i}, @y{i}));\n" : $"g.{verb}(@id, @p{i});\n");
+            script.Append(IsPoint(stops[i]) ? $"g.{verb}(@id, Position(@x{i}, @y{i}));\n" : $"g.{verb}(@id, map.Find(@p{i}));\n");
         perf.Actor.Using(script.ToString())
         .WithParameters(p => {
             p["id", typeof(int)] = id;
@@ -1173,8 +1173,8 @@ public class MissionAcceptanceTests
             script.Append(
                 name == "around" ? $"g.Around(@id, Position(@x{i}, @y{i}));\n"
                 : name == "aside" ? $"g.Aside(@id, Position(@x{i}, @y{i}));\n"
-                : name.Contains('/') ? $"g.Via(@id, map.DoorBetween(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
-                : name.Contains('~') ? $"g.Via(@id, map.OpeningBetween(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
+                : name.Contains('/') ? $"g.Via(@id, map.FindDoor(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
+                : name.Contains('~') ? $"g.Via(@id, map.FindOpening(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
                 : $"g.Stop(@id, Position(@x{i}, @y{i}));\n");
         }
         perf.Actor.Using(script.ToString())
@@ -1205,8 +1205,8 @@ public class MissionAcceptanceTests
         bool door = passage.Contains('/');
         var ab = passage.Split(door ? '/' : '~');
         perf.Actor.Using(door
-            ? "g.Cross(@id, map.DoorBetween(@a, @b));"
-            : "g.Cross(@id, map.OpeningBetween(@a, @b));")
+            ? "g.Cross(@id, map.FindDoor(@a, @b));"
+            : "g.Cross(@id, map.FindOpening(@a, @b));")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
             p["a",  typeof(string)] = ab[0];

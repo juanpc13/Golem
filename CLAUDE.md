@@ -65,9 +65,14 @@ whether it could or not, so the domain resolves what follows. Consequences:
   defect to migrate: it becomes a repertoire operation (a read the host asks, or a
   verb the domain concludes with), never the other way round.
 - The host owns only what the papers give it: the clock, the wire, the body.
-- **The journal speaks in objects (10-sep-2026)**: values enter as `@params` and the template builds the
-  object — `g.Visit(@id, Position(@x, @y))`, `g.Cross(@id, map.DoorBetween(@a, @b))` — several acts per
-  command when an errand has several stops or a road several legs (`g.Route(@id); g.Via(…); g.Stop(…)`).
+- **The journal speaks in objects (10-sep-2026)**: values enter as `@params` and the template builds or
+  finds the object — `g.Visit(@id, Position(@x, @y))`, `g.Visit(@id, map.Find(@area))`,
+  `g.Cross(@id, map.FindDoor(@a, @b))` — several acts per command when an errand has several stops or a
+  road several legs (`g.Route(@id); g.Via(…); g.Stop(…)`). **Methods take instances, never names**: a
+  string enters only where an object is created (`Area('kitchen')`, `DoorTo('north')`, constructors) or
+  found (`Find`, `FindDoor`, `FindOpening`, `FindPassage`, `Knows`); everything else takes the object
+  (`Connects(a, b)`, `Touches(a, b)`, `Distance(from, to)`, `PointOf(door)`, `StepInto(door, side)`)
+  (Juan, 10-sep: "evitemos parámetros primitivos si tenemos las instancias reales").
   **What is told travels flat**: an act a reaction must capture (`Bump`, `Mark`, `Reach`, `Forget`, and the
   whole touch family for uniformity) keeps primitive `@params`, because the matcher captures literals,
   `@params` and `expose` labels only — never an object variable (Fase 0 lab, NOTEBOOK 10-sep).

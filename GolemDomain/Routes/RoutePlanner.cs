@@ -128,10 +128,10 @@ internal sealed class RoutePlanner
         var goal = new Node(to, layout.ZonesOf(to), NodeKind.Goal);
         var nodes = new List<Node> { start };
         foreach (var d in layout.PlacedDoors)
-            nodes.Add(new Node(d.At, new[] { d.A, d.B }, d.Door));
+            nodes.Add(new Node(d.At, new[] { layout.Of(d.A), layout.Of(d.B) }, d.Door));
         // an opening is a node too (its midpoint), so a road can chain two openings
         foreach (var o in layout.Openings)
-            if (layout.Touches(o)) nodes.Add(new Node(layout.MidpointOf(o), new[] { o.A, o.B }, o));
+            if (layout.Touches(o)) nodes.Add(new Node(layout.MidpointOf(o), new[] { layout.Of(o.AreaA), layout.Of(o.AreaB) }, o));
         // around every mark, the points a body of this radius could pass through — only where it fits
         // (a ring a little wider than the clearance, so the run between two neighbouring points stays clear)
         foreach (var m in collisions.Marks)
@@ -140,7 +140,7 @@ internal sealed class RoutePlanner
                 double angle = k * Math.PI / 4;
                 var p = new Position(m.At.X + (clearance + 0.08) * Math.Cos(angle), m.At.Y + (clearance + 0.08) * Math.Sin(angle));
                 if (!Fits(p)) continue;
-                nodes.Add(new Node(p, layout.Zones.Where(z => z.ContainsInset(p, radius + Collisions.MarkMargin)).Select(z => z.Name).ToArray(), NodeKind.Detour));
+                nodes.Add(new Node(p, layout.Zones.Where(z => z.ContainsInset(p, radius + Collisions.MarkMargin)).ToArray(), NodeKind.Detour));
             }
         nodes.Add(goal);
 
@@ -188,11 +188,11 @@ internal sealed class RoutePlanner
     private sealed class Node
     {
         internal Position At { get; }
-        internal string[] Zones { get; }
+        internal IReadOnlyList<Zone> Zones { get; }
         internal Passage Via { get; }
         internal NodeKind Kind { get; }
-        internal Node(Position at, string[] zones, NodeKind kind) { At = at; Zones = zones; Kind = kind; }
-        internal Node(Position at, string[] zones, Passage via) { At = at; Zones = zones; Via = via; Kind = NodeKind.Passage; }
+        internal Node(Position at, IReadOnlyList<Zone> zones, NodeKind kind) { At = at; Zones = zones; Kind = kind; }
+        internal Node(Position at, IReadOnlyList<Zone> zones, Passage via) { At = at; Zones = zones; Via = via; Kind = NodeKind.Passage; }
     }
 
     // Two nodes see each other when they share a zone (a straight line inside a rectangle), or when they stand

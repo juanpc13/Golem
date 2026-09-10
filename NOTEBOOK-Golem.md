@@ -1036,3 +1036,26 @@ upgrade('warehouse_v1') { map = MapLayout('warehouse'); map.Area('kitchen').At(P
 upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }
 ```
 Y desde el panel, con el mapa solo: `map.Connects('north', 'center')` → true, `map.Touches('north', 'center')` → true, `map.Connects('kitchen', 'garage')` → false, `map.Find('kitchen').Neighbours().Count` → 2, `map.ZoneOf(Position(5.5, 5.5))` → center.
+
+---
+
+## 2026-09-10 · Los métodos reciben instancias; el nombre entra solo al crear o al buscar
+
+**Contexto**: Juan: "la gran mayoría de métodos debería pasar el objeto entero en vez de pasar el string del nombre del área o del mapa… evitemos usar parámetros con tipos primitivos si tenemos las instancias reales; casi que los que sí podrían buscar con primitivos son los find, los métodos create y los constructores".
+
+**Observación (lo que había)**: `Connects(string, string)`, `Neighbours(string)`, `DoorBetween(string, string)`, `Touches(string, string)`, `StepInto(Door, string side)`, `g.Visit(id, string area)`, `g.Distance(string, string)`; `Passage` con `Joins(string)` y `OtherSide(string) → string`. Nombres viajando como identidad por todas partes, aunque el objeto ya existiera.
+
+**Ajuste al dominio**: regla — un `string` entra solo al **crear** (`Area(name)`, `DoorTo(name)`, `OpenTo(name)`, `DoorAt(name, Position)`, `Door(a, b)`/`Open(a, b)` por nombre porque el vecino puede no existir aún; constructores) o al **buscar** (`Find(name)`, `Knows(name)`, `FindDoor(a, b)`, `FindOpening(a, b)`, `FindPassage(name)`, `KnowsPassage(name)`). Todo lo demás recibe objetos: `Map.PassagesOf/DoorsOf/OpeningsOf/Neighbours/Connects/HasDoorBetween/DoorBetween/OpeningBetween(Area…)`, `Neighbours` devuelve áreas; `Area.DoorTo(Area)/OpenTo(Area)/Connects(Area)`; `Passage` guarda los nombres con que se declaró y entrega `AreaA`, `AreaB`, `Joins(Area)`, `OtherSide(Area) → Area` (el `Map` que la creó resuelve); `MapLayout.IsLaidOut(Area)`, `Touches(Area, Area)`, `Of(Area) → Zone`, `DoorAt(Area, Area, Position)`, `Placed(Door)`, `StepInto(Door, Area)`, `ZoneOf(Position) → Zone` (null si ninguna), `ZonesOf(Position) → zonas`; `Zone.DoorAt(Area, Position)`, `Doorways()` con `Across` como área; `PlacedDoor.A/B` como áreas, `StepInto(Area)`; `RoutePlanner.Node` guarda zonas, no nombres; `Golem.Visit(id, Area)`, `Cover(id, Area)`, `Distance(Area, Area)`, `PlaceAt(x, y) → Zone`. Las sobrecargas por nombre se conservan solo donde crean.
+
+**Ajuste al host y a los tests**: `g.Visit(@id, map.Find(@area))` con `Check(map.Knows(@area))`; `g.Cross(@id, map.FindDoor(@a, @b))` / `map.FindOpening`; `RoadLeg` escribe `Via` con `FindDoor`/`FindOpening`; el panel pregunta `g.Distance(map.Find('kitchen'), map.Find('garage'))`, `map.Connects(map.Find('north'), map.Find('center'))`, `map.ZoneOf(Position(5.5, 5.5)).Name`; `/progress` imprime `g.PlaceAt(@x, @y).Name`.
+
+**Verificado**: 53 tests; flota redesplegada (journals en `journal-legacy-20260910-objetos-d/`); blue completó `kitchen` → `garage`. El journal:
+```
+3:  g.Visit(1, map.Find('kitchen')); g.Visit(1, map.Find('garage'));
+5:  g.Route(1); g.Via(1, map.FindDoor('kitchen', 'north'), Position(4,9.5)); g.Stop(1, Position(2,9.5)); …
+9:  g.Cross(1, map.FindDoor('kitchen', 'north'));
+17: g.Cross(1, map.FindOpening('north', 'center'));
+```
+Y desde el panel: `map.Touches(map.Find('kitchen'), map.Find('north'))` → true; `map.PointOf(map.FindDoor('kitchen', 'north')).X` → 4.0; `g.Distance(map.Find('kitchen'), map.Find('garage'))` → 12.87.
+
+**Conclusión**: el POO habla: se busca una vez y se le pregunta al objeto. El motor liga por tipo en tiempo de ejecución, así que una expresión que devuelve un objeto (`map.Find(…)`, `map.FindDoor(…)`) sirve como argumento de cualquier verbo — es lo que P4b había mostrado en el laboratorio.

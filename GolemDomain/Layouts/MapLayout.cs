@@ -15,9 +15,10 @@ namespace GolemDomain.Layouts;
 /// actually touch (they may connect without being aligned), whether the walls leave room for a body, whether a
 /// touched point is a wall it knows, how a door is crossed straight. The road planner consults it; the
 /// collisions module measures against it.
-/// <para>Built by finding each object once and telling it what it is, in one train:
+/// <para>Built by creating each object once and telling it what it is, in one train:
 /// <c>map = MapLayout('warehouse'); map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));</c>
-/// and later <c>map.Find('kitchen')</c> to read it or keep telling it.</para>
+/// and later <c>map.Find('kitchen')</c> to read it or keep telling it. Every other method takes the objects:
+/// <c>Touches(kitchen, north)</c>, <c>PointOf(door)</c>, <c>StepInto(door, north)</c>.</para>
 /// </summary>
 internal sealed class MapLayout : Map
 {
@@ -46,21 +47,22 @@ internal sealed class MapLayout : Map
     /// <summary>The zone with this name, to tell it where it stands or to read it.</summary>
     internal override Zone Find(string name) => (Zone)base.Find(name);
 
+    /// <summary>An area of this map, as the zone it is (every area of a laid-out map is a zone).</summary>
+    internal Zone Of(Area area) => area as Zone ?? throw new DomainException(area == null ? "an area is needed, not nothing" : $"area '{area.Name}' is not of this map");
+
     internal IEnumerable<Zone> Zones => areas.Cast<Zone>().Where(z => z.IsLaidOut);
     internal int ZoneCount => Zones.Count();
 
     /// <summary>Whether an area of this map has been told where it stands.</summary>
-    internal bool IsLaidOut(string area) => Knows(area) && Find(area).IsLaidOut;
+    internal bool IsLaidOut(Area area) => area != null && Of(area).IsLaidOut;
 
     /// <summary>Whether two areas actually share an edge on the plane. Two areas may CONNECT (a passage joins them,
     /// information) without TOUCHING here (not aligned, not laid out yet): the map answers the first, the layout the second.</summary>
-    internal bool Touches(string a, string b) => IsLaidOut(a) && IsLaidOut(b) && Find(a).Touches(Find(b));
-
+    internal bool Touches(Area a, Area b) => IsLaidOut(a) && IsLaidOut(b) && Of(a).Touches(Of(b));
 
     /// <summary>The zone with this name, laid out. Refuses an unknown or an unplaced area.</summary>
     internal Zone ZoneNamed(string name)
     {
-        if (!Knows(name)) throw new DomainException($"unknown area '{name}' on map '{Name}'");
         var zone = Find(name);
         if (!zone.IsLaidOut) throw new DomainException($"area '{name}' is not laid out");
         return zone;
@@ -68,8 +70,11 @@ internal sealed class MapLayout : Map
 
     // ---- the doors, placed ----
 
-    /// <summary>Where the door between two areas stands: a point on the wall they share. Declares the door if the map
-    /// did not dispose it yet. Chainable.</summary>
+    /// <summary>Where the door between two areas stands: a point on the wall they share. Chainable.</summary>
+    internal MapLayout DoorAt(Area a, Area b, Position at) => DoorAt(a?.Name, b?.Name, at);
+
+    /// <summary>Where the door between two areas, named (the second may not be created yet), stands. Declares the door
+    /// if the map did not dispose it yet. Chainable.</summary>
     internal MapLayout DoorAt(string a, string b, Position at)
     {
         if (at == null) throw new DomainException($"the door {a}/{b} needs a point on the shared wall");
@@ -83,54 +88,44 @@ internal sealed class MapLayout : Map
     /// <summary>The doors that stand somewhere: each with its point and its jambs.</summary>
     internal IEnumerable<PlacedDoor> PlacedDoors => Doors.Where(d => doorPoints.ContainsKey(d.Name)).Select(d => new PlacedDoor(d, doorPoints[d.Name], this));
 
-    internal bool IsPlaced(Door door) => doorPoints.ContainsKey(door.Name);
+    internal bool IsPlaced(Door door) => door != null && doorPoints.ContainsKey(door.Name);
 
     /// <summary>Where a door stands. Consult IsPlaced first.</summary>
     internal Position PointOf(Door door) =>
-        doorPoints.TryGetValue(door.Name, out var at) ? at : throw new DomainException($"the door {door.Name} stands nowhere yet");
+        door != null && doorPoints.TryGetValue(door.Name, out var at) ? at : throw new DomainException($"the door {door?.Name} stands nowhere yet");
 
-    /// <summary>Where the door between two areas stands — <c>map.DoorPoint('kitchen', 'north')</c>.</summary>
-    internal Position DoorPoint(string a, string b) => PointOf(DoorBetween(a, b));
-
-    /// <summary>The door between two areas, realized: its point, its jambs, its width.</summary>
-    internal PlacedDoor PlacedDoor(string a, string b)
-    {
-        var door = DoorBetween(a, b);
-        return new PlacedDoor(door, PointOf(door), this);
-    }
+    /// <summary>A door, realized: its point, its jambs, its width.</summary>
+    internal PlacedDoor Placed(Door door) => new(door, PointOf(door), this);
 
     // ---- where things stand ----
 
     internal bool IsOnMap(Position at) => Zones.Any(z => z.Contains(at));
 
-    /// <summary>The zone a point stands in, or "" when the layout holds nothing there (a solid block, off the floor):
+    /// <summary>The zone a point stands in, or null when the map holds nothing there (a solid block, off the floor):
     /// what a table needs to name the zone without refusing.</summary>
-    internal string ZoneOf(Position at)
+    internal Zone ZoneOf(Position at)
     {
-        foreach (var z in Zones) if (z.Contains(at)) return z.Name;
-        return "";
+        foreach (var z in Zones) if (z.Contains(at)) return z;
+        return null;
     }
 
     /// <summary>The zone a point stands in. A point on a shared wall belongs to the first laid out.</summary>
-    internal Zone ZoneAt(Position at)
-    {
-        foreach (var z in Zones) if (z.Contains(at)) return z;
-        throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
-    }
+    internal Zone ZoneAt(Position at) =>
+        ZoneOf(at) ?? throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
 
-    /// <summary>The names of every zone a point stands in (two, on a shared wall).</summary>
-    internal string[] ZonesOf(Position at)
+    /// <summary>Every zone a point stands in (two, on a shared wall).</summary>
+    internal IReadOnlyList<Zone> ZonesOf(Position at)
     {
-        var names = Zones.Where(z => z.Contains(at)).Select(z => z.Name).ToArray();
-        if (names.Length == 0) throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
-        return names;
+        var zones = Zones.Where(z => z.Contains(at)).ToList();
+        if (zones.Count == 0) throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
+        return zones;
     }
 
     /// <summary>Whether the WALLS leave room for a body of this radius at a point: inside a zone and off every wall by
     /// its radius plus a margin. What was learned by touching is the collisions module's answer, not this one's.</summary>
     internal bool HasRoom(Position at, double radius) => Zones.Any(z => z.ContainsInset(at, radius + BodyMargin));
 
-    /// <summary>Whether a point lies on a wall the layout knows: within tolerance of a wall of some zone and not in one
+    /// <summary>Whether a point lies on a wall the map knows: within tolerance of a wall of some zone and not in one
     /// of that wall's doorways. The corner of a solid block is known through the perpendicular walls that meet at it.</summary>
     internal bool IsWallAt(Position at, double tolerance) => Zones.Any(z => z.Walls().Any(w => w.Holds(at, tolerance)));
 
@@ -138,10 +133,10 @@ internal sealed class MapLayout : Map
 
     /// <summary>Whether both areas of an opening are laid out and actually share an edge.</summary>
     internal bool Touches(Opening opening) =>
-        IsLaidOut(opening.A) && IsLaidOut(opening.B) && Find(opening.A).Touches(Find(opening.B));
+        opening != null && Knows(opening.A) && Knows(opening.B) && Touches(opening.AreaA, opening.AreaB);
 
     /// <summary>The edge an opening frees. Consult Touches first.</summary>
-    internal Segment EdgeOf(Opening opening) => Find(opening.A).SharedEdgeWith(Find(opening.B));
+    internal Segment EdgeOf(Opening opening) => Of(opening.AreaA).SharedEdgeWith(Of(opening.AreaB));
     internal Position MidpointOf(Opening opening) => EdgeOf(opening).Midpoint;
 
     /// <summary>Whether the straight run u→v crosses the edge an opening frees.</summary>
@@ -193,11 +188,11 @@ internal sealed class MapLayout : Map
         return Math.Clamp(along, from + OpeningMargin, to - OpeningMargin);
     }
 
-    /// <summary>A unit step through a door into the named side (one of its two areas), from the other.</summary>
-    internal Position StepInto(Door door, string side)
+    /// <summary>A unit step through a door into one of its two areas, from the other.</summary>
+    internal Position StepInto(Door door, Area side)
     {
-        if (!door.Joins(side)) throw new DomainException($"the door {door.Name} does not open into '{side}'");
-        return ZoneNamed(door.OtherSide(side)).StepInto(ZoneNamed(side));
+        if (door == null || !door.Joins(side)) throw new DomainException($"the door {door?.Name} does not open into '{side?.Name}'");
+        return Of(door.OtherSide(side)).StepInto(Of(side));
     }
 
     // ---- the road, as the body walks it ----
@@ -205,7 +200,7 @@ internal sealed class MapLayout : Map
     /// <summary>
     /// Every door on a road is crossed straight: its leg gains an approach point in front of the door
     /// (DoorClearance into the area the body comes from) and an exit point behind it (into the area it
-    /// goes to). Derived from the layout alone, so a road decided act by act gets the same crossings.
+    /// goes to). Derived from the map alone, so a road decided act by act gets the same crossings.
     /// </summary>
     internal Trajectory WithDoorCrossings(Trajectory road)
     {
@@ -215,8 +210,8 @@ internal sealed class MapLayout : Map
         {
             var leg = legs[i];
             var door = PlacedDoors.FirstOrDefault(d => d.Name == leg.Name && d.At.DistanceTo(leg.At) < 1e-6);
-            string toSide = door == null || i + 1 >= legs.Count ? null : SideOf(door.Door, legs[i + 1]);
-            if (toSide == null || !ZoneNamed(door.Door.OtherSide(toSide)).Touches(ZoneNamed(toSide))) { result.Add(leg); continue; }
+            Area toSide = door == null || i + 1 >= legs.Count ? null : SideOf(door.Door, legs[i + 1]);
+            if (toSide == null || !Touches(door.Door.OtherSide(toSide), toSide)) { result.Add(leg); continue; }
             var step = StepInto(door.Door, toSide);
             result.Add(new Leg(leg.At, leg.Name,
                 new Position(leg.At.X - step.X * DoorClearance, leg.At.Y - step.Y * DoorClearance),
@@ -228,22 +223,23 @@ internal sealed class MapLayout : Map
     // The side of a door the road continues on: the door's area that holds the next leg's point. When both hold
     // it (the next point sits on a wall they share, e.g. another door), the next leg's own passage decides; when
     // neither does, the crossing cannot be told.
-    private string SideOf(Door door, Leg next)
+    private Area SideOf(Door door, Leg next)
     {
-        bool inA = ZoneNamed(door.A).Contains(next.At), inB = ZoneNamed(door.B).Contains(next.At);
-        if (inA && !inB) return door.A;
-        if (inB && !inA) return door.B;
+        Area a = door.AreaA, b = door.AreaB;
+        bool inA = Of(a).Contains(next.At), inB = Of(b).Contains(next.At);
+        if (inA && !inB) return a;
+        if (inB && !inA) return b;
         if (!inA) return null;
-        if (!HasPassageNamed(next.Name)) return null;
-        var onward = PassageNamed(next.Name);
-        if (onward.Joins(door.A) && !onward.Joins(door.B)) return door.A;
-        if (onward.Joins(door.B) && !onward.Joins(door.A)) return door.B;
+        if (!KnowsPassage(next.Name)) return null;
+        var onward = FindPassage(next.Name);
+        if (onward.Joins(a) && !onward.Joins(b)) return a;
+        if (onward.Joins(b) && !onward.Joins(a)) return b;
         return null;
     }
 
     // ---- the map as the journal builds it ----
 
-    /// <summary>The release that builds this map, as the golem's journal writes it — each area found once and told
+    /// <summary>The release that builds this map, as the golem's journal writes it — each area created once and told
     /// what it is in one train: where it stands, how big it is, where its doors are, what it opens to:
     /// <c>upgrade('warehouse_v1') { map = MapLayout('warehouse'); map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0)); … }</c>.
     /// Constructor literals carry a decimal point: the engine does not coerce an integer literal into a double

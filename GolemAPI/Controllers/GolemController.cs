@@ -65,8 +65,8 @@ public class GolemController : Controller
             }
             else
             {
-                check.Append($"g.KnowsPlace(@p{i})");
-                acts.Append($"g.{verb}(@id, @p{i});\n");
+                check.Append($"map.Knows(@p{i})");
+                acts.Append($"g.{verb}(@id, map.Find(@p{i}));\n");
             }
         }
         check.Append(") Error 'a stop is neither an area nor a point on the map';");
@@ -178,7 +178,7 @@ public class GolemController : Controller
             if (g.HasPendingMission()) {
                 print g.NextId() 'mission', g.StopsLeft(g.NextId()) 'stopsLeft', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
                 if (g.IsOnMap(@x, @y)) {
-                    print g.DistanceLeft(@x, @y) 'distanceLeft', g.SecondsLeft(@x, @y) 'secondsLeft', g.PlaceAt(@x, @y) 'here';
+                    print g.DistanceLeft(@x, @y) 'distanceLeft', g.SecondsLeft(@x, @y) 'secondsLeft', g.PlaceAt(@x, @y).Name 'here';
                 }
             }
         ")

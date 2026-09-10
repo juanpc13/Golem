@@ -48,7 +48,8 @@ internal sealed class Golem
     internal int PassageCount() => layout.PassageCount;
     internal bool KnowsPlace(string name) => layout.Knows(name);
     internal bool IsOnMap(double x, double y) => layout.IsOnMap(new Position(x, y));
-    internal string PlaceAt(double x, double y) => layout.ZoneAt(new Position(x, y)).Name;
+    /// <summary>The zone a point stands in — an object; <c>.Name</c> for its name.</summary>
+    internal Zone PlaceAt(double x, double y) => layout.ZoneAt(new Position(x, y));
 
     /// <summary>The layout as objects, for whoever draws it: every zone, each knowing its corners, its walls (with
     /// their doors), its doorways and its open sides —
@@ -61,8 +62,9 @@ internal sealed class Golem
     /// golem's own execution error; touching anything else is reality holding something the map does not.</summary>
     internal bool KnowsWallAt(double x, double y) => layout.IsWallAt(new Position(x, y), MapLayout.WallTolerance);
 
-    /// <summary>The shortest road between two areas, centre to centre, through the passages, for this body.</summary>
-    internal double Distance(string from, string to) => Planner().RoadLength(layout.ZoneNamed(from).Center, layout.ZoneNamed(to).Center);
+    /// <summary>The shortest road between two areas, centre to centre, through the passages, for this body —
+    /// <c>g.Distance(map.Find('kitchen'), map.Find('garage'))</c>.</summary>
+    internal double Distance(Area from, Area to) => Planner().RoadLength(layout.Of(from).Center, layout.Of(to).Center);
 
     /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark.</summary>
     internal bool FitsAt(double x, double y)
@@ -88,14 +90,14 @@ internal sealed class Golem
     /// same errand — in this order — when the handle is the errand's. A stop off the map is refused.</summary>
     internal int Visit(int id, Position stop) => Entrust(id, stop, following: false, choosesOrder: false);
 
-    /// <summary>The operator sends the golem to an area: its centre.</summary>
-    internal int Visit(int id, string area) => Entrust(id, layout.ZoneNamed(area).Center, following: false, choosesOrder: false);
+    /// <summary>The operator sends the golem to an area: its centre — <c>g.Visit(@id, map.Find(@area))</c>.</summary>
+    internal int Visit(int id, Area area) => Entrust(id, layout.Of(area).Center, following: false, choosesOrder: false);
 
     /// <summary>The operator adds a stop to an errand whose order the golem may choose, so the whole road is shortest.</summary>
     internal int Cover(int id, Position stop) => Entrust(id, stop, following: false, choosesOrder: true);
 
     /// <summary>The operator adds an area to an errand whose order the golem may choose.</summary>
-    internal int Cover(int id, string area) => Entrust(id, layout.ZoneNamed(area).Center, following: false, choosesOrder: true);
+    internal int Cover(int id, Area area) => Entrust(id, layout.Of(area).Center, following: false, choosesOrder: true);
 
     /// <summary>The golem follows its leader to a point a peer says it reached — a mission with a handle of its own.
     /// (Leader–follower formation by told waypoints, not by sensing the leader: the follower knows where the leader

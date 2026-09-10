@@ -23,15 +23,15 @@ internal sealed class PlacedDoor
     }
 
     internal string Name => Door.Name;
-    internal string A => Door.A;
-    internal string B => Door.B;
+    internal Area A => Door.AreaA;
+    internal Area B => Door.AreaB;
     internal double Width => Door.Width;
     internal double Height => Door.Height;
 
     /// <summary>The two jambs: locations on the wall, half a width to each side of the point, along the wall.</summary>
     internal IReadOnlyList<Location> Jambs()
     {
-        var step = layout.StepInto(Door, Door.B);            // across the wall
+        var step = layout.StepInto(Door, Door.AreaB);        // across the wall
         double ax = -step.Y, ay = step.X;                   // along it
         return new[]
         {
@@ -40,20 +40,21 @@ internal sealed class PlacedDoor
         };
     }
 
-    /// <summary>A unit step through the door into the named side (one of its two areas), from the other.</summary>
-    internal Position StepInto(string side) => layout.StepInto(Door, side);
+    /// <summary>A unit step through the door into one of its two areas, from the other.</summary>
+    internal Position StepInto(Area side) => layout.StepInto(Door, side);
 }
 
 /// <summary>A door as one zone sees it: the area across, where the door stands, how wide it is. Read, never written.</summary>
 internal sealed class Doorway
 {
-    internal string To { get; }
+    internal Area Across { get; }
+    internal string To => Across.Name;
     internal Position At { get; }
     internal double Width { get; }
 
-    internal Doorway(string to, Position at, double width)
+    internal Doorway(Area across, Position at, double width)
     {
-        To = to;
+        Across = across;
         At = at;
         Width = width;
     }
@@ -62,7 +63,8 @@ internal sealed class Doorway
 /// <summary>An open stretch as one zone sees it: the area across. Read, never written.</summary>
 internal sealed class OpenSide
 {
-    internal string To { get; }
+    internal Area Across { get; }
+    internal string To => Across.Name;
 
-    internal OpenSide(string to) => To = to;
+    internal OpenSide(Area across) => Across = across;
 }

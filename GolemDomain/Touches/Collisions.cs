@@ -52,7 +52,7 @@ internal sealed class Collisions
     /// Returns how many encounters it holds.</summary>
     internal int Meet(string who, Position at)
     {
-        encounters.Add(new Peer(who, at, Layout.ZoneOf(at)));
+        encounters.Add(new Peer(who, at, Layout.ZoneOf(at)?.Name ?? ""));
         return encounters.Count;
     }
 
@@ -93,7 +93,7 @@ internal sealed class Collisions
             var members = group.Select(i => marks[i]).ToList();
             var centre = new Position(members.Average(m => m.At.X), members.Average(m => m.At.Y));
             var ordered = members.OrderBy(m => Math.Atan2(m.At.Y - centre.Y, m.At.X - centre.X)).ToList();
-            obstacles.Add(new Thing(ordered, centre, Layout.ZoneOf(centre)));
+            obstacles.Add(new Thing(ordered, centre, Layout.ZoneOf(centre)?.Name ?? ""));
         }
         obstacles.AddRange(encounters);
         return obstacles;

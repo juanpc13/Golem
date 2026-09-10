@@ -190,8 +190,8 @@ public sealed class GolemChoreography
         {
             // a door or an opening is an object of the map; a detour or a courtesy step is a point passed
             string kind = m.Passage.Contains('/') ? "door" : m.Passage.Contains('~') ? "opening" : "point";
-            string act = kind == "door" ? "g.Cross(@id, map.DoorBetween(@a, @b));"
-                       : kind == "opening" ? "g.Cross(@id, map.OpeningBetween(@a, @b));"
+            string act = kind == "door" ? "g.Cross(@id, map.FindDoor(@a, @b));"
+                       : kind == "opening" ? "g.Cross(@id, map.FindOpening(@a, @b));"
                        : "g.Pass(@id, Position(@x, @y));";
             var ab = kind == "point" ? new[] { "", "" } : m.Passage.Split(kind == "door" ? '/' : '~');
             string refused = actor.Using(

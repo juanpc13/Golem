@@ -6,9 +6,10 @@ namespace GolemDomain.Layouts;
 /// <summary>
 /// A zone: an area of the map IN THE PERSPECTIVE OF POSITIONS — it is an <see cref="Area"/> (it inherits the
 /// name, the map, the passages) and it also occupies a rectangle on the plane, never overlapping another. It is
-/// found once and told what it is in one train: <c>map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0)
-/// .DoorAt('north', Position(4.0, 9.5))</c>, and found again with <c>map.Find('kitchen')</c>. From the rectangle and the map it derives its corners, its walls
-/// (every edge not freed by an opening, each knowing the doors that pierce it) and how it touches its neighbours.
+/// created once and told what it is in one train: <c>map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0)
+/// .DoorAt('north', Position(4.0, 9.5))</c>, and found again with <c>map.Find('kitchen')</c>. From the rectangle
+/// and the map it derives its corners, its walls (every edge not freed by an opening, each knowing the doors that
+/// pierce it) and how it touches its neighbours.
 /// </summary>
 internal sealed class Zone : Area
 {
@@ -38,18 +39,18 @@ internal sealed class Zone : Area
         return this;
     }
 
-    /// <summary>Where the door into another area stands: a point on the shared wall. Declares the door if the map
-    /// did not dispose it yet. Chainable.</summary>
-    internal Zone DoorAt(string area, Position at)
-    {
-        Layout.DoorAt(Name, area, at);
-        return this;
-    }
+    /// <summary>Where the door into another area stands: a point on the shared wall. Chainable.</summary>
+    internal Zone DoorAt(Area area, Position at) { Layout.DoorAt(this, area, at); return this; }
+
+    /// <summary>Where the door into another area, named (it may not be created yet), stands. Chainable.</summary>
+    internal Zone DoorAt(string area, Position at) { Layout.DoorAt(Name, area, at); return this; }
 
     /// <summary>A door into another area, its point still to be told with DoorAt. The train stays a zone's.</summary>
+    internal override Zone DoorTo(Area area) { base.DoorTo(area); return this; }
     internal override Zone DoorTo(string area) { base.DoorTo(area); return this; }
 
     /// <summary>The whole boundary with another area is open. The train stays a zone's.</summary>
+    internal override Zone OpenTo(Area area) { base.OpenTo(area); return this; }
     internal override Zone OpenTo(string area) { base.OpenTo(area); return this; }
 
     // ---- the geometry, once told ----
@@ -73,8 +74,8 @@ internal sealed class Zone : Area
     /// <summary>A point inside the zone and off every wall by at least the inset — an open edge does not count.</summary>
     internal bool ContainsInset(Position at, double inset) => Contains(at) && Walls().All(w => w.DistanceTo(at) >= inset);
 
-    // ---- what the zone holds, for whoever reads the layout as objects ----
-    //   foreach (zones in map.Zones) { print zones.Name 'name', …; foreach (doors in zones.Doors()) { print doors.To 'to', doors.At.X 'x', …; } }
+    // ---- what the zone holds, for whoever reads the map as objects ----
+    //   foreach (zones in map.Zones) { print zones.Name 'name', …; foreach (doors in zones.Doorways()) { print doors.To 'to', doors.At.X 'x', …; } }
 
     /// <summary>The four corners, counter-clockwise from the south-west: the locations that bound the zone.</summary>
     internal IReadOnlyList<Location> Corners()
@@ -96,7 +97,7 @@ internal sealed class Zone : Area
         foreach (var edge in Rect.Edges())
         {
             if (IsOpen(edge)) continue;
-            var doors = Layout.PlacedDoors.Where(d => d.Door.Joins(Name) && edge.DistanceTo(d.At) < 1e-6).ToList();
+            var doors = Layout.PlacedDoors.Where(d => d.Door.Joins(this) && edge.DistanceTo(d.At) < 1e-6).ToList();
             walls.Add(new Wall(this, edge, doors));
         }
         return walls;
@@ -105,15 +106,15 @@ internal sealed class Zone : Area
     /// <summary>The doors of this zone as it sees them: the area across, where the door stands, how wide it is —
     /// the placed ones (the map's plain list of doors is <c>Doors()</c>, inherited from the area).</summary>
     internal IReadOnlyList<Doorway> Doorways() =>
-        Layout.PlacedDoors.Where(d => d.Door.Joins(Name)).Select(d => new Doorway(d.Door.OtherSide(Name), d.At, d.Width)).ToList();
+        Layout.PlacedDoors.Where(d => d.Door.Joins(this)).Select(d => new Doorway(d.Door.OtherSide(this), d.At, d.Width)).ToList();
 
     /// <summary>The open stretches of this zone: the area across each one.</summary>
     internal IReadOnlyList<OpenSide> OpenSides() =>
-        Map.OpeningsOf(Name).Select(o => new OpenSide(o.OtherSide(Name))).ToList();
+        Map.OpeningsOf(this).Where(o => Map.Knows(o.A) && Map.Knows(o.B)).Select(o => new OpenSide(o.OtherSide(this))).ToList();
 
     // ---- neighbours: two rectangles that share an edge ----
 
-    internal bool Touches(Zone other) => IsLaidOut && other.IsLaidOut && Rect.Touches(other.Rect);
+    internal bool Touches(Zone other) => other != null && IsLaidOut && other.IsLaidOut && Rect.Touches(other.Rect);
 
     /// <summary>The edge shared with a neighbour. Consult Touches first.</summary>
     internal Segment SharedEdgeWith(Zone other) =>
@@ -129,10 +130,10 @@ internal sealed class Zone : Area
     // An edge is open when a neighbour joined by an opening shares that very edge.
     private bool IsOpen(Segment edge)
     {
-        foreach (var opening in Map.OpeningsOf(Name))
+        foreach (var opening in Map.OpeningsOf(this))
         {
-            string across = opening.OtherSide(Name);
-            if (!Layout.IsLaidOut(across)) continue;
+            string across = opening.A == Name ? opening.B : opening.A;
+            if (!Map.Knows(across)) continue;
             var neighbour = Layout.Find(across);
             if (!Touches(neighbour)) continue;
             var shared = SharedEdgeWith(neighbour);

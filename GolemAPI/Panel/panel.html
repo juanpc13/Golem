@@ -155,16 +155,16 @@
         <button data-q="g.LingerAfterTold()">LingerAfterTold()</button>
         <button data-q="g.RouteLength()">RouteLength()</button>
         <button data-q="g.RouteSeconds()">RouteSeconds()</button>
-        <button data-q="g.Distance('kitchen', 'garage')">Distance(kitchen, garage)</button>
-        <button data-q="g.PlaceAt(5.5, 5.5)">PlaceAt(5.5, 5.5)</button>
+        <button data-q="g.Distance(map.Find('kitchen'), map.Find('garage'))">Distance(kitchen, garage)</button>
+        <button data-q="g.PlaceAt(5.5, 5.5).Name">PlaceAt(5.5, 5.5)</button>
         <button data-q="g.KnowsWallAt(4.0, 8.5)">KnowsWallAt(4.0, 8.5)</button>
         <button data-q="g.MarkCount()">MarkCount()</button>
         <button data-q="g.ObstacleCount()">ObstacleCount()</button>
         <button data-q="g.HeardBumpCount()">HeardBumpCount()</button>
         <button data-q="{ foreach (places in map.Zones) { print places.Name 'name'; foreach (doors in places.Doorways()) { print doors.To 'to'; } } }">map.Zones as objects</button>
         <button data-q="map.AreaCount">map.AreaCount</button>
-        <button data-q="map.Connects('north', 'center')">map.Connects(north, center)</button>
-        <button data-q="map.ZoneOf(Position(5.5, 5.5))">map.ZoneOf(5.5, 5.5)</button>
+        <button data-q="map.Connects(map.Find('north'), map.Find('center'))">map.Connects(north, center)</button>
+        <button data-q="map.ZoneOf(Position(5.5, 5.5)).Name">map.ZoneOf(5.5, 5.5)</button>
         <button data-q="collisions.MarkCount">collisions.MarkCount</button>
         <button data-q="body.Radius">body.Radius</button>
         <button data-q="g.FitsAt(10.25, 5.5)">FitsAt(10.25, 5.5)</button>
@@ -174,7 +174,7 @@
       <details class="hint"><summary>Why a query must stay read-only</summary><p>Queries read the golem's in-memory state and never touch the journal.
       Keep them read-only: a mutating call here would change memory without journaling it,
       and the change evaporates on the next rehydration. Distances follow the map's passages:
-      <code>g.Distance('kitchen', 'garage')</code> is the shortest road through the doors, and the header's
+      <code>g.Distance(map.Find('kitchen'), map.Find('garage'))</code> is the shortest road through the doors, and the header's
       <i>route left · eta</i> comes from <code>/progress</code>, which only adds the road from where the body stands.</p></details>
     </div>
 

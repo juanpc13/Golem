@@ -60,8 +60,8 @@ public sealed record RoadLeg(string Kind, string A, string B, double X, double Y
         for (int i = 0; i < legs.Count; i++)
             script.Append(legs[i].Kind switch
             {
-                "door" => $"g.Via(@id, map.DoorBetween(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n",
-                "opening" => $"g.Via(@id, map.OpeningBetween(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n",
+                "door" => $"g.Via(@id, map.FindDoor(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n",
+                "opening" => $"g.Via(@id, map.FindOpening(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n",
                 "around" => $"g.Around(@id, Position(@x{i}, @y{i}));\n",
                 "aside" => $"g.Aside(@id, Position(@x{i}, @y{i}));\n",
                 _ => $"g.Stop(@id, Position(@x{i}, @y{i}));\n",

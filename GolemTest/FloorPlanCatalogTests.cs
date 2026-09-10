@@ -41,15 +41,15 @@ public class FloorPlanCatalogTests
         Born(release);
         Assert.AreEqual(9, Int("g.PlaceCount()"));
         Assert.AreEqual(10, Int("g.PassageCount()"), "eight doors and two openings, as the host's warehouse");
-        Assert.AreEqual("center", Text("g.PlaceAt(5.5, 5.5)"));
+        Assert.AreEqual("center", Text("g.PlaceAt(5.5, 5.5).Name"));
         // and the map answers on its own, without the golem — as a maquette and as a layout, because it is both
         Assert.AreEqual(9, Int("map.AreaCount"), "what the maquette disposes");
         Assert.AreEqual(2, Int("map.Find('kitchen').Neighbours().Count"), "the kitchen connects to two areas");
-        Assert.IsTrue(Bool("map.Connects('north', 'center')"), "connected by an opening: information");
-        Assert.IsTrue(Bool("map.Touches('north', 'center')"), "and actually sharing an edge on the plane: geometry");
-        Assert.IsFalse(Bool("map.Connects('kitchen', 'garage')"));
+        Assert.IsTrue(Bool("map.Connects(map.Find('north'), map.Find('center'))"), "connected by an opening: information");
+        Assert.IsTrue(Bool("map.Touches(map.Find('north'), map.Find('center'))"), "and actually sharing an edge on the plane: geometry");
+        Assert.IsFalse(Bool("map.Connects(map.Find('kitchen'), map.Find('garage'))"));
         Assert.AreEqual(9, Int("map.ZoneCount"), "every area laid out");
-        Assert.AreEqual("north", Text("map.ZoneOf(Position(5.5, 9.5))"));
+        Assert.AreEqual("north", Text("map.ZoneOf(Position(5.5, 9.5)).Name"));
         Assert.AreEqual(4.0, Double("map.Find('kitchen').Width"), 1e-9, "found once, read as the zone it is");
         Assert.AreEqual(0.25, Double("body.Radius"), 1e-9, "and the body");
     }
@@ -62,7 +62,7 @@ public class FloorPlanCatalogTests
         Assert.AreEqual(9, Int("g.PlaceCount()"), "four rooms, four aisles, the crossing");
         Assert.AreEqual(12, Int("g.PassageCount()"), "eight doors, four open boundaries around the crossing");
         Assert.IsFalse(Bool("g.IsOnMap(4.0, 5.5)") && Bool("g.IsOnMap(-1.0, 5.5)"), "the floor is 11 x 11");
-        Assert.AreEqual("crossing", Text("g.PlaceAt(5.5, 5.5)"));
+        Assert.AreEqual("crossing", Text("g.PlaceAt(5.5, 5.5).Name"));
 
         // from the northwest room to the southeast one: out a door into an aisle, through the crossing (two open
         // boundaries), along the other aisle and in through a door — never through a wall. The two ways round
@@ -74,7 +74,7 @@ public class FloorPlanCatalogTests
         StringAssert.EndsWith(plan, "> southeast@8.63,2.38");
         Assert.AreEqual(2, plan.Split('/').Length - 1, "exactly two doors: " + plan);
         // the two aisles a room opens to: a corner room reaches its diagonal opposite only through the crossing
-        double diagonal = Double("g.Distance('northwest', 'southeast')");
+        double diagonal = Double("g.Distance(map.Find('northwest'), map.Find('southeast'))");
         double straight = Math.Sqrt(6.25 * 6.25 * 2);   // ~8.84, through the crossing's corner: not a road
         Assert.IsTrue(diagonal > straight + 1.5 && diagonal < 11.5, "door, aisle, crossing, aisle, door — a bit over ten metres: " + diagonal);
     }
@@ -86,10 +86,10 @@ public class FloorPlanCatalogTests
 
         Assert.AreEqual(8, Int("g.PlaceCount()"), "four rooms, four stretches of corridor");
         Assert.AreEqual(16, Int("g.PassageCount()"), "eight doors to the corridor, four between the rooms, four open stretches");
-        Assert.AreEqual("west-corridor", Text("g.PlaceAt(0.75, 5.5)"));
+        Assert.AreEqual("west-corridor", Text("g.PlaceAt(0.75, 5.5).Name"));
 
         // neighbouring rooms are joined directly: center to center through the door they share
-        Assert.AreEqual(4.0, Double("g.Distance('northwest', 'northeast')"), 0.01, "two metres to the door, two more to the neighbour's center");
+        Assert.AreEqual(4.0, Double("g.Distance(map.Find('northwest'), map.Find('northeast'))"), 0.01, "two metres to the door, two more to the neighbour's center");
         // the corridor runs all the way round: from one stretch into the next through an open boundary, no door
         Visit(1, new[] { "9,10.25" });                    // the east end of the north corridor
         string plan = Text("g.Plan(1, 0.75, 10.25)");       // from the northwest corner of the ring
@@ -129,7 +129,7 @@ public class FloorPlanCatalogTests
     {
         var script = new System.Text.StringBuilder();
         for (int i = 0; i < stops.Length; i++)
-            script.Append(stops[i].Contains(',') ? $"g.Visit(@id, Position(@x{i}, @y{i}));\n" : $"g.Visit(@id, @p{i});\n");
+            script.Append(stops[i].Contains(',') ? $"g.Visit(@id, Position(@x{i}, @y{i}));\n" : $"g.Visit(@id, map.Find(@p{i}));\n");
         perf.Actor.Using(script.ToString())
         .WithParameters(p => {
             p["id", typeof(int)] = id;
@@ -149,7 +149,7 @@ public class FloorPlanCatalogTests
 
     private void Visit(int id, string place) =>
         perf.Actor.Using(@"
-            g.Visit(@id, @place);
+            g.Visit(@id, map.Find(@place));
         ")
         .WithParameters(p => {
             p["id",    typeof(int)]    = id;
