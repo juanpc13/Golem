@@ -3,9 +3,10 @@
   <!-- The pure domain: plain C# puppets, no Puppeteer, no ASP.NET, no I/O.
        Hosts reference it; it references nothing (domain-modeling guide E38).
        Namespaces: GolemDomain (the Golem aggregate the DSL instantiates),
-       .Geometry (Position, Location, Segment), .Robots (Body, Mission),
-       .Plans (FloorPlan, Place, Wall, Door, OpenBoundary, Mark, Obstacle, the
-       FloorPlans catalog), .Routes (Trajectory, Leg, RoutePlanner, Maneuver).
+       .Geometry (Position, Location, Segment, Pose, Rectangle), .Robots (Body, Mission),
+       .Maps (Map, Area, Passage: information only), .Layouts (Layout, Zone, Wall, PlacedDoor,
+       the Catalog: the map on the plane), .Touches (Collisions, Mark, Obstacle, Suspicion,
+       HeardBump: what the bodies learned), .Routes (Trajectory, Leg, RoutePlanner, Maneuver).
        The engine binds classes by SIMPLE name: every class name must be unique. -->
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>

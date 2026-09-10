@@ -1,178 +1,153 @@
 using System.Globalization;
 using GolemDomain.Geometry;
-using GolemDomain.Plans;
+using GolemDomain.Layouts;
+using GolemDomain.Maps;
 using GolemDomain.Robots;
 using GolemDomain.Routes;
+using GolemDomain.Touches;
 
 namespace GolemDomain;
 
 /// <summary>
-/// The golem: the robot's mind — the executor that is entrusted missions, carries them out over its floor
-/// plan with its body, and keeps how each one ended. Aggregate root of its journal (the DSL's <c>g = Golem()</c>);
-/// refuses a repeated handle. Its name is the journal's identity and its estimated position is telemetry: both
-/// come from the host, as the actor's name and as query parameters, never as state here.
+/// The golem: the robot's mind — the executor that is entrusted missions, carries them out over its layout
+/// with its body, and keeps how each one ended. The subject of its journal (the DSL's
+/// <c>g = Golem(body, map, collisions)</c>): it RECEIVES its modules, it does not build them — the
+/// <see cref="Body"/> it drives, the <see cref="MapLayout"/> (the concrete <see cref="Map"/> it was told, with
+/// its positions), the <see cref="Collisions"/> its bodies learned by touching. Each module is a global of the actor in its own
+/// right, so a query can calculate with one of them alone. Refuses a repeated handle. Its name is the journal's
+/// identity and its estimated position is telemetry: both come from the host, as the actor's name and as query
+/// parameters, never as state here.
 /// </summary>
 internal sealed class Golem
 {
     private readonly List<Mission> missions = new();
-    private readonly Body body = new();
-    private readonly FloorPlan plan = new();          // the map module: what the golem was told
-    private readonly ObstacleMap learned;             // the obstacles module: what its bodies touched
-    private readonly List<HeardBump> heard = new();   // peers' bumps, as they told them: who, and where
+    private readonly Body body;
+    private readonly MapLayout layout;
+    private readonly Collisions collisions;
+    private readonly Dictionary<int, List<Leg>> drafting = new();   // the road being decided, act by act, until its last stop
     private int idleBumps;       // times something touched the body while it stood without a mission
     private int lastHandle;      // a handle names one mission forever — even after letting go (idempotency keys hang on it)
 
-    internal Golem() => learned = new ObstacleMap(plan);
+    internal Golem(Body body, MapLayout map, Collisions collisions)
+    {
+        this.body = body ?? throw new DomainException("a golem needs a body to drive");
+        layout = map ?? throw new DomainException("a golem needs its map, laid out");
+        this.collisions = collisions ?? throw new DomainException("a golem needs its collisions module, even empty");
+        if (collisions.Layout != layout) throw new DomainException("the collisions must be measured over the golem's own layout");
+    }
 
-    // ---- the body (issued by upgrade releases) ----
+    // ---- the body ----
 
-    /// <summary>Gives the golem a body: the radius of the disk it occupies, in world units. Returns it.</summary>
-    internal double Embody(double bodyRadius) => body.Embody(bodyRadius);
-
-    /// <summary>Sets the body's cruise speed, in world units per second. Returns it.</summary>
-    internal double Cruise(double unitsPerSecond) => body.Cruise(unitsPerSecond);
-
-    /// <summary>Sets how long the golem lingers at every stop a peer told it about — the follower's pacing. Returns it.</summary>
-    internal double Linger(double seconds) => body.Linger(seconds);
-
-    /// <summary>The body's radius; zero until the init release runs (a golem that has no body yet is a point).</summary>
     internal double Radius() => body.Radius;
     internal double Speed() => body.Speed();
     internal double LingerAfterTold() => body.LingerAfterTold;
 
-    // ---- the map (issued by upgrade releases, one fluent chain per place) ----
+    // ---- the map and its layout, read through the golem ----
 
-    /// <summary>Charts a room of the map. Chain its passages: <c>g.Chart('kitchen', 0, 6, 4, 5).DoorTo('hall', 4, 8.5)</c>.</summary>
-    internal Place Chart(string name, double x, double y, double width, double height) => plan.AddPlace(name, x, y, width, height);
+    internal int PlaceCount() => layout.ZoneCount;
+    internal int PassageCount() => layout.PassageCount;
+    internal bool KnowsPlace(string name) => layout.Knows(name);
+    internal bool IsOnMap(double x, double y) => layout.IsOnMap(new Position(x, y));
+    internal string PlaceAt(double x, double y) => layout.ZoneAt(new Position(x, y)).Name;
 
-    internal int PlaceCount() => plan.PlaceCount;
-    internal int PassageCount() => plan.PassageCount;
-    internal bool KnowsPlace(string name) => plan.Knows(name);
-    internal bool IsOnMap(double x, double y) => plan.IsOnMap(new Position(x, y));
-    internal string PlaceAt(double x, double y) => plan.PlaceAt(new Position(x, y)).Name;
+    /// <summary>The layout as objects, for whoever draws it: every zone, each knowing its corners, its walls (with
+    /// their doors), its doorways and its open sides —
+    /// <c>foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doorways()) { print doors.To 'to'; } }</c>.
+    /// The same objects the global <c>map</c> hands out: the golem is one way to reach them, not the only one.</summary>
+    internal IReadOnlyList<Zone> Places() => layout.Zones.ToList();
 
-    /// <summary>The map as objects, for whoever draws it: every place, each knowing its corners, its walls (with
-    /// their doors), its doors, its open boundaries, the marks standing in it and the obstacles they outline. A
-    /// query walks them with foreach and prints their properties —
-    /// <c>foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doors()) { print doors.To 'to'; } }</c>
-    /// — so the golem hands out its objects and never renders a document.</summary>
-    internal IReadOnlyList<Place> Places() => plan.Places;
+    /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a wall of a zone, within a tolerance
+    /// that absorbs the wall's thickness and the pose's error, outside its doorways. Touching a known wall is the
+    /// golem's own execution error; touching anything else is reality holding something the map does not.</summary>
+    internal bool KnowsWallAt(double x, double y) => layout.IsWallAt(new Position(x, y), MapLayout.WallTolerance);
 
-    /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a wall of a place, within a
-    /// tolerance that absorbs the wall's thickness and the pose's error, outside its doorways. Touching a known wall
-    /// is the golem's own execution error; touching anything else is reality holding something the map does not.</summary>
-    internal bool KnowsWallAt(double x, double y) => plan.IsWallAt(new Position(x, y), FloorPlan.WallTolerance);
-
-    /// <summary>The shortest road between two places, center to center, through the passages, for this body.</summary>
-    internal double Distance(string from, string to) => Planner().RoadLength(plan.PlaceNamed(from).Center, plan.PlaceNamed(to).Center);
+    /// <summary>The shortest road between two areas, centre to centre, through the passages, for this body.</summary>
+    internal double Distance(string from, string to) => Planner().RoadLength(layout.ZoneNamed(from).Center, layout.ZoneNamed(to).Center);
 
     /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark.</summary>
     internal bool FitsAt(double x, double y)
     {
         var at = new Position(x, y);
-        return plan.HasRoom(at, body.Radius) && !learned.Blocks(at, body.Radius);
+        return layout.HasRoom(at, body.Radius) && !collisions.Blocks(at, body.Radius);
     }
 
     /// <summary>Whether the walls alone leave room for this body at a point — what it asks while feeling around a mark.</summary>
-    internal bool HasRoomAt(double x, double y) => plan.HasRoom(new Position(x, y), body.Radius);
+    internal bool HasRoomAt(double x, double y) => layout.HasRoom(new Position(x, y), body.Radius);
 
-    /// <summary>How many marks the map holds: points where a body touched something the plan does not hold.</summary>
-    internal int MarkCount() => learned.MarkCount;
+    // ---- the collisions, read through the golem ----
 
-    /// <summary>How many obstacles the golem hypothesizes: the things the marks outline (marks close to one another
-    /// are vertices of one thing) plus the peers it met.</summary>
-    internal int ObstacleCount() => learned.All().Count;
-
-    /// <summary>Every obstacle the golem hypothesizes, whatever place it stands in: the things the marks outline
-    /// and the peers it met, each knowing its kind, its zone, its figure, its centre and its vertices. Walked with
-    /// foreach, one row per obstacle and one per vertex —
-    /// <c>foreach (obstacles in g.Obstacles()) { print obstacles.Kind 'kind', obstacles.Where 'zone'; foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y'; } }</c>
-    /// — so a table can be drawn from the golem's own objects, never from a document it rendered.</summary>
-    internal IReadOnlyList<Obstacle> Obstacles() => learned.All();
-
-    /// <summary>How many things the marks outline — the obstacles the roads avoid.</summary>
-    internal int ThingCount() => learned.Things().Count;
-
-    /// <summary>How many times the body met another body.</summary>
-    internal int MetCount() => learned.EncounterCount;
-
-    /// <summary>Whether every token names a place or a point 'x,y' on the map — what a list of stops must be made of.</summary>
-    internal bool AreStops(string[] stops)
-    {
-        if (stops == null || stops.Length == 0) return false;
-        foreach (var token in stops) if (TryStop(token) == null) return false;
-        return true;
-    }
+    internal int MarkCount() => collisions.MarkCount;
+    internal int ObstacleCount() => collisions.All().Count;
+    internal IReadOnlyList<Obstacle> Obstacles() => collisions.All();
+    internal int ThingCount() => collisions.Things().Count;
+    internal int MetCount() => collisions.EncounterCount;
 
     // ---- missions: the entrusting (the operator's voice) ----
 
-    /// <summary>The operator sends the golem to a point. A repeated or spent handle is a caller bug.</summary>
-    internal int Visit(int id, double x, double y) => Entrust(id, new[] { new Position(x, y) }, following: false, choosesOrder: false);
+    /// <summary>The operator sends the golem to a point: a new errand when the handle is new, one more stop of the
+    /// same errand — in this order — when the handle is the errand's. A stop off the map is refused.</summary>
+    internal int Visit(int id, Position stop) => Entrust(id, stop, following: false, choosesOrder: false);
 
-    /// <summary>The operator sends the golem to a place: its center.</summary>
-    internal int Visit(int id, string place) => Entrust(id, new[] { plan.PlaceNamed(place).Center }, following: false, choosesOrder: false);
+    /// <summary>The operator sends the golem to an area: its centre.</summary>
+    internal int Visit(int id, string area) => Entrust(id, layout.ZoneNamed(area).Center, following: false, choosesOrder: false);
 
-    /// <summary>The operator sends the golem through several stops, in this order. A stop is a place name or a point 'x,y'.</summary>
-    internal int Visit(int id, string[] stops) => Entrust(id, Stops(stops), following: false, choosesOrder: false);
+    /// <summary>The operator adds a stop to an errand whose order the golem may choose, so the whole road is shortest.</summary>
+    internal int Cover(int id, Position stop) => Entrust(id, stop, following: false, choosesOrder: true);
 
-    /// <summary>The operator sends the golem through several stops and lets it choose the order that makes the road shortest.</summary>
-    internal int Cover(int id, string[] stops) => Entrust(id, Stops(stops), following: false, choosesOrder: true);
+    /// <summary>The operator adds an area to an errand whose order the golem may choose.</summary>
+    internal int Cover(int id, string area) => Entrust(id, layout.ZoneNamed(area).Center, following: false, choosesOrder: true);
 
     /// <summary>The golem follows its leader to a point a peer says it reached — a mission with a handle of its own.
     /// (Leader–follower formation by told waypoints, not by sensing the leader: the follower knows where the leader
     /// WAS, which is why a newer told point supersedes an older one and the host keeps a standoff on arrival.)</summary>
-    internal int Follow(double x, double y) => Entrust(NextHandle(), new[] { new Position(x, y) }, following: true, choosesOrder: false);
+    internal int Follow(Position at) => Entrust(NextHandle(), at, following: true, choosesOrder: false);
 
     // ---- missions: the road ----
 
-    /// <summary>The road the golem would walk from (x, y) through a mission's stops still ahead, as the journal writes it:
-    /// "kitchen/north@4,9.5 > kitchen@2,9.5 > kitchen/north@4,9.5 > north/storage@7,9.5 > storage@9,9.5".
-    /// For a Cover mission the stops come out in the order the golem chose. Marks are skirted ('around' legs)
-    /// or, where the body would not fit past them, avoided by another road altogether.</summary>
-    internal string Plan(int id, double x, double y)
+    /// <summary>The road the golem would walk from (x, y) through a mission's stops still ahead, as objects: the legs,
+    /// each knowing its kind (door, opening, around, aside, stop), its passage's areas and its point — what the host
+    /// reads to write the decision act by act. For a Cover mission the stops come out in the order the golem chose.
+    /// Marks are skirted ('around' legs) or, where the body would not fit past them, avoided by another road.</summary>
+    internal Trajectory Road(int id, double x, double y)
     {
         var mission = Find(id);
         var from = new Position(x, y);
         var ahead = mission.StopsAhead.ToList();
         var planner = Planner();
         var stops = mission.ChoosesOrder ? planner.BestOrder(from, ahead) : ahead;
-        return planner.Road(from, stops).AsPlan();
+        return planner.Road(from, stops);
     }
 
-    /// <summary>The golem decides its road for a mission (the plan as text, so the decision reads in the journal). Returns the number of legs.
-    /// The text names doors, openings, detours and stops; how each door is crossed (straight in, straight out) is derived from the
-    /// map again. A road is decided a second time only after a bump on it: the journal then reads "bumped, bumped, took another road".</summary>
-    internal int Route(int id, string road)
-    {
-        var trajectory = plan.WithDoorCrossings(Trajectory.Parse(road));
-        Find(id).Route(trajectory);
-        return trajectory.Count;
-    }
+    /// <summary>The same road, in one line of text — for a human or a test to read at a glance:
+    /// "kitchen/north@4,9.5 > kitchen@2,9.5 > north/storage@7,9.5 > storage@9,9.5".</summary>
+    internal string Plan(int id, double x, double y) => Road(id, x, y).AsPlan();
 
-    /// <summary>The road out of a peer's way and on to the stops still ahead, as the journal writes it:
-    /// "aside@4.6,10.3 > kitchen/north@4,9.5 > kitchen@2,9.5". The first leg is the courtesy step — a body's
-    /// width to ONE SIDE of where the golem faces, chosen so it moves away from the peer and where its own body
-    /// fits; both bodies step to their own right when they can, which is how two of them pass instead of shove.
-    /// The peer's position is what it told when it bumped (HearBump); without it, or with nowhere to step, the
-    /// road is the plain one from here.</summary>
-    internal string PlanPast(int id, string who, double x, double y, double heading)
+    /// <summary>The road out of a peer's way and on to the stops still ahead, as objects: the first leg is the
+    /// courtesy step — a body's width to ONE SIDE of where the golem faces, chosen so it moves away from the peer
+    /// and where its own body fits; both bodies step to their own right when they can, which is how two of them
+    /// pass instead of shove. The peer's position is what it told when it bumped (HearBump); without it, or with
+    /// nowhere to step, the road is the plain one from here.</summary>
+    internal Trajectory RoadPast(int id, string who, double x, double y, double heading)
     {
         var mission = Find(id);
         var me = new Pose(x, y, heading);
         var ahead = mission.StopsAhead.ToList();
         var planner = Planner();
         var aside = StepOutOfTheWayOf(who, me);
-        if (aside == null) return planner.Road(me, ahead).AsPlan();
-        return $"{Leg.Courtesy}@{Fmt(aside.X)},{Fmt(aside.Y)} > " + planner.Road(aside, ahead).AsPlan();
+        if (aside == null) return planner.Road(me, ahead);
+        var legs = new List<Leg> { new(aside, Leg.Courtesy) };
+        legs.AddRange(planner.Road(aside, ahead).Legs());
+        return new Trajectory(legs);
     }
+
+    /// <summary>The road past a peer, in one line of text.</summary>
+    internal string PlanPast(int id, string who, double x, double y, double heading) => RoadPast(id, who, x, y, heading).AsPlan();
 
     // A body's width to one side of where the golem faces: its own right first (so two bodies facing each other
     // separate), then its left. The step must fit the body and must not walk INTO the peer.
     private Position StepOutOfTheWayOf(string who, Pose me)
     {
-        Position peer = null;
-        for (int i = heard.Count - 1; i >= 0; i--)
-            if (heard[i].Who == who) { peer = heard[i].PeerAt; break; }
+        var peer = collisions.LastKnownPositionOf(who);
         foreach (var side in new[] { Side.Right, Side.Left })
         {
             var step = new StepAside(side).From(me, me.Heading).Legs()[0].At;
@@ -183,25 +158,75 @@ internal sealed class Golem
         return null;
     }
 
-    /// <summary>The golem tells the host where to drive: one point, one segment — "take the body exactly here".
-    /// The order the host carries out; it must be the point the road holds next (or the stop, on an errand walked
-    /// without a road). Written by a reaction, never by the host: the host does not choose where to go. Returns the
-    /// mission id.</summary>
-    internal int MoveTo(int id, double x, double y)
+    /// <summary>The golem starts deciding a mission's road: the acts that follow (Via, Around, Aside, Stop) are its
+    /// legs, in order, the last stop last — all in one journal entry. A road already decided is decided again only
+    /// after the body bumped into something on it. Returns the mission id.</summary>
+    internal int Route(int id)
     {
-        Find(id).MoveTo(x, y);
+        var mission = Find(id);
+        if (!mission.MayRoute) throw new DomainException($"mission {id} already has its road");
+        drafting[id] = new List<Leg>();
         return id;
     }
 
-    /// <summary>Whether the mission still has a point to head to — the guard the arrival command asks before
-    /// exposing the next one, so a spent queue orders nothing.</summary>
+    /// <summary>A leg of the road being decided: cross this passage at this point — a door where the layout stands
+    /// it, an opening where the road meets it. Returns how many legs the road holds so far.</summary>
+    internal int Via(int id, Passage passage, Position at)
+    {
+        if (passage == null || at == null) throw new DomainException($"mission {id}'s road crosses a passage at a point");
+        if (passage is Door door && layout.PointOf(door).DistanceTo(at) > 1e-6)
+            throw new DomainException($"the door {door.Name} stands at ({Fmt(layout.PointOf(door).X)}, {Fmt(layout.PointOf(door).Y)}), not at ({Fmt(at.X)}, {Fmt(at.Y)})");
+        return Draft(id, new Leg(at, passage.Name));
+    }
+
+    /// <summary>A leg of the road being decided: skirt a mark through this point. Returns how many legs so far.</summary>
+    internal int Around(int id, Position at) => Draft(id, new Leg(at ?? throw new DomainException("a detour needs its point"), Leg.Detour));
+
+    /// <summary>A leg of the road being decided: step out of a peer's way to this point. Returns how many legs so far.</summary>
+    internal int Aside(int id, Position at) => Draft(id, new Leg(at ?? throw new DomainException("a courtesy step needs its point"), Leg.Courtesy));
+
+    /// <summary>A leg of the road being decided: reach this stop (named by the zone it stands in). When every stop
+    /// ahead has its leg, the road is decided: doors gain their straight crossings and the mission takes it.
+    /// Returns how many legs the road holds.</summary>
+    internal int Stop(int id, Position at)
+    {
+        if (at == null) throw new DomainException("a stop needs its point");
+        int legs = Draft(id, new Leg(at, layout.ZoneAt(at).Name));
+        var mission = Find(id);
+        var draft = drafting[id];
+        if (draft.Count(l => l.IsStop) == mission.StopsAhead.Count())
+        {
+            mission.Route(layout.WithDoorCrossings(new Trajectory(draft)));
+            drafting.Remove(id);
+        }
+        return legs;
+    }
+
+    private int Draft(int id, Leg leg)
+    {
+        if (!drafting.TryGetValue(id, out var draft)) throw new DomainException($"mission {id} is not deciding a road: Route first");
+        draft.Add(leg);
+        return draft.Count;
+    }
+
+    /// <summary>The golem tells the host where to drive: one point, one segment — "take the body exactly here".
+    /// The order the host carries out; it must be the point the road holds next (or the stop, on an errand walked
+    /// without a road). Returns the mission id.</summary>
+    internal int MoveTo(int id, Position at)
+    {
+        if (at == null) throw new DomainException($"mission {id}'s order needs a point");
+        Find(id).MoveTo(at.X, at.Y);
+        return id;
+    }
+
+    /// <summary>Whether the mission still has a point to head to — what to consult before ordering, so a spent queue orders nothing.</summary>
     internal bool HasNextPoint(int id) => Find(id).HasNextPoint;
 
     /// <summary>Whether the golem has already said where the host must drive: an order is standing.</summary>
     internal bool IsOrdered(int id) => Find(id).IsOrdered;
 
     /// <summary>Whether getting from (x, y) through the stops ahead takes more than one segment — that is, whether
-    /// there is a road to decide at all. An errand to a point in the same room, with nothing in between, has none:
+    /// there is a road to decide at all. An errand to a point in the same zone, with nothing in between, has none:
     /// the golem heads straight there and no Route is written.</summary>
     internal bool NeedsRoad(int id, double x, double y)
     {
@@ -212,13 +237,12 @@ internal sealed class Golem
     }
 
     /// <summary>The evasion maneuver a strategy ('back-off', 'step-right', 'step-left') plans from where the body
-    /// stands and the heading it had when it touched something: a trajectory to walk with foreach —
-    /// <c>foreach (legs in g.Evasion(@x, @y, @heading, 'step-right').Legs()) { print legs.Name 'leg', legs.At.X 'x', legs.At.Y 'y'; }</c>.
-    /// A read: the host executes it and reports what the body met.</summary>
+    /// stands and the heading it had when it touched something: a trajectory to walk with foreach. A read: the
+    /// host executes it and reports what the body met.</summary>
     internal Maneuver Evasion(double x, double y, double heading, string strategy) =>
         EvasionStrategy.Named(strategy).From(new Position(x, y), heading);
 
-    // ---- touches: the facts (what the body met), the hypothesis (what the golem suspects) and the conclusions ----    
+    // ---- touches: what is told travels flat (a reaction captures @params, never objects — Fase 0, 10-sep-2026) ----
 
     /// <summary>The body touched something the map does not hold, at (x, y), heading that way, on this mission. A fact,
     /// told to the peers; what it was is concluded afterwards (Mark or Met, by what the peers say). Returns the mission id.</summary>
@@ -240,74 +264,69 @@ internal sealed class Golem
         return id;
     }
 
-    /// <summary>A peer says it bumped at (x, y) while it stood at (px, py): heard and kept, so a touch of my own
-    /// there and then is known to be that peer — and so that, once we know we met, I can step out of ITS way
-    /// knowing where it is. The named counterpart of LearnMark, which hears of a MARK; this one hears of a BUMP.</summary>
-    internal int HearBump(string who, double x, double y, double px, double py)
-    {
-        heard.Add(new HeardBump(who, new Position(x, y), new Position(px, py)));
-        return heard.Count;
-    }
+    /// <summary>A peer says it bumped at (x, y) while it stood at (px, py): heard and kept by the collisions module, so a
+    /// touch of my own there and then is known to be that peer — and so that, once we know we met, I can step out of ITS
+    /// way knowing where it is. The named counterpart of LearnMark, which hears of a MARK; this one hears of a BUMP.</summary>
+    internal int HearBump(string who, double x, double y, double px, double py) =>
+        collisions.Hear(who, new Position(x, y), new Position(px, py));
 
-    /// <summary>The golem concludes what it touched was a thing (no peer bumped there and then): a mark on the map
-    /// with the heading of the touch as its normal, told to the peers. Returns how many marks it holds.</summary>
-    internal int Mark(double x, double y, double heading) => learned.Mark(new Pose(x, y, heading));
+    /// <summary>The golem concludes what it touched was a thing (no peer bumped there and then): a mark with the heading
+    /// of the touch as its normal, told to the peers. Returns how many marks it holds.</summary>
+    internal int Mark(double x, double y, double heading) => collisions.Mark(new Pose(x, y, heading));
 
     /// <summary>A peer says a thing stands at (x, y), touched heading that way: the golem learns the mark without the
     /// bruise. Returns how many marks it holds.</summary>
-    internal int LearnMark(double x, double y, double heading) => learned.Mark(new Pose(x, y, heading));
+    internal int LearnMark(double x, double y, double heading) => collisions.Mark(new Pose(x, y, heading));
 
     /// <summary>The golem concludes what it touched at (x, y) was a peer — who said it bumped there and then. History,
     /// kept among the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
-    internal int Met(string who, double x, double y) => learned.Meet(who, new Position(x, y));
+    internal int Met(string who, double x, double y) => collisions.Meet(who, new Position(x, y));
 
     /// <summary>The operator says what stood at (x, y) is gone — somebody took it away — and the golem forgets the
     /// obstacle there with EVERY mark that outlined it: a body may pass again, and a touch after this is a NEW
     /// obstacle. Told to the peers, who forget it too. Returns how many facts it dropped.</summary>
-    internal int Forget(double x, double y) => learned.Forget(new Position(x, y));
+    internal int Forget(double x, double y) => collisions.Forget(new Position(x, y));
 
     /// <summary>A peer says what stood at (x, y) is gone: the golem forgets it too, without having gone to see.</summary>
-    internal int LearnForget(double x, double y) => learned.Forget(new Position(x, y));
+    internal int LearnForget(double x, double y) => collisions.Forget(new Position(x, y));
 
     /// <summary>Whether the golem holds an obstacle at (x, y) — what to consult before saying it is gone.</summary>
-    internal bool KnowsObstacleAt(double x, double y) => learned.KnowsAt(new Position(x, y));
+    internal bool KnowsObstacleAt(double x, double y) => collisions.KnowsAt(new Position(x, y));
 
     /// <summary>What the golem suspects its body touched at (x, y), heading that way, given what it has heard since
     /// the given count: a wall it knows (Kind 'wall': conclude Graze), a peer that bumped near there and then
     /// (Kind 'peer', Who: conclude Met), or a thing nobody charted (Kind 'thing': conclude Mark). The domain reasons;
     /// the host waits for the peers to speak, asks, and writes the conclusion the suspicion names.</summary>
-    internal Suspicion Suspect(double x, double y, double heading, int sinceCount)
-    {
-        var at = new Position(x, y);
-        if (plan.IsWallAt(at, FloorPlan.WallTolerance)) return new WallTouched();
-        string who = HeardBumpNear(x, y, sinceCount);
-        if (who != "") return new PeerMet(who);
-        return new ThingFound();
-    }
+    internal Suspicion Suspect(double x, double y, double heading, int sinceCount) =>
+        collisions.Suspect(new Pose(x, y, heading), sinceCount);
 
     /// <summary>How many bumps peers have told about so far — the count a leg starts from, so older news is not taken for this touch.</summary>
-    internal int HeardBumpCount() => heard.Count;
-    /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a meeting's reach; "" for nobody.
-    /// (Robotics resolves two bodies meeting with reciprocal velocity obstacles — van den Berg, Lin &amp; Manocha,
-    /// ICRA 2008; ORCA 2011 — each taking half the avoidance from what it senses of the other. Our bodies sense
-    /// nothing but a touch, so they resolve it by speech: both tell the fact, and a deterministic rule in the host
-    /// decides who yields. Same problem, solved with the puppet's means.)</summary>
-    internal string HeardBumpNear(double x, double y, int sinceCount)
-    {
-        var at = new Position(x, y);
-        for (int i = heard.Count - 1; i >= sinceCount && i >= 0; i--)
-            if (heard[i].At.DistanceTo(at) <= Body.MeetingReach) return heard[i].Who;
-        return "";
-    }
+    internal int HeardBumpCount() => collisions.HeardCount;
 
-    /// <summary>The golem crossed the next passage of its road. Returns the mission id.</summary>
-    internal int Cross(int id, string passage)
+    /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a meeting's reach; "" for nobody.</summary>
+    internal string HeardBumpNear(double x, double y, int sinceCount) => collisions.HeardNear(new Position(x, y), sinceCount);
+
+    // ---- missions: the progress ----
+
+    /// <summary>The golem crossed the next passage of its road — a door or an opening of its map. Returns the mission id.</summary>
+    internal int Cross(int id, Passage passage)
     {
-        Find(id).Cross(passage);
+        if (passage == null) throw new DomainException($"mission {id} crosses a passage of the map");
+        Find(id).Cross(passage.Name);
         return id;
     }
 
-    /// <summary>The golem reached the next stop of its road; reaching the last one completes the mission. Returns the mission id.</summary>
+    /// <summary>The golem passed the next point of its road that is neither a passage nor a stop: a detour around a
+    /// mark, or a courtesy step out of a peer's way. Returns the mission id.</summary>
+    internal int Pass(int id, Position at)
+    {
+        if (at == null) throw new DomainException($"mission {id} passes a point");
+        Find(id).Pass(at);
+        return id;
+    }
+
+    /// <summary>The golem reached the next stop of its road; reaching the last one completes the mission. Told to the
+    /// peers, so it travels flat. Returns the mission id.</summary>
     internal int Reach(int id, double x, double y)
     {
         Find(id).Reach(x, y);
@@ -353,8 +372,10 @@ internal sealed class Golem
     internal int Grazes(int id) => Find(id).Grazes;
     /// <summary>Whether the golem still retries the leg after grazing a known wall — its patience on this leg is not spent.</summary>
     internal bool MayRetryLeg(int id) => Find(id).MayRetryLeg;
-    /// <summary>The next leg's name: a passage to cross, or the place of the stop to reach.</summary>
+    /// <summary>The next leg's name: a passage to cross, around/aside for a point to pass, or the zone of the stop to reach.</summary>
     internal string OrderPassage(int id) => Find(id).NextLeg.Name;
+    /// <summary>The next leg's kind: door, opening, around, aside or stop.</summary>
+    internal string OrderKind(int id) => Find(id).NextLeg.Kind;
     internal bool OrderIsStop(int id) => Find(id).NextLeg.IsStop;
     internal bool HasPendingMission() => missions.Any(m => m.IsPending());
     internal int Pending() => missions.Count(m => m.IsPending());
@@ -369,7 +390,7 @@ internal sealed class Golem
 
     // ---- the road ahead, answered from the golem's own knowledge ----
 
-    /// <summary>The road through every stop still ahead, in the order they will run, through the map's passages. Zero with one stop or none.</summary>
+    /// <summary>The road through every stop still ahead, in the order they will run, through the passages. Zero with one stop or none.</summary>
     internal double RouteLength()
     {
         var planner = Planner();
@@ -424,47 +445,25 @@ internal sealed class Golem
 
     // ---- inside ----
 
-    // The planner for this body over this plan: the plan's geometry and the body's radius, distance as the cost.
-    // The planner for this body: the map module says where the walls and doors are, the obstacles module what
+    // The planner for this body: the layout says where the walls and doors stand, the collisions module what
     // nobody charted, and between the two it finds the shortest road.
-    private RoutePlanner Planner() => new(plan, learned, body.Radius);
+    private RoutePlanner Planner() => new(layout, collisions, body.Radius);
 
-    private int Entrust(int id, IReadOnlyList<Position> stops, bool following, bool choosesOrder)
+    // A new handle opens an errand with this stop; the errand's own handle adds one more stop to it.
+    private int Entrust(int id, Position stop, bool following, bool choosesOrder)
     {
-        if (Knows(id)) throw new DomainException($"mission {id} already exists");
+        if (stop == null) throw new DomainException($"mission {id} needs a stop");
+        if (layout.ZoneCount > 0 && !layout.IsOnMap(stop))
+            throw new DomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
+        if (Knows(id))
+        {
+            Find(id).AddStop(stop, following, choosesOrder);
+            return id;
+        }
         if (id <= lastHandle) throw new DomainException($"handle {id} was already spent: handles are never reused");
-        foreach (var stop in stops)
-            if (plan.PlaceCount > 0 && !plan.IsOnMap(stop))
-                throw new DomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
-        missions.Add(new Mission(id, stops, following, choosesOrder));
+        missions.Add(new Mission(id, stop, following, choosesOrder));
         lastHandle = id;
         return id;
-    }
-
-    // A stop is a place name or a point 'x,y'; either way it must be on the map.
-    private List<Position> Stops(string[] tokens)
-    {
-        if (tokens == null || tokens.Length == 0) throw new DomainException("a mission needs at least one stop");
-        var stops = new List<Position>();
-        foreach (var token in tokens)
-            stops.Add(TryStop(token) ?? throw new DomainException($"'{token}' is neither a place nor a point x,y on the map"));
-        return stops;
-    }
-
-    private Position TryStop(string token)
-    {
-        if (token == null) return null;
-        token = token.Trim();
-        if (plan.Knows(token)) return plan.PlaceNamed(token).Center;
-        var xy = token.Split(',');
-        if (xy.Length == 2
-            && double.TryParse(xy[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double x)
-            && double.TryParse(xy[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double y))
-        {
-            var at = new Position(x, y);
-            return plan.IsOnMap(at) ? at : null;
-        }
-        return null;
     }
 
     private Mission NextPending()

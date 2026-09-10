@@ -1,10 +1,10 @@
-namespace GolemDomain.Plans;
+namespace GolemDomain.Touches;
 
 /// <summary>
-/// What the golem suspects its body touched — the hypothesis the domain forms from its own facts, so that the
-/// host never reasons: a wall it knows (its own execution error), a peer that said it bumped there and then, or
-/// a thing nobody charted. Each variant names the conclusion the golem then writes in its journal, in its own
-/// voice: Graze, Met or Mark. (Provisional name, Juan 8-sep: may be renamed later.)
+/// What the golem suspects its body touched — the hypothesis the collisions module forms from its own facts, so
+/// that the host never reasons: a wall it knows (its own execution error), a peer that said it bumped there and
+/// then, or a thing nobody charted. Each variant names the conclusion the golem then writes in its journal, in
+/// its own voice: Graze, Met or Mark. (Provisional name, Juan 8-sep: may be renamed later.)
 /// </summary>
 internal abstract class Suspicion
 {
@@ -16,7 +16,7 @@ internal abstract class Suspicion
     internal virtual string Who => "";
 }
 
-/// <summary>The point lies on a wall the plan knows, outside its doorways: the body grazed it — its own error, not a discovery.</summary>
+/// <summary>The point lies on a wall the layout knows, outside its doorways: the body grazed it — its own error, not a discovery.</summary>
 internal sealed class WallTouched : Suspicion
 {
     internal override string Kind => "wall";
@@ -37,7 +37,7 @@ internal sealed class PeerMet : Suspicion
     internal override string Who => who;
 }
 
-/// <summary>Nobody was there and no wall is: a thing the plan does not hold.</summary>
+/// <summary>Nobody was there and no wall is: a thing the map does not hold.</summary>
 internal sealed class ThingFound : Suspicion
 {
     internal override string Kind => "thing";

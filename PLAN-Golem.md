@@ -4,6 +4,8 @@
 
 **Objetivo:** validar que el patrón actor + journal + membrana viaja a otro dominio: autómatas simulados que ejecutan tareas, journalean desenlaces y responden PerformQuery.
 
+> **10-sep-2026** — Propuesta siguiente: `PLAN-objetos-en-el-journal.md` (el journal cuenta la historia con objetos; los módulos como globales brindados al golem). Estado: laboratorio pendiente.
+
 ## La idea en una línea
 
 Un golem por cuerpo: actor .NET (estilo teller: dueño de su journal, un solo escritor), con membrana hacia ROS 2. El loop: percibir → decidir → journalear → actuar.
@@ -257,3 +259,19 @@ Juan entregó la documentación del dominio (robot, POSICIÓN, mapa/plano, espac
 - Sin registro nombre→instancia: disciplina de un actor por tortuga, un escritor por journal.
 - Websocket sirve para tareas, no para control fino en tiempo real (no aplica al spike).
 - Los journals viejos (`journal-legacy-*`) son incompatibles con las firmas actuales; son disposables en el spike.
+
+## El lenguaje del golem, reescrito en objetos (10-sep-2026)
+
+Propuesta de Juan ("a partir de primitivos vamos creando objetos… que el journal sea verboso, que se expanda… los módulos como variables globales… el mapa dispone la información y otro módulo lo trabaja como plano cartesiano"), planificada en `PLAN-objetos-en-el-journal.md` (documento local) e implementada el mismo día en todas sus fases. Los journals anteriores quedaron en `journal-legacy-20260910-objetos/`.
+
+**Los módulos, globales del actor, cada uno en su release**: `body = Body(0.25, 2.0, 6.0)` (`body_v1`); `map = Map('warehouse')` con `map.Area(…)`, `map.Door(a, b)`, `map.Open(a, b)` (`warehouse_v1`: información, ni una coordenada); `layout = Layout(map)` con `layout.Rectangle(area, Position(x, y), w, h)` y `layout.DoorAt(a, b, Position(x, y))` (`warehouse_layout_v1`: el mapa en el plano); `collisions = Collisions(layout)` y `g = Golem(body, layout, collisions)` (`init`). El golem recibe sus módulos; no fabrica ninguno. Una consulta puede calcular con un módulo solo: `layout.ZoneOf(Position(5.5, 5.5))`, `collisions.All()`.
+
+**Los verbos, con objetos** (valores por `@params`, el objeto se construye en la plantilla): `Visit(id, Position)` / `Visit(id, area)` / `Cover(…)` — una parada por acto, varias en un comando; `Follow(Position)`; `MoveTo(id, Position)`; la decisión `Route(id)` + `Via(id, map.DoorBetween(a, b) | map.OpeningBetween(a, b), Position)` + `Around(id, Position)` + `Aside(id, Position)` + `Stop(id, Position)`, todos en una entrada; `Cross(id, pasaje)`, `Pass(id, Position)`.
+
+**Lo que se cuenta viaja plano**: `Bump`, `Graze`, `Mark`, `LearnMark`, `Met`, `HearBump`, `Forget`, `LearnForget` y `Reach` conservan sus primitivos, porque una reacción solo captura literales, `@params` y etiquetas de `expose` — nunca una variable objeto (laboratorio Fase 0, cuaderno 10-sep).
+
+**Mueren**: `Embody/Cruise/Linger`, `Chart/DoorTo/OpenTo`, `Visit(id, x, y)`, `Visit(id, stops[])`, `Cover(stops[])`, `Route(id, texto)`, `AreStops`, el parseo de trayectorias desde texto. **Nacen**: `Route(id)`, `Via`, `Around`, `Aside`, `Stop`, `Pass`; las lecturas `Road(id, x, y)` y `RoadPast(…)` (objetos), `OrderKind(id)`.
+
+**Ajuste del mismo día (Juan): la distribución HEREDA del mapa, y los objetos se buscan una vez.** `Layout : Map` y `Zone : Area`: una distribución ES una maqueta puesta en perspectiva de posiciones, así que toma todos los métodos del mapa y añade la geometría; `Layout(map)` copia la maqueta y sus áreas nacen como zonas esperando su rectángulo. Los releases se escriben como trenes sobre el objeto encontrado una vez — `map.Area('kitchen').DoorTo('north').DoorTo('west')` en la maqueta; `layout.Find('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5))` en la distribución — en vez de repetir el identificador en cada llamada. Mueren `layout.Rectangle(area, …)` y `layout.DoorAt(a, b, …)` como verbos del journal; nacen `Find`, `At`, `Size`, `DoorAt(other, Position)` en la zona, `DoorTo`/`OpenTo` en el área. Las vistas de una zona se llaman `Doorways()` y `OpenSides()` porque `Doors()` es la lista llana del área, heredada.
+
+**Segundo ajuste del mismo día (Juan): `Map` abstracta, `MapLayout` concreta, un solo release.** "Solo sería una clase la que vamos a usar, la de layout, para crear todo; la abstracta es la de mapa y la clase concreta ya sería la del MapLayout: tendría las mismas formas para crear áreas pero extiende las funciones para definirles dimensiones, y si un área conecta con otra o no necesariamente están alineadas". `Map` pasa a abstracta (`NewArea` abstracto; `Connects(a, b)` como información), `MapLayout : Map` es la única clase concreta y construye todo en un tren por área: `map = MapLayout('warehouse'); map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));`. Desaparecen el release `warehouse_layout_v1`, la global `layout` y el constructor `Layout(map)`; el golem recibe `map` (`g = Golem(body, map, collisions)`). El mapa responde como maqueta (`Connects`, `Neighbours`) y como distribución (`Touches`, `ZoneOf`): dos áreas pueden conectar sin tocarse en el plano.

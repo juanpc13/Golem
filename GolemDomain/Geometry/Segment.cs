@@ -2,10 +2,10 @@ namespace GolemDomain.Geometry;
 
 /// <summary>
 /// A segment: a straight run from one position to another — the robot's basic displacement from position i to
-/// position j, the unit a trajectory is made of, and the shape of a wall (a line, no thickness, today).
-/// Open, because a <see cref="Plans.Wall"/> IS a segment of a place's boundary.
+/// position j, the unit a trajectory is made of, and the line a wall stands on (no thickness, today). A wall
+/// HAS a segment; it is not one (Juan, 10-sep-2026).
 /// </summary>
-internal class Segment
+internal sealed class Segment
 {
     internal Position From { get; }
     internal Position To { get; }

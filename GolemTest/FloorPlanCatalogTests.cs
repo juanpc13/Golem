@@ -1,14 +1,14 @@
 using System.Globalization;
 using Choreography.Theater;
 using GolemDomain;
-using GolemDomain.Plans;
+using GolemDomain.Layouts;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puppeteer;
 
 namespace GolemTest;
 
-// The catalog of named floor plans (FloorPlans): each one is built with the domain's own classes and reaches a
-// golem's journal as the release text it renders — so the journal, not the code, keeps the map. Every test
+// The catalog of named maps (Catalog): each one is built with the domain's own class and reaches a golem's
+// journal as the release it renders — so the journal, not the code, keeps the map. Every test
 // charts one plan into a fresh actor through the perform and asks the golem about it.
 [TestClass]
 public class FloorPlanCatalogTests
@@ -26,26 +26,38 @@ public class FloorPlanCatalogTests
     public void TheGolemRests() => perf?.Dispose();
 
     [TestMethod]
-    public void TheArena_RendersTheReleaseTheHostCarries_OneChainPerPlace()
+    public void TheWarehouse_RendersTheReleaseTheHostCarries_EachAreaFoundOnceAndToldInOneTrain()
     {
-        string release = FloorPlans.Arena().AsRelease("map_v1");
+        string release = Catalog.Warehouse().AsRelease();
 
-        StringAssert.StartsWith(release, "upgrade('map_v1') {");
-        StringAssert.Contains(release, "g.Chart('kitchen', 0, 8, 4, 3).DoorTo('north', 4, 9.5).DoorTo('west', 0.75, 8);");
-        StringAssert.Contains(release, "g.Chart('north', 4, 8, 3, 3).DoorTo('storage', 7, 9.5).OpenTo('center');");
-        StringAssert.Contains(release, "g.Chart('storage', 7, 8, 4, 3).DoorTo('east', 10.25, 8);");
-        StringAssert.Contains(release, "g.Chart('garage', 7, 0, 4, 3);");
+        // one concrete map builds everything: the area, where it stands, how big it is, its doors and what it opens to
+        StringAssert.StartsWith(release, "upgrade('warehouse_v1') {\n    map = MapLayout('warehouse');");
+        StringAssert.Contains(release, "    map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));\n");
+        StringAssert.Contains(release, "    map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center');\n");
+        StringAssert.Contains(release, "    map.Area('west').At(Position(0.0, 3.0)).Size(1.5, 5.0).DoorAt('living', Position(0.75, 3.0));\n");
+        StringAssert.Contains(release, "    map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);\n");
+        Assert.IsFalse(release.Contains("g."), "the golem writes nothing here: the map builds itself, and the golem receives it");
 
         Born(release);
         Assert.AreEqual(9, Int("g.PlaceCount()"));
-        Assert.AreEqual(10, Int("g.PassageCount()"), "eight doors and two open boundaries, as the host's map_v1");
+        Assert.AreEqual(10, Int("g.PassageCount()"), "eight doors and two openings, as the host's warehouse");
         Assert.AreEqual("center", Text("g.PlaceAt(5.5, 5.5)"));
+        // and the map answers on its own, without the golem — as a maquette and as a layout, because it is both
+        Assert.AreEqual(9, Int("map.AreaCount"), "what the maquette disposes");
+        Assert.AreEqual(2, Int("map.Find('kitchen').Neighbours().Count"), "the kitchen connects to two areas");
+        Assert.IsTrue(Bool("map.Connects('north', 'center')"), "connected by an opening: information");
+        Assert.IsTrue(Bool("map.Touches('north', 'center')"), "and actually sharing an edge on the plane: geometry");
+        Assert.IsFalse(Bool("map.Connects('kitchen', 'garage')"));
+        Assert.AreEqual(9, Int("map.ZoneCount"), "every area laid out");
+        Assert.AreEqual("north", Text("map.ZoneOf(Position(5.5, 9.5))"));
+        Assert.AreEqual(4.0, Double("map.Find('kitchen').Width"), 1e-9, "found once, read as the zone it is");
+        Assert.AreEqual(0.25, Double("body.Radius"), 1e-9, "and the body");
     }
 
     [TestMethod]
     public void CrossCorridors_FourRoomsInTheCorners_TwoAislesThatCross()
     {
-        Born(FloorPlans.Named("cross-corridors").AsRelease("map_v1"));
+        Born(Catalog.Named("cross-corridors").AsRelease());
 
         Assert.AreEqual(9, Int("g.PlaceCount()"), "four rooms, four aisles, the crossing");
         Assert.AreEqual(12, Int("g.PassageCount()"), "eight doors, four open boundaries around the crossing");
@@ -70,7 +82,7 @@ public class FloorPlanCatalogTests
     [TestMethod]
     public void RingCorridor_FourRoomsInTheMiddle_OneCorridorAllTheWayRound()
     {
-        Born(FloorPlans.Named("ring-corridor").AsRelease("map_v1"));
+        Born(Catalog.Named("ring-corridor").AsRelease());
 
         Assert.AreEqual(8, Int("g.PlaceCount()"), "four rooms, four stretches of corridor");
         Assert.AreEqual(16, Int("g.PassageCount()"), "eight doors to the corridor, four between the rooms, four open stretches");
@@ -93,9 +105,9 @@ public class FloorPlanCatalogTests
     [TestMethod]
     public void TheCatalog_NamesItsPlans_AndRefusesAnUnknownOne()
     {
-        CollectionAssert.AreEqual(new[] { "arena", "cross-corridors", "ring-corridor" }, FloorPlans.Names());
-        var refused = Assert.ThrowsException<DomainException>(() => FloorPlans.Named("attic"));
-        StringAssert.Contains(refused.Message, "no floor plan named 'attic'");
+        CollectionAssert.AreEqual(new[] { "warehouse", "cross-corridors", "ring-corridor" }, Catalog.Names());
+        var refused = Assert.ThrowsException<DomainException>(() => Catalog.Named("attic"));
+        StringAssert.Contains(refused.Message, "no map named 'attic'");
     }
 
     // ---- helpers ----
@@ -106,26 +118,34 @@ public class FloorPlanCatalogTests
         perf = new PerformanceV2(name, DomainLibrary.Assembly);
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
-        perf.Actor.Using(@"
-            upgrade('init') {
-                g = Golem();
-                g.Embody(0.25);
-                g.Cruise(2.0);
-                g.Linger(6);
-            }
-        " + mapRelease)
+        perf.Actor.Using(
+            "upgrade('body_v1') { body = Body(0.25, 2.0, 6.0); }\n"
+            + mapRelease
+            + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n")
         .PerformCommand();
     }
 
-    private void Visit(int id, string[] stops) =>
-        perf.Actor.Using(@"
-            g.Visit(@id, @stops);
-        ")
+    private void Visit(int id, string[] stops)
+    {
+        var script = new System.Text.StringBuilder();
+        for (int i = 0; i < stops.Length; i++)
+            script.Append(stops[i].Contains(',') ? $"g.Visit(@id, Position(@x{i}, @y{i}));\n" : $"g.Visit(@id, @p{i});\n");
+        perf.Actor.Using(script.ToString())
         .WithParameters(p => {
-            p["id",    typeof(int)]      = id;
-            p["stops", typeof(string[])] = stops;
+            p["id", typeof(int)] = id;
+            for (int i = 0; i < stops.Length; i++)
+            {
+                if (stops[i].Contains(','))
+                {
+                    var xy = stops[i].Split(',');
+                    p[$"x{i}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                    p[$"y{i}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                }
+                else p[$"p{i}", typeof(string)] = stops[i];
+            }
         })
         .PerformCommand();
+    }
 
     private void Visit(int id, string place) =>
         perf.Actor.Using(@"

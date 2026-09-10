@@ -1,17 +1,17 @@
 using GolemDomain.Geometry;
+using GolemDomain.Layouts;
 
-namespace GolemDomain.Plans;
+namespace GolemDomain.Touches;
 
 /// <summary>
-/// The obstacles module — what the bodies LEARNED by touching, as opposed to the <see cref="FloorPlan"/>, which
-/// is what the golem was told. It keeps the facts (the marks where a touch met something the plan does not hold,
-/// and the peers it met) and derives the hypotheses from them: the things the marks outline. It never stores a
-/// hypothesis; every reading recomputes it (paper 08: the facts are testimony, the figure is inference).
-/// <para>Two modules, not one: the plan does not change, the learning does, and the road is found by consulting
-/// both — the plan says where the walls and the doors are, this one says what nobody charted. It leans on the
-/// plan only to name the zone a mark stands in.</para>
+/// The collisions module — what the bodies LEARNED by touching, as opposed to the map (what the golem was told)
+/// and the layout (where that stands). It keeps the facts — the marks where a touch met something the map does
+/// not hold, the peers met, the bumps peers told about — and INTERPRETS them: the things the marks outline, who
+/// was bumped near a point, what a fresh touch most likely was. It never stores a hypothesis; every reading
+/// recomputes it (paper 08: the facts are testimony, the figure is inference). It leans on the layout only to
+/// measure and to name the zone a mark stands in.
 /// </summary>
-internal sealed class ObstacleMap
+internal sealed class Collisions
 {
     /// <summary>A mark is a point where a body touched something: whatever stands there is taken to reach at
     /// least this far around the point, along the surface it touched.</summary>
@@ -22,24 +22,29 @@ internal sealed class ObstacleMap
     internal const double JoinWithin = 1.0;
     /// <summary>Two touches this close are the same mark.</summary>
     internal const double SameTouch = 0.1;
+    /// <summary>How close two touches must be, in space, for them to be one meeting of two bodies: two radii of a
+    /// body plus the error of estimating the point at the nose.</summary>
+    internal const double MeetingReach = 1.2;
 
-    private readonly FloorPlan plan;
-    private readonly List<Mark> marks = new();        // facts: where bodies touched what the plan does not hold
-    private readonly List<Peer> encounters = new();   // facts: where a body met another body — history, never planned around
+    private readonly List<Mark> marks = new();          // facts: where bodies touched what the map does not hold
+    private readonly List<Peer> encounters = new();     // facts: where a body met another body — history, never planned around
+    private readonly List<HeardBump> heard = new();     // facts: the bumps peers told about — who, where, and where they stood
 
-    internal ObstacleMap(FloorPlan plan)
+    internal MapLayout Layout { get; }
+
+    internal Collisions(MapLayout layout)
     {
-        if (plan == null) throw new DomainException("the obstacles are learned over a floor plan");
-        this.plan = plan;
+        Layout = layout ?? throw new DomainException("collisions are measured over a layout");
     }
 
     // ---- the facts ----
 
-    /// <summary>A point where a body touched something the plan does not hold, with the heading of the touch (the
+    /// <summary>A point where a body touched something the map does not hold, with the heading of the touch (the
     /// mark's normal). Two touches within SameTouch are one mark. Returns how many marks it holds.</summary>
     internal int Mark(Pose touch)
     {
-        if (!marks.Any(m => m.DistanceTo(touch) < SameTouch)) marks.Add(new Mark(touch.X, touch.Y, touch.Heading));
+        if (touch == null) throw new DomainException("a mark needs the pose of the touch");
+        if (!marks.Any(m => m.DistanceTo(touch) < SameTouch)) marks.Add(new Mark(new Position(touch.X, touch.Y), touch.Heading));
         return marks.Count;
     }
 
@@ -47,16 +52,26 @@ internal sealed class ObstacleMap
     /// Returns how many encounters it holds.</summary>
     internal int Meet(string who, Position at)
     {
-        encounters.Add(new Peer(who, at, plan.ZoneOf(at)));
+        encounters.Add(new Peer(who, at, Layout.ZoneOf(at)));
         return encounters.Count;
+    }
+
+    /// <summary>A peer said it bumped at a point while it stood somewhere: heard and kept, so a touch of my own
+    /// there and then is known to be that peer, and so I know where it is when I step out of its way.</summary>
+    internal int Hear(string who, Position at, Position peerAt)
+    {
+        heard.Add(new HeardBump(who, at, peerAt));
+        return heard.Count;
     }
 
     internal int MarkCount => marks.Count;
     internal int EncounterCount => encounters.Count;
+    internal int HeardCount => heard.Count;
     internal IReadOnlyList<Mark> Marks => marks;
+    internal IReadOnlyList<HeardBump> Heard => heard;
 
-    /// <summary>The marks standing in a place (a mark on a shared wall stands in both).</summary>
-    internal IReadOnlyList<Mark> MarksIn(Place place) => marks.Where(place.Contains).ToList();
+    /// <summary>The marks standing in a zone (a mark on a shared wall stands in both).</summary>
+    internal IReadOnlyList<Mark> MarksIn(Zone zone) => marks.Where(m => zone.Contains(m.At)).ToList();
 
     // ---- the hypotheses, derived every time ----
 
@@ -70,15 +85,15 @@ internal sealed class ObstacleMap
         int Root(int i) { while (parent[i] != i) i = parent[i] = parent[parent[i]]; return i; }
         for (int i = 0; i < n; i++)
             for (int j = i + 1; j < n; j++)
-                if (marks[i].DistanceTo(marks[j]) <= JoinWithin) parent[Root(i)] = Root(j);
+                if (marks[i].DistanceTo(marks[j].At) <= JoinWithin) parent[Root(i)] = Root(j);
 
         var obstacles = new List<Obstacle>();
         foreach (var group in Enumerable.Range(0, n).GroupBy(Root).OrderBy(g => g.Min()))
         {
             var members = group.Select(i => marks[i]).ToList();
-            var centre = new Position(members.Average(m => m.X), members.Average(m => m.Y));
-            var ordered = members.OrderBy(m => Math.Atan2(m.Y - centre.Y, m.X - centre.X)).ToList();
-            obstacles.Add(new Thing(ordered, centre, plan.ZoneOf(centre)));
+            var centre = new Position(members.Average(m => m.At.X), members.Average(m => m.At.Y));
+            var ordered = members.OrderBy(m => Math.Atan2(m.At.Y - centre.Y, m.At.X - centre.X)).ToList();
+            obstacles.Add(new Thing(ordered, centre, Layout.ZoneOf(centre)));
         }
         obstacles.AddRange(encounters);
         return obstacles;
@@ -87,8 +102,37 @@ internal sealed class ObstacleMap
     /// <summary>The things alone: the obstacles the roads avoid. A peer is not one of them — bodies move on.</summary>
     internal IReadOnlyList<Thing> Things() => All().OfType<Thing>().ToList();
 
-    /// <summary>The obstacles whose centre stands in a place.</summary>
-    internal IReadOnlyList<Obstacle> In(Place place) => All().Where(o => place.Contains(o.Center)).ToList();
+    /// <summary>The obstacles whose centre stands in a zone.</summary>
+    internal IReadOnlyList<Obstacle> In(Zone zone) => All().Where(o => zone.Contains(o.Center)).ToList();
+
+    /// <summary>Who, among the bumps heard after the given count, bumped near a point — within a meeting's reach;
+    /// "" for nobody. (Robotics resolves two bodies meeting with reciprocal velocity obstacles — van den Berg, Lin
+    /// &amp; Manocha, ICRA 2008; ORCA 2011 — each taking half the avoidance from what it senses of the other. Our
+    /// bodies sense nothing but a touch, so they resolve it by speech: both tell the fact, and each concludes.)</summary>
+    internal string HeardNear(Position at, int sinceCount)
+    {
+        for (int i = heard.Count - 1; i >= sinceCount && i >= 0; i--)
+            if (heard[i].At.DistanceTo(at) <= MeetingReach) return heard[i].Who;
+        return "";
+    }
+
+    /// <summary>Where a peer stood the last time it told about a bump; null if it never did.</summary>
+    internal Position LastKnownPositionOf(string who)
+    {
+        for (int i = heard.Count - 1; i >= 0; i--)
+            if (heard[i].Who == who) return heard[i].PeerAt;
+        return null;
+    }
+
+    /// <summary>What a touch at a pose most likely was, given what was heard since a count: a wall the layout knows
+    /// (Graze), a peer that bumped near there and then (Met), or a thing nobody charted (Mark).</summary>
+    internal Suspicion Suspect(Pose touch, int sinceCount)
+    {
+        if (Layout.IsWallAt(touch, MapLayout.WallTolerance)) return new WallTouched();
+        string who = HeardNear(touch, sinceCount);
+        if (who != "") return new PeerMet(who);
+        return new ThingFound();
+    }
 
     // ---- forgetting: something that was there is not there any more ----
 
@@ -100,7 +144,7 @@ internal sealed class ObstacleMap
     /// outlined it — all its marks at once, because they were vertices of one thing and the thing is gone. A body
     /// may pass there again, and if it touches something it will be a NEW obstacle, outlined by new marks.
     /// Returns how many facts were dropped; zero when nothing stands there.
-    /// <para>The map forgets, the journal does not: the act of forgetting is journaled like any other, so the
+    /// <para>The module forgets, the journal does not: the act of forgetting is journaled like any other, so the
     /// history still says what was believed and when it stopped being believed.</para></summary>
     internal int Forget(Position at)
     {
@@ -141,11 +185,11 @@ internal sealed class ObstacleMap
 
     /// <summary>Whether a straight run comes into what has been learned: judged at the run's closest point to
     /// each mark, on the mark's own terms.</summary>
-    internal bool Blocks(Segment run, double radius) => marks.Any(m => m.Blocks(run.ClosestTo(m), radius));
+    internal bool Blocks(Segment run, double radius) => marks.Any(m => m.Blocks(run.ClosestTo(m.At), radius));
 
     /// <summary>How far the closest mark lies from a run; positive infinity when nothing has been learned.</summary>
-    internal double DistanceFrom(Segment run) => marks.Count == 0 ? double.PositiveInfinity : marks.Min(run.DistanceTo);
+    internal double DistanceFrom(Segment run) => marks.Count == 0 ? double.PositiveInfinity : marks.Min(m => run.DistanceTo(m.At));
 
     /// <summary>How far the closest mark lies from a point; positive infinity when nothing has been learned.</summary>
-    internal double DistanceFrom(Position at) => marks.Count == 0 ? double.PositiveInfinity : marks.Min(at.DistanceTo);
+    internal double DistanceFrom(Position at) => marks.Count == 0 ? double.PositiveInfinity : marks.Min(m => m.DistanceTo(at));
 }

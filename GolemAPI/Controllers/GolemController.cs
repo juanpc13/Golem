@@ -27,53 +27,16 @@ public class GolemController : Controller
     [HttpPost("move")]
     public async Task<IActionResult> MoveTo([FromQuery] string place, [FromQuery] double? x, [FromQuery] double? y)
     {
-        if (!string.IsNullOrWhiteSpace(place))
-            return Refusable(perf.Actor.Using(
-                @"
-                    Check(g.KnowsPlace(@place)) Error 'no such place on the map';
-                ",
-                @"
-                    g.Visit(@id, @place);
-                ")
-            .WithParameters(p => {
-                p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
-                p["place", typeof(string)]           = place.Trim();
-            })
-            .PerformCheckThenCommand());
-
+        if (!string.IsNullOrWhiteSpace(place)) return Errand("Visit", new[] { place.Trim() });
         if (x.HasValue || y.HasValue)
         {
             if (!(x.HasValue && y.HasValue) || !double.IsFinite(x.Value) || !double.IsFinite(y.Value))
                 return BadRequest("x and y must both be finite numbers");
-            return Refusable(perf.Actor.Using(
-                @"
-                    Check(g.IsOnMap(@x, @y)) Error 'that point is nowhere on the map';
-                ",
-                @"
-                    g.Visit(@id, @x, @y);
-                ")
-            .WithParameters(p => {
-                p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
-                p["x", typeof(double)]               = x.Value;
-                p["y", typeof(double)]               = y.Value;
-            })
-            .PerformCheckThenCommand());
+            return Errand("Visit", new[] { $"{x.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)},{y.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}" });
         }
-
         var stops = await ReadStopsAsync();
         if (stops == null) return BadRequest("give ?place=, ?x=&y=, or a JSON body {\"stops\": [\"kitchen\", \"9,8\"]}");
-        return Refusable(perf.Actor.Using(
-            @"
-                Check(g.AreStops(@stops)) Error 'a stop is neither a place nor a point on the map';
-            ",
-            @"
-                g.Visit(@id, @stops);
-            ")
-        .WithParameters(p => {
-            p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
-            p["stops", typeof(string[])]         = stops;
-        })
-        .PerformCheckThenCommand());
+        return Errand("Visit", stops);
     }
 
     // Send the golem through several stops and let it choose the order that makes the road shortest.
@@ -82,18 +45,54 @@ public class GolemController : Controller
     {
         var stops = await ReadStopsAsync();
         if (stops == null) return BadRequest("give a JSON body {\"stops\": [\"garage\", \"kitchen\", \"storage\"]}");
-        return Refusable(perf.Actor.Using(
-            @"
-                Check(g.AreStops(@stops)) Error 'a stop is neither a place nor a point on the map';
-            ",
-            @"
-                g.Cover(@id, @stops);
-            ")
+        return Errand("Cover", stops);
+    }
+
+    // The errand as the journal writes it: one act per stop, all in ONE command — an area by its name, a point as
+    // a Position built from @params (no list of strings encoding positions). The check refuses the whole errand
+    // before anything is journaled when a stop is neither an area nor a point on the map.
+    private IActionResult Errand(string verb, string[] stops)
+    {
+        var check = new System.Text.StringBuilder("Check(");
+        var acts = new System.Text.StringBuilder();
+        for (int i = 0; i < stops.Length; i++)
+        {
+            if (i > 0) check.Append(" && ");
+            if (IsPoint(stops[i]))
+            {
+                check.Append($"g.IsOnMap(@x{i}, @y{i})");
+                acts.Append($"g.{verb}(@id, Position(@x{i}, @y{i}));\n");
+            }
+            else
+            {
+                check.Append($"g.KnowsPlace(@p{i})");
+                acts.Append($"g.{verb}(@id, @p{i});\n");
+            }
+        }
+        check.Append(") Error 'a stop is neither an area nor a point on the map';");
+        return Refusable(perf.Actor.Using(check.ToString(), acts.ToString())
         .WithParameters(p => {
             p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
-            p["stops", typeof(string[])]         = stops;
+            for (int i = 0; i < stops.Length; i++)
+            {
+                if (IsPoint(stops[i]))
+                {
+                    var xy = stops[i].Split(',');
+                    p[$"x{i}", typeof(double)] = double.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture);
+                    p[$"y{i}", typeof(double)] = double.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture);
+                }
+                else p[$"p{i}", typeof(string)] = stops[i];
+            }
         })
         .PerformCheckThenCommand());
+    }
+
+    private static bool IsPoint(string token)
+    {
+        var xy = token.Split(',');
+        return xy.Length == 2
+            && double.TryParse(xy[0].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _)
+            && double.TryParse(xy[1].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
     }
 
     // The map as the golem knows it, read as objects: one query walks the places and prints their
@@ -101,17 +100,19 @@ public class GolemController : Controller
     // it. The engine renders each foreach as an array named after the loop variable, nested where the
     // loop is nested — places, and within a place: doors, opens, marks; a place with none of something
     // simply lacks that key. The golem hands out its objects and never renders a document itself.
-    // The floor plan as the golem was told it: places, doors and open boundaries. What its bodies TOUCHED is
-    // the other module and has its own endpoint (/obstacles), which also names the zone of each figure.
+    // The map as it is laid out: zones, doors and open sides — read from the map module itself, not through the
+    // golem (the modules are globals of the actor). What the bodies TOUCHED is the collisions module
+    // and has its own endpoint (/obstacles), which also names the zone of each figure.
     [HttpGet("map")]
     public IActionResult Map() =>
         Content(perf.Actor.Using(@"
-            foreach (places in g.Places()) {
+            print map.Name 'map';
+            foreach (places in map.Zones) {
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h', places.Center.X 'cx', places.Center.Y 'cy';
-                foreach (doors in places.Doors()) {
+                foreach (doors in places.Doorways()) {
                     print doors.To 'to', doors.At.X 'x', doors.At.Y 'y';
                 }
-                foreach (opens in places.Openings()) {
+                foreach (opens in places.OpenSides()) {
                     print opens.To 'to';
                 }
             }
@@ -125,12 +126,12 @@ public class GolemController : Controller
     [HttpGet("obstacles")]
     public IActionResult Obstacles() =>
         Content(perf.Actor.Using(@"
-            print g.ObstacleCount() 'total', g.ThingCount() 'things', g.MetCount() 'met', g.MarkCount() 'marks';
-            foreach (obstacles in g.Obstacles()) {
+            print g.ObstacleCount() 'total', g.ThingCount() 'things', collisions.EncounterCount 'met', collisions.MarkCount 'marks';
+            foreach (obstacles in collisions.All()) {
                 print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
                       obstacles.Who 'who', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
                 foreach (vertices in obstacles.Vertices()) {
-                    print vertices.X 'x', vertices.Y 'y', vertices.Heading 'normal', vertices.Reach 'reach';
+                    print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal', vertices.Reach 'reach';
                 }
             }
         ")

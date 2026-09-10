@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Linq;
 using Choreography.Theater;
 using GolemDomain;
+using GolemDomain.Layouts;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puppeteer;
 
@@ -35,30 +36,19 @@ public class MissionAcceptanceTests
         perf = new PerformanceV2(name, DomainLibrary.Assembly);
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
-        perf.Actor.Using(@"
-            upgrade('init') {
-                g = Golem();
-                g.Embody(0.25);
-                g.Cruise(2.0);
-                g.Linger(6);
-            }
-            upgrade('map_v1') {
-                g.Chart('kitchen', 0, 8, 4, 3).DoorTo('north', 4, 9.5).DoorTo('west', 0.75, 8);
-                g.Chart('north',   4, 8, 3, 3).DoorTo('storage', 7, 9.5).OpenTo('center');
-                g.Chart('storage', 7, 8, 4, 3).DoorTo('east', 10.25, 8);
-                g.Chart('west',    0, 3, 1.5, 5).DoorTo('living', 0.75, 3);
-                g.Chart('center',  4, 3, 3, 5).OpenTo('south');
-                g.Chart('east',    9.5, 3, 1.5, 5).DoorTo('garage', 10.25, 3);
-                g.Chart('living',  0, 0, 4, 3).DoorTo('south', 4, 1.5);
-                g.Chart('south',   4, 0, 3, 3).DoorTo('garage', 7, 1.5);
-                g.Chart('garage',  7, 0, 4, 3);
-            }
-        ")
-        .PerformCommand();
+        perf.Actor.Using(Releases).PerformCommand();
     }
 
     [TestCleanup]
     public void TheGolemRests() => perf.Dispose();
+
+    // The release chain as the host carries it: the body (one object), the warehouse map from the catalog (the
+    // concrete MapLayout: areas with their positions, doors, openings, in one train each) and the golem that
+    // RECEIVES its modules — each a global of the actor in its own right. Constructor literals carry a decimal point (Fase 0, P7).
+    private static string Releases =>
+        "upgrade('body_v1') { body = Body(0.25, 2.0, 6.0); }\n"
+        + Catalog.Warehouse().AsRelease()
+        + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n";
 
     // ---- the body ----
 
@@ -68,9 +58,15 @@ public class MissionAcceptanceTests
         Assert.AreEqual(0.25, Double("g.Radius()"), 0.001, "the body's size");
         Assert.AreEqual(2.0, Double("g.Speed()"), 0.001, "its cruise speed");
         Assert.AreEqual(6.0, Double("g.LingerAfterTold()"), 0.001, "its linger at a told stop");
-        Refuses("g.Embody(0.0);", "radius above zero");
-        Refuses("g.Cruise(0.0);", "cruise speed above zero");
-        Refuses("g.Linger(-1.0);", "cannot be negative");
+        // A constructor's refusal reaches the DSL as "Error while instantiating class 'Body'": the engine wraps the
+        // domain's exception and its reason is lost on the way (Fase 0 follow-up, 10-sep-2026). The C# tests below
+        // keep the reasons; here we can only assert that the body was refused.
+        Refuses("b = Body(0.0, 2.0, 6.0);", "Error while instantiating class 'Body'");
+        Refuses("b = Body(0.25, 0.0, 6.0);", "Error while instantiating class 'Body'");
+        Refuses("b = Body(0.25, 2.0, -1.0);", "Error while instantiating class 'Body'");
+        Assert.AreEqual("a body needs a radius above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(0.0, 2.0, 6.0)).Message);
+        Assert.AreEqual("a body needs a cruise speed above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(0.25, 0.0, 6.0)).Message);
+        Assert.AreEqual("a linger cannot be negative", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(0.25, 2.0, -1.0)).Message);
     }
 
     // ---- the map ----
@@ -94,8 +90,8 @@ public class MissionAcceptanceTests
         string json = perf.Actor.Using(@"
             foreach (places in g.Places()) {
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h', places.Center.X 'cx', places.Center.Y 'cy';
-                foreach (doors in places.Doors()) { print doors.To 'to', doors.At.X 'x', doors.At.Y 'y'; }
-                foreach (opens in places.Openings()) { print opens.To 'to'; }
+                foreach (doors in places.Doorways()) { print doors.To 'to', doors.At.X 'x', doors.At.Y 'y'; }
+                foreach (opens in places.OpenSides()) { print opens.To 'to'; }
             }
         ").PerformQuery();
 
@@ -260,7 +256,7 @@ public class MissionAcceptanceTests
 
         Assert.AreEqual(9.0, Double("g.OrderX()"), 0.001);
         Assert.AreEqual(9.5, Double("g.OrderY()"), 0.001);
-        Refuses("g.Visit(2, 'attic');", "unknown place");
+        Refuses("g.Visit(2, 'attic');", "unknown area 'attic'");
     }
 
     [TestMethod]
@@ -295,11 +291,11 @@ public class MissionAcceptanceTests
         Visit(1, new[] { "kitchen", "9,8" });
         Assert.AreEqual(2, Int("g.StopsLeft(1)"));
 
-        Refuses("g.Visit(2, {'attic'});", "neither a place nor a point");
-        Refuses("g.Visit(2, {'3,5'});", "neither a place nor a point x,y on the map");
-        Refuses("g.Visit(2, 3.0, 5.0);", "nowhere on the map");
-        Assert.IsFalse(Bool("g.AreStops({'kitchen', 'attic'})"));
-        Assert.IsTrue(Bool("g.AreStops({'kitchen', '9,8'})"));
+        Refuses("g.Visit(2, 'attic');", "unknown area 'attic'");
+        Refuses("g.Visit(2, Position(3.0, 5.0));", "nowhere on the map");
+        Assert.IsTrue(Bool("g.KnowsPlace('kitchen')"));
+        Assert.IsFalse(Bool("g.KnowsPlace('attic')"));
+        Assert.IsTrue(Bool("g.IsOnMap(9.0, 8.0)"), "a point in the north hall");
         Assert.AreEqual(1, Int("g.Total()"));
     }
 
@@ -348,14 +344,14 @@ public class MissionAcceptanceTests
         Cross(1, "kitchen/west");
         Assert.AreEqual(2, Int("g.LegsLeft(1)"));
         Assert.AreEqual(3.0, Double("g.OrderY()"), 0.001);
-        Refuses("g.Cross(1, 'kitchen/west');", "is heading to 'west/living'");
+        Refuses("g.Cross(1, map.DoorBetween('kitchen', 'west'));", "is heading to 'west/living'");
         Refuses("g.Reach(1, 0.75, 3.0);", "cross it, no stop is next");
 
         Cross(1, "west/living");
         Assert.AreEqual(1, Int("g.LegsLeft(1)"));
         Assert.IsTrue(Bool("g.OrderIsStop(1)"));
         Assert.AreEqual("living", Text("g.OrderPassage(1)"), "the last leg is the stop, named by its place");
-        Refuses("g.Cross(1, 'living');", "a stop, not a passage");
+        Refuses("g.Cross(1, map.DoorBetween('west', 'living'));", "a stop, not a passage");
         Refuses("g.Reach(1, 2.0, 2.0);", "next stop is (2, 1.5)");
 
         Reach(1, 2.0, 1.5);
@@ -614,7 +610,7 @@ public class MissionAcceptanceTests
         string json = perf.Actor.Using(@"
             foreach (obstacles in g.Obstacles()) {
                 print obstacles.Where 'zone', obstacles.Size 'size', obstacles.Shape 'shape', obstacles.Center.X 'cx';
-                foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y'; }
+                foreach (vertices in obstacles.Vertices()) { print vertices.At.X 'x', vertices.At.Y 'y'; }
             }
         ").PerformQuery();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
@@ -657,7 +653,7 @@ public class MissionAcceptanceTests
         Route(1, plan);
         Assert.IsFalse(Bool("g.OrderIsStop(1)"));
         Assert.AreEqual("around", Text("g.OrderPassage(1)"));
-        Cross(1, "around");
+        Pass(1, plan, "around");
         Assert.IsTrue(Int("g.LegsLeft(1)") >= 1);
     }
 
@@ -666,7 +662,7 @@ public class MissionAcceptanceTests
     {
         Visit(1, 9.0, 1.5);
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
-        Refuses("g.Route(1, 'garage@9,1.5');", "already has its road");
+        Refuses("g.Route(1);", "already has its road");
 
         Bump(1, 10.25, 5.85, South);                 // the crate, met halfway down the corridor
         Mark(10.25, 5.85, South);                    // nobody else bumped: an obstacle
@@ -731,7 +727,7 @@ public class MissionAcceptanceTests
         Assert.IsTrue(Bool("g.HasNextPoint(1)"));
         Assert.IsFalse(Bool("g.IsOrdered(1)"), "a road decided is not yet an order given");
 
-        Refuses("g.MoveTo(1, 2.0, 1.5);", "heads to (0.75, 8), not to (2, 1.5)");   // the stop, skipping two doors
+        Refuses("g.MoveTo(1, Position(2.0, 1.5));", "heads to (0.75, 8), not to (2, 1.5)");   // the stop, skipping two doors
 
         Order(1, 0.75, 8.0);
         Assert.IsTrue(Bool("g.IsOrdered(1)"), "the host now knows where to drive");
@@ -823,7 +819,7 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("g.OrderIsStop(1)"));
         Assert.AreEqual("aside", Text("g.OrderPassage(1)"));
         Order(1, 4.6, 9.0);
-        Cross(1, "aside");
+        Pass(1, road, "aside");
         Assert.AreEqual("pending", Text("g.StatusOf(1)"), "stepping aside is not arriving");
         Assert.AreEqual(1, Int("g.StopsLeft(1)"));
     }
@@ -853,7 +849,7 @@ public class MissionAcceptanceTests
             print g.ObstacleCount() 'total';
             foreach (obstacles in g.Obstacles()) {
                 print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size', obstacles.Who 'who';
-                foreach (vertices in obstacles.Vertices()) { print vertices.X 'x', vertices.Y 'y', vertices.Heading 'normal'; }
+                foreach (vertices in obstacles.Vertices()) { print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal'; }
             }
         ").PerformQuery();
 
@@ -1089,7 +1085,7 @@ public class MissionAcceptanceTests
 
     private void Order(int id, double x, double y) =>
         perf.Actor.Using(@"
-            g.MoveTo(@id, @x, @y);
+            g.MoveTo(@id, Position(@x, @y));
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
@@ -1100,7 +1096,7 @@ public class MissionAcceptanceTests
 
     private void Visit(int id, double x, double y) =>
         perf.Actor.Using(@"
-            g.Visit(@id, @x, @y);
+            g.Visit(@id, Position(@x, @y));
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
@@ -1119,29 +1115,44 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    private void Visit(int id, string[] stops) =>
-        perf.Actor.Using(@"
-            g.Visit(@id, @stops);
-        ")
-        .WithParameters(p => {
-            p["id",    typeof(int)]      = id;
-            p["stops", typeof(string[])] = stops;
-        })
-        .PerformCommand();
+    private void Visit(int id, string[] stops) => Errand("Visit", id, stops);
+    private void Cover(int id, string[] stops) => Errand("Cover", id, stops);
 
-    private void Cover(int id, string[] stops) =>
-        perf.Actor.Using(@"
-            g.Cover(@id, @stops);
-        ")
+    // Several stops are several acts in ONE command: an area by its name, a point as a Position — no list of
+    // strings encoding positions any more (Juan, 10-sep-2026: objects, one per statement).
+    private void Errand(string verb, int id, string[] stops)
+    {
+        var script = new System.Text.StringBuilder();
+        for (int i = 0; i < stops.Length; i++)
+            script.Append(IsPoint(stops[i]) ? $"g.{verb}(@id, Position(@x{i}, @y{i}));\n" : $"g.{verb}(@id, @p{i});\n");
+        perf.Actor.Using(script.ToString())
         .WithParameters(p => {
-            p["id",    typeof(int)]      = id;
-            p["stops", typeof(string[])] = stops;
+            p["id", typeof(int)] = id;
+            for (int i = 0; i < stops.Length; i++)
+            {
+                if (IsPoint(stops[i]))
+                {
+                    var xy = stops[i].Split(',');
+                    p[$"x{i}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                    p[$"y{i}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                }
+                else p[$"p{i}", typeof(string)] = stops[i];
+            }
         })
         .PerformCommand();
+    }
+
+    private static bool IsPoint(string token)
+    {
+        var xy = token.Split(',');
+        return xy.Length == 2
+            && double.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out _)
+            && double.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+    }
 
     private void Follow(double x, double y) =>
         perf.Actor.Using(@"
-            g.Follow(@x, @y);
+            g.Follow(Position(@x, @y));
         ")
         .WithParameters(p => {
             p["x", typeof(double)] = x;
@@ -1149,25 +1160,76 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    private void Route(int id, string plan) =>
-        perf.Actor.Using(@"
-            g.Route(@id, @plan);
-        ")
+    // The road is decided act by act, all in one command — Route, then a Via / Around / Aside per leg and a Stop
+    // per stop — from the one-line text g.Plan renders (the test reads the plan as a human does, the journal never
+    // holds that text).
+    private void Route(int id, string plan)
+    {
+        var legs = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var script = new System.Text.StringBuilder("g.Route(@id);\n");
+        for (int i = 0; i < legs.Length; i++)
+        {
+            string name = legs[i][..legs[i].LastIndexOf('@')];
+            script.Append(
+                name == "around" ? $"g.Around(@id, Position(@x{i}, @y{i}));\n"
+                : name == "aside" ? $"g.Aside(@id, Position(@x{i}, @y{i}));\n"
+                : name.Contains('/') ? $"g.Via(@id, map.DoorBetween(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
+                : name.Contains('~') ? $"g.Via(@id, map.OpeningBetween(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
+                : $"g.Stop(@id, Position(@x{i}, @y{i}));\n");
+        }
+        perf.Actor.Using(script.ToString())
         .WithParameters(p => {
-            p["id",   typeof(int)]    = id;
-            p["plan", typeof(string)] = plan;
+            p["id", typeof(int)] = id;
+            for (int i = 0; i < legs.Length; i++)
+            {
+                int at = legs[i].LastIndexOf('@');
+                string name = legs[i][..at];
+                var xy = legs[i][(at + 1)..].Split(',');
+                p[$"x{i}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                p[$"y{i}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                char sep = name.Contains('/') ? '/' : name.Contains('~') ? '~' : ' ';
+                if (sep != ' ')
+                {
+                    var ab = name.Split(sep);
+                    p[$"a{i}", typeof(string)] = ab[0];
+                    p[$"b{i}", typeof(string)] = ab[1];
+                }
+            }
         })
         .PerformCommand();
+    }
 
-    private void Cross(int id, string passage) =>
-        perf.Actor.Using(@"
-            g.Cross(@id, @passage);
-        ")
+    // A passage is an object of the map: the door or the opening between two areas.
+    private void Cross(int id, string passage)
+    {
+        bool door = passage.Contains('/');
+        var ab = passage.Split(door ? '/' : '~');
+        perf.Actor.Using(door
+            ? "g.Cross(@id, map.DoorBetween(@a, @b));"
+            : "g.Cross(@id, map.OpeningBetween(@a, @b));")
         .WithParameters(p => {
-            p["id",      typeof(int)]    = id;
-            p["passage", typeof(string)] = passage;
+            p["id", typeof(int)]    = id;
+            p["a",  typeof(string)] = ab[0];
+            p["b",  typeof(string)] = ab[1];
         })
         .PerformCommand();
+    }
+
+    // Passing the first leg of a kind (around, aside) named in a plan text: a point, not a passage.
+    private void Pass(int id, string plan, string kind)
+    {
+        var leg = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).First(l => l.StartsWith(kind + "@"));
+        var xy = leg[(leg.LastIndexOf('@') + 1)..].Split(',');
+        perf.Actor.Using(@"
+            g.Pass(@id, Position(@x, @y));
+        ")
+        .WithParameters(p => {
+            p["id", typeof(int)]    = id;
+            p["x",  typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+            p["y",  typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+        })
+        .PerformCommand();
+    }
 
     private void Reach(int id, double x, double y) =>
         perf.Actor.Using(@"

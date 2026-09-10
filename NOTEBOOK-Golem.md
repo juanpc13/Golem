@@ -894,3 +894,145 @@ peer · blue      | kitchen | 1 vertex   | centre (0.75, 8.54)
 
 **Observación**: 53 tests en verde; desplegado, los tres paneles responden y los journals rehidrataron intactos (red con sus 5 marcas). **Conclusión**: el journal tampoco sabe de namespaces — el DSL escribe `Golem()`, `[_:Golem]`, y el motor liga por nombre simple. Renombrar proyectos, assemblies y namespaces no tocó una sola entrada: la identidad del dominio está en sus verbos, no en su montaje (paper 09).
 
+---
+
+## 2026-09-10 · Lo que el DSL permite: objetos, globales, capturas (estudio previo al plan de objetos en el journal)
+
+**Contexto**: Juan propone dos cosas: (1) que el journal cuente la historia con objetos — "a partir de primitivos vamos a ir creando objetos; se guarda en una variable y esa variable ya se pasa por parámetro al otro; que lo que se escriba sea verboso, que se expanda" —, y (2) que los módulos (el plano, el mapa de obstáculos, el cuerpo) puedan ser globales del actor, armados aparte y brindados al golem, "para poder reusar esas clases fuera del contexto del golem algún día". Antes de planear, se revisó qué permite el motor: las 25 guías del training-lab de Skills y, donde callan, los laboratorios de `repos/puppeteer`.
+
+**Observación** (nueve hallazgos; la evidencia con archivo y línea está en `PLAN-objetos-en-el-journal.md`):
+1. Un objeto construido en el DSL puede guardarse en una variable y pasarse como argumento, también en línea. Lo prueba un laboratorio del motor, no una guía.
+2. Puede haber varias globales; las asignaciones al nivel superior de un `upgrade` **o de un comando** son globales del actor; dentro de `{ }` son locales.
+3. Un objeto puede ir a un constructor (`Order(…, address, …)`); los constructores `internal` valen.
+4. El cuerpo de una acción admite varias sentencias, pero sus **parámetros son solo primitivos**: ningún tipo del dominio puede aparecer en la cabecera. El objeto se construye dentro de la plantilla.
+5. No hay literales de lista de objetos (tipan `List<object>` y no ligan). Las cadenas fluidas sí, incluso sobre un constructor.
+6. Se puede guardar lo que devuelve un método y usarlo en el mismo comando; el journal guarda el texto de la llamada, nunca el valor.
+7. **Las reacciones no capturan objetos**: una captura solo cae sobre un literal, un `@param` o una etiqueta de `expose`; sobre una variable lanza `PatternCaptureException`. Los `tell` llevan solo primitivos.
+8. Los literales en comandos están permitidos pero cada uno es una identidad de acción; los `upgrade` son los portadores sancionados de literales.
+9. Varias raíces globales existen y rehidratan (laboratorio `AssembledVerbOverTwoDomainsLab`, dos dominios); la guía de modelado prefiere una raíz que compone por dentro (E14, E26) y pide pocas globales.
+
+**Conclusión**: la idea 1 es viable tal como Juan la describe y encaja con el paper 02 (los valores siguen entrando por `@params`; la plantilla construye el objeto). La idea 2 es mecánicamente segura y tiene respaldo directo en el paper 0A y en el laboratorio de dos dominios del motor, pero va contra la preferencia de la guía de modelado: es una decisión de Juan que hay que dejar documentada como tal. El riesgo real del plan es el hallazgo 7: los verbos que las reacciones capturan (`Mark`, `Bump`, `Forget`…) podrían tener que quedarse con primitivos, o capturarse en la construcción del objeto, cosa que ninguna guía muestra y hay que probar. Dos avisos más van al laboratorio: el «cross-PerformCmd global-read bug» de `actor-basics:341` y la rehidratación PlainText de un `define action` multilínea (`parameters:286`; nosotros usamos FileSystem).
+
+**Ajuste al dominio**: ninguno todavía. Nace `PLAN-objetos-en-el-journal.md` con el ejemplo del journal de mañana, el diccionario de verbos, seis fases (la 0 es el laboratorio con seis pruebas P1–P6 en `touchlab`) y seis decisiones para Juan. Lección de método que repetimos: **primero qué permite el motor, después el plan**; sin la revisión habríamos planificado capturas de objetos que el motor rechaza en tiempo de autoría.
+
+---
+
+## 2026-09-10 · El mapa dispone, la geometría realiza (ajuste del plan de objetos con las observaciones de Juan)
+
+**Contexto**: Juan revisó el plan y devolvió cuatro cosas: (1) los `.md` de planes se quedan locales, fuera de git; (2) `body` como global suena bien; (3) `plan` no: "algo como un módulo de mapas, y el mapa que le vamos a cargar será el mapa de bodega con todas esas distribuciones"; y una crítica de POO: "las herencias no hacen frente a estructuras sólidas, más bien parece que lo amarraste a un plano cartesiano; la idea es generalizar hasta que sean cosas que no tengan que ver con planos cartesianos o segmentos: otro módulo toma esas propiedades y ya lo trabaja como plano cartesiano; este módulo solo dispone la información para que la ocupen otros"; (4) `learned` no es nombre para un módulo que interpreta o construye colisiones.
+
+**Observación (diagnóstico de las herencias, 10-sep-2026)**: los ocho archivos de `Plans` importan `Geometry` y hablan en coordenadas. `Wall : Segment` dice que una pared ES un segmento; `Mark : Location : Position` que una marca ES una posición; `Door : Passage` carga `Position at`, `Jambs()`, `StepInto()`; `OpenBoundary` carga `Edge`, `Midpoint`, `IsCrossedBy()`; `Place` ES un rectángulo (`X, Y, Width, Height, Corners(), Walls()`); `Obstacle` ES una figura (`Center`, `Vertices()`). La crítica es exacta: el mapa y su realización cartesiana están fundidos, y la herencia es el pegamento. Las herencias que sí son verdad del dominio (paper 01, variantes por resultado) son otras y se quedan: `Door`/`Opening : Passage`, `Thing`/`Peer : Obstacle`, las `Suspicion`, las `EvasionStrategy`, `DistanceCost : EdgeCost`.
+
+**Conclusión**: la separación que Juan pide ya tenía nombre en nuestras propias notas — la tradición topológico/métrica de Kuipers & Byun citada en `FloorPlan` — pero la habíamos anotado como "capas futuras del mismo mapa" en vez de construirla como dos módulos. Mañana: **Maps** dispone información (áreas, pasajes, límites, atributos; ni una coordenada), **Layouts** la realiza en el plano (rectángulos, posiciones de puertas, y de ahí paredes, esquinas, aristas), **Collisions** (el `ObstacleMap` de hoy, con el nombre de lo que interpreta) mide sobre la distribución, **Routes** consulta distribución y colisiones, y `Golem` recibe `body`, `layout`, `collisions`. Lo cartesiano se compone desde su capa; ya no se hereda.
+
+**Ajuste al plan** (`PLAN-objetos-en-el-journal.md`, local): tres ideas en vez de dos (la tercera: los módulos por capas); una sección de diagnóstico con la tabla de herencias; la tabla de módulos con namespaces y globales (`body`, `map`, `layout`, `collisions`, `g`); el journal de mañana con dos releases para el mapa (`warehouse_v1`: información; `warehouse_layout_v1`: distribución); una **Fase 1 nueva y solo de C#** — el refactor por capas con `Golem` todavía fabricando sus módulos por dentro, para que los 53 tests sigan siendo el arnés sin tocar el DSL — antes de mover nada al journal; y siete decisiones para Juan (nombres, qué recibe el golem, `Area` vs `Place`, rectángulo vs polígono…). **Ajuste al dominio**: ninguno todavía.
+
+**Método**: la doctrina del repo dice "los .md de planes son locales": `PLAN-objetos-en-el-journal.md` queda excluido con `.git/info/exclude` (exclusión local, no toca el repo). El cuaderno y `PLAN-Golem.md` ya estaban versionados y no se decidió sobre ellos: se dejan como están hasta que Juan diga.
+
+---
+
+## 2026-09-10 · Laboratorio Fase 0 del plan de objetos: siete preguntas al motor (scratch `objlab`)
+
+**Contexto**: Juan aprobó el plan ("arranca, procura hacer todas las fases juntas"). Antes de tocar el repo, las pruebas P1–P6 del plan más una P7 que salió al correrlas. Dominio de juguete con la forma de mañana: `Body`, `Map`/`Area`/`Passage` (información), `Layout` (realización cartesiana, recibe el mapa), `Collisions` (recibe la distribución), `Planner` (se construye al consultar), `Robot(body, layout, collisions)`.
+
+**Observación**:
+| Prueba | Resultado |
+|---|---|
+| **P1** cinco globales en cuatro releases, objetos en constructores (`Layout(map)`, `Collisions(layout)`, `Robot(body, layout, collisions)`), cada módulo leído desde un `PerformQuery` aparte, y un segundo actor que rehidrata el mismo journal | **Verde.** El «cross-PerformCmd global-read bug» de la guía no apareció. |
+| **P2a** `stop = Position(@x, @y); robot.Visit(@id, stop);` al nivel superior de una plantilla | `stop` **se filtra como global**: se lee después con `stop.Text()`. |
+| **P2b** lo mismo entre llaves `{ … }` | **Local**: después no existe. La plantilla sigue siendo una acción válida. |
+| **P2c** constructor en línea `robot.Visit(@id, Position(@x, @y))` | Verde. |
+| **P3a** capturar en la construcción `[_:Pose]($x, $y, $heading)` | **Rechazado al definir** la reacción (sintaxis del patrón). |
+| **P3b** capturar con constructor en línea `[_:Robot].Mark(Pose($x, $y, $heading))` | **Rechazado al definir**. |
+| **P3c** `expose @x x, @y y, @heading heading;` junto al acto | **Verde**: la reacción captura y concluye. |
+| **P3d** capturar la variable `[_:Robot].Mark($touch)` | La reacción **nunca dispara**; en el log, `PatternCaptureException: the observed argument is the global/local variable 'touch', not a literal … nor a parameter`. |
+| **P4a** varios actos en un comando (`Route` + dos `Via`) | Verde como comando. Con dos `expose` en el mismo comando la reacción no capturó: un `expose` por comando, o ninguno. |
+| **P4b** una llamada sobre una global como argumento: `robot.Cross(@id, map.DoorBetween(kitchen, north))` | **Verde**: el pasaje llega como objeto. |
+| **P5** FileSystem rehidrata una plantilla de varias sentencias | Verde (tres actos, segundo actor, historia intacta). |
+| **P6** consulta que construye `Planner(layout, collisions, body.Radius)` y calcula sin `robot`; `map.AreaCount()`; `layout.AreaAt(layout.Door(kitchen, north))` | Verde. La asignación de una consulta **no** se vuelve global. |
+| **P7** literales enteros en parámetros `double` de un constructor: `Position(5, 9)` | **Rechazado** (`InvalidCastException Int32→Double`) en comandos y en consultas; `Position(5.0, 9.0)` pasa. En el `upgrade` sí pasó (`Position(0, 8)` dentro de `layout.Rectangle(…)`). |
+
+**Conclusión y decisiones que fijan las fases**:
+1. Los módulos como globales y el golem que los recibe por constructor: **viable y rehidrata**. Fase 2 va como está en el plan.
+2. La forma de una plantilla que construye un objeto: **entre llaves** `{ stop = Position(x, y); g.Visit(id, stop); }` — es la verbosidad paso a paso que pide Juan sin dejar globales huérfanas en la raíz (P2a las deja). El constructor en línea queda para argumentos simples.
+3. **Lo que se cuenta viaja plano.** Un acto que una reacción debe capturar para contárselo a los compañeros (`Bump`, `Mark`, `Reach`, `Forget`) conserva sus `@params` primitivos, porque el matcher solo captura literales, `@params` o etiquetas de `expose` (P3), y el cable solo lleva primitivos (guía). La alternativa, un `expose` junto a cada acto, mete en el journal una línea que no es un acto — lo mismo que Juan rechazó con los `If (…)` el 9-sep. La familia de toques se queda en primitivos completa (`Bump`, `Graze`, `Mark`, `LearnMark`, `Met`, `HearBump`, `Forget`, `LearnForget`) para que se lea uniforme; `Reach` también, porque se cuenta. El resto de la navegación (`Visit`, `Cover`, `Follow`, `MoveTo`, `Route`/`Via`, `Cross`) pasa a objetos.
+4. Un pasaje del mapa puede viajar como objeto (`map.Door(a, b)`) en un argumento (P4b): `Cross` y `Via` lo usan.
+5. El catálogo emite los literales de constructores **con punto decimal** (P7); el host nunca escribe literales: siempre `@params` tipados.
+
+**Ajuste al dominio**: empieza la Fase 1 (capas: `Maps` dispone, `Layouts` realiza, `Collisions` interpreta), en C# puro, con los 53 tests como arnés.
+
+---
+
+## 2026-09-10 · Fase 1: el mapa dispone, la distribución realiza, las colisiones interpretan (C# puro, 53 tests como arnés)
+
+**Ajuste al dominio**: muere `Plans`. Nacen **`Maps`** (`Map`, `Area`, `Passage` → `Door`/`Opening`: información pura, con los atributos que el mapa conoce — `DoorWidth`, `Height`, `WallThickness` — y ni una coordenada), **`Layouts`** (`Layout(map)`: un `Zone` por área = `Area` + `Rectangle`; `PlacedDoor` = `Door` + `Position`; `Wall` que TIENE un `Segment`; `Doorway`/`OpenSide` como vistas; el `Catalog` con los planos con nombre) y **`Touches`** (`Collisions(layout)`: marcas, encuentros y bumps oídos, con `Suspect`, `HeardNear`, `Forget`; `Mark` que TIENE un `Position`; `Obstacle`, `Suspicion`, `HeardBump`). `Geometry` gana `Rectangle`. `RoutePlanner(layout, collisions, radius)` consulta los dos módulos y no posee ninguno. `Golem` seguía fabricando sus módulos por dentro y `Chart/DoorTo/OpenTo` vivían de forma transitoria en `Zone`, para que los 53 tests corrieran con el mismo DSL. **Observación**: 53 en verde a la primera compilación salvo tres textos de mensajes ("area 'attic' is not laid out", "no layout named", "neither an area nor a point"). El refactor de POO se validó solo, sin tocar el journal. El namespace de las colisiones se llama `Touches` porque una clase no puede llamarse como su namespace (el mismo choque de `DomainLibrary`).
+
+---
+
+## 2026-09-10 · Fases 2–6: el journal habla en objetos, y los módulos son globales
+
+**Ajuste al dominio**: `Body(radius, speed, linger)` es un objeto (mueren `Embody/Cruise/Linger`); `Golem(body, layout, collisions)` recibe sus módulos (muere `Golem()` y muere `Chart`); `Visit(id, Position)`/`Visit(id, area)`/`Cover(…)` abren un encargo con un handle nuevo o le añaden una parada con el suyo (`Mission.AddStop`, antes de decidir el camino); `Follow(Position)`; `MoveTo(id, Position)`; la decisión es una secuencia de actos: `Route(id)` abre el borrador, `Via(id, pasaje, Position)`, `Around`, `Aside` y `Stop` lo llenan, y al último `Stop` (tantos como paradas por delante) el golem toma el camino con sus cruces de puerta; `Cross(id, Passage)` recibe el objeto del mapa (`map.DoorBetween(a, b)` / `map.OpeningBetween(a, b)`); nace **`Pass(id, Position)`** para los puntos de rodeo y de cortesía, que no son pasajes ni paradas (no estaba en el diccionario del plan: se anota aquí y en el PLAN). Lecturas nuevas `Road(id, x, y)` y `RoadPast(…)` devuelven la `Trajectory` como objetos; `Plan`/`PlanPast` siguen dando la línea de texto para humanos y tests. Muere `Trajectory.Parse`. `Layout.AsReleases()` emite los dos releases del mapa con literales con punto decimal. El catálogo renombra `arena` → **`warehouse`** ("el mapa de bodega").
+
+**Ajuste a los tests**: los helpers traducen — `Route(id, planText)` parte la línea de `g.Plan` y escribe los actos; `Cross(id, "a/b")` escribe `map.DoorBetween`; `Pass(id, plan, "around")` toma el punto del texto. 53 en verde. Un hallazgo del motor: **un constructor que rechaza llega al DSL como `Error while instantiating class 'Body'`; la razón del dominio se pierde** en el envoltorio (`TargetInvocationException`). Los tests de `Body` comprueban la razón en C# y en el DSL solo que se rechazó.
+
+**Ajuste al host**: `RoadLeg` (record: kind, a, b, x, y) lleva la decisión desde la lectura `g.Road(…)` (una consulta que recorre `Legs()` e imprime `Kind`, `A`, `B`, `At.X`, `At.Y`) hasta el handler que escribe `g.Route(@id); g.Via(@id, map.DoorBetween(@a0, @b0), Position(@x0, @y0)); … g.Stop(@id, Position(@xN, @yN));` en un solo comando; `PassageCrossed` viaja con el punto y el handler elige `Cross` (puerta/abertura) o `Pass` (punto); `MoveTo(@id, Position(@x, @y))`; el uptake `Follow(Position(@x, @y))`; el controller escribe un acto por parada (`g.Visit(@id, @p0); g.Visit(@id, Position(@x1, @y1));`) con un `Check` por parada; `/map` recorre `layout.Zones` y `/obstacles` recorre `collisions.All()` — los módulos, sin el golem; el panel gana botones `map.AreaCount`, `layout.ZoneOf(Position(5.5, 5.5))`, `collisions.MarkCount`, `body.Radius`. Los releases del host llevan el texto de `Catalog.Warehouse().AsReleases()`.
+
+**Laboratorio en vivo** (journals archivados en `journal-legacy-20260910-objetos/`; flota nueva; blue a `kitchen` y `9,8`, red a `living`). El journal de blue, tal cual:
+```
+1  upgrade('body_v1') { body = Body(0.25,2.0,6.0); } upgrade('warehouse_v1') { map = Map('warehouse'); map.Area('kitchen'); … }
+3  g.Visit(1, 'kitchen'); g.Visit(1, Position(9,8));
+5  g.Route(1); g.Via(1, map.DoorBetween('kitchen', 'north'), Position(4,9.5)); g.Stop(1, Position(2,9.5)); g.Via(1, map.DoorBetween('kitchen', 'north'), Position(4,9.5)); …
+7  g.MoveTo(1, Position(4,9.5));
+9  g.Follow(Position(2,1.5));
+11 g.Cross(1, map.DoorBetween('kitchen', 'north'));
+14 g.Reach(1, 2, 9.5);
+34 g.Cross(2, map.OpeningBetween('north', 'center'));
+37 g.Bump(2, 5.2076, 5.8825, -1.714); Expose …           ← lo que se cuenta, plano
+43 g.Mark(5.2076, 5.8825, -1.714);
+49 g.Route(2); g.Around(2, Position(4.5276,5.8825)); g.Via(2, map.OpeningBetween('center', 'south'), Position(4.5752,3)); …
+52 g.Pass(2, Position(4.5276,5.8825));
+58 g.Reach(2, 2, 1.5);
+```
+Y red: `g.Visit(1, 'living'); g.MoveTo(1, Position(2,1.5)); g.Reach(1, 2, 1.5); … g.HearBump('blue', …); g.LearnMark(…)`. Tres actores, tres journals con cuatro releases y cinco globales cada uno, rehidratando; `/obstacles` de red muestra la marca que aprendió de blue (una cosa en `center`); `/map` dice `"map":"warehouse"`.
+
+**Observaciones**: (1) la misión 1 de blue falló con "still grazing wall_storage_s_1 at (8.9, 8.1)": la parada `9,8` que pedí está SOBRE la pared sur de `storage` (y = 8) — un encargo mal dado, no una regresión; el golem lo trató como siempre (tres roces, paciencia agotada, `Fail`). (2) Blue chocó de verdad con la caja del centro en (5.21, 5.88), la marcó, se lo contó a red y green, y recalculó con un `Around` y un `Pass`. (3) Cada `define action` nuevo tiene los parámetros por posición (`x0, y0, a0, b0, …`): una ruta de N tramos es una acción por forma, como anticipaba el hallazgo 8.
+
+**Conclusión**: el journal se lee como Juan lo pidió — objetos construidos a partir de primitivos, cada acto por separado, los módulos como globales que el golem recibe —, sin una sola línea que no sea un acto, y sin que el motor haya dicho no: los límites (captura, coerción, constructor envuelto) se conocieron en Fase 0 y el lenguaje se diseñó alrededor.
+
+---
+
+## 2026-09-10 · La distribución hereda del mapa; el objeto se busca una vez y se le habla en tren
+
+**Contexto**: Juan, al ver el release del mapa: "la clase de mapas es la maqueta; la de layout es la otra clase que hereda de mapa, para que tome todos los métodos y el funcionamiento de la padre pero a su vez lo ponga en perspectiva de usar posiciones… el POO tiene que hablar por sí solo, como si los objetos hablaran de lo que son capaces… buscar el objeto con un find para modificar sus propiedades, o un builder en tren, en vez de estar seteando a cada rato el identificador tipo 'kitchen'".
+
+**Observación (lo que estaba mal)**: `Layout` TENÍA un `Map` (composición) y sus métodos repetían el nombre del área en cada llamada (`layout.Rectangle('kitchen', …); layout.DoorAt('kitchen', 'north', …)`). Es correcto pero no habla: una distribución no "tiene" una maqueta, ES la maqueta con posiciones. Y el identificador repetido es ruido en el journal.
+
+**Ajuste al dominio**: **`Layout : Map`** (`Map` deja de ser sealed; `areas`/`passages` protegidos; fábrica virtual `NewArea`) y **`Zone : Area`**. `Layout(map)` copia áreas y pasajes de la maqueta y sus áreas nacen como zonas sin rectángulo; `Layout('name')` también sirve para construir desde cero. `Find(name)` en ambos (`override Zone Find` con retorno covariante). Trenes: en el área `DoorTo(other)`/`OpenTo(other)` (virtuales, la zona los sobreescribe para que el tren siga siendo suyo); en la zona `At(Position)`, `Size(w, h)`, `DoorAt(other, Position)`. El rectángulo de la zona es mutable hasta que se le dice (`IsLaidOut`); las lecturas geométricas lo exigen. Las vistas de la zona pasan a `Doorways()`/`OpenSides()` porque `Doors()` es la lista llana heredada del área (dos `Doors()` en la misma clase serían un `AmbiguousMatch` para el motor). `RoutePlanner` y `Golem` ya no pasan por `layout.Map`: la distribución responde como mapa. El catálogo se escribe con los mismos trenes. `AsReleases()` emite una línea por área en cada release.
+
+**Observación (motor)**: el DSL liga por el tipo en tiempo de ejecución: `layout.Find('kitchen').Width` responde 4.0 (la zona), y `map.Find('kitchen').Neighbours().Count` responde 2 (el área de la maqueta). El retorno covariante de C# 9 no hizo falta para el DSL, pero sí para que el catálogo en C# encadene sin casts.
+
+**Verificado**: 53 tests; flota redesplegada (journals archivados en `journal-legacy-20260910-objetos-b/`, porque un release aplicado no se edita); blue completó `kitchen` → `garage` con el journal de siempre, y la entrada 1 dice ahora:
+```
+upgrade('warehouse_v1') { map = Map('warehouse'); map.Area('kitchen').DoorTo('north').DoorTo('west'); map.Area('north').DoorTo('storage').OpenTo('center'); … }
+upgrade('warehouse_layout_v1') { layout = Layout(map); layout.Find('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0)); … }
+```
+
+---
+
+## 2026-09-10 · `Map` abstracta, `MapLayout` concreta: una sola clase construye todo
+
+**Contexto**: Juan, sobre la herencia recién hecha: "lo que está mal es que ahora solo sería una clase la que vamos a usar, la de layout, para crear todo; la abstracta es la de mapa y la clase concreta ya sería la del MapLayout: las mismas formas para crear áreas, pero extiende las funciones para definirles dimensiones y otras cosas, sobre si un área conecta con otra área o no necesariamente están alineadas".
+
+**Observación (lo que aún no calzaba)**: tenía dos objetos vivos, `map` (la maqueta) y `layout = Layout(map)` (una copia con posiciones), y por tanto dos releases y dos globales para una sola cosa. La herencia estaba, pero la maqueta seguía existiendo como instancia aparte.
+
+**Ajuste al dominio**: **`Map` es abstracta** — el contrato de lo que un mapa dispone: áreas, pasajes, `Connects(a, b)` (información: hay un pasaje entre dos áreas, estén como estén en el plano), atributos; `NewArea` abstracto. **`MapLayout : Map` es la única clase concreta**: las mismas formas de crear áreas y pasajes, extendidas con dimensiones y posiciones (`Zone : Area` con `At`, `Size`, `DoorAt`; `Touches(a, b)`: dos áreas comparten arista en el plano — pueden conectar sin tocarse, si no están alineadas). Desaparecen `Layout(Map)`, el release `warehouse_layout_v1` y la global `layout`. El release del mapa es uno, un tren por área. El golem recibe `map`: `g = Golem(body, map, collisions)`. El catálogo construye con la misma clase y `AsRelease()` renderiza el tren.
+
+**Método (lección propia)**: el renombre `Layout → MapLayout` con una expresión regular sobre diez archivos convirtió también las propiedades llamadas `Layout` en accesos estáticos, y un script de parches encadenado abortaba a la mitad y dejaba duplicados al reintentar. Costó cuatro vueltas. Regla: un renombre de clase se hace con el compilador como juez, archivo por archivo, y cada script de parche debe ser idempotente o no se reintenta.
+
+**Verificado**: 53 tests (el del catálogo comprueba el tren completo, `Connects` vs `Touches`, `map.Find('kitchen').Width`); flota redesplegada (journals en `journal-legacy-20260910-objetos-c/`); blue completó `kitchen` → `garage`. Entrada 1 del journal:
+```
+upgrade('body_v1') { body = Body(0.25, 2.0, 6.0); }
+upgrade('warehouse_v1') { map = MapLayout('warehouse'); map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0)); … }
+upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }
+```
+Y desde el panel, con el mapa solo: `map.Connects('north', 'center')` → true, `map.Touches('north', 'center')` → true, `map.Connects('kitchen', 'garage')` → false, `map.Find('kitchen').Neighbours().Count` → 2, `map.ZoneOf(Position(5.5, 5.5))` → center.

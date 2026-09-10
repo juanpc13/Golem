@@ -1,18 +1,18 @@
 using GolemDomain.Geometry;
 
-namespace GolemDomain.Plans;
+namespace GolemDomain.Touches;
 
 /// <summary>
-/// An obstacle as the golem hypothesizes it from what its body touched — never journaled, always recomputed
-/// from the facts (paper 08: the facts are testimony, the figure is inference). Two truths of the domain,
-/// hence two kinds: a <see cref="Thing"/> outlined by marks, which the roads avoid; and a <see cref="Peer"/>,
-/// another body met on the way — transitory, kept as history, never planned around.
+/// An obstacle — Juan's OBSTÁCULO (hipótesis): what the golem hypothesizes from what its body touched — never
+/// journaled, always recomputed from the facts (paper 08: the facts are testimony, the figure is inference). Two
+/// truths of the domain, hence two kinds: a <see cref="Thing"/> outlined by marks, which the roads avoid; and a
+/// <see cref="Peer"/>, another body met on the way — transitory, kept as history, never planned around.
 /// </summary>
 internal abstract class Obstacle
 {
     /// <summary>thing or peer.</summary>
     internal abstract string Kind { get; }
-    /// <summary>The place its centre stands in, so a table can name the zone; "" when it stands nowhere the map holds.</summary>
+    /// <summary>The zone its centre stands in, so a table can name it; "" when it stands nowhere the layout holds.</summary>
     internal abstract string Where { get; }
     internal abstract Position Center { get; }
     internal abstract int Size { get; }
@@ -20,7 +20,7 @@ internal abstract class Obstacle
     internal abstract string Shape { get; }
     /// <summary>Who it was, for a peer; "" for a thing.</summary>
     internal virtual string Who => "";
-    /// <summary>The marks that outline it, ordered around the center so they can be joined; none for a peer.</summary>
+    /// <summary>The marks that outline it, ordered around the centre so they can be joined; none for a peer.</summary>
     internal abstract IReadOnlyList<Mark> Vertices();
 }
 
@@ -41,9 +41,8 @@ internal sealed class Thing : Obstacle
     internal Thing(IReadOnlyList<Mark> vertices, Position center, string where)
     {
         if (vertices == null || vertices.Count == 0) throw new DomainException("a thing is outlined by at least one mark");
-        if (center == null) throw new DomainException("a thing has a center");
         this.vertices = vertices;
-        this.center = center;
+        this.center = center ?? throw new DomainException("a thing has a centre");
         this.where = where ?? "";
     }
 
@@ -68,9 +67,8 @@ internal sealed class Peer : Obstacle
     internal Peer(string who, Position at, string where)
     {
         if (string.IsNullOrWhiteSpace(who)) throw new DomainException("a peer met has a name");
-        if (at == null) throw new DomainException("a peer was met somewhere");
         this.who = who;
-        this.at = at;
+        this.at = at ?? throw new DomainException("a peer was met somewhere");
         this.where = where ?? "";
     }
 

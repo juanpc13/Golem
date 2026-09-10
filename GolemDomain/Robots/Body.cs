@@ -1,11 +1,12 @@
 namespace GolemDomain.Robots;
 
 /// <summary>
-/// The robot's body as the golem knows it: the properties released into the journal — the radius of the disk
-/// it occupies, its cruise speed, and how long it lingers at a stop a peer told it about. The golem is the
-/// mind (what is journaled: entrusting, roads, touches); the body is what it drives. The robot's name is
-/// the journal's identity (the host's GOLEM), and its estimated position is telemetry that enters queries as
-/// parameters: neither is state of the domain.
+/// The robot's body as the golem knows it — a module of its own, released into the journal as one object:
+/// <c>body = Body(0.25, 2.0, 6.0)</c> — the radius of the disk it occupies, its cruise speed, and how long it
+/// lingers at a stop a peer told it about. The golem is the mind (what is journaled: entrusting, roads,
+/// touches); the body is what it drives, handed to it at birth. The robot's name is the journal's identity
+/// (the host's GOLEM), and its estimated position is telemetry that enters queries as parameters: neither is
+/// state of the domain.
 /// <para>Origins: the radius is all the planner needs because the body is reduced to a point and the world grown
 /// by that radius (configuration space, Lozano-Pérez 1983). The estimated position stays out of the domain on
 /// purpose: dead reckoning drifts (Borenstein &amp; Feng's UMBmark, IEEE T-RA 1996, separates systematic from
@@ -13,46 +14,23 @@ namespace GolemDomain.Robots;
 /// </summary>
 internal sealed class Body
 {
-    /// <summary>How close two touches must be, in space, for them to be one meeting of two bodies: two radii of a
-    /// body plus the error of estimating the point at the nose. (Was a literal inside the read that answers who bumped near a point, until 8-sep.)</summary>
-    internal const double MeetingReach = 1.2;
+    private readonly double radius;   // the disk it occupies
+    private readonly double speed;    // cruise speed, world units per second
+    private readonly double linger;   // seconds it lingers at every stop a peer told it about (the follower's pacing)
 
-    private double radius;   // the disk it occupies — zero until embodied: a body that has no size yet is a point
-    private double speed;    // cruise speed, world units per second
-    private double linger;   // seconds it lingers at every stop a peer told it about (the follower's pacing)
-
-    /// <summary>Gives the body its size: the radius of the disk it occupies, in world units. Returns it.</summary>
-    internal double Embody(double bodyRadius)
+    /// <summary>A body: its radius (world units), its cruise speed (units per second) and how long it lingers at
+    /// a told stop (seconds).</summary>
+    internal Body(double radius, double speed, double lingerSeconds)
     {
-        if (bodyRadius <= 0) throw new DomainException("a body needs a radius above zero");
-        radius = bodyRadius;
-        return radius;
+        if (radius <= 0) throw new DomainException("a body needs a radius above zero");
+        if (speed <= 0) throw new DomainException("a body needs a cruise speed above zero");
+        if (lingerSeconds < 0) throw new DomainException("a linger cannot be negative");
+        this.radius = radius;
+        this.speed = speed;
+        linger = lingerSeconds;
     }
 
-    /// <summary>Sets the cruise speed, in world units per second. Returns it.</summary>
-    internal double Cruise(double unitsPerSecond)
-    {
-        if (unitsPerSecond <= 0) throw new DomainException("a body needs a cruise speed above zero");
-        speed = unitsPerSecond;
-        return speed;
-    }
-
-    /// <summary>Sets how long the body lingers at every stop a peer told it about. Returns it.</summary>
-    internal double Linger(double seconds)
-    {
-        if (seconds < 0) throw new DomainException("a linger cannot be negative");
-        linger = seconds;
-        return linger;
-    }
-
-    /// <summary>The radius; zero until the init release runs.</summary>
     internal double Radius => radius;
-
-    internal double Speed()
-    {
-        if (speed <= 0) throw new DomainException("the golem has no cruise speed yet: the init release must run first");
-        return speed;
-    }
-
+    internal double Speed() => speed;
     internal double LingerAfterTold => linger;
 }

@@ -36,21 +36,23 @@ Every observation must end as a note that lets us conclude and improve the domai
 
 | Juan says (ES) | Class / namespace (EN) | Notes |
 |---|---|---|
-| Robot | `Golem` (root) + `Robots.Body` | The golem is the mind (journaled); `Body` its size/speed/linger. Its *name* is the journal's identity (env `GOLEM`), not domain state. Its *estimated position* is telemetry: it enters queries as `@x, @y`, never the journal. |
+| Robot | `Golem` (subject) + `Robots.Body` | The golem is the mind (journaled); it RECEIVES its modules — `g = Golem(body, layout, collisions)` — and builds none. `Body(radius, speed, linger)` is a module of its own (`body_v1`). Its *name* is the journal's identity (env `GOLEM`), not domain state. Its *estimated position* is telemetry: it enters queries as `@x, @y`, never the journal. |
 | Posición | `Geometry.Position` | The coordinate (x, y) on the Euclidean plane. Was `Waypoint`. |
 | Ubicación | `Geometry.Location : Position` | A position that means something on the map (a corner, a jamb, a mark). |
 | Segmento | `Geometry.Segment` | A straight run from position i to j. A `Wall` is one. |
-| Mapa / plano | `Plans.FloorPlan` | One plane, its places, passages and marks. Was `Atlas`. Levels and layers: future. |
-| Espacio / habitación | `Plans.Place` | A rectangle (polygon later), ≥ 4 corner locations, its walls. |
-| Pared | `Plans.Wall : Segment` | A boundary of a place that is not open; thickness 0 today; knows its doors. |
-| Puerta | `Plans.Door : Passage` | Two jamb locations on a wall: a point, a width (1.4) and the plan's height. |
-| Frontera abierta | `Plans.OpenBoundary : Passage` | The whole shared edge is free. |
-| Marca (hecho) | `Plans.Mark : Location` | Where a body touched something uncharted. A fact. |
-| Obstáculo (hipótesis) | `Plans.Obstacle` | Marks joined by closeness: a point, a line, a polygon. A hypothesis, refined by each bump. |
+| Mapa / maqueta | `Maps.Map` (abstract) | The ABSTRACT contract of what a map DISPOSES, and nothing else (10-sep-2026): areas, passages, connectivity (`Connects(a, b)`), attributes (door width, wall height). Not one coordinate. Never instantiated: the concrete map is a `MapLayout`. |
+| Espacio / área | `Maps.Area` | A named part of the map; chains its passages (`DoorTo`, `OpenTo`), knows its neighbours through the map. That it is a rectangle is its zone's business. |
+| Puerta | `Maps.Door : Passage` | A gap in the wall two areas share; as wide as the map says. WHERE it stands is the layout's. |
+| Frontera abierta | `Maps.Opening : Passage` | The whole boundary two areas share is free. |
+| Mapa con su distribución | `Layouts.MapLayout : Map` | The CONCRETE map, the one class that builds everything: the same ways of creating areas and passages as the maquette, extended with dimensions and positions — its areas are `Zone : Area` (an area that also occupies a rectangle), every door has a point. Built by finding each object once and telling it in one train: `map = MapLayout('warehouse'); map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));` then `map.Find('kitchen')`. Answers as a maquette (`Connects`, `Neighbours`) and as a layout (`Touches`, `ZoneOf`, walls, corners, room for a body). Global `map`, release `warehouse_v1`. `Layouts.Catalog` holds the named maps (`warehouse`, `cross-corridors`, `ring-corridor`) and renders their release. Inheritance here is domain truth (Juan, 10-sep: "la abstracta es la de mapa y la clase concreta la del MapLayout… el POO tiene que hablar por sí solo"). Zone views: `Doorways()`, `OpenSides()` (`Doors()` is the area's plain list). |
+| Pared | `Layouts.Wall` | A boundary of a zone not freed by an opening. HAS a `Segment` (its line), is not one; knows its `PlacedDoor`s. |
+| Colisiones | `Touches.Collisions` | The module that keeps what the bodies LEARNED by touching (marks, peers met, bumps heard) and INTERPRETS it (obstacles, suspicions, who was near). Global `collisions`, built in `init` over the layout. |
+| Marca (hecho) | `Touches.Mark` | A body touched something uncharted: HAS a `Position` and a heading (its normal). A fact. |
+| Obstáculo (hipótesis) | `Touches.Obstacle` (`Thing`, `Peer`) | Marks joined by closeness: a point, a line, a polygon. A hypothesis, refined by each bump; never stored, always derived. |
 | Ruta / trayectoria | `Routes.Trajectory` | Ordered legs; `Leg` names what the journal writes (`kitchen/north@4,9.5`). |
-| Planificador | `Routes.RoutePlanner` | Dijkstra over doors, openings and detours; `EdgeCost` generic, `DistanceCost` today. |
+| Planificador | `Routes.RoutePlanner` | Dijkstra over doors, openings and detours; consults the layout AND the collisions, owns neither; `EdgeCost` generic, `DistanceCost` today. Built at query time (`RoutePlanner(layout, collisions, radius)`), never a global. |
 | Maniobra de evasión | `Routes.Maneuver : Trajectory`, `Routes.EvasionStrategy` | `BackOff`, `StepAside(Side)`; the host's runtime probe still owns execution. |
-| Planos con nombre | `Plans.FloorPlans` | Hardcoded catalog (`arena`, `cross-corridors`, `ring-corridor`) rendered as the `map_v1` release text: the journal stays the truth. |
+| Posición / pose / rectángulo | `Geometry.Position`, `Pose : Position`, `Segment`, `Rectangle`, `Location : Position` | Pure geometry, no map concepts; the layout composes them. Constructors are DSL-visible: `Position(4.0, 9.5)` — literals with a decimal point (the engine does not coerce an integer literal into a double parameter). |
 
 ## The domain is the brain (Juan, 8-sep-2026)
 
@@ -63,6 +65,17 @@ whether it could or not, so the domain resolves what follows. Consequences:
   defect to migrate: it becomes a repertoire operation (a read the host asks, or a
   verb the domain concludes with), never the other way round.
 - The host owns only what the papers give it: the clock, the wire, the body.
+- **The journal speaks in objects (10-sep-2026)**: values enter as `@params` and the template builds the
+  object — `g.Visit(@id, Position(@x, @y))`, `g.Cross(@id, map.DoorBetween(@a, @b))` — several acts per
+  command when an errand has several stops or a road several legs (`g.Route(@id); g.Via(…); g.Stop(…)`).
+  **What is told travels flat**: an act a reaction must capture (`Bump`, `Mark`, `Reach`, `Forget`, and the
+  whole touch family for uniformity) keeps primitive `@params`, because the matcher captures literals,
+  `@params` and `expose` labels only — never an object variable (Fase 0 lab, NOTEBOOK 10-sep).
+- **Modules are globals of the actor** (`body`, `map`, `collisions`), built in their own releases and handed
+  to the golem (`g = Golem(body, map, collisions)`): a query may calculate with a module alone
+  (`map.ZoneOf(Position(5.5, 5.5))`, `map.Connects('north', 'center')`, `collisions.All()`,
+  `RoutePlanner(map, collisions, r)`). Auxiliary variables inside a command template become globals too:
+  build the object inline or inside `{ }`.
 - A Reaction may conclude for the domain (`Causation.Continue("g.Mark(...)")`), and
   the engine can judge ABSENCE in a window (`None().Within(span)`, journal-clock): the
   host's timers are candidates to disappear (NOTEBOOK, *protocolo de toques v2*).
@@ -104,23 +117,28 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - `sim/` — the world: Gazebo Fortress in kiosk mode (noVNC :6080, rosbridge ws :9090).
   Reality is GENERATED from `sim/world/plan.json` at image build (walls, doors, solid
   blocks, bodies with contact sensors, obstacles the golems' map does not know).
-- `GolemDomain/` — the pure domain, one assembly, namespaces `GolemDomain`
-  (`Golem`, the aggregate the DSL instantiates), `.Geometry`, `.Robots`, `.Plans`,
-  `.Routes` (see glossary). The engine binds classes by SIMPLE name: every class
-  name in the assembly must be unique. Tests see internals (`InternalsVisibleTo`).
+- `GolemDomain/` — the pure domain, one assembly, namespaces `GolemDomain` (`Golem`, the
+  subject), `.Geometry`, `.Robots`, `.Maps` (information), `.Layouts` (the map on the plane),
+  `.Touches` (what was learned by touching), `.Routes` (see glossary). The engine binds
+  classes by SIMPLE name: every class name in the assembly must be unique, and a class may
+  not share its name with a namespace (`DomainLibrary`, not `GolemDomain`; `Collisions`
+  lives in `Touches`). Tests see internals (`InternalsVisibleTo`).
 - `GolemAPI/` — the generic golem program (ASP.NET controllers). One image, N
   golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech).
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
   contacts are ephemeral telemetry, transitions are journaled — entrusting (MoveTo/
-  Cover/Follow), the road (Route, again after bumps), progress (Cross/Reach: the last
-  Reach completes), touches (Bump: the fact, told; HearBump: a peer's bump; Mark/LearnMark: the map
-  of marks — a touch nobody else reported), the ending (Fail/Abandon) —
-  every write goes through one serial Dispatch, tells are reaction-only. The golem's map (release `map_v1`: Chart/DoorTo/OpenTo) is its
-  knowledge; what the simulator reports (a collision with a crate) is reality. The
-  language was fixed on 7-sep-2026 (PLAN, *El lenguaje del golem*): do not add verbs
-  on the fly — propose them there first. Reads (queries) may grow as the labs need
-  them; writes (journaled verbs) only through the PLAN.
+  Cover/Follow with a `Position` or an area name, one act per stop), the road (Route, then Via /
+  Around / Aside / Stop, one act per leg, again after bumps), the order (MoveTo with a `Position`),
+  progress (Cross with a passage of the map, Pass with a point, Reach flat: the last Reach completes),
+  touches (Bump: the fact, told; HearBump: a peer's bump; Mark/LearnMark: the marks — a touch nobody
+  else reported; Forget/LearnForget), the ending (Fail/Abandon) — every write goes through one serial
+  Dispatch, tells are reaction-only. The releases build the modules (`body_v1`, `warehouse_v1`, `init`);
+  what the simulator reports (a collision with a crate) is reality. The
+  language was fixed on 7-sep-2026 and rewritten in objects on 10-sep-2026 (local plan
+  *PLAN-objetos-en-el-journal.md*; journals before that day archived as `journal-legacy-20260910-*`):
+  do not add verbs on the fly — propose them in the PLAN first. Reads (queries) may grow as the labs
+  need them; writes (journaled verbs) only through the PLAN.
 
 ## Habits
 

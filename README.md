@@ -43,9 +43,11 @@ in [CLAUDE.md](CLAUDE.md).
   lane and steps aside), and no mark is made; nobody? then it was an obstacle, a mark on its map
   (`g.Mark`), told to every peer (`g.LearnMark`), and the golem feels for a way past, right then left,
   before deciding its road again around the marks. Only when no road fits its body does the mission fail.
-- **The map is knowledge.** Each golem carries a floor plan in its journal (release `map_v1`) and plans
-  the shortest road through doors and open boundaries. The map does not know about the crate standing in
-  the middle of the center hall — that is the point.
+- **The map is knowledge, and a module of its own.** Each golem carries the warehouse map in its journal
+  (release `warehouse_v1`: a `MapLayout`, the concrete map — each area found once and told where it stands, how
+  big it is, its doors and what it opens to) and plans the shortest road through doors and openings. The map
+  does not know about the crate standing in the middle of the center hall — that is the point; what the bodies
+  learn by touching lives in another module, `collisions`.
 - **The journal is the only truth.** Pose and contacts are ephemeral telemetry. Transitions are journaled:
   `Visit`, `Cover`, `Follow` (the entrusting), `Route` (the road decided as a queue of points), `MoveTo` (the order the
   golem gives the host, one point at a time), `Cross` and `Reach` (progress; the
@@ -102,7 +104,7 @@ set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
 | Path | Role |
 |---|---|
 | `sim/` | The world. `world/plan.json` is the floor plan (places, doors, open boundaries, bodies, obstacles); `world/build_world.py` turns it into the Gazebo world and the bridge's topic mappings at image build; `kiosk/kiosk.sh` starts physics, bridges, rosbridge and the GUI; `bridge/teleport.py` is the lab lever that puts a body back on its mark. |
-| `GolemDomain/` | The pure domain, no framework references: `Golem` (the aggregate the DSL drives), `Mission`, `Place`, `Passage`, `Atlas` (Dijkstra over doors and openings; doors are crossed straight, openings away from their corners). |
+| `GolemDomain/` | The pure domain, no framework references: `Golem` (the subject: missions, decisions, orders), `Body`, `Maps` (`Map`, `Area`, `Door`, `Opening`: information only), `Layouts` (`Layout`, `Zone`, `Wall`, the `Catalog`: the map on the plane), `Touches` (`Collisions`, `Mark`, `Obstacle`: what the bodies learned), `Routes` (`RoutePlanner`: Dijkstra over doors, openings and detours; doors are crossed straight, openings away from their corners). |
 | `GolemTest/` | Acceptance tests that enter through the actor's perform, against an in-memory journal, with the same release chain the host runs. `dotnet test GolemTest` |
 | `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Navigation/` (the seam to the body's locomotion), `Choreography/` (reactions, the ops saga, the mission loop), `Panel/` (the page and the journal tap), `Controllers/`. |
 | `journal/` | The golems' journals (FileSystem backend), one folder per golem. Git-ignored; disposable in this spike. |
@@ -130,11 +132,15 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
 | `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
 
-Releases (versioned initialization inside the actor, applied once and journaled): `init` gives the golem
-its body — size, cruise speed and how long it lingers at a told stop (`g.Embody(0.25); g.Cruise(2.0);
-g.Linger(6);`); `map_v1` charts its floor plan, one fluent chain per place
-(`g.Chart('kitchen', 0, 8, 4, 3).DoorTo('north', 4, 9.5).DoorTo('west', 0.75, 8);`). Evolve the golem by
-appending a release, never by editing an applied one.
+Releases (versioned initialization inside the actor, applied once and journaled) build the golem's modules
+as globals of the actor and hand them to it: `body_v1` (`body = Body(0.25, 2.0, 6.0);`), `warehouse_v1` — the
+concrete map, each area found once and told what it is in one train (`map = MapLayout('warehouse');
+map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
+map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the
+abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `g.Visit(1, Position(9.0, 8.0))`,
+`g.Cross(1, map.DoorBetween('kitchen', 'north'))`, the road one act per leg (`g.Route(1); g.Via(…); g.Stop(…)`)
+— except what is told to the peers, which travels flat. Evolve the golem by appending a release, never by
+editing an applied one.
 
 Endpoints, per golem:
 

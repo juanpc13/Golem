@@ -10,8 +10,9 @@ namespace GolemDomain.Robots;
 internal sealed class Mission
 {
     internal int Id { get; }
+    private readonly List<Position> stops = new();
     /// <summary>Where to go, in the order given.</summary>
-    internal IReadOnlyList<Position> Stops { get; }
+    internal IReadOnlyList<Position> Stops => stops;
     /// <summary>True when the stop came from a peer's tell (the golem follows), false when the operator ordered it.</summary>
     internal bool Following { get; }
     /// <summary>True when the golem may reorder the stops for the shortest road (Cover), false when the order is the operator's (MoveTo).</summary>
@@ -33,14 +34,30 @@ internal sealed class Mission
     /// <summary>How many times the golem retries a leg after grazing a known wall before it gives the mission up.</summary>
     internal const int PatienceWithWalls = 3;
 
-    internal Mission(int id, IReadOnlyList<Position> stops, bool following, bool choosesOrder)
+    internal Mission(int id, Position stop, bool following, bool choosesOrder)
     {
-        if (stops == null || stops.Count == 0) throw new DomainException($"mission {id} needs at least one stop");
+        if (stop == null) throw new DomainException($"mission {id} needs at least one stop");
         Id = id;
-        Stops = stops;
+        stops.Add(stop);
         Following = following;
         ChoosesOrder = choosesOrder;
     }
+
+    /// <summary>One more stop, in this order — while the errand is pending, before its road is decided and before
+    /// the golem said where it heads. A stop is added with the same voice the errand was opened with.</summary>
+    internal void AddStop(Position stop, bool following, bool choosesOrder)
+    {
+        MustBePending();
+        if (stop == null) throw new DomainException($"mission {Id} needs a stop to add");
+        if (Following || following) throw new DomainException($"mission {Id} follows a peer: a told point is one mission each");
+        if (choosesOrder != ChoosesOrder) throw new DomainException($"mission {Id} was opened with {(ChoosesOrder ? "Cover" : "Visit")}: add its stops the same way");
+        if (IsRouted) throw new DomainException($"mission {Id} already has its road: no stop can be added");
+        if (IsOrdered) throw new DomainException($"mission {Id} is already heading somewhere: no stop can be added");
+        stops.Add(stop);
+    }
+
+    /// <summary>Whether a road may be decided now: none yet, or the body bumped on the one it had.</summary>
+    internal bool MayRoute => IsPending() && (!IsRouted || bumpsSinceRoute > 0);
 
     internal bool IsPending() => status == MissionStatus.Pending;
     internal string ReadStatus() => status.Name;
@@ -117,18 +134,35 @@ internal sealed class Mission
         order = null;          // the same: either the golem hands the order back, or it gives the mission up
     }
 
-    /// <summary>The golem crossed the next passage of its road (or skirted a mark: the leg named 'around'). Returns what it crossed.</summary>
+    /// <summary>The golem crossed the next passage of its road. Returns what it crossed.</summary>
     internal string Cross(string passage)
     {
         MustBePending();
         if (!IsRouted) throw new DomainException($"mission {Id} has no road to cross along");
         var leg = road.LegAt(nextLeg);
         if (leg.IsStop) throw new DomainException($"mission {Id} is heading to the stop '{leg.Name}', a stop, not a passage: reach it");
+        if (leg.Kind == Leg.Detour || leg.Kind == Leg.Courtesy) throw new DomainException($"mission {Id} is heading to a point to pass ({leg.Name}), not a passage");
         if (leg.Name != passage) throw new DomainException($"mission {Id} is heading to '{leg.Name}', not '{passage}'");
         nextLeg++;
         grazesOnLeg = 0;
         order = null;          // the order was carried out: the golem owes the next one
         return passage;
+    }
+
+    /// <summary>The golem passed the next point of its road that is neither a passage nor a stop: a detour around a
+    /// mark or a courtesy step. Returns what kind of point it was.</summary>
+    internal string Pass(Position at)
+    {
+        MustBePending();
+        if (!IsRouted) throw new DomainException($"mission {Id} has no road to pass along");
+        var leg = road.LegAt(nextLeg);
+        if (leg.Kind != Leg.Detour && leg.Kind != Leg.Courtesy) throw new DomainException($"mission {Id} is heading to '{leg.Name}', not to a point to pass");
+        if (Math.Abs(leg.At.X - at.X) > 1e-6 || Math.Abs(leg.At.Y - at.Y) > 1e-6)
+            throw new DomainException($"mission {Id} passes ({leg.At.X}, {leg.At.Y}), not ({at.X}, {at.Y})");
+        nextLeg++;
+        grazesOnLeg = 0;
+        order = null;
+        return leg.Kind;
     }
 
     /// <summary>The golem reached the stop it was heading to. Reaching the last one completes the mission. A road

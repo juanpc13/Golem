@@ -55,27 +55,34 @@ internal sealed class GolemPerformance : PerformanceV2
     // (7-sep-2026: the language was rewritten in one go — MoveTo/Cover/Follow, Cross/Reach,
     // Fail/Abandon, Chart/DoorTo/OpenTo, Embody/Cruise/Linger — and the journals of the
     // turtlesim era were archived; journals born before that day do not rehydrate.)
+    // (10-sep-2026: the modules became globals of the actor — body, map, layout, collisions —
+    // built in their own releases and handed to the golem: g = Golem(body, layout, collisions).
+    // Stops, orders and roads are objects (Position, the map's passages); the road is written
+    // act by act (Route, Via, Around, Aside, Stop). Journals born before that day were archived
+    // as journal-legacy-20260910-*; they do not rehydrate.)
     // RULE: an applied release is never edited (the engine guards its body signature) —
     // evolve the golem by APPENDING the next release.
     protected override void OnHydrated()
     {
         Actor.Using(@"
-            upgrade('init') {
-                g = Golem();
-                g.Embody(0.25);
-                g.Cruise(2.0);
-                g.Linger(6);
+            upgrade('body_v1') {
+                body = Body(0.25, 2.0, 6.0);
             }
-            upgrade('map_v1') {
-                g.Chart('kitchen', 0, 8, 4, 3).DoorTo('north', 4, 9.5).DoorTo('west', 0.75, 8);
-                g.Chart('north',   4, 8, 3, 3).DoorTo('storage', 7, 9.5).OpenTo('center');
-                g.Chart('storage', 7, 8, 4, 3).DoorTo('east', 10.25, 8);
-                g.Chart('west',    0, 3, 1.5, 5).DoorTo('living', 0.75, 3);
-                g.Chart('center',  4, 3, 3, 5).OpenTo('south');
-                g.Chart('east',    9.5, 3, 1.5, 5).DoorTo('garage', 10.25, 3);
-                g.Chart('living',  0, 0, 4, 3).DoorTo('south', 4, 1.5);
-                g.Chart('south',   4, 0, 3, 3).DoorTo('garage', 7, 1.5);
-                g.Chart('garage',  7, 0, 4, 3);
+            upgrade('warehouse_v1') {
+                map = MapLayout('warehouse');
+                map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
+                map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center');
+                map.Area('storage').At(Position(7.0, 8.0)).Size(4.0, 3.0).DoorAt('east', Position(10.25, 8.0));
+                map.Area('west').At(Position(0.0, 3.0)).Size(1.5, 5.0).DoorAt('living', Position(0.75, 3.0));
+                map.Area('center').At(Position(4.0, 3.0)).Size(3.0, 5.0).OpenTo('south');
+                map.Area('east').At(Position(9.5, 3.0)).Size(1.5, 5.0).DoorAt('garage', Position(10.25, 3.0));
+                map.Area('living').At(Position(0.0, 0.0)).Size(4.0, 3.0).DoorAt('south', Position(4.0, 1.5));
+                map.Area('south').At(Position(4.0, 0.0)).Size(3.0, 3.0).DoorAt('garage', Position(7.0, 1.5));
+                map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);
+            }
+            upgrade('init') {
+                collisions = Collisions(map);
+                g = Golem(body, map, collisions);
             }
         ")
         .PerformCommand();
