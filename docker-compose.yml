@@ -21,7 +21,7 @@ services:
       - seccomp=unconfined
     restart: unless-stopped
 
-  # The golems (GolemHost, ASP.NET controllers on :8080 inside). One golem per body, all
+  # The golems (GolemAPI, ASP.NET controllers on :8080 inside). One golem per body, all
   # from the same image — only the environment differs. GOLEM is the identity (names the
   # journal); BODY is the model it drives in the world (sim/world/plan.json declares the
   # bodies); HOME_AT is the body's mark: a reborn golem puts its body there, and so does
@@ -42,8 +42,8 @@ services:
   blue-golem:
     build:
       context: .
-      dockerfile: golemhost/Dockerfile
-    image: golemhost
+      dockerfile: GolemAPI/Dockerfile
+    image: golemapi
     container_name: blue-golem
     ports:
       - "8081:8080"  # blue's endpoints + panel
@@ -67,8 +67,8 @@ services:
   red-golem:
     build:
       context: .
-      dockerfile: golemhost/Dockerfile
-    image: golemhost
+      dockerfile: GolemAPI/Dockerfile
+    image: golemapi
     container_name: red-golem
     ports:
       - "8082:8080"  # red's endpoints + panel
@@ -97,8 +97,8 @@ services:
   green-golem:
     build:
       context: .
-      dockerfile: golemhost/Dockerfile
-    image: golemhost
+      dockerfile: GolemAPI/Dockerfile
+    image: golemapi
     container_name: green-golem
     ports:
       - "8083:8080"  # green's endpoints + panel

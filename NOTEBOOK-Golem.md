@@ -870,3 +870,15 @@ peer · blue      | kitchen | 1 vertex   | centre (0.75, 8.54)
 
 **Pendiente**: (1) que el olvido caduque solo (una marca vieja que nadie confirma), si algún día hace falta; (2) las dos cortesías sin journalear; (3) el `docker kill` a media ruta.
 
+---
+
+## 2026-09-10 · Los proyectos se llaman como sus carpetas: GolemAPI, GolemDomain, GolemTest
+
+**Contexto**: Juan: "vamos a renombrar los proyectos: para golemhost que se llame GolemAPI, el otro GolemDomain, GolemTest; las carpetas de los proyectos".
+
+**Ajuste**: carpetas y `.csproj` renombrados a la vez, para que proyecto, carpeta y assembly digan lo mismo: `golemhost/GolemHost.csproj` → `GolemAPI/GolemAPI.csproj`, `golemdomain/Golem.Domain.csproj` → `GolemDomain/GolemDomain.csproj`, `golemdomain.tests/Golem.Domain.Tests.csproj` → `GolemTest/GolemTest.csproj`. Con ellos: `Golem.sln`, las dos `ProjectReference`, el `InternalsVisibleTo` (ahora `GolemTest`, el nombre del assembly que ve los internals), el `nuget.config` de los tests (apunta al `localfeed` de `GolemAPI`), el `Dockerfile` (publica `GolemAPI.csproj`, arranca `GolemAPI.dll`), `docker-compose.yml` (imagen `golemapi`), `launchSettings.json`, y la documentación viva (`CLAUDE.md`, `README.md`, `PLAN-Golem.md`). Este cuaderno se deja como está: es historia, y en su momento las carpetas se llamaban así. Windows no distingue mayúsculas, así que `golemdomain` → `GolemDomain` se hizo en dos pasos con `git mv` por un nombre temporal.
+
+**Lo que NO cambió, a propósito**: los namespaces (`GolemHost.Domain`, `GolemHost.Choreography`, …). Renombrarlos es otra decisión, con más superficie (todos los `using`, la clase pública `GolemDomain` chocaría con un namespace del mismo nombre), y Juan pidió proyectos y carpetas. Queda anotado como opción, no como deuda.
+
+**Observación**: `dotnet test Golem.sln` → 53 en verde en `GolemTest.dll`. Desplegado con la imagen nueva: los tres paneles responden y los journals rehidrataron intactos con el assembly renombrado (blue en la entrada 82, red con sus 5 marcas). **Conclusión**: el motor liga las clases por nombre simple, no por assembly — el journal no sabe cómo se llama el `.dll` que lo interpreta, que es exactamente lo que el paper 09 (*identity precedes staging*) pide del dominio.
+

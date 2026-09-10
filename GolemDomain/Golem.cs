@@ -218,7 +218,7 @@ internal sealed class Golem
     internal Maneuver Evasion(double x, double y, double heading, string strategy) =>
         EvasionStrategy.Named(strategy).From(new Position(x, y), heading);
 
-    // ---- touches: the facts (what the body met), the hypothesis (what the golem suspects) and the conclusions ----
+    // ---- touches: the facts (what the body met), the hypothesis (what the golem suspects) and the conclusions ----    
 
     /// <summary>The body touched something the map does not hold, at (x, y), heading that way, on this mission. A fact,
     /// told to the peers; what it was is concluded afterwards (Mark or Met, by what the peers say). Returns the mission id.</summary>

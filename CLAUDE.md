@@ -21,7 +21,7 @@ Every observation must end as a note that lets us conclude and improve the domai
 
 - **Every lab session produces an entry in `NOTEBOOK-Golem.md`** — dated, with
   *Observación* (what the world/simulator/journal did), *Conclusión* (what it
-  means), *Ajuste al dominio* (what changes in `golemdomain/`, or "none, why").
+  means), *Ajuste al dominio* (what changes in `GolemDomain/`, or "none, why").
   Write the entry as the lab happens, not at the end; a finding without a note
   did not happen.
 - **Every change to the domain traces back to a notebook entry** (the entry names
@@ -32,7 +32,7 @@ Every observation must end as a note that lets us conclude and improve the domai
 - The domain is a durable, general asset (robots, floor plans, routes) that will
   outlive this spike: name concepts by Juan's canon (glossary below), in English.
 
-## Domain glossary (Juan's canon, 8-sep-2026 → `golemdomain/`)
+## Domain glossary (Juan's canon, 8-sep-2026 → `GolemDomain/`)
 
 | Juan says (ES) | Class / namespace (EN) | Notes |
 |---|---|---|
@@ -97,18 +97,18 @@ whether it could or not, so the domain resolves what follows. Consequences:
    (`PerformCmd(string)` on a Performance), no home-made idioms.
 4. The Puppeteer source and tests as the ground truth of behavior:
    `C:\Users\Juan\source\repos\puppeteer` (read-only reference, we consume the
-   `Ncubo.Puppeteer` nupkg pinned in `golemhost/localfeed`).
+   `Ncubo.Puppeteer` nupkg pinned in `GolemAPI/localfeed`).
 
 ## Architecture in one breath
 
 - `sim/` — the world: Gazebo Fortress in kiosk mode (noVNC :6080, rosbridge ws :9090).
   Reality is GENERATED from `sim/world/plan.json` at image build (walls, doors, solid
   blocks, bodies with contact sensors, obstacles the golems' map does not know).
-- `golemdomain/` — the pure domain, one assembly, namespaces `GolemHost.Domain`
+- `GolemDomain/` — the pure domain, one assembly, namespaces `GolemHost.Domain`
   (`Golem`, the aggregate the DSL instantiates), `.Geometry`, `.Robots`, `.Plans`,
   `.Routes` (see glossary). The engine binds classes by SIMPLE name: every class
   name in the assembly must be unique. Tests see internals (`InternalsVisibleTo`).
-- `golemhost/` — the generic golem program (ASP.NET controllers). One image, N
+- `GolemAPI/` — the generic golem program (ASP.NET controllers). One image, N
   golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech).
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and

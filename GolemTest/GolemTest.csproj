@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\golemdomain\Golem.Domain.csproj" />
+    <ProjectReference Include="..\GolemDomain\GolemDomain.csproj" />
   </ItemGroup>
 
 </Project>

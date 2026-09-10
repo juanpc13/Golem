@@ -12,8 +12,8 @@ using Puppeteer;
 System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
 System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
 
-// GolemHost bootstrap — the carátula around one actor. The pieces:
-//   golemdomain/   — plain puppets (Golem, Mission, Place, Atlas): the DSL verbs.
+// GolemAPI bootstrap — the carátula around one actor. The pieces:
+//   GolemDomain/   — plain puppets (Golem, Mission, Place, Atlas): the DSL verbs.
 //   Membrane       — rosbridge websocket (telemetry, drive, teleport) + HttpBroker (tell wire).
 //   Navigation     — the seam to the body's locomotion (DiffDriveNavigator in Gazebo today, Nav2 tomorrow).
 //   Panel          — the page, the SSE feed, and the tap that shows the journal record by record.

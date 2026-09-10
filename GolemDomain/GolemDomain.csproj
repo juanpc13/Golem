@@ -16,7 +16,7 @@
 
   <ItemGroup>
     <!-- The acceptance tests chart the catalog's floor plans through the perform (FloorPlans.X().AsRelease). -->
-    <InternalsVisibleTo Include="Golem.Domain.Tests" />
+    <InternalsVisibleTo Include="GolemTest" />
   </ItemGroup>
 
 </Project>

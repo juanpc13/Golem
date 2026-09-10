@@ -2,7 +2,7 @@
 
 *The automaton that comes to life by written instructions — here, the ones written in its journal.*
 
-Golem is a spike: [Puppeteer 2](golemhost/localfeed) actors ("golems") driving robot bodies in a
+Golem is a spike: [Puppeteer 2](GolemAPI/localfeed) actors ("golems") driving robot bodies in a
 ROS 2 world simulated by **Gazebo Fortress**. One golem per body, one journal per golem, one shared
 world with real physics and real collisions. The point under test: that the actor + journal + membrane
 pattern travels to a domain of autonomous bodies that run missions, journal their outcomes, answer
@@ -59,7 +59,7 @@ in [CLAUDE.md](CLAUDE.md).
 
 Requirements: Docker Desktop (WSL 2 backend on Windows), about 9 GB of disk for the images, and
 patience for the first build (the sim image is built on `tiryoh/ros2-desktop-vnc:humble`). The
-Puppeteer package is pinned in `golemhost/localfeed`; nothing else needs installing.
+Puppeteer package is pinned in `GolemAPI/localfeed`; nothing else needs installing.
 
 ```bash
 docker compose up -d --build
@@ -102,9 +102,9 @@ set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
 | Path | Role |
 |---|---|
 | `sim/` | The world. `world/plan.json` is the floor plan (places, doors, open boundaries, bodies, obstacles); `world/build_world.py` turns it into the Gazebo world and the bridge's topic mappings at image build; `kiosk/kiosk.sh` starts physics, bridges, rosbridge and the GUI; `bridge/teleport.py` is the lab lever that puts a body back on its mark. |
-| `golemdomain/` | The pure domain, no framework references: `Golem` (the aggregate the DSL drives), `Mission`, `Place`, `Passage`, `Atlas` (Dijkstra over doors and openings; doors are crossed straight, openings away from their corners). |
-| `golemdomain.tests/` | Acceptance tests that enter through the actor's perform, against an in-memory journal, with the same release chain the host runs. `dotnet test golemdomain.tests` |
-| `golemhost/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Navigation/` (the seam to the body's locomotion), `Choreography/` (reactions, the ops saga, the mission loop), `Panel/` (the page and the journal tap), `Controllers/`. |
+| `GolemDomain/` | The pure domain, no framework references: `Golem` (the aggregate the DSL drives), `Mission`, `Place`, `Passage`, `Atlas` (Dijkstra over doors and openings; doors are crossed straight, openings away from their corners). |
+| `GolemTest/` | Acceptance tests that enter through the actor's perform, against an in-memory journal, with the same release chain the host runs. `dotnet test GolemTest` |
+| `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Navigation/` (the seam to the body's locomotion), `Choreography/` (reactions, the ops saga, the mission loop), `Panel/` (the page and the journal tap), `Controllers/`. |
 | `journal/` | The golems' journals (FileSystem backend), one folder per golem. Git-ignored; disposable in this spike. |
 | `PLAN-Golem.md` | The team's plan and decision log (Spanish): what was tried, what was retired, what the engine taught us. |
 
