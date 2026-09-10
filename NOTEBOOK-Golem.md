@@ -1059,3 +1059,46 @@ Y desde el panel, con el mapa solo: `map.Connects('north', 'center')` → true, 
 Y desde el panel: `map.Touches(map.Find('kitchen'), map.Find('north'))` → true; `map.PointOf(map.FindDoor('kitchen', 'north')).X` → 4.0; `g.Distance(map.Find('kitchen'), map.Find('garage'))` → 12.87.
 
 **Conclusión**: el POO habla: se busca una vez y se le pregunta al objeto. El motor liga por tipo en tiempo de ejecución, así que una expresión que devuelve un objeto (`map.Find(…)`, `map.FindDoor(…)`) sirve como argumento de cualquier verbo — es lo que P4b había mostrado en el laboratorio.
+
+---
+
+## 2026-09-10 · Plantillas entre llaves, paso a paso, con `@parameter` en cada valor
+
+**Contexto**: Juan pregunta si un comando puede tener saltos de línea — `area = map.Find('kitchen'); g.Visit(1, area);` — y, ante la respuesta (sí; y entre llaves para que el nombre intermedio no quede como global), decide: "entre llaves me parece correcto… ojo, siempre ponle parámetros con @parameter a donde deben de ir acorde a las guías".
+
+**Ajuste al host y a los tests**: todas las plantillas que construyen o buscan objetos pasan a un bloque entre llaves: `{ point = Position(@x, @y); g.MoveTo(@id, point); }`, `{ door = map.FindDoor(@a, @b); g.Cross(@id, door); }`, `{ opening = map.FindOpening(@a, @b); g.Cross(@id, opening); }`, `{ point = Position(@x, @y); g.Pass(@id, point); }`, `{ point = Position(@x, @y); g.Follow(point); }`; el encargo `{ stop0 = map.Find(@p0); g.Visit(@id, stop0); stop1 = Position(@x1, @y1); g.Visit(@id, stop1); }`; la ruta `{ g.Route(@id); door0 = map.FindDoor(@a0, @b0); at0 = Position(@x0, @y0); g.Via(@id, door0, at0); stop1 = Position(@x1, @y1); g.Stop(@id, stop1); … }`. Los valores siempre son `@params`; los nombres intermedios dicen qué es el objeto (`door`, `opening`, `point`, `stop`, `around`, `aside`, `at`).
+
+**Observación (en vivo, blue de `kitchen` a `garage`, journals en `journal-legacy-20260910-objetos-e/`)**:
+```
+2: define action 1 (id:int, p0:string, p1:string) as { stop0 = map.Find(p0); g.Visit(id, stop0); stop1 = map.Find(p1); g.Visit(id, stop1); } end;
+3: { stop0 = map.Find('kitchen'); g.Visit(1, stop0); stop1 = map.Find('garage'); g.Visit(1, stop1); }
+5: { g.Route(1); door0 = map.FindDoor('kitchen', 'north'); at0 = Position(4,9.5); g.Via(1, door0, at0); stop1 = Position(2,9.5); g.Stop(1, stop1); … }
+7: { point = Position(4,9.5); g.MoveTo(1, point); }
+9: { door = map.FindDoor('kitchen', 'north'); g.Cross(1, door); }
+17: { opening = map.FindOpening('north', 'center'); g.Cross(1, opening); }
+32: { g.Route(1); around0 = Position(6.48,5.88); g.Around(1, around0); opening1 = map.FindOpening('center', 'south'); … }
+35: { point = Position(6.48,5.88); g.Pass(1, point); }
+```
+Blue chocó otra vez con la caja del centro (5.80, 5.88), la marcó, se lo contó y recalculó con un rodeo — el protocolo intacto bajo la forma nueva. Y ninguna variable intermedia quedó en la raíz: `stop0`, `point`, `door0`, `area` responden "has not been defined" desde el panel — la promesa de P2b, cumplida en producción. El motor guarda la plantilla normalizada en una línea; los saltos de línea del host son para quien la escribe.
+
+**Conclusión**: el journal cuenta la historia paso a paso — busca, nombra, actúa — sin dejar huella en la raíz y sin un literal fuera de sus `@params`. Regla anotada en `CLAUDE.md`.
+
+---
+
+## 2026-09-10 · Los nombres intermedios: `point`, o `point1`, `point2`… cuando son varios
+
+**Contexto**: Juan, sobre `{ stop0 = Position(5.6,1.2); g.Visit(1, stop0); }`: "podríamos dejarlo como… no ponerle ese numeral si solo es uno; si son más de uno pues sí tocaría ponerle 1, 2 y así… más bien usar `point`".
+
+**Ajuste al host y a los tests**: el encargo nombra `point` a su única parada y `point1`, `point2`… cuando hay varias, y los `@params` siguen la misma cuenta (`@area`, `@x`/`@y` o `@area1`, `@x2`/`@y2`); la ruta numera sus tramos desde 1 (`door1`, `at1`, `stop2`, `around3`…). `point` es también la orden (`MoveTo`), el paso (`Pass`) y el punto seguido (`Follow`).
+
+**Verificado en vivo** (journals en `journal-legacy-20260910-objetos-f/`; red a `garage`, blue a `kitchen` y `9,8.5`):
+```
+red   3: { point = map.Find('garage'); g.Visit(1, point); }
+      5: { g.Route(1); door1 = map.FindDoor('living', 'south'); at1 = Position(4,1.5); g.Via(1, door1, at1); door2 = map.FindDoor('south', 'garage'); at2 = Position(7,1.5); … }
+      7: { point = Position(4,1.5); g.MoveTo(1, point); }
+      9: { door = map.FindDoor('living', 'south'); g.Cross(1, door); }
+blue  3: { point1 = map.Find('kitchen'); g.Visit(1, point1); point2 = Position(9,8.5); g.Visit(1, point2); }
+      5: { g.Route(1); door1 = map.FindDoor('kitchen', 'north'); at1 = Position(4,9.5); g.Via(1, door1, at1); stop2 = Position(2,9.5); g.Stop(1, stop2); … }
+     15: { point = Position(9,1.5); g.Follow(point); }
+```
+Las dos misiones completaron; 53 tests.

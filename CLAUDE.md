@@ -73,6 +73,16 @@ whether it could or not, so the domain resolves what follows. Consequences:
   found (`Find`, `FindDoor`, `FindOpening`, `FindPassage`, `Knows`); everything else takes the object
   (`Connects(a, b)`, `Touches(a, b)`, `Distance(from, to)`, `PointOf(door)`, `StepInto(door, side)`)
   (Juan, 10-sep: "evitemos parámetros primitivos si tenemos las instancias reales").
+- **A command template is a braced block, step by step, values as `@params`** (Juan, 10-sep): the object is
+  found or built from the parameters, named after what it is, then handed to the act —
+  `{ point = map.Find(@area); g.Visit(@id, point); }`, `{ door = map.FindDoor(@a, @b); g.Cross(@id, door); }`,
+  `{ g.Route(@id); door1 = map.FindDoor(@a1, @b1); at1 = Position(@x1, @y1); g.Via(@id, door1, at1); … }`.
+  Names: one stop is `point`, several are `point1`, `point2`… (no numeral when there is only one; legs and
+  their `@params` count from 1, as a person counts them) — Juan, 10-sep.
+  The braces matter: an assignment at the top level of a command becomes a global of the actor (Fase 0,
+  P2a); inside `{ }` the name dies with the block (P2b). Never a literal value in a template: every value
+  is an `@param` (program–value separability, paper 02). The flat, told acts (`Reach`, `Bump`, `Mark`,
+  `Forget`…) stay one-line, because a reaction captures their `@params`.
   **What is told travels flat**: an act a reaction must capture (`Bump`, `Mark`, `Reach`, `Forget`, and the
   whole touch family for uniformity) keeps primitive `@params`, because the matcher captures literals,
   `@params` and `expose` labels only — never an object variable (Fase 0 lab, NOTEBOOK 10-sep).

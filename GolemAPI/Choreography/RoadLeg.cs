@@ -56,16 +56,22 @@ public sealed record RoadLeg(string Kind, string A, string B, double X, double Y
 
     public static string Script(IReadOnlyList<RoadLeg> legs)
     {
-        var script = new StringBuilder("g.Route(@id);\n");
+        // inside braces, step by step: each object is found or built from its @params, named after what it is,
+        // then handed to the act — the names die with the block (Fase 0, P2b)
+        var script = new StringBuilder("{\n    g.Route(@id);\n");
         for (int i = 0; i < legs.Count; i++)
+        {
+            int n = i + 1;   // legs read from 1, as a person counts them
             script.Append(legs[i].Kind switch
             {
-                "door" => $"g.Via(@id, map.FindDoor(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n",
-                "opening" => $"g.Via(@id, map.FindOpening(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n",
-                "around" => $"g.Around(@id, Position(@x{i}, @y{i}));\n",
-                "aside" => $"g.Aside(@id, Position(@x{i}, @y{i}));\n",
-                _ => $"g.Stop(@id, Position(@x{i}, @y{i}));\n",
+                "door" => $"    door{n} = map.FindDoor(@a{n}, @b{n});\n    at{n} = Position(@x{n}, @y{n});\n    g.Via(@id, door{n}, at{n});\n",
+                "opening" => $"    opening{n} = map.FindOpening(@a{n}, @b{n});\n    at{n} = Position(@x{n}, @y{n});\n    g.Via(@id, opening{n}, at{n});\n",
+                "around" => $"    around{n} = Position(@x{n}, @y{n});\n    g.Around(@id, around{n});\n",
+                "aside" => $"    aside{n} = Position(@x{n}, @y{n});\n    g.Aside(@id, aside{n});\n",
+                _ => $"    stop{n} = Position(@x{n}, @y{n});\n    g.Stop(@id, stop{n});\n",
             });
+        }
+        script.Append("}\n");
         return script.ToString();
     }
 

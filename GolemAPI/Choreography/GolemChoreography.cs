@@ -190,9 +190,11 @@ public sealed class GolemChoreography
         {
             // a door or an opening is an object of the map; a detour or a courtesy step is a point passed
             string kind = m.Passage.Contains('/') ? "door" : m.Passage.Contains('~') ? "opening" : "point";
-            string act = kind == "door" ? "g.Cross(@id, map.FindDoor(@a, @b));"
-                       : kind == "opening" ? "g.Cross(@id, map.FindOpening(@a, @b));"
-                       : "g.Pass(@id, Position(@x, @y));";
+            // step by step inside braces: the object is found or built from the @params, named, then used —
+            // and the name dies with the block (an assignment outside braces would become a global of the actor)
+            string act = kind == "door" ? "{ door = map.FindDoor(@a, @b); g.Cross(@id, door); }"
+                       : kind == "opening" ? "{ opening = map.FindOpening(@a, @b); g.Cross(@id, opening); }"
+                       : "{ point = Position(@x, @y); g.Pass(@id, point); }";
             var ab = kind == "point" ? new[] { "", "" } : m.Passage.Split(kind == "door" ? '/' : '~');
             string refused = actor.Using(
                 @"
@@ -245,7 +247,10 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id) && g.HasNextPoint(@id)) Error 'no point to head to';
                 ",
                 @"
-                    g.MoveTo(@id, Position(@x, @y));
+                    {
+                        point = Position(@x, @y);
+                        g.MoveTo(@id, point);
+                    }
                 ")
             .WithParameters(p => {
                 p["id", typeof(int)]    = m.Id;
@@ -272,12 +277,13 @@ public sealed class GolemChoreography
                 p["id", typeof(int)] = m.Id;
                 for (int i = 0; i < legs.Count; i++)
                 {
-                    p[$"x{i}", typeof(double)] = legs[i].X;
-                    p[$"y{i}", typeof(double)] = legs[i].Y;
+                    int n = i + 1;
+                    p[$"x{n}", typeof(double)] = legs[i].X;
+                    p[$"y{n}", typeof(double)] = legs[i].Y;
                     if (legs[i].Kind == "door" || legs[i].Kind == "opening")
                     {
-                        p[$"a{i}", typeof(string)] = legs[i].A;
-                        p[$"b{i}", typeof(string)] = legs[i].B;
+                        p[$"a{n}", typeof(string)] = legs[i].A;
+                        p[$"b{n}", typeof(string)] = legs[i].B;
                     }
                 }
             })
@@ -425,7 +431,7 @@ public sealed class GolemChoreography
         toldListener = perf
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
-                .Command("g.Follow(Position(@x, @y));")
+                .Command("{ point = Position(@x, @y); g.Follow(point); }")
             .Told("BumpedAt").With<double>("x").With<double>("y").With<string>("who").With<double>("px").With<double>("py")
                 .Command("g.HearBump(@who, @x, @y, @px, @py);")
             .Told("ObstacleFound").With<double>("x").With<double>("y").With<double>("heading")

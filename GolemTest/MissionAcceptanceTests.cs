@@ -1085,7 +1085,7 @@ public class MissionAcceptanceTests
 
     private void Order(int id, double x, double y) =>
         perf.Actor.Using(@"
-            g.MoveTo(@id, Position(@x, @y));
+            { point = Position(@x, @y); g.MoveTo(@id, point); }
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
@@ -1096,7 +1096,7 @@ public class MissionAcceptanceTests
 
     private void Visit(int id, double x, double y) =>
         perf.Actor.Using(@"
-            g.Visit(@id, Position(@x, @y));
+            { point = Position(@x, @y); g.Visit(@id, point); }
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
@@ -1107,11 +1107,11 @@ public class MissionAcceptanceTests
 
     private void Visit(int id, string place) =>
         perf.Actor.Using(@"
-            g.Visit(@id, map.Find(@place));
+            { point = map.Find(@area); g.Visit(@id, point); }
         ")
         .WithParameters(p => {
-            p["id",    typeof(int)]    = id;
-            p["place", typeof(string)] = place;
+            p["id",   typeof(int)]    = id;
+            p["area", typeof(string)] = place;
         })
         .PerformCommand();
 
@@ -1122,21 +1122,27 @@ public class MissionAcceptanceTests
     // strings encoding positions any more (Juan, 10-sep-2026: objects, one per statement).
     private void Errand(string verb, int id, string[] stops)
     {
-        var script = new System.Text.StringBuilder();
+        // one stop is `point`, several are `point1`, `point2`… — and so are their @params
+        var script = new System.Text.StringBuilder("{\n");
         for (int i = 0; i < stops.Length; i++)
-            script.Append(IsPoint(stops[i]) ? $"g.{verb}(@id, Position(@x{i}, @y{i}));\n" : $"g.{verb}(@id, map.Find(@p{i}));\n");
+        {
+            string n = stops.Length == 1 ? "" : (i + 1).ToString();
+            script.Append(IsPoint(stops[i]) ? $"point{n} = Position(@x{n}, @y{n}); g.{verb}(@id, point{n});\n" : $"point{n} = map.Find(@area{n}); g.{verb}(@id, point{n});\n");
+        }
+        script.Append("}\n");
         perf.Actor.Using(script.ToString())
         .WithParameters(p => {
             p["id", typeof(int)] = id;
             for (int i = 0; i < stops.Length; i++)
             {
+                string n = stops.Length == 1 ? "" : (i + 1).ToString();
                 if (IsPoint(stops[i]))
                 {
                     var xy = stops[i].Split(',');
-                    p[$"x{i}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
-                    p[$"y{i}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                    p[$"x{n}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                    p[$"y{n}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
                 }
-                else p[$"p{i}", typeof(string)] = stops[i];
+                else p[$"area{n}", typeof(string)] = stops[i];
             }
         })
         .PerformCommand();
@@ -1152,7 +1158,7 @@ public class MissionAcceptanceTests
 
     private void Follow(double x, double y) =>
         perf.Actor.Using(@"
-            g.Follow(Position(@x, @y));
+            { point = Position(@x, @y); g.Follow(point); }
         ")
         .WithParameters(p => {
             p["x", typeof(double)] = x;
@@ -1166,33 +1172,36 @@ public class MissionAcceptanceTests
     private void Route(int id, string plan)
     {
         var legs = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var script = new System.Text.StringBuilder("g.Route(@id);\n");
+        var script = new System.Text.StringBuilder("{\ng.Route(@id);\n");
         for (int i = 0; i < legs.Length; i++)
         {
+            int n = i + 1;   // legs read from 1
             string name = legs[i][..legs[i].LastIndexOf('@')];
             script.Append(
-                name == "around" ? $"g.Around(@id, Position(@x{i}, @y{i}));\n"
-                : name == "aside" ? $"g.Aside(@id, Position(@x{i}, @y{i}));\n"
-                : name.Contains('/') ? $"g.Via(@id, map.FindDoor(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
-                : name.Contains('~') ? $"g.Via(@id, map.FindOpening(@a{i}, @b{i}), Position(@x{i}, @y{i}));\n"
-                : $"g.Stop(@id, Position(@x{i}, @y{i}));\n");
+                name == "around" ? $"around{n} = Position(@x{n}, @y{n}); g.Around(@id, around{n});\n"
+                : name == "aside" ? $"aside{n} = Position(@x{n}, @y{n}); g.Aside(@id, aside{n});\n"
+                : name.Contains('/') ? $"door{n} = map.FindDoor(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); g.Via(@id, door{n}, at{n});\n"
+                : name.Contains('~') ? $"opening{n} = map.FindOpening(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); g.Via(@id, opening{n}, at{n});\n"
+                : $"stop{n} = Position(@x{n}, @y{n}); g.Stop(@id, stop{n});\n");
         }
+        script.Append("}\n");
         perf.Actor.Using(script.ToString())
         .WithParameters(p => {
             p["id", typeof(int)] = id;
             for (int i = 0; i < legs.Length; i++)
             {
+                int n = i + 1;
                 int at = legs[i].LastIndexOf('@');
                 string name = legs[i][..at];
                 var xy = legs[i][(at + 1)..].Split(',');
-                p[$"x{i}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
-                p[$"y{i}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                p[$"x{n}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                p[$"y{n}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
                 char sep = name.Contains('/') ? '/' : name.Contains('~') ? '~' : ' ';
                 if (sep != ' ')
                 {
                     var ab = name.Split(sep);
-                    p[$"a{i}", typeof(string)] = ab[0];
-                    p[$"b{i}", typeof(string)] = ab[1];
+                    p[$"a{n}", typeof(string)] = ab[0];
+                    p[$"b{n}", typeof(string)] = ab[1];
                 }
             }
         })
@@ -1205,8 +1214,8 @@ public class MissionAcceptanceTests
         bool door = passage.Contains('/');
         var ab = passage.Split(door ? '/' : '~');
         perf.Actor.Using(door
-            ? "g.Cross(@id, map.FindDoor(@a, @b));"
-            : "g.Cross(@id, map.FindOpening(@a, @b));")
+            ? "{ door = map.FindDoor(@a, @b); g.Cross(@id, door); }"
+            : "{ opening = map.FindOpening(@a, @b); g.Cross(@id, opening); }")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
             p["a",  typeof(string)] = ab[0];
@@ -1221,7 +1230,7 @@ public class MissionAcceptanceTests
         var leg = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).First(l => l.StartsWith(kind + "@"));
         var xy = leg[(leg.LastIndexOf('@') + 1)..].Split(',');
         perf.Actor.Using(@"
-            g.Pass(@id, Position(@x, @y));
+            { point = Position(@x, @y); g.Pass(@id, point); }
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;

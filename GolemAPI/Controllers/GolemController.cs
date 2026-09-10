@@ -53,35 +53,40 @@ public class GolemController : Controller
     // before anything is journaled when a stop is neither an area nor a point on the map.
     private IActionResult Errand(string verb, string[] stops)
     {
+        // inside braces, step by step: each stop is found or built from its @params, named, then entrusted
+        // one stop is `point`; several are `point1`, `point2`… (Juan, 10-sep) — and so are their @params
         var check = new System.Text.StringBuilder("Check(");
-        var acts = new System.Text.StringBuilder();
+        var acts = new System.Text.StringBuilder("{\n");
         for (int i = 0; i < stops.Length; i++)
         {
+            string n = stops.Length == 1 ? "" : (i + 1).ToString();
             if (i > 0) check.Append(" && ");
             if (IsPoint(stops[i]))
             {
-                check.Append($"g.IsOnMap(@x{i}, @y{i})");
-                acts.Append($"g.{verb}(@id, Position(@x{i}, @y{i}));\n");
+                check.Append($"g.IsOnMap(@x{n}, @y{n})");
+                acts.Append($"    point{n} = Position(@x{n}, @y{n});\n    g.{verb}(@id, point{n});\n");
             }
             else
             {
-                check.Append($"map.Knows(@p{i})");
-                acts.Append($"g.{verb}(@id, map.Find(@p{i}));\n");
+                check.Append($"map.Knows(@area{n})");
+                acts.Append($"    point{n} = map.Find(@area{n});\n    g.{verb}(@id, point{n});\n");
             }
         }
+        acts.Append("}\n");
         check.Append(") Error 'a stop is neither an area nor a point on the map';");
         return Refusable(perf.Actor.Using(check.ToString(), acts.ToString())
         .WithParameters(p => {
             p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
             for (int i = 0; i < stops.Length; i++)
             {
+                string n = stops.Length == 1 ? "" : (i + 1).ToString();
                 if (IsPoint(stops[i]))
                 {
                     var xy = stops[i].Split(',');
-                    p[$"x{i}", typeof(double)] = double.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture);
-                    p[$"y{i}", typeof(double)] = double.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture);
+                    p[$"x{n}", typeof(double)] = double.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture);
+                    p[$"y{n}", typeof(double)] = double.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture);
                 }
-                else p[$"p{i}", typeof(string)] = stops[i];
+                else p[$"area{n}", typeof(string)] = stops[i];
             }
         })
         .PerformCheckThenCommand());

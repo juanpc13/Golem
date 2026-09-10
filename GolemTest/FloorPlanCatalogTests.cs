@@ -127,21 +127,26 @@ public class FloorPlanCatalogTests
 
     private void Visit(int id, string[] stops)
     {
-        var script = new System.Text.StringBuilder();
+        var script = new System.Text.StringBuilder("{\n");
         for (int i = 0; i < stops.Length; i++)
-            script.Append(stops[i].Contains(',') ? $"g.Visit(@id, Position(@x{i}, @y{i}));\n" : $"g.Visit(@id, map.Find(@p{i}));\n");
+        {
+            string n = stops.Length == 1 ? "" : (i + 1).ToString();
+            script.Append(stops[i].Contains(',') ? $"point{n} = Position(@x{n}, @y{n}); g.Visit(@id, point{n});\n" : $"point{n} = map.Find(@area{n}); g.Visit(@id, point{n});\n");
+        }
+        script.Append("}\n");
         perf.Actor.Using(script.ToString())
         .WithParameters(p => {
             p["id", typeof(int)] = id;
             for (int i = 0; i < stops.Length; i++)
             {
+                string n = stops.Length == 1 ? "" : (i + 1).ToString();
                 if (stops[i].Contains(','))
                 {
                     var xy = stops[i].Split(',');
-                    p[$"x{i}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
-                    p[$"y{i}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                    p[$"x{n}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                    p[$"y{n}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
                 }
-                else p[$"p{i}", typeof(string)] = stops[i];
+                else p[$"area{n}", typeof(string)] = stops[i];
             }
         })
         .PerformCommand();
@@ -149,11 +154,11 @@ public class FloorPlanCatalogTests
 
     private void Visit(int id, string place) =>
         perf.Actor.Using(@"
-            g.Visit(@id, map.Find(@place));
+            { point = map.Find(@area); g.Visit(@id, point); }
         ")
         .WithParameters(p => {
-            p["id",    typeof(int)]    = id;
-            p["place", typeof(string)] = place;
+            p["id",   typeof(int)]    = id;
+            p["area", typeof(string)] = place;
         })
         .PerformCommand();
 
