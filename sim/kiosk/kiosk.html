@@ -1,0 +1,90 @@
+<!doctype html>
+<!-- The kiosk's page: the lab's levers, with Gazebo's picture below them. It IS noVNC's index page,
+     so the one published port (:6080) serves both; the bare viewer stays at /vnc.html.
+     The buttons carry no port of their own: they speak to rosbridge (:9090, the membrane the golems
+     already use) and the orders arrive at the sim as ROS topics — /sim/crate, /sim/view — which
+     crates.py turns into Gazebo's world services. What stands on the floor comes back on /sim/crates,
+     so a button never claims a crate that is not there, whoever put it. -->
+<html lang="en"><head><meta charset="utf-8"><title>Golem sim — the lab's levers</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+         background: #14161f; color: #e7e9f3; font: 14px/1.4 system-ui, sans-serif; }
+  header { display: flex; gap: 8px; align-items: center; padding: 8px 10px;
+           border-bottom: 1px solid #2a2e3f; flex: 0 0 auto; flex-wrap: wrap; }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 6px 0 0; color: #9aa0bb; letter-spacing: .04em; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+           border: 1px solid #3a3f57; background: #1e2131; color: #e7e9f3; }
+  button:hover { background: #272b3f; }
+  button:disabled { opacity: .45; cursor: default; }
+  button[aria-pressed="true"] { border-color: #b8834a; background: #3a2b18; color: #f0c894; }
+  button.big[aria-pressed="true"] { border-color: #a8622c; background: #4a2c12; color: #f6b980; }
+  button.view { margin-left: 14px; border-color: #35485c; color: #bcd6ea; }
+  button.clear { margin-left: auto; border-color: #4a3a3a; }
+  #note { color: #9aa0bb; font-size: 12px; padding: 0 10px 6px; flex: 0 0 auto; }
+  iframe { flex: 1 1 auto; width: 100%; border: 0; background: #14161f; }
+</style></head><body>
+<header>
+  <h1>CRATES IN THE WORLD</h1>
+  <button data-spot="west" title="A crate in the west corridor: 1.5 m wide, so it is shut to a body">West corridor</button>
+  <button data-spot="center" title="A crate in the middle of the central hall: 3 m wide, so a body can feel its way past">Central hall</button>
+  <button data-spot="east" title="A crate in the east corridor: shut to a body">East corridor</button>
+  <button class="big" data-spot="big" title="One big crate, the hall from wall to wall: no body gets through, the shortcut is shut">Central hall · wall to wall</button>
+  <button class="view" data-view="top" title="Put the camera back where the kiosk opens it: straight above the floor, the whole plan in sight">Top view</button>
+  <button class="clear" data-clear="1">Clear all</button>
+</header>
+<div id="note">A crate the golems' map does not hold: whatever touches it meets a real obstacle.</div>
+<iframe title="Gazebo"></iframe>
+<script>
+  document.querySelector('iframe').src = '/vnc.html?autoconnect=true&resize=scale';
+
+  const spots = [...document.querySelectorAll('button[data-spot]')];
+  const all = [...document.querySelectorAll('button')];
+  const note = document.getElementById('note');
+  const say = text => { note.textContent = text; };
+  const paint = placed => spots.forEach(b =>
+      b.setAttribute('aria-pressed', placed.includes(b.dataset.spot) ? 'true' : 'false'));
+
+  // The membrane: the same rosbridge the golems talk through. The page publishes an order and
+  // listens to what stands on the floor; it never holds state of its own.
+  const IN_CRATE = '/sim/crate', IN_VIEW = '/sim/view', OUT_CRATES = '/sim/crates';
+  const TYPE = 'std_msgs/String';
+  let ros = null;
+
+  const enable = on => all.forEach(b => b.disabled = !on);
+
+  const connect = () => {
+      enable(false);
+      say('reaching the world…');
+      ros = new WebSocket('ws://' + location.hostname + ':9090');
+      ros.onopen = () => {
+          [IN_CRATE, IN_VIEW].forEach(topic =>
+              ros.send(JSON.stringify({ op: 'advertise', topic, type: TYPE })));
+          ros.send(JSON.stringify({ op: 'subscribe', topic: OUT_CRATES, type: TYPE }));
+          enable(true);
+          say("a crate the golems' map does not hold: whatever touches it meets a real obstacle.");
+      };
+      ros.onmessage = e => {
+          const m = JSON.parse(e.data);
+          if (m.topic !== OUT_CRATES) return;
+          const placed = (m.msg.data || '').split(',').filter(Boolean);
+          paint(placed);
+      };
+      ros.onclose = () => { enable(false); say('the world went quiet — reaching it again…'); setTimeout(connect, 2000); };
+      ros.onerror = () => say('the world did not answer on :9090');
+  };
+
+  const order = (topic, data, said) => {
+      if (!ros || ros.readyState !== 1) return say('not connected to the world yet');
+      ros.send(JSON.stringify({ op: 'publish', topic, msg: { data } }));
+      say(said);
+  };
+
+  spots.forEach(b => b.onclick = () => order(IN_CRATE, b.dataset.spot, 'putting a crate at the ' + b.dataset.spot + '…'));
+  document.querySelector('button[data-clear]').onclick = () => order(IN_CRATE, 'clear', 'clearing the floor…');
+  document.querySelector('button[data-view]').onclick = () => order(IN_VIEW, 'top', 'putting the camera back above the floor…');
+
+  connect();
+</script>
+</body></html>

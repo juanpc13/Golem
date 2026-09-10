@@ -3,7 +3,7 @@
 #   1. Gazebo's physics server, running from the start (the world built from the floor plan);
 #   2. ros_gz_bridge — every body's cmd_vel (in), odometry and contacts (out) as ROS topics;
 #   3. the teleport helper (world services are not bridged in this release) and the crate lever
-#      (the four buttons' page on :6081: an obstacle into the running world, or away);
+#      (the kiosk's buttons reach it by ROS topics: an obstacle into the running world, or away);
 #   4. rosbridge — all of ROS as JSON over websocket on :9090, the golems' membrane;
 #   5. Gazebo's GUI, unless KIOSK=false.
 # The GUI does NOT run on the base image's Xvnc (:1): Qt Quick + OGRE die there with "XIO fatal
@@ -22,7 +22,7 @@ set -f   # the bridge mappings carry [ and ]: no globbing
 ros2 run ros_gz_bridge parameter_bridge $(cat /world/bridge.args) &
 set +f
 python3 /golem/teleport.py arena &
-python3 /golem/crates.py arena 6081 &
+python3 /golem/crates.py arena &
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
 
 if [ "${KIOSK:-true}" != "true" ]; then

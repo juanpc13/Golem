@@ -82,11 +82,14 @@ whether it could or not, so the domain resolves what follows. Consequences:
   their `@params` count from 1, as a person counts them) — Juan, 10-sep.
   The braces matter: an assignment at the top level of a command becomes a global of the actor (Fase 0,
   P2a); inside `{ }` the name dies with the block (P2b). Never a literal value in a template: every value
-  is an `@param` (program–value separability, paper 02). The flat, told acts (`Reach`, `Bump`, `Mark`,
-  `Forget`…) stay one-line, because a reaction captures their `@params`.
-  **What is told travels flat**: an act a reaction must capture (`Bump`, `Mark`, `Reach`, `Forget`, and the
-  whole touch family for uniformity) keeps primitive `@params`, because the matcher captures literals,
-  `@params` and `expose` labels only — never an object variable (Fase 0 lab, NOTEBOOK 10-sep).
+  is an `@param` (program–value separability, paper 02).
+  **The touches take their objects too, and what is told rides beside them as `expose`** (Juan, 10-sep:
+  "el g.Bump aún no maneja posición… hay que corregirlo, y el g.Mark también"): `{ touch = Pose(@x, @y,
+  @heading); g.Bump(@id, touch); } expose @x x, @y y, @me who, @px px, @py py;` — the reaction that tells
+  the peers captures the `expose` labels, because the matcher captures literals, `@params` and `expose`
+  labels only, never an object variable (Fase 0, P3). Same for `Mark` (`mx, my, mh`), `Reach` (`rid, rx,
+  ry`) and `Forget` (`gx, gy`); `Graze`, `Met`, `HearBump`, `LearnMark`, `LearnForget` need no expose
+  (nothing captures them). Labels are distinct per act so no two reactions match one shape.
 - **Modules are globals of the actor** (`body`, `map`, `collisions`), built in their own releases and handed
   to the golem (`g = Golem(body, map, collisions)`): a query may calculate with a module alone
   (`map.ZoneOf(Position(5.5, 5.5))`, `map.Connects('north', 'center')`, `collisions.All()`,
@@ -130,14 +133,22 @@ whether it could or not, so the domain resolves what follows. Consequences:
 
 ## Architecture in one breath
 
-- `sim/` — the world: Gazebo Fortress in kiosk mode (noVNC :6080; the crate lever's
-  buttons WITH that picture on :6081; rosbridge ws :9090). Reality is GENERATED from
-  `sim/world/plan.json` at image build (walls, doors, solid blocks, bodies with contact
-  sensors); its `obstacles` are empty on purpose since 10-sep — a crate is pressed into
-  the RUNNING world by `sim/bridge/crates.py` (west corridor, central hall, east corridor,
-  one big crate that shuts the hall wall to wall, clear all) through Gazebo's
-  `/world/arena/create` and `/remove`, so every test starts from a clean floor. A lab
-  lever, never domain: the golems' map still knows nothing of what stands there.
+- `sim/` — the world: Gazebo Fortress in kiosk mode. **Two published ports, no more**:
+  :6080 (the kiosk) and ws :9090 (rosbridge, the membrane). **The lab's levers ARE the kiosk
+  page** (`sim/kiosk/kiosk.html`, which is noVNC's index, so `http://localhost:6080` shows
+  the buttons with the picture; the bare viewer stays at `/vnc.html`): four buttons put a
+  crate in the RUNNING world (west corridor, central hall, one big crate that shuts that
+  hall wall to wall, east corridor), one clears them, one puts the camera back above the
+  floor. The buttons need no port of their own — they publish through rosbridge and
+  `sim/bridge/crates.py` (an rclpy node, brother of `teleport.py`) turns the topics into
+  Gazebo's services: `/sim/crate` and `/sim/view` in, `/sim/crates` out (what stands there,
+  so a button never lies), `/world/arena/create` · `/remove` and the GUI's
+  `/gui/move_to/pose` (the pose read from the world's own `<camera_pose>`). Reality is
+  GENERATED from `sim/world/plan.json` at image build (walls, doors, solid blocks, bodies
+  with contact sensors); its `obstacles` are empty on purpose since 10-sep, so every test
+  starts from a clean floor and the crates are pressed in as needed — they live only in the
+  running world and a restart clears them. A lab lever, never domain: the golems' map still
+  knows nothing of what stands there.
 - `GolemDomain/` — the pure domain, one assembly, namespaces `GolemDomain` (`Golem`, the
   subject), `.Geometry`, `.Robots`, `.Maps` (information), `.Layouts` (the map on the plane),
   `.Touches` (what was learned by touching), `.Routes` (see glossary). The engine binds

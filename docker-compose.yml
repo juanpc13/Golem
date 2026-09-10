@@ -1,7 +1,7 @@
 # Golem — the world is Gazebo Fortress in kiosk mode: physics server, ROS<->Gazebo bridge,
 # rosbridge and the GUI start on their own, no desktop.
 # Bring up:  docker compose up -d --build
-# Watch:     http://localhost:6081  (the picture WITH the four crate buttons: west / center / east / clear)
+# Watch:     http://localhost:6080  (the picture WITH the lab's buttons: four crates, clear, top view)
 #            http://localhost:6080/vnc.html?autoconnect=true&resize=scale  (the bare picture)
 #            (Gazebo's picture IS the screen, straight above the floor, scaled to the browser)
 # Operate:   http://localhost:8081 (blue-golem) · http://localhost:8082 (red-golem)
@@ -13,8 +13,7 @@ services:
     image: golem-sim:gazebo
     container_name: golem-sim
     ports:
-      - "6080:80"    # noVNC: the picture in the browser
-      - "6081:6081"  # the crate lever: the four buttons around the picture (an obstacle into the running world)
+      - "6080:80"    # the kiosk: the levers' page WITH the picture (the bare viewer at /vnc.html)
       - "9090:9090"  # rosbridge (the membrane)
     environment:
       - KIOSK=true   # false = headless: physics and bridges only, no picture (saves ~5 cores of software rendering)

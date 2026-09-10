@@ -226,7 +226,8 @@ public class GolemController : Controller
                 Check(g.KnowsObstacleAt(@x, @y)) Error 'the golem holds no obstacle there';
             ",
             @"
-                g.Forget(@x, @y);
+                { at = Position(@x, @y); g.Forget(at); }
+                expose @x gx, @y gy;
             ")
         .WithParameters(p => {
             p["x", typeof(double)] = x.Value;

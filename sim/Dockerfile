@@ -27,6 +27,13 @@ COPY world/ /world/
 RUN python3 /world/build_world.py /world/plan.json /world
 
 COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh bridge/teleport.py bridge/crates.py /golem/
+# The buttons' page becomes noVNC's index, so the ONE published port shows the levers with the
+# picture; the bare viewer stays at /vnc.html. The buttons need no port of their own: they order
+# through rosbridge (:9090) and crates.py turns those topics into the world's services.
+# Gotcha: the base image's index.html is a SYMLINK to vnc.html — copying over it would write
+# THROUGH the link and replace the viewer itself (done once, on 10-sep, and undone by hand).
+COPY kiosk/kiosk.html /tmp/kiosk.html
+RUN rm -f /usr/lib/novnc/index.html && cp /tmp/kiosk.html /usr/lib/novnc/index.html && rm /tmp/kiosk.html
 # The entrypoint copies /root/.config into the user's home on every boot,
 # so the openbox config is planted in /root and arrives on its own.
 COPY kiosk/rc.xml /root/.config/openbox/rc.xml

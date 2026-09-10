@@ -1150,3 +1150,71 @@ Ni un `MoveTo`, `Cross` o `Pass`. Cuatro misiones completadas entre los dos, una
 **Ajuste al dominio**: **ninguno, a propósito.** Esto es infraestructura del operador (paper 06: síntoma infraestructural, no dominio): el golem no sabe que existen los botones, y las cajas siguen siendo realidad que su mapa no contempla. Archivos: `sim/bridge/crates.py` (servidor de la palanca y su página, tabla `SPOTS` de cuatro puntos), `sim/kiosk/kiosk.sh` (lo arranca junto al teleport, también en modo headless), `sim/Dockerfile` (lo copia), `docker-compose.yml` (publica :6081), `sim/world/plan.json` (la caja fija SALE: `obstacles: []`, para que cada prueba empiece con el piso limpio y el botón del centro tenga dónde poner la suya).
 
 **Pendiente**: (1) el contenedor corriendo lleva la versión de cuatro puntos aplicada en caliente (`docker cp` + reinicio de ese solo proceso, para no reiniciar el mundo mientras Juan trabajaba); **la imagen se queda con tres hasta el próximo `docker compose up -d --build`**, que la hornea; (2) los journals vivos conservan marcas de la caja fija que ya no existe — creencia obsoleta, se vio en que red planificó un rodeo antes de chocar; limpiarlos cuando Juan quiera; (3) si hacen falta más puntos, `SPOTS` crece sola: el nombre del punto es lo único que viaja en la petición, nunca una coordenada; (4) un botón que EMPUJE una caja sería `set_pose` sobre el mismo nombre, si alguna vez se quiere el obstáculo móvil.
+
+---
+
+## 2026-09-10 · Los toques reciben objetos; lo que se cuenta viaja al lado como `expose`; el panel oculta los tells
+
+**Contexto**: Juan, mirando el panel: "el g.Bump aún no maneja posición, recibe los primitivos; hay que corregirlo, y el g.Mark también por lo que veo". Antes: "ponme un checkbox para omitir los tells del Journal — live", y "mueve la parte del PerformQuery, lo que más me importa ver es la tabla de journal live".
+
+**Ajuste al dominio**: la familia de toques recibe sus objetos: `Bump(id, Pose)`, `Bump(Pose)`, `Graze(id, Position)`, `Mark(Pose)`, `LearnMark(Pose)`, `Met(who, Position)`, `HearBump(who, Position, Position)`, `Forget(Position)`, `LearnForget(Position)` y `Reach(id, Position)`. La regla "lo que se cuenta viaja plano" se reformula: el acto lleva el objeto, y lo que la reacción debe capturar para contárselo a los compañeros va **al lado** como `expose` — la forma P3c del laboratorio — con etiquetas propias por acto para que dos reacciones nunca casen la misma forma: `Bump` ya exponía `x, y, who, px, py`; `Mark` expone `mx, my, mh`; `Reach`, `rid, rx, ry`; `Forget`, `gx, gy`. Las reacciones `echo-marked`, `echo-reached` y `echo-forgotten` pasan de casar `[_:Golem].Verbo($…)` a casar el `expose`.
+
+**Observación en vivo** (journals en `journal-legacy-20260910-toques/`):
+```
+blue 11: { touch = Pose(8.5046,1.4970,-0.0014); g.Bump(1, touch); } Expose 8.5046 '8.5046'; …
+     13: tell BumpedAt with 8.5046, 1.4970, 'blue', 8.3160, 1.4972 to red once …      ← la reacción capturó el expose
+     16: { at = Position(8.5046,1.4970); g.Met('red', at); }
+     20: { point = Position(9,1.5); g.Reach(1, point); } Expose 1 'rid'; Expose 9 'rx'; Expose 1.5 'ry';
+red   5: { point = Position(9,1.5); g.Reach(1, point); } Expose 1 'rid'; …
+      7: g.Announce(1); tell PointVisited with 9, 1.5 to blue once …                   ← echo-reached capturó el expose
+     16: { at = Position(8.5046,1.4970); peer = Position(8.3160,1.4972); g.HearBump('blue', at, peer); }
+```
+El motor imprime los `expose` como `Expose <valor> '<valor>'` en la fila: el valor y su etiqueta. No hubo `Mark` en esta corrida (los dos choques fueron encuentros); su forma es la misma que la de `Reach`, verificada.
+
+**Ajuste al panel**: casilla «hide tells» junto al título del journal en vivo: oculta las filas cuyo script empieza por `tell` (tells y acks) y las plantillas `define action … as tell …`; preferencia guardada por navegador; el journal no se toca. Verificado: 29 filas, 7 ocultas. La consola `PerformQuery` bajó al final; el journal en vivo subió al primer lugar de la columna ancha, con más alto. Un tropiezo de método: el regex se escribió con `\b` desde Python y llegó al archivo como un carácter de retroceso invisible (`grep` no lo muestra); el navegador lo delató (`"tell\b"` en la fuente servida). Lección: verificar con `cat -A` lo que se escribe por script.
+
+**Pendiente (pregunta abierta de Juan)**: "el bump y mark deberían ir en el mismo script". El protocolo de encuentro lo impide tal cual: el `Bump` se cuenta de inmediato para que el compañero que chocó a la vez lo oiga en su ventana de escucha; la conclusión (`Mark` o `Met`) llega después de escuchar. Si los dos demoraran su `Bump` hasta concluir, ninguno oiría al otro y ambos marcarían fantasmas (8-sep). Alternativas propuestas: dejar dos filas (hecho y conclusión), o marcar de inmediato en la misma fila y retractar con un verbo nuevo cuando un compañero hable.
+
+---
+
+## 2026-09-10 · La palanca, en el puerto de siempre, y el botón que devuelve la vista
+
+**Contexto**: Juan no veía los botones porque miraba `:6080/vnc.html`, su URL de costumbre, y la palanca vivía en `:6081`. Pide dos cosas: que los botones salgan también en 6080, y un botón más que **recupere la vista de arriba** cuando la cámara se quedó girada.
+
+**Observación**:
+1. **Una sola página, dos puertos.** La página pasa a ser un archivo del repo (`sim/kiosk/kiosk.html`), y la imagen la deja en dos sitios: `/golem/kiosk.html`, que sirve la palanca en 6081, y `/usr/lib/novnc/index.html`, con lo que `http://localhost:6080` ya muestra los botones. El visor desnudo sigue en `/vnc.html`. La página calcula los dos destinos desde `location.hostname`, así que sirve igual por localhost o por una dirección de la red.
+2. **Gotcha que costó**: en la imagen base, `/usr/lib/novnc/index.html` **es un symlink a `vnc.html`**. Copiar la página encima escribió A TRAVÉS del enlace y reemplazó el visor: la página quedó dentro de un iframe de sí misma. Reparado a mano (el visor volvió de una copia) y en el Dockerfile: primero `rm -f index.html`, después copiar. Anotado ahí mismo para que nadie lo repita.
+3. **El GUI de Gazebo tiene servicios de cámara**: `/gui/move_to/pose` (`ignition.msgs.GUICamera`) y `/gui/view_angle` (`Vector3d`). Se eligió el primero porque **restituye la vista exacta del kiosko**, no una parecida: el botón lee `<camera_pose>` del propio `arena.sdf` (hoy `5.5 5.5 7.26 0 1.5707 1.5707`) y convierte esos roll-pitch-yaw a cuaternión (0 π/2 π/2 → x -0.5, y 0.5, z 0.5, w 0.5). Al leerla del mundo, un piso de otro tamaño recupera su propia vista sin tocar código.
+4. **Verificado en vivo**, con la cámara inclinada a propósito antes de cada prueba: el botón la devuelve arriba desde 6081 (mismo origen) y desde 6080 (origen cruzado), y el aviso de la página dice "the camera is back above the floor". Los encabezados CORS se comprobaron con `curl` mandando `Origin: http://localhost:6080`: `Access-Control-Allow-Origin: *`.
+5. **Un falso negativo que conviene recordar**: la primera pulsación desde 6080 dio `TypeError: Failed to fetch`. No era CORS: el contenedor se había recreado segundos antes (Juan levantó el compose) y la palanca aún arrancaba. Repetida con todo asentado, pasa. **Antes de culpar al diseño, mirar la hora de arranque del contenedor.**
+6. **Los botones ya no mienten**: la página relee el estado del mundo cada tres segundos, así que si otra pestaña —o un `curl`— pone o quita una caja, los botones se pintan solos. El estado sale de `ign model --list`, nunca de una variable del servidor.
+
+**Conclusión**: la ventana del kiosko es ahora el tablero del laboratorio: cuatro cajas, limpiar y la vista. Todo en el puerto que Juan ya tenía en el navegador, sin perder el visor desnudo. La cámara vuelve a la pose que el plano escribió, no a una aproximada, porque la lee del mundo.
+
+**Ajuste al dominio**: **ninguno**, sigue siendo infraestructura del operador (paper 06). Archivos: `sim/kiosk/kiosk.html` (nuevo, la página compartida), `sim/bridge/crates.py` (sirve esa página, añade `POST /view/top`, CORS y la lectura de `<camera_pose>`), `sim/Dockerfile` (copia la página a los dos sitios, con el aviso del symlink).
+
+**Pendiente**: (1) la imagen ya quedó horneada con todo esto en el rebuild de las 21:52; (2) ese mismo reinicio se llevó las cajas que Juan había puesto — inherente: las cajas de la palanca viven solo en el mundo corriendo; (3) si algún día el kiosko se abre en un navegador ajeno a la máquina, la página apunta al `hostname` que usó el navegador, así que funciona sin cambios.
+
+---
+
+## 2026-09-10 · Un solo puerto: las órdenes de la palanca viajan por la membrana
+
+**Contexto**: Juan pide desplegar dejando **solo el 6080**. La palanca vivía en un segundo servidor HTTP en 6081, y la página lo llamaba desde el navegador: al cerrar ese puerto, los botones se quedaban sin quien los atendiera.
+
+**Observación**:
+1. **Lo que se descartó, y por qué.** Un proxy en el 80 (nginx, o el propio Python) repartiendo visor y comandos obliga a atravesar el **stream de vídeo** por nuestro código y a instalar un paquete más, además de operar sobre el `supervisord.conf` que el entrypoint **regenera en cada arranque** (gotcha ya conocido del 4-sep). Se descartó.
+2. **La solución era el puerto que ya estaba abierto.** El simulador ya habla ROS y rosbridge ya está publicado en 9090, porque es la membrana de los golems. Los botones publican en tópicos y `crates.py` deja de ser servidor HTTP para volverse **nodo rclpy**, igual que `teleport.py`. Nada de CORS, nada de proxy, ningún puerto nuevo:
+   - `/sim/crate` (String, entra): `west | center | east | big | clear`
+   - `/sim/view` (String, entra): `top`
+   - `/sim/crates` (String, sale, cada dos segundos): lo que hay en el piso, `"west,big"`
+   La página es el `index.html` de noVNC, así que el 6080 sirve los botones **y** la imagen; el visor desnudo sigue en `/vnc.html` y el iframe lo carga con ruta relativa, mismo origen.
+3. **El fallo que me costó, y cómo se delató.** Escribí `say('… golems\' map …')` dentro de una cadena de comillas simples: el escape roto tiró **todo** el script con `SyntaxError: missing ) after argument list`. Síntoma engañoso: la página se veía bien y el aviso decía lo correcto, **porque el texto estático del `<div>` era el mismo que pone el `onopen`**. Los botones simplemente no hacían nada. Se diagnosticó (a) leyendo la consola del navegador, y (b) abriendo un segundo WebSocket desde la propia página, que demostró que rosbridge **sí** entregaba `/sim/crates`: el problema estaba de este lado. **Lección doble**: mirar la consola antes de sospechar del transporte, y no repetir en el HTML estático el mensaje que confirma la conexión — ese duplicado fue el que tapó el error.
+4. **Verificado en vivo, por las dos vías**: `ros2 topic pub --once /sim/crate` desde la CLI pone la caja; el clic del navegador puso `crate_west` (el nodo lo registró: "crate at the west: in"); "Top view" devolvió la cámara ("camera back above the floor: True") y la captura tomada **dentro** del contenedor (`scrot` en el display :2) muestra el piso desde arriba con la caja del corredor oeste. Los botones se pintan solos desde `/sim/crates`. El 6081 responde `http 000`: cerrado, como se pidió.
+5. **Dos reconstrucciones**: la primera imagen se horneó con el script roto; la segunda lleva el arreglo. Comprobado sobre la imagen final: la página trae el arreglo, los cuatro tópicos `/sim/*` existen y solo 6080 y 9090 están publicados.
+6. **Juan ya está usando la palanca**: en el registro apareció un "cleared every crate" que no fue mío.
+
+**Conclusión**: el kiosko queda con un solo puerto propio y sin servidor auxiliar. La palanca es ahora un nodo ROS más del simulador, hermano de `teleport.py`, y la página es el índice de noVNC. Que el camino correcto fuera "usa la membrana que ya existe" es la misma lección del paper 06 en pequeño: el segundo puerto era un síntoma, no una necesidad.
+
+**Ajuste al dominio**: **ninguno**, sigue siendo infraestructura del operador. Archivos: `sim/bridge/crates.py` (nodo rclpy: dos suscripciones, un publicador, las llamadas a los servicios del mundo y del GUI), `sim/kiosk/kiosk.html` (habla rosbridge por WebSocket, sin librerías), `sim/kiosk/kiosk.sh` (lo arranca sin argumento de puerto), `sim/Dockerfile` (la página va solo al índice de noVNC), `docker-compose.yml` (se retira la publicación de 6081).
+
+**Pendiente**: (1) las cajas siguen viviendo solo en el mundo corriendo: cada reinicio deja el piso limpio; (2) si algún día el kiosko se abre desde otra máquina, la página apunta al `hostname` que usó el navegador para rosbridge, así que funciona sin cambios mientras 9090 esté alcanzable.

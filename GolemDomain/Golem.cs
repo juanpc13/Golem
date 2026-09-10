@@ -245,53 +245,59 @@ internal sealed class Golem
     internal Maneuver Evasion(double x, double y, double heading, string strategy) =>
         EvasionStrategy.Named(strategy).From(new Position(x, y), heading);
 
-    // ---- touches: what is told travels flat (a reaction captures @params, never objects — Fase 0, 10-sep-2026) ----
+    // ---- touches: the facts take their objects too (a Pose, a Position); what a reaction must tell the peers is
+    //      exposed beside the act as @params, because the matcher captures no object (Fase 0, P3) ----
 
-    /// <summary>The body touched something the map does not hold, at (x, y), heading that way, on this mission. A fact,
+    /// <summary>The body touched something the map does not hold — where, and heading which way — on this mission. A fact,
     /// told to the peers; what it was is concluded afterwards (Mark or Met, by what the peers say). Returns the mission id.</summary>
-    internal int Bump(int id, double x, double y, double heading)
+    internal int Bump(int id, Pose touch)
     {
+        if (touch == null) throw new DomainException($"mission {id}'s bump needs the pose of the touch");
         Find(id).Bump();
         return id;
     }
 
-    /// <summary>Something touched the body at (x, y) while it stood without a mission, facing that way — a peer, most
-    /// likely; told to the peers so the one that moved knows it met a body. Returns how many such touches so far.</summary>
-    internal int Bump(double x, double y, double heading) => ++idleBumps;
-
-    /// <summary>The body grazed a wall the map KNOWS at (x, y), on this mission: its own execution error, no discovery.
-    /// Counted against the golem's patience on the leg (MayRetryLeg). Returns the mission id.</summary>
-    internal int Graze(int id, double x, double y)
+    /// <summary>Something touched the body while it stood without a mission — a peer, most likely; told to the peers so
+    /// the one that moved knows it met a body. Returns how many such touches so far.</summary>
+    internal int Bump(Pose touch)
     {
+        if (touch == null) throw new DomainException("a bump needs the pose of the touch");
+        return ++idleBumps;
+    }
+
+    /// <summary>The body grazed a wall the map KNOWS, on this mission: its own execution error, no discovery. Counted
+    /// against the golem's patience (MayRetryLeg). Returns the mission id.</summary>
+    internal int Graze(int id, Position at)
+    {
+        if (at == null) throw new DomainException($"mission {id}'s graze needs where it happened");
         Find(id).Graze();
         return id;
     }
 
-    /// <summary>A peer says it bumped at (x, y) while it stood at (px, py): heard and kept by the collisions module, so a
+    /// <summary>A peer says it bumped at a point while it stood at another: heard and kept by the collisions module, so a
     /// touch of my own there and then is known to be that peer — and so that, once we know we met, I can step out of ITS
     /// way knowing where it is. The named counterpart of LearnMark, which hears of a MARK; this one hears of a BUMP.</summary>
-    internal int HearBump(string who, double x, double y, double px, double py) =>
-        collisions.Hear(who, new Position(x, y), new Position(px, py));
+    internal int HearBump(string who, Position at, Position peerAt) => collisions.Hear(who, at, peerAt);
 
     /// <summary>The golem concludes what it touched was a thing (no peer bumped there and then): a mark with the heading
     /// of the touch as its normal, told to the peers. Returns how many marks it holds.</summary>
-    internal int Mark(double x, double y, double heading) => collisions.Mark(new Pose(x, y, heading));
+    internal int Mark(Pose touch) => collisions.Mark(touch);
 
-    /// <summary>A peer says a thing stands at (x, y), touched heading that way: the golem learns the mark without the
-    /// bruise. Returns how many marks it holds.</summary>
-    internal int LearnMark(double x, double y, double heading) => collisions.Mark(new Pose(x, y, heading));
+    /// <summary>A peer says a thing stands there, touched heading that way: the golem learns the mark without the bruise.
+    /// Returns how many marks it holds.</summary>
+    internal int LearnMark(Pose touch) => collisions.Mark(touch);
 
-    /// <summary>The golem concludes what it touched at (x, y) was a peer — who said it bumped there and then. History,
-    /// kept among the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
-    internal int Met(string who, double x, double y) => collisions.Meet(who, new Position(x, y));
+    /// <summary>The golem concludes what it touched was a peer — who said it bumped there and then. History, kept among
+    /// the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
+    internal int Met(string who, Position at) => collisions.Meet(who, at);
 
-    /// <summary>The operator says what stood at (x, y) is gone — somebody took it away — and the golem forgets the
+    /// <summary>The operator says what stood at a point is gone — somebody took it away — and the golem forgets the
     /// obstacle there with EVERY mark that outlined it: a body may pass again, and a touch after this is a NEW
     /// obstacle. Told to the peers, who forget it too. Returns how many facts it dropped.</summary>
-    internal int Forget(double x, double y) => collisions.Forget(new Position(x, y));
+    internal int Forget(Position at) => collisions.Forget(at ?? throw new DomainException("forgetting needs where"));
 
-    /// <summary>A peer says what stood at (x, y) is gone: the golem forgets it too, without having gone to see.</summary>
-    internal int LearnForget(double x, double y) => collisions.Forget(new Position(x, y));
+    /// <summary>A peer says what stood at a point is gone: the golem forgets it too, without having gone to see.</summary>
+    internal int LearnForget(Position at) => collisions.Forget(at ?? throw new DomainException("forgetting needs where"));
 
     /// <summary>Whether the golem holds an obstacle at (x, y) — what to consult before saying it is gone.</summary>
     internal bool KnowsObstacleAt(double x, double y) => collisions.KnowsAt(new Position(x, y));
@@ -312,10 +318,11 @@ internal sealed class Golem
     // ---- missions: the progress — only what fulfils the plan is journaled ----
 
     /// <summary>The golem reached a stop of its road: the legs before it were walked, whatever they were; reaching the
-    /// last one completes the mission. Told to the peers, so it travels flat. Returns the mission id.</summary>
-    internal int Reach(int id, double x, double y)
+    /// last one completes the mission. Told to the follower (exposed beside the act). Returns the mission id.</summary>
+    internal int Reach(int id, Position at)
     {
-        Find(id).Reach(x, y);
+        if (at == null) throw new DomainException($"mission {id} reaches a point");
+        Find(id).Reach(at.X, at.Y);
         return id;
     }
 

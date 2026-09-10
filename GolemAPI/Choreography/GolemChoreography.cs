@@ -115,7 +115,7 @@ public sealed class GolemChoreography
                 .Cue().Company().WithSharedHydration()
                 .Seek("Forgotten").One()
                     .OnMatch(@"
-                        [_:Golem].Forget($x, $y)
+                        expose $x gx, $y gy;
                     ")
                 .Causation.Continue(forgotten);
 
@@ -125,7 +125,7 @@ public sealed class GolemChoreography
                 .Cue().Company().WithSharedHydration()
                 .Seek("Marked").One()
                     .OnMatch(@"
-                        [_:Golem].Mark($x, $y, $heading)
+                        expose $x mx, $y my, $heading mh;
                     ")
                 .Causation.Continue(marked);
         }
@@ -145,7 +145,7 @@ public sealed class GolemChoreography
             .Cue().Company().WithSharedHydration()
             .Seek("Reached").One()
                 .OnMatch(@"
-                    [_:Golem].Reach($missionId, $x, $y)
+                    expose $missionId rid, $x rx, $y ry;
                 ")
             .Causation.Continue($@"
                 g.Announce(@missionId);
@@ -193,7 +193,8 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id) && g.IsStopAhead(@id, @x, @y)) Error 'that is not a stop ahead';
                 ",
                 @"
-                    g.Reach(@id, @x, @y);
+                    { point = Position(@x, @y); g.Reach(@id, point); }
+                    expose @id rid, @x rx, @y ry;
                 ")
             .WithParameters(p => {
                 p["id", typeof(int)]    = m.Id;
@@ -231,7 +232,7 @@ public sealed class GolemChoreography
             if (m.Id == 0)
             {
                 actor.Using(@"
-                    g.Bump(@x, @y, @heading);
+                    { touch = Pose(@x, @y, @heading); g.Bump(touch); }
                     expose @x x, @y y, @me who, @px px, @py py;
                 ")
                 .WithParameters(p => {
@@ -251,7 +252,7 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                 ",
                 @"
-                    g.Bump(@id, @x, @y, @heading);
+                    { touch = Pose(@x, @y, @heading); g.Bump(@id, touch); }
                     expose @x x, @y y, @me who, @px px, @py py;
                 ")
             .WithParameters(p => {
@@ -272,7 +273,8 @@ public sealed class GolemChoreography
         dispatch.On<ObstacleMarked>((actor, m) =>
         {
             actor.Using(@"
-                g.Mark(@x, @y, @heading);
+                { touch = Pose(@x, @y, @heading); g.Mark(touch); }
+                expose @x mx, @y my, @heading mh;
             ")
             .WithParameters(p => {
                 p["x",       typeof(double)] = m.X;
@@ -287,7 +289,7 @@ public sealed class GolemChoreography
         dispatch.On<PeerMet>((actor, m) =>
         {
             actor.Using(@"
-                g.Met(@who, @x, @y);
+                { at = Position(@x, @y); g.Met(@who, at); }
             ")
             .WithParameters(p => {
                 p["who", typeof(string)] = m.Who;
@@ -306,7 +308,7 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                 ",
                 @"
-                    g.Graze(@id, @x, @y);
+                    { at = Position(@x, @y); g.Graze(@id, at); }
                 ")
             .WithParameters(p => {
                 p["id", typeof(int)]    = m.Id;
@@ -366,11 +368,11 @@ public sealed class GolemChoreography
             .Told("PointVisited").With<double>("x").With<double>("y")
                 .Command("{ point = Position(@x, @y); g.Follow(point); }")
             .Told("BumpedAt").With<double>("x").With<double>("y").With<string>("who").With<double>("px").With<double>("py")
-                .Command("g.HearBump(@who, @x, @y, @px, @py);")
+                .Command("{ at = Position(@x, @y); peer = Position(@px, @py); g.HearBump(@who, at, peer); }")
             .Told("ObstacleFound").With<double>("x").With<double>("y").With<double>("heading")
-                .Command("g.LearnMark(@x, @y, @heading);")
+                .Command("{ touch = Pose(@x, @y, @heading); g.LearnMark(touch); }")
             .Told("ObstacleGone").With<double>("x").With<double>("y")
-                .Command("g.LearnForget(@x, @y);")
+                .Command("{ at = Position(@x, @y); g.LearnForget(at); }")
             .Start();
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
             $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
