@@ -8,7 +8,20 @@ public sealed record Pose(double X, double Y, double Theta);
 
 // What the body last touched, as the simulator's contact sensor reports it: the other
 // model's name, and when. Telemetry — it lives in memory, never in the journal.
-public sealed record Contact(string With, DateTime At);
+/// <summary>A touch on the body's shell: what it touched (the world's name for it), when, and WHERE ON THE SHELL —
+/// the bearing of the touch relative to the body's heading (0 = the nose, +π/2 = the left flank, -π/2 = the right).
+/// A bumper knows no more than that; where the touch lands on the plane follows from the pose the golem believes.</summary>
+public sealed record Contact(string With, DateTime At, double Bearing)
+{
+    /// <summary>The touch on the plane, as the golem reckons it: a radius from the centre of the body it believes at
+    /// <paramref name="pose"/>, in the direction of the bearing. The heading returned points from the body INTO what
+    /// it touched (the mark's normal).</summary>
+    public (double X, double Y, double Heading) On(Pose pose, double radius)
+    {
+        double heading = Math.Atan2(Math.Sin(pose.Theta + Bearing), Math.Cos(pose.Theta + Bearing));
+        return (pose.X + radius * Math.Cos(heading), pose.Y + radius * Math.Sin(heading), heading);
+    }
+}
 
 // Where the golem's idea of its own position comes from.
 //   World  — the simulator's ground truth (a gift no real robot gets).
@@ -23,7 +36,7 @@ public enum PoseSource { World, Wheels }
 //   /model/<body>/cmd_vel         geometry_msgs/Twist        (in)  how the body is driven
 //   /model/<body>/odometry        nav_msgs/Odometry          (out) where the body REALLY is (ground truth)
 //   /model/<body>/wheel_odometry  nav_msgs/Odometry          (out) where the wheels BELIEVE it is
-//   /model/<body>/contacts        ros_gz_interfaces/Contacts (out) what the body touches, by name
+//   /model/<body>/contacts        ros_gz_interfaces/Contacts (out) what the body touches, by name, and where on its shell
 //   /sim/teleport                 geometry_msgs/PoseStamped  (in)  the lab lever: put a body on a mark
 // Everything arriving here is ephemeral telemetry; nothing of it reaches the journal.
 public sealed class Rosbridge : IAsyncDisposable
@@ -201,8 +214,11 @@ public sealed class Rosbridge : IAsyncDisposable
     }
 
     // ros_gz_interfaces/Contacts: each contact names both collisions as model::link::collision.
-    // The other party's MODEL is what the golem cares about ("crate", "red", "wall_east_w").
-    // Resting on the floor is not touching anything.
+    // The other party's MODEL is what the golem cares about ("crate", "red", "wall_east_w"), and WHERE ON THE SHELL
+    // it touched: the sensor reports the contact points in the world's frame, so the bearing is taken against the
+    // body's TRUE pose (a bumper knows which part of the shell was pressed, whatever the body believes about where
+    // it stands) — the world's coordinates never leave this method. Without positions, or before the first truth,
+    // the touch is taken head-on (bearing 0), as it always was. Resting on the floor is not touching anything.
     private void ReadContacts(JsonElement msg)
     {
         foreach (var c in msg.GetProperty("contacts").EnumerateArray())
@@ -212,9 +228,18 @@ public sealed class Rosbridge : IAsyncDisposable
             string other = a.StartsWith(body + "::", StringComparison.Ordinal) ? b : a;
             string model = other.Split("::")[0];
             if (model == "ground_plane" || model == body || model == "") continue;
-            LatestContact = new Contact(model, DateTime.UtcNow);
+            LatestContact = new Contact(model, DateTime.UtcNow, BearingOf(c));
             return;
         }
+    }
+
+    private double BearingOf(JsonElement contact)
+    {
+        var truth = LatestTruth;
+        if (truth == null || !contact.TryGetProperty("positions", out var positions) || positions.GetArrayLength() == 0) return 0;
+        double sx = 0, sy = 0; int n = 0;
+        foreach (var p in positions.EnumerateArray()) { sx += p.GetProperty("x").GetDouble(); sy += p.GetProperty("y").GetDouble(); n++; }
+        return Normalize(Math.Atan2(sy / n - truth.Y, sx / n - truth.X) - truth.Theta);
     }
 
     private static double Normalize(double a)

@@ -1236,3 +1236,27 @@ El motor imprime los `expose` como `Expose <valor> '<valor>'` en la fila: el val
 **Observación en vivo, corrida 2** (journal actual; anteriores en `journal-legacy-20260910-unafila-b/`): misma coreografía dos veces. Un solo choque de blue contra red en (8.5, 1.5), concluido `Met` dentro de la ventana; `/obstacles`: blue `{things 0, met 1, marks 0}` (el `Peer` red en garage como historia), red y green `{total 0}`. Sin fantasma. La rama tardía no se ejercitó en estas dos corridas (el encuentro fue rápido): queda verificada por construcción, no en vivo. Nota: la primera misión de blue en la corrida fue un `Follow` al garage porque red le contó `PointVisited` — comportamiento del seguidor ya conocido, no del protocolo de toques.
 
 **Pendiente**: (1) provocar la rama tardía en vivo (dos cuerpos en movimiento chocando en un pasillo); (2) si la palabra llega después de los 12 s, la marca queda: el operador tiene `/forget`; (3) `Bump(Pose)` parado devuelve un contador que nadie lee — candidato a desaparecer si el journal no lo necesita.
+
+---
+
+## 2026-09-11 · La marca caía fuera de la cosa: el toque se ponía en la nariz, no donde el casco fue presionado
+
+**Contexto**: Juan, mirando el panel con la caja del centro (0.7 × 0.7 en (5.5, 5.5), pasable por ambos lados): "el robot hizo varios intentos por pasar, se encontró con el obstáculo del centro y registró los puntos, pero aún tenía forma de pasar en los laterales; decidió irse por el lado west, ¿por qué no recalculó para irse por un lado del obstáculo?"
+
+**Observación** (journal en `journal-legacy-20260911-marcas/`): sí recalculó — dos rodeos dentro del centro (`around@4.98,6.46 > around@4.78,5.98` por la izquierda, `around@5.8,5.18` por la derecha), los dos terminaron en choque, y al tercer recálculo ningún rodeo dentro del centro le cupo al cuerpo: el pasillo west fue la ruta más corta que sí cabía. Las cinco marcas iban de x 4.94 a 6.08 cuando la caja ocupa 5.15–5.85: las marcas extremas caían 0.2 m FUERA de la cosa a cada lado. Con el alcance de cada marca (0.25) el dominio presumía una cosa de 4.69 a 6.33; contra las paredes (x 4 y 7) quedaban 0.69 y 0.67 m, y el cuerpo pide 0.5 + 0.1 (`MarkMargin`) + 0.1 (`BodyMargin`) = 0.7. Faltaron 1 y 3 cm. En la realidad sobra 1.15 m por lado.
+
+**Causa**: el host ponía el toque un radio ADELANTE de la nariz, en el rumbo del cuerpo (`DiffDriveNavigator`: "the run is taken as head-on"). Cuando el cuerpo pega con el flanco contra la esquina de la caja, el contacto real está a un lado; la marca quedaba corrida hacia afuera. El mensaje `ros_gz_interfaces/Contacts` trae `positions[]` (los puntos de contacto, en el marco del mundo) y la membrana leía solo `collision1/2.name`.
+
+**Ajuste a la membrana** (`Rosbridge`, `DiffDriveNavigator`, `GolemChoreography.TellTouchedStanding`, `OperatorController./body`): `Contact(With, At, Bearing)` — el rumbo del toque SOBRE EL CASCO relativo a la proa (0 = la nariz, +90° = flanco izquierdo). Se calcula con la pose VERDADERA del cuerpo (un parachoques sabe qué parte del casco fue presionada, crea lo que crea sobre dónde está), y las coordenadas del mundo no salen del método: el punto en el plano es `Contact.On(pose creída, radio)` — un radio desde el centro creído, en la dirección del bearing; el heading de la marca apunta del cuerpo hacia la cosa. Sin `positions` o antes de la primera verdad, bearing 0 (como antes). El toque parado usa lo mismo. `/body` muestra `bearingDeg`. **Ajuste al dominio: ninguno** — la marca es un hecho y se estaba journaleando en el lugar equivocado; el dominio razonaba bien sobre un dato malo.
+
+**Verificación en vivo** (caja `center` puesta con `/sim/crate`, blue de north a south):
+```
+[navigator] touched crate_center at bearing 57° off the nose — the touch lands at (5.28, 5.86)
+[navigator] touched crate_center at bearing 60° … (5.21, 5.85)
+[navigator] touched crate_center at bearing 65° … (5.16, 5.85)
+[navigator] touched crate_center at bearing 71° … (5.10, 5.83)
+marks: (5.28, 5.86) (5.16, 5.85) (5.46, 5.85) (5.58, 5.86) (5.83, 5.94), normales ≈ -90°
+```
+Las cinco marcas caen sobre la cara norte de la caja (y = 5.85) y dentro de su ancho (5.15–5.85); antes: 4.94–6.08. Blue rodeó por la izquierda (`around@4.48,5.85`) y llegó a south sin ir por west.
+
+**Conclusión y pendiente**: el dato ya es honesto; ahora se ve el siguiente defecto. Necesitó cuatro choques para rodear una caja de 0.7 m porque la primera corrida tras retroceder se juzga con una relajación (`RoutePlanner.Sees`, nodo `Start`: "una marca dentro del propio radio es un estimado que salió mal… puede rozarla a `radius - 0.05`") que existía para compensar marcas corridas. Con las marcas en su sitio, esa relajación deja que el primer tramo pase a 0.2 m de una marca que está en la esquina de una cosa que sigue 0.7 m más: choca otra vez. Candidato: quitar o estrechar la relajación y probar de nuevo con la caja del centro (medir cuántos choques hacen falta). Segundo candidato, después: el alcance de las marcas exteriores de un polígono ya dibujado (0.25 a cada lado).

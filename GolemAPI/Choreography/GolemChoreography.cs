@@ -853,10 +853,10 @@ public sealed class GolemChoreography
         if (DateTime.UtcNow - lastToldStanding < TimeSpan.FromSeconds(1)) return;
         lastToldStanding = DateTime.UtcNow;
         var pose = ros.LatestPose;
-        if (pose == null) return;
-        double r = Radius();
-        double hx = pose.X + r * Math.Cos(pose.Theta), hy = pose.Y + r * Math.Sin(pose.Theta);
-        Produce("bumped", $"{golem}:standing-bump:{DateTime.UtcNow.Ticks}", MissionBumped.Payload(0, hx, hy, pose.Theta, pose.X, pose.Y));
+        var touch = ros.LatestContact;
+        if (pose == null || touch == null) return;
+        var (hx, hy, hh) = touch.On(pose, Radius());   // where on the shell it was pressed, on the plane
+        Produce("bumped", $"{golem}:standing-bump:{DateTime.UtcNow.Ticks}", MissionBumped.Payload(0, hx, hy, hh, pose.X, pose.Y));
         string note = $"touched while standing at ({hx:0.0}, {hy:0.0}) — telling the peers";
         Console.WriteLine($"[golem {golem}] {note}");
         feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", note, DateTime.UtcNow));

@@ -51,7 +51,7 @@ public class OperatorController : Controller
             pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta },
             truth = truth == null ? null : new { x = truth.X, y = truth.Y, theta = truth.Theta },
             error,
-            contact = touch == null ? null : new { with = touch.With, agoSeconds = (DateTime.UtcNow - touch.At).TotalSeconds }
+            contact = touch == null ? null : new { with = touch.With, bearingDeg = touch.Bearing * 180 / Math.PI, agoSeconds = (DateTime.UtcNow - touch.At).TotalSeconds }
         }), "application/json");
     }
 

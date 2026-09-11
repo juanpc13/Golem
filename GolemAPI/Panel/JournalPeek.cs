@@ -74,8 +74,9 @@ public static class JournalPeek
         }
     }
 
-    // One readable line out of a DSL text: collapse whitespace, cap the length.
-    public static string OneLine(string text, int max = 160)
+    // One readable line out of a DSL text: collapse whitespace. The row shows the statement WHOLE (Juan, 11-sep:
+    // "los rows salen como cortados"); the cap only guards against a runaway record.
+    public static string OneLine(string text, int max = 4000)
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
         string flat = string.Join(' ',

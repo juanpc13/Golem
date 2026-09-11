@@ -61,8 +61,8 @@
   #feed li, #events li { display:flex; gap:10px; align-items:baseline; padding:7px 10px;
              border-radius:8px; background:var(--surface); border:1px solid var(--line); }
   .entry { color:var(--clay); min-width:52px; font-weight:600; }
-  .script { color:var(--ink); }
-  .note { color:var(--muted); margin-left:auto; text-align:right; word-break:break-all; }
+  .script { color:var(--ink); flex:1 1 auto; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .note { color:var(--muted); flex:0 0 auto; max-width:9em; text-align:right; word-break:break-word; }
   li.runtime { border-style:dashed; opacity:0.75; }
   li.runtime .entry { color:var(--muted); font-weight:400; }
   li.info .entry { color:var(--ros); }

@@ -41,14 +41,20 @@ public sealed class DiffDriveNavigator : INavigator
             var touch = ros.LatestContact;
             if (touch != null && touch.At > start)
             {
-                // Where the touch happened, as the golem reckons it: one body radius ahead of the
-                // nose. A bumper knows no more than "I touched something while heading this way";
-                // the run is taken as head-on. The world's name for what was hit rides along as words.
+                // Where the touch happened, as the golem reckons it: one body radius from the centre of the
+                // body it believes, in the direction the shell was pressed (the contact's bearing — a flank hit
+                // on a corner lands on the flank, not on the nose). The heading points into what was touched.
+                // The world's name for what was hit rides along as words.
                 var atTouch = ros.LatestPose;
                 double r = bodyRadius();
-                double hitX = atTouch == null ? targetX : atTouch.X + r * Math.Cos(atTouch.Theta);
-                double hitY = atTouch == null ? targetY : atTouch.Y + r * Math.Sin(atTouch.Theta);
-                double touchHeading = atTouch == null ? Math.Atan2(targetY - (ros.LatestPose?.Y ?? targetY), targetX - (ros.LatestPose?.X ?? targetX)) : atTouch.Theta;
+                double hitX, hitY, touchHeading;
+                if (atTouch == null)
+                {
+                    hitX = targetX; hitY = targetY;
+                    touchHeading = Math.Atan2(targetY - (ros.LatestPose?.Y ?? targetY), targetX - (ros.LatestPose?.X ?? targetX));
+                }
+                else (hitX, hitY, touchHeading) = touch.On(atTouch, r);
+                Console.WriteLine($"[navigator] touched {touch.With} at bearing {touch.Bearing * 180 / Math.PI:0}° off the nose — the touch lands at ({hitX:0.00}, {hitY:0.00})");
                 await BackOffAsync(touch, ct);
                 return Outcome.Collided(touch.With, hitX, hitY, touchHeading);
             }
