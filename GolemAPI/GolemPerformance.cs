@@ -66,7 +66,10 @@ internal sealed class GolemPerformance : PerformanceV2
     {
         Actor.Using(@"
             upgrade('body_v1') {
-                body = Body(0.25, 2.0, 6.0);
+                radius = Meters(0.25);
+                speed = MetersPerSecond(2.0);
+                linger = Seconds(6.0);
+                body = Body(radius, speed, linger);
             }
             upgrade('warehouse_v1') {
                 map = MapLayout('warehouse');

@@ -1286,3 +1286,21 @@ define action 1 (id:int, area:string, lx1:double, ly1:double, la1:string, lb1:st
 El motor asigna a una variable local (entre llaves) lo que devuelve un método del sujeto y despacha los métodos del objeto devuelto; en la rehidratación la ruta se reconstruye al reejecutar las mismas sentencias (los tres golems arrancaron y blue caminó su plan). Blue chocó dos veces con la caja (marcas (5.9, 5.9) y (5.8, 5.8), sobre la esquina noreste de la caja) y llegó al garage por la derecha.
 
 **Conclusión**: regla general, ya vista dos veces (`map`, `route`): cuando un verbo del sujeto recibe una clave para encontrar un estado que otro verbo abrió, ese estado es un objeto que el primer verbo debe devolver. Candidatos a revisar con la misma lupa: `g.Visit(@id, point)` repetido por parada (¿`errand = g.Visit(point); errand.Then(point2)`?) — se propone antes en el PLAN, no ahora.
+
+---
+
+## 2026-09-11 · Magnitudes con unidad: el cuerpo se construye de `Meters`, `MetersPerSecond` y `Seconds`
+
+**Contexto**: Juan, ante `body = Body(0.25, 2.0, 6.0)`: "vamos a crear una clase, no sé si del sistema internacional, que nos especifique qué son esos números, tipo las unidades de medida y velocidad, aceleraciones, segundos, y definirlos en variables para setearlas a los parámetros del body".
+
+**Ajuste al dominio** (`Units.Length/Speed/Acceleration/Duration` + unidades, `Robots.Body`, `Golem`): la magnitud es la clase abstracta y la unidad la concreta que el journal construye — el mismo dibujo que `Map`/`MapLayout`: el POO habla solo y el valor dice qué es donde se escribe. Cada magnitud se lee en su unidad base del SI (`InMeters`, `InMetersPerSecond`, `InMetersPerSecondSquared`, `InSeconds`) y rechaza negativos; `Speed.TimeFor(Length)` devuelve una `Duration`. `Body(Length, Speed, Duration)` guarda las magnitudes; el golem las lee en unidad base para el host (`g.Radius()`…), que no cambia. `Acceleration` queda definida sin que nadie la tome todavía: es el repertorio, no el verbo (paper 0A).
+
+**Observación (motor)**: una magnitud del tipo equivocado la rechaza el motor ANTES de ejecutar, en la validación estática, con un mensaje que nombra el problema: `Body(Seconds(0.25), MetersPerSecond(2.0), Seconds(6.0))` → *"You are trying to call the constructor of 'Body' with a value of type 'Seconds' at parameter #1, but a value of type 'Length' is expected"*. Compárese con el rechazo de un constructor por su propia regla (`Seconds(-1.0)`), que sigue llegando como *"Error while instantiating class 'Seconds'"* sin la razón del dominio. Lección: **el tipo es la validación que el motor sí sabe explicar**; un número crudo nunca la tendrá. Los tests cubren ambos caminos y las conversiones (`Centimeters(25.0).InMeters == 0.25`, `Minutes(1.5).InSeconds == 90`).
+
+**Observación en vivo** (journals anteriores en `journal-legacy-20260911-units/`): los tres golems rehidrataron con la release nueva —
+```
+upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius,speed,linger); }
+```
+`/progress` de red: `speed 2.0, lingerAfterTold 6.0`; red fue a storage y llegó. `radius`, `speed` y `linger` son globales del actor (nivel del upgrade, P2a), como Juan pidió; el panel consulta `body.Radius.InMeters`.
+
+**Pendiente**: las lecturas del golem al host siguen siendo dobles en unidad base (`g.Radius()`); si algún día el host quiere la magnitud, la lee del módulo (`body.Radius.InMeters`). Otros números crudos del dominio que merecen la misma mirada: las constantes de `Collisions` (`MarkReach`, `MeetingReach`…) y de `MapLayout` (`DoorWidth`, `WallThickness`) — son metros y podrían declararse como tales.

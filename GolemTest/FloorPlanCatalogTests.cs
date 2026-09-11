@@ -51,7 +51,7 @@ public class FloorPlanCatalogTests
         Assert.AreEqual(9, Int("map.ZoneCount"), "every area laid out");
         Assert.AreEqual("north", Text("map.ZoneOf(Position(5.5, 9.5)).Name"));
         Assert.AreEqual(4.0, Double("map.Find('kitchen').Width"), 1e-9, "found once, read as the zone it is");
-        Assert.AreEqual(0.25, Double("body.Radius"), 1e-9, "and the body");
+        Assert.AreEqual(0.25, Double("body.Radius.InMeters"), 1e-9, "and the body: a magnitude, read in its base unit");
     }
 
     [TestMethod]
@@ -119,7 +119,7 @@ public class FloorPlanCatalogTests
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
         perf.Actor.Using(
-            "upgrade('body_v1') { body = Body(0.25, 2.0, 6.0); }\n"
+            "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius, speed, linger); }\n"
             + mapRelease
             + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n")
         .PerformCommand();

@@ -37,9 +37,9 @@ internal sealed class Golem
 
     // ---- the body ----
 
-    internal double Radius() => body.Radius;
-    internal double Speed() => body.Speed();
-    internal double LingerAfterTold() => body.LingerAfterTold;
+    internal double Radius() => body.Radius.InMeters;
+    internal double Speed() => body.Speed.InMetersPerSecond;
+    internal double LingerAfterTold() => body.LingerAfterTold.InSeconds;
 
     // ---- the map and its layout, read through the golem ----
 
@@ -69,11 +69,11 @@ internal sealed class Golem
     internal bool FitsAt(double x, double y)
     {
         var at = new Position(x, y);
-        return layout.HasRoom(at, body.Radius) && !collisions.Blocks(at, body.Radius);
+        return layout.HasRoom(at, Radius()) && !collisions.Blocks(at, Radius());
     }
 
     /// <summary>Whether the walls alone leave room for this body at a point — what it asks while feeling around a mark.</summary>
-    internal bool HasRoomAt(double x, double y) => layout.HasRoom(new Position(x, y), body.Radius);
+    internal bool HasRoomAt(double x, double y) => layout.HasRoom(new Position(x, y), Radius());
 
     // ---- the collisions, read through the golem ----
 
@@ -379,7 +379,7 @@ internal sealed class Golem
     }
 
     /// <summary>Seconds to run the whole pending route at the body's speed, lingering at every told stop. Answerable with no parameters.</summary>
-    internal double RouteSeconds() => RouteLength() / Speed() + FollowingCount() * body.LingerAfterTold;
+    internal double RouteSeconds() => RouteLength() / Speed() + FollowingCount() * LingerAfterTold();
 
     /// <summary>The road still ahead for a body standing at (x, y): to the first stop ahead through the passages, then the
     /// route. When no road fits the body (marks closing every way), the distance as the crow flies: a read never refuses.</summary>
@@ -394,7 +394,7 @@ internal sealed class Golem
     }
 
     /// <summary>Seconds until every pending mission is done, for a body standing at (x, y), at the body's speed and with its lingers.</summary>
-    internal double SecondsLeft(double x, double y) => DistanceLeft(x, y) / Speed() + FollowingCount() * body.LingerAfterTold;
+    internal double SecondsLeft(double x, double y) => DistanceLeft(x, y) / Speed() + FollowingCount() * LingerAfterTold();
 
     // ---- reads (guarded: consult HasPendingMission() first) ----
 
@@ -407,7 +407,7 @@ internal sealed class Golem
 
     // The planner for this body: the layout says where the walls and doors stand, the collisions module what
     // nobody charted, and between the two it finds the shortest road.
-    private RoutePlanner Planner() => new(layout, collisions, body.Radius);
+    private RoutePlanner Planner() => new(layout, collisions, Radius());
 
     // A new handle opens an errand with this stop; the errand's own handle adds one more stop to it.
     private int Entrust(int id, Position stop, bool following, bool choosesOrder)

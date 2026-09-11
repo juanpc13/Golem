@@ -1,9 +1,12 @@
+using GolemDomain.Units;
+
 namespace GolemDomain.Robots;
 
 /// <summary>
-/// The robot's body as the golem knows it — a module of its own, released into the journal as one object:
-/// <c>body = Body(0.25, 2.0, 6.0)</c> — the radius of the disk it occupies, its cruise speed, and how long it
-/// lingers at a stop a peer told it about. The golem is the mind (what is journaled: entrusting, roads,
+/// The robot's body as the golem knows it — a module of its own, released into the journal as one object built
+/// from magnitudes that say what they are (Juan, 11-sep-2026): <c>radius = Meters(0.25); speed = MetersPerSecond(2.0);
+/// linger = Seconds(6.0); body = Body(radius, speed, linger);</c> — the radius of the disk it occupies, its cruise
+/// speed, and how long it lingers at a stop a peer told it about. The golem is the mind (what is journaled: entrusting, roads,
 /// touches); the body is what it drives, handed to it at birth. The robot's name is the journal's identity
 /// (the host's GOLEM), and its estimated position is telemetry that enters queries as parameters: neither is
 /// state of the domain.
@@ -14,23 +17,21 @@ namespace GolemDomain.Robots;
 /// </summary>
 internal sealed class Body
 {
-    private readonly double radius;   // the disk it occupies
-    private readonly double speed;    // cruise speed, world units per second
-    private readonly double linger;   // seconds it lingers at every stop a peer told it about (the follower's pacing)
-
-    /// <summary>A body: its radius (world units), its cruise speed (units per second) and how long it lingers at
-    /// a told stop (seconds).</summary>
-    internal Body(double radius, double speed, double lingerSeconds)
+    /// <summary>A body: the radius of the disk it occupies, its cruise speed, and how long it lingers at a told stop.
+    /// Each a magnitude of its own kind — a duration where a length goes is refused by type, not accepted as a number.</summary>
+    internal Body(Length radius, Speed speed, Duration linger)
     {
-        if (radius <= 0) throw new DomainException("a body needs a radius above zero");
-        if (speed <= 0) throw new DomainException("a body needs a cruise speed above zero");
-        if (lingerSeconds < 0) throw new DomainException("a linger cannot be negative");
-        this.radius = radius;
-        this.speed = speed;
-        linger = lingerSeconds;
+        if (radius == null || radius.IsZero) throw new DomainException("a body needs a radius above zero");
+        if (speed == null || speed.IsZero) throw new DomainException("a body needs a cruise speed above zero");
+        Radius = radius;
+        Speed = speed;
+        LingerAfterTold = linger ?? throw new DomainException("a body needs to know how long it lingers at a told stop, even not at all");
     }
 
-    internal double Radius => radius;
-    internal double Speed() => speed;
-    internal double LingerAfterTold => linger;
+    /// <summary>The disk it occupies.</summary>
+    internal Length Radius { get; }
+    /// <summary>Its cruise speed.</summary>
+    internal Speed Speed { get; }
+    /// <summary>How long it lingers at every stop a peer told it about (the follower's pacing).</summary>
+    internal Duration LingerAfterTold { get; }
 }

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Linq;
 using Choreography.Theater;
 using GolemDomain;
+using GolemDomain.Units;
 using GolemDomain.Layouts;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puppeteer;
@@ -46,7 +47,7 @@ public class MissionAcceptanceTests
     // concrete MapLayout: areas with their positions, doors, openings, in one train each) and the golem that
     // RECEIVES its modules — each a global of the actor in its own right. Constructor literals carry a decimal point (Fase 0, P7).
     private static string Releases =>
-        "upgrade('body_v1') { body = Body(0.25, 2.0, 6.0); }\n"
+        "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius, speed, linger); }\n"
         + Catalog.Warehouse().AsRelease()
         + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n";
 
@@ -61,12 +62,17 @@ public class MissionAcceptanceTests
         // A constructor's refusal reaches the DSL as "Error while instantiating class 'Body'": the engine wraps the
         // domain's exception and its reason is lost on the way (Fase 0 follow-up, 10-sep-2026). The C# tests below
         // keep the reasons; here we can only assert that the body was refused.
-        Refuses("b = Body(0.0, 2.0, 6.0);", "Error while instantiating class 'Body'");
-        Refuses("b = Body(0.25, 0.0, 6.0);", "Error while instantiating class 'Body'");
-        Refuses("b = Body(0.25, 2.0, -1.0);", "Error while instantiating class 'Body'");
-        Assert.AreEqual("a body needs a radius above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(0.0, 2.0, 6.0)).Message);
-        Assert.AreEqual("a body needs a cruise speed above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(0.25, 0.0, 6.0)).Message);
-        Assert.AreEqual("a linger cannot be negative", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(0.25, 2.0, -1.0)).Message);
+        Refuses("b = Body(Meters(0.0), MetersPerSecond(2.0), Seconds(6.0));", "Error while instantiating class 'Body'");
+        Refuses("b = Body(Meters(0.25), MetersPerSecond(0.0), Seconds(6.0));", "Error while instantiating class 'Body'");
+        Refuses("b = Body(Meters(0.25), MetersPerSecond(2.0), Seconds(-1.0));", "Error while instantiating class 'Seconds'");
+        // the magnitudes say what they are: a duration where a length goes is refused by type, not taken as a number
+        Refuses("b = Body(Seconds(0.25), MetersPerSecond(2.0), Seconds(6.0));", "a value of type 'Length' is expected");
+        Assert.AreEqual("a body needs a radius above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(new Meters(0.0), new MetersPerSecond(2.0), new Seconds(6.0))).Message);
+        Assert.AreEqual("a body needs a cruise speed above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(new Meters(0.25), new MetersPerSecond(0.0), new Seconds(6.0))).Message);
+        Assert.AreEqual("a duration cannot be negative", Assert.ThrowsException<DomainException>(() => new Seconds(-1.0)).Message);
+        Assert.AreEqual(0.25, new Centimeters(25.0).InMeters, 1e-9, "a length reads in metres whatever unit wrote it");
+        Assert.AreEqual(90.0, new Minutes(1.5).InSeconds, 1e-9, "a duration reads in seconds whatever unit wrote it");
+        Assert.AreEqual(4.0, new MetersPerSecond(2.0).TimeFor(new Meters(8.0)).InSeconds, 1e-9, "a speed knows how long a length takes");
     }
 
     // ---- the map ----
