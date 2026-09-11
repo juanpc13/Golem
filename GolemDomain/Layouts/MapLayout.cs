@@ -48,7 +48,7 @@ internal sealed class MapLayout : Map
     internal override Zone Find(string name) => (Zone)base.Find(name);
 
     /// <summary>An area of this map, as the zone it is (every area of a laid-out map is a zone).</summary>
-    internal Zone Of(Area area) => area as Zone ?? throw new DomainException(area == null ? "an area is needed, not nothing" : $"area '{area.Name}' is not of this map");
+    internal Zone Of(Area area) => area as Zone ?? throw new GolemDomainException(area == null ? "an area is needed, not nothing" : $"area '{area.Name}' is not of this map");
 
     internal IEnumerable<Zone> Zones => areas.Cast<Zone>().Where(z => z.IsLaidOut);
     internal int ZoneCount => Zones.Count();
@@ -64,7 +64,7 @@ internal sealed class MapLayout : Map
     internal Zone ZoneNamed(string name)
     {
         var zone = Find(name);
-        if (!zone.IsLaidOut) throw new DomainException($"area '{name}' is not laid out");
+        if (!zone.IsLaidOut) throw new GolemDomainException($"area '{name}' is not laid out");
         return zone;
     }
 
@@ -77,10 +77,10 @@ internal sealed class MapLayout : Map
     /// if the map did not dispose it yet. Chainable.</summary>
     internal MapLayout DoorAt(string a, string b, Position at)
     {
-        if (at == null) throw new DomainException($"the door {a}/{b} needs a point on the shared wall");
+        if (at == null) throw new GolemDomainException($"the door {a}/{b} needs a point on the shared wall");
         var door = Door(a, b);
         if (doorPoints.TryGetValue(door.Name, out var placed) && placed.DistanceTo(at) > 1e-9)
-            throw new DomainException($"the door {door.Name} already stands at ({Fmt(placed.X)}, {Fmt(placed.Y)})");
+            throw new GolemDomainException($"the door {door.Name} already stands at ({Fmt(placed.X)}, {Fmt(placed.Y)})");
         doorPoints[door.Name] = at;
         return this;
     }
@@ -92,7 +92,7 @@ internal sealed class MapLayout : Map
 
     /// <summary>Where a door stands. Consult IsPlaced first.</summary>
     internal Position PointOf(Door door) =>
-        door != null && doorPoints.TryGetValue(door.Name, out var at) ? at : throw new DomainException($"the door {door?.Name} stands nowhere yet");
+        door != null && doorPoints.TryGetValue(door.Name, out var at) ? at : throw new GolemDomainException($"the door {door?.Name} stands nowhere yet");
 
     /// <summary>A door, realized: its point, its jambs, its width.</summary>
     internal PlacedDoor Placed(Door door) => new(door, PointOf(door), this);
@@ -111,13 +111,13 @@ internal sealed class MapLayout : Map
 
     /// <summary>The zone a point stands in. A point on a shared wall belongs to the first laid out.</summary>
     internal Zone ZoneAt(Position at) =>
-        ZoneOf(at) ?? throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
+        ZoneOf(at) ?? throw new GolemDomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
 
     /// <summary>Every zone a point stands in (two, on a shared wall).</summary>
     internal IReadOnlyList<Zone> ZonesOf(Position at)
     {
         var zones = Zones.Where(z => z.Contains(at)).ToList();
-        if (zones.Count == 0) throw new DomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
+        if (zones.Count == 0) throw new GolemDomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
         return zones;
     }
 
@@ -191,7 +191,7 @@ internal sealed class MapLayout : Map
     /// <summary>A unit step through a door into one of its two areas, from the other.</summary>
     internal Position StepInto(Door door, Area side)
     {
-        if (door == null || !door.Joins(side)) throw new DomainException($"the door {door?.Name} does not open into '{side?.Name}'");
+        if (door == null || !door.Joins(side)) throw new GolemDomainException($"the door {door?.Name} does not open into '{side?.Name}'");
         return Of(door.OtherSide(side)).StepInto(Of(side));
     }
 

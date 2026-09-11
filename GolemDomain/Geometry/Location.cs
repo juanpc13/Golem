@@ -12,7 +12,7 @@ internal class Location : Position
 
     internal Location(string label, double x, double y) : base(x, y)
     {
-        if (string.IsNullOrWhiteSpace(label)) throw new DomainException("a location needs a label: what stands there");
+        if (string.IsNullOrWhiteSpace(label)) throw new GolemDomainException("a location needs a label: what stands there");
         Label = label;
     }
 }

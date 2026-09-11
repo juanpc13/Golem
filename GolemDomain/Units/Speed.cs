@@ -9,8 +9,8 @@ internal abstract class Speed
 
     protected Speed(double metersPerSecond)
     {
-        if (double.IsNaN(metersPerSecond) || double.IsInfinity(metersPerSecond)) throw new DomainException("a speed needs a number");
-        if (metersPerSecond < 0) throw new DomainException("a speed cannot be negative");
+        if (double.IsNaN(metersPerSecond) || double.IsInfinity(metersPerSecond)) throw new GolemDomainException("a speed needs a number");
+        if (metersPerSecond < 0) throw new GolemDomainException("a speed cannot be negative");
         InMetersPerSecond = metersPerSecond;
     }
 
@@ -19,8 +19,8 @@ internal abstract class Speed
     /// <summary>How long a length takes at this speed.</summary>
     internal Duration TimeFor(Length length)
     {
-        if (length == null) throw new DomainException("a speed measures the time for a length");
-        if (IsZero) throw new DomainException("nothing is covered at no speed");
+        if (length == null) throw new GolemDomainException("a speed measures the time for a length");
+        if (IsZero) throw new GolemDomainException("nothing is covered at no speed");
         return new Seconds(length.InMeters / InMetersPerSecond);
     }
 }

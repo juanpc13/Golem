@@ -17,9 +17,9 @@ internal sealed class PlacedDoor
 
     internal PlacedDoor(Door door, Position at, MapLayout layout)
     {
-        Door = door ?? throw new DomainException("a placed door realizes a door of the map");
-        At = at ?? throw new DomainException($"the door {door.Name} needs its point");
-        this.layout = layout ?? throw new DomainException($"the door {door.Name} is placed by a layout");
+        Door = door ?? throw new GolemDomainException("a placed door realizes a door of the map");
+        At = at ?? throw new GolemDomainException($"the door {door.Name} needs its point");
+        this.layout = layout ?? throw new GolemDomainException($"the door {door.Name} is placed by a layout");
     }
 
     internal string Name => Door.Name;

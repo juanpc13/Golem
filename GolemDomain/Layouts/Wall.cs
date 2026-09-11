@@ -21,9 +21,9 @@ internal sealed class Wall
 
     internal Wall(Zone zone, Segment line, IReadOnlyList<PlacedDoor> doors)
     {
-        Zone = zone ?? throw new DomainException("a wall bounds a zone");
-        Line = line ?? throw new DomainException("a wall stands on a line");
-        this.doors = doors ?? throw new DomainException("a wall knows its doors, even none");
+        Zone = zone ?? throw new GolemDomainException("a wall bounds a zone");
+        Line = line ?? throw new GolemDomainException("a wall stands on a line");
+        this.doors = doors ?? throw new GolemDomainException("a wall knows its doors, even none");
     }
 
     internal Position From => Line.From;

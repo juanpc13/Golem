@@ -10,8 +10,8 @@ internal abstract class Acceleration
 
     protected Acceleration(double metersPerSecondSquared)
     {
-        if (double.IsNaN(metersPerSecondSquared) || double.IsInfinity(metersPerSecondSquared)) throw new DomainException("an acceleration needs a number");
-        if (metersPerSecondSquared < 0) throw new DomainException("an acceleration cannot be negative");
+        if (double.IsNaN(metersPerSecondSquared) || double.IsInfinity(metersPerSecondSquared)) throw new GolemDomainException("an acceleration needs a number");
+        if (metersPerSecondSquared < 0) throw new GolemDomainException("an acceleration cannot be negative");
         InMetersPerSecondSquared = metersPerSecondSquared;
     }
 }

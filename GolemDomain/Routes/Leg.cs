@@ -33,8 +33,8 @@ internal sealed class Leg
 
     internal Leg(Position at, string name, Position approach, Position exit)
     {
-        if (at == null || approach == null || exit == null) throw new DomainException("a leg needs its point, its approach and its exit");
-        if (name == null) throw new DomainException("a leg needs a name, even an empty one");
+        if (at == null || approach == null || exit == null) throw new GolemDomainException("a leg needs its point, its approach and its exit");
+        if (name == null) throw new GolemDomainException("a leg needs a name, even an empty one");
         At = at;
         Name = name;
         Approach = approach;

@@ -13,7 +13,7 @@ internal sealed class Pose : Position
 
     internal Pose(double x, double y, double heading) : base(x, y)
     {
-        if (double.IsNaN(heading) || double.IsInfinity(heading)) throw new DomainException("a pose needs a finite heading");
+        if (double.IsNaN(heading) || double.IsInfinity(heading)) throw new GolemDomainException("a pose needs a finite heading");
         Heading = heading;
     }
 

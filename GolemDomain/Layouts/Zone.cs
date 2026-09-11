@@ -26,14 +26,14 @@ internal sealed class Zone : Area
     /// <summary>Where the zone stands: its south-west corner. Chainable.</summary>
     internal Zone At(Position southWest)
     {
-        corner = southWest ?? throw new DomainException($"zone '{Name}' needs the corner it stands at");
+        corner = southWest ?? throw new GolemDomainException($"zone '{Name}' needs the corner it stands at");
         return this;
     }
 
     /// <summary>How big the zone is. Chainable.</summary>
     internal Zone Size(double w, double h)
     {
-        if (w <= 0 || h <= 0) throw new DomainException($"zone '{Name}' needs a positive width and height");
+        if (w <= 0 || h <= 0) throw new GolemDomainException($"zone '{Name}' needs a positive width and height");
         width = w;
         height = h;
         return this;
@@ -60,7 +60,7 @@ internal sealed class Zone : Area
 
     /// <summary>The rectangle the zone occupies. Consult IsLaidOut first.</summary>
     internal Geometry.Rectangle Rect =>
-        IsLaidOut ? new Geometry.Rectangle(corner.X, corner.Y, width, height) : throw new DomainException($"area '{Name}' is not laid out");
+        IsLaidOut ? new Geometry.Rectangle(corner.X, corner.Y, width, height) : throw new GolemDomainException($"area '{Name}' is not laid out");
 
     internal double X => Rect.X;
     internal double Y => Rect.Y;
@@ -118,13 +118,13 @@ internal sealed class Zone : Area
 
     /// <summary>The edge shared with a neighbour. Consult Touches first.</summary>
     internal Segment SharedEdgeWith(Zone other) =>
-        Rect.TrySharedEdge(other.Rect) ?? throw new DomainException($"'{Name}' and '{other.Name}' share no wall");
+        Rect.TrySharedEdge(other.Rect) ?? throw new GolemDomainException($"'{Name}' and '{other.Name}' share no wall");
 
     /// <summary>A unit step across the shared wall, from this zone into the other.</summary>
     internal Position StepInto(Zone other)
     {
         try { return Rect.StepInto(other.Rect); }
-        catch (DomainException) { throw new DomainException($"'{Name}' and '{other.Name}' share no wall to step across"); }
+        catch (GolemDomainException) { throw new GolemDomainException($"'{Name}' and '{other.Name}' share no wall to step across"); }
     }
 
     // An edge is open when a neighbour joined by an opening shares that very edge.

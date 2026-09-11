@@ -34,10 +34,10 @@ internal sealed class RoutePlanner
 
     internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost)
     {
-        this.layout = layout ?? throw new DomainException("a planner needs a layout");
-        this.collisions = collisions ?? throw new DomainException("a planner needs to know what the bodies learned");
-        if (radius < 0) throw new DomainException("a body's radius cannot be negative");
-        this.cost = cost ?? throw new DomainException("a planner needs to know what an edge costs");
+        this.layout = layout ?? throw new GolemDomainException("a planner needs a layout");
+        this.collisions = collisions ?? throw new GolemDomainException("a planner needs to know what the bodies learned");
+        if (radius < 0) throw new GolemDomainException("a body's radius cannot be negative");
+        this.cost = cost ?? throw new GolemDomainException("a planner needs to know what an edge costs");
         this.radius = radius;
     }
 
@@ -165,7 +165,7 @@ internal sealed class RoutePlanner
             }
         }
         if (double.IsPositiveInfinity(dist[goal]))
-            throw new DomainException(collisions.MarkCount == 0
+            throw new GolemDomainException(collisions.MarkCount == 0
                 ? $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) through the map"
                 : $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) that fits a body of radius {Fmt(radius)} past {collisions.MarkCount} marks");
 

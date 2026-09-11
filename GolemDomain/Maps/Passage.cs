@@ -17,9 +17,9 @@ internal abstract class Passage
 
     internal Passage(Map map, string a, string b)
     {
-        this.map = map ?? throw new DomainException("a passage belongs to a map");
-        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) throw new DomainException("a passage joins two named areas");
-        if (a == b) throw new DomainException($"a passage must join two different areas, not '{a}' twice");
+        this.map = map ?? throw new GolemDomainException("a passage belongs to a map");
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) throw new GolemDomainException("a passage joins two named areas");
+        if (a == b) throw new GolemDomainException($"a passage must join two different areas, not '{a}' twice");
         A = a;
         B = b;
     }
@@ -34,7 +34,7 @@ internal abstract class Passage
     /// <summary>The area across from a given one of the two.</summary>
     internal Area OtherSide(Area area)
     {
-        if (!Joins(area)) throw new DomainException($"the passage {Name} does not join '{area?.Name}'");
+        if (!Joins(area)) throw new GolemDomainException($"the passage {Name} does not join '{area?.Name}'");
         return A == area.Name ? AreaB : AreaA;
     }
 

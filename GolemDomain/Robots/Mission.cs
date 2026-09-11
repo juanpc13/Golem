@@ -38,7 +38,7 @@ internal sealed class Mission
 
     internal Mission(int id, Position stop, bool following, bool choosesOrder)
     {
-        if (stop == null) throw new DomainException($"mission {id} needs at least one stop");
+        if (stop == null) throw new GolemDomainException($"mission {id} needs at least one stop");
         Id = id;
         stops.Add(stop);
         Following = following;
@@ -50,10 +50,10 @@ internal sealed class Mission
     internal void AddStop(Position stop, bool following, bool choosesOrder)
     {
         MustBePending();
-        if (stop == null) throw new DomainException($"mission {Id} needs a stop to add");
-        if (Following || following) throw new DomainException($"mission {Id} follows a peer: a told point is one mission each");
-        if (choosesOrder != ChoosesOrder) throw new DomainException($"mission {Id} was opened with {(ChoosesOrder ? "Cover" : "Visit")}: add its stops the same way");
-        if (IsRouted) throw new DomainException($"mission {Id} already has its road: no stop can be added");
+        if (stop == null) throw new GolemDomainException($"mission {Id} needs a stop to add");
+        if (Following || following) throw new GolemDomainException($"mission {Id} follows a peer: a told point is one mission each");
+        if (choosesOrder != ChoosesOrder) throw new GolemDomainException($"mission {Id} was opened with {(ChoosesOrder ? "Cover" : "Visit")}: add its stops the same way");
+        if (IsRouted) throw new GolemDomainException($"mission {Id} already has its road: no stop can be added");
         stops.Add(stop);
     }
 
@@ -74,10 +74,10 @@ internal sealed class Mission
         {
             if (IsRouted)
             {
-                if (nextLeg >= road.Count) throw new DomainException($"mission {Id} has walked its whole road");
+                if (nextLeg >= road.Count) throw new GolemDomainException($"mission {Id} has walked its whole road");
                 return road.LegAt(nextLeg);
             }
-            if (reached >= stops.Count) throw new DomainException($"mission {Id} has reached every stop");
+            if (reached >= stops.Count) throw new GolemDomainException($"mission {Id} has reached every stop");
             return new Leg(stops[reached], "");
         }
     }
@@ -101,10 +101,10 @@ internal sealed class Mission
     internal void Route(Trajectory fresh)
     {
         MustBePending();
-        if (fresh == null || fresh.IsEmpty) throw new DomainException($"mission {Id} needs at least the stop as a leg");
-        if (!fresh.Last.IsStop) throw new DomainException($"mission {Id}'s road must end at a stop, not at '{fresh.Last.Name}'");
+        if (fresh == null || fresh.IsEmpty) throw new GolemDomainException($"mission {Id} needs at least the stop as a leg");
+        if (!fresh.Last.IsStop) throw new GolemDomainException($"mission {Id}'s road must end at a stop, not at '{fresh.Last.Name}'");
         int ahead = stops.Count - reached;
-        if (fresh.StopCount != ahead) throw new DomainException($"mission {Id} has {ahead} stops ahead but the road reaches {fresh.StopCount}");
+        if (fresh.StopCount != ahead) throw new GolemDomainException($"mission {Id} has {ahead} stops ahead but the road reaches {fresh.StopCount}");
         road = fresh;
         nextLeg = 0;
         bumpsSinceRoute = 0;
@@ -144,7 +144,7 @@ internal sealed class Mission
             if (at < 0)
             {
                 var next = road.Legs().Skip(nextLeg).FirstOrDefault(l => l.IsStop);
-                throw new DomainException(next == null
+                throw new GolemDomainException(next == null
                     ? $"mission {Id} has no stop ahead at ({x}, {y})"
                     : $"mission {Id}'s next stop is ({next.At.X}, {next.At.Y}), not ({x}, {y})");
             }
@@ -154,7 +154,7 @@ internal sealed class Mission
         {
             var next = stops[reached];
             if (Math.Abs(next.X - x) > 1e-6 || Math.Abs(next.Y - y) > 1e-6)
-                throw new DomainException($"mission {Id}'s next stop is ({next.X}, {next.Y}), not ({x}, {y})");
+                throw new GolemDomainException($"mission {Id}'s next stop is ({next.X}, {next.Y}), not ({x}, {y})");
         }
         reached++;
         grazesOnLeg = 0;
@@ -171,7 +171,7 @@ internal sealed class Mission
     internal void Fail(string why)
     {
         MustBePending();
-        if (string.IsNullOrWhiteSpace(why)) throw new DomainException($"failing mission {Id} needs a reason");
+        if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"failing mission {Id} needs a reason");
         status = MissionStatus.Failed;
         reason = why;
     }
@@ -180,20 +180,20 @@ internal sealed class Mission
     internal void Abandon(string why)
     {
         MustBePending();
-        if (string.IsNullOrWhiteSpace(why)) throw new DomainException($"abandoning mission {Id} needs a reason");
+        if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"abandoning mission {Id} needs a reason");
         status = MissionStatus.Abandoned;
         reason = why;
     }
 
     internal void Announce()
     {
-        if (reached == 0) throw new DomainException($"mission {Id} has reached no stop yet: only a reached stop is announced");
+        if (reached == 0) throw new GolemDomainException($"mission {Id} has reached no stop yet: only a reached stop is announced");
         Announced = true;
     }
 
     private void MustBePending()
     {
         if (!IsPending())
-            throw new DomainException($"mission {Id} is already {status.Name}");
+            throw new GolemDomainException($"mission {Id} is already {status.Name}");
     }
 }

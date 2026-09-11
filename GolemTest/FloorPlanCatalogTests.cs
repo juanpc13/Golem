@@ -106,7 +106,7 @@ public class FloorPlanCatalogTests
     public void TheCatalog_NamesItsPlans_AndRefusesAnUnknownOne()
     {
         CollectionAssert.AreEqual(new[] { "warehouse", "cross-corridors", "ring-corridor" }, Catalog.Names());
-        var refused = Assert.ThrowsException<DomainException>(() => Catalog.Named("attic"));
+        var refused = Assert.ThrowsException<GolemDomainException>(() => Catalog.Named("attic"));
         StringAssert.Contains(refused.Message, "no map named 'attic'");
     }
 

@@ -29,10 +29,10 @@ internal sealed class Golem
 
     internal Golem(Body body, MapLayout map, Collisions collisions)
     {
-        this.body = body ?? throw new DomainException("a golem needs a body to drive");
-        layout = map ?? throw new DomainException("a golem needs its map, laid out");
-        this.collisions = collisions ?? throw new DomainException("a golem needs its collisions module, even empty");
-        if (collisions.Layout != layout) throw new DomainException("the collisions must be measured over the golem's own layout");
+        this.body = body ?? throw new GolemDomainException("a golem needs a body to drive");
+        layout = map ?? throw new GolemDomainException("a golem needs its map, laid out");
+        this.collisions = collisions ?? throw new GolemDomainException("a golem needs its collisions module, even empty");
+        if (collisions.Layout != layout) throw new GolemDomainException("the collisions must be measured over the golem's own layout");
     }
 
     // ---- the body ----
@@ -167,7 +167,7 @@ internal sealed class Golem
     internal Trajectory Route(int id)
     {
         var mission = Find(id);
-        if (!mission.MayRoute) throw new DomainException($"mission {id} is not pending: no road to decide");
+        if (!mission.MayRoute) throw new GolemDomainException($"mission {id} is not pending: no road to decide");
         return new Trajectory(layout, mission);
     }
 
@@ -176,11 +176,11 @@ internal sealed class Golem
     /// learned. What the operator's command reads to write the errand and its whole plan in one entry.</summary>
     internal Trajectory Preview(double fromX, double fromY, double[] xs, double[] ys, bool choosesOrder)
     {
-        if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length) throw new DomainException("a preview needs its stops as two arrays of the same length");
+        if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length) throw new GolemDomainException("a preview needs its stops as two arrays of the same length");
         var from = new Position(fromX, fromY);
         var stops = xs.Select((x, i) => new Position(x, ys[i])).ToList();
         foreach (var stop in stops)
-            if (!layout.IsOnMap(stop)) throw new DomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
+            if (!layout.IsOnMap(stop)) throw new GolemDomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
         var planner = Planner();
         return planner.Road(from, choosesOrder ? planner.BestOrder(from, stops) : stops);
     }
@@ -214,7 +214,7 @@ internal sealed class Golem
     /// the mark back). The plan is interrupted. Returns the mission id.</summary>
     internal int Bump(int id, Pose touch)
     {
-        if (touch == null) throw new DomainException($"mission {id}'s bump needs the pose of the touch");
+        if (touch == null) throw new GolemDomainException($"mission {id}'s bump needs the pose of the touch");
         Find(id).Bump();
         collisions.Mark(touch);
         return id;
@@ -224,7 +224,7 @@ internal sealed class Golem
     /// to the peers so the one that moved knows it met a body. No mark. Returns how many such touches so far.</summary>
     internal int Bump(Pose touch)
     {
-        if (touch == null) throw new DomainException("a bump needs the pose of the touch");
+        if (touch == null) throw new GolemDomainException("a bump needs the pose of the touch");
         return ++idleBumps;
     }
 
@@ -232,7 +232,7 @@ internal sealed class Golem
     /// against the golem's patience (MayRetryLeg). Returns the mission id.</summary>
     internal int Graze(int id, Position at)
     {
-        if (at == null) throw new DomainException($"mission {id}'s graze needs where it happened");
+        if (at == null) throw new GolemDomainException($"mission {id}'s graze needs where it happened");
         Find(id).Graze();
         return id;
     }
@@ -271,10 +271,10 @@ internal sealed class Golem
     /// <summary>The operator says what stood at a point is gone — somebody took it away — and the golem forgets the
     /// obstacle there with EVERY mark that outlined it: a body may pass again, and a touch after this is a NEW
     /// obstacle. Told to the peers, who forget it too. Returns how many facts it dropped.</summary>
-    internal int Forget(Position at) => collisions.Forget(at ?? throw new DomainException("forgetting needs where"));
+    internal int Forget(Position at) => collisions.Forget(at ?? throw new GolemDomainException("forgetting needs where"));
 
     /// <summary>A peer says what stood at a point is gone: the golem forgets it too, without having gone to see.</summary>
-    internal int LearnForget(Position at) => collisions.Forget(at ?? throw new DomainException("forgetting needs where"));
+    internal int LearnForget(Position at) => collisions.Forget(at ?? throw new GolemDomainException("forgetting needs where"));
 
     /// <summary>Whether the golem holds an obstacle at (x, y) — what to consult before saying it is gone.</summary>
     internal bool KnowsObstacleAt(double x, double y) => collisions.KnowsAt(new Position(x, y));
@@ -298,7 +298,7 @@ internal sealed class Golem
     /// last one completes the mission. Told to the follower (exposed beside the act). Returns the mission id.</summary>
     internal int Reach(int id, Position at)
     {
-        if (at == null) throw new DomainException($"mission {id} reaches a point");
+        if (at == null) throw new GolemDomainException($"mission {id} reaches a point");
         Find(id).Reach(at.X, at.Y);
         return id;
     }
@@ -390,7 +390,7 @@ internal sealed class Golem
         if (first == null) return RouteLength();
         var here = new Position(x, y);
         try { return Planner().RoadLength(here, first) + RouteLength(); }
-        catch (DomainException) { return here.DistanceTo(first) + RouteLength(); }
+        catch (GolemDomainException) { return here.DistanceTo(first) + RouteLength(); }
     }
 
     /// <summary>Seconds until every pending mission is done, for a body standing at (x, y), at the body's speed and with its lingers.</summary>
@@ -412,15 +412,15 @@ internal sealed class Golem
     // A new handle opens an errand with this stop; the errand's own handle adds one more stop to it.
     private int Entrust(int id, Position stop, bool following, bool choosesOrder)
     {
-        if (stop == null) throw new DomainException($"mission {id} needs a stop");
+        if (stop == null) throw new GolemDomainException($"mission {id} needs a stop");
         if (layout.ZoneCount > 0 && !layout.IsOnMap(stop))
-            throw new DomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
+            throw new GolemDomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
         if (Knows(id))
         {
             Find(id).AddStop(stop, following, choosesOrder);
             return id;
         }
-        if (id <= lastHandle) throw new DomainException($"handle {id} was already spent: handles are never reused");
+        if (id <= lastHandle) throw new GolemDomainException($"handle {id} was already spent: handles are never reused");
         missions.Add(new Mission(id, stop, following, choosesOrder));
         lastHandle = id;
         return id;
@@ -430,21 +430,21 @@ internal sealed class Golem
     {
         foreach (Mission m in missions)
             if (m.IsPending()) return m;
-        throw new DomainException("no pending mission: consult HasPendingMission() first");
+        throw new GolemDomainException("no pending mission: consult HasPendingMission() first");
     }
 
     private Mission LastPending()
     {
         for (int i = missions.Count - 1; i >= 0; i--)
             if (missions[i].IsPending()) return missions[i];
-        throw new DomainException("no pending mission: consult HasPendingMission() first");
+        throw new GolemDomainException("no pending mission: consult HasPendingMission() first");
     }
 
     private Mission Find(int id)
     {
         foreach (Mission m in missions)
             if (m.Id == id) return m;
-        throw new DomainException($"unknown mission {id}: consult Knows(id) first");
+        throw new GolemDomainException($"unknown mission {id}: consult Knows(id) first");
     }
 
     private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);

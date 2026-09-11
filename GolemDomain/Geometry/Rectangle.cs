@@ -13,7 +13,7 @@ internal sealed class Rectangle
 
     internal Rectangle(double x, double y, double width, double height)
     {
-        if (width <= 0 || height <= 0) throw new DomainException("a rectangle needs a positive width and height");
+        if (width <= 0 || height <= 0) throw new GolemDomainException("a rectangle needs a positive width and height");
         X = x;
         Y = y;
         Width = width;
@@ -65,7 +65,7 @@ internal sealed class Rectangle
         if (Math.Abs(other.X + other.Width - X) < 1e-6) return new Position(-1, 0);
         if (Math.Abs(Y + Height - other.Y) < 1e-6) return new Position(0, 1);
         if (Math.Abs(other.Y + other.Height - Y) < 1e-6) return new Position(0, -1);
-        throw new DomainException("the rectangles share no edge to step across");
+        throw new GolemDomainException("the rectangles share no edge to step across");
     }
 
     private Segment VerticalOverlap(double x, Rectangle other)

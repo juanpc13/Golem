@@ -29,7 +29,7 @@ internal sealed class PeerMet : Suspicion
     private readonly string who;
     internal PeerMet(string who)
     {
-        if (string.IsNullOrWhiteSpace(who)) throw new DomainException("meeting a peer needs its name");
+        if (string.IsNullOrWhiteSpace(who)) throw new GolemDomainException("meeting a peer needs its name");
         this.who = who;
     }
     internal override string Kind => "peer";

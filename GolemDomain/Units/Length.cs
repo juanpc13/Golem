@@ -13,8 +13,8 @@ internal abstract class Length
 
     protected Length(double meters)
     {
-        if (double.IsNaN(meters) || double.IsInfinity(meters)) throw new DomainException("a length needs a number");
-        if (meters < 0) throw new DomainException("a length cannot be negative");
+        if (double.IsNaN(meters) || double.IsInfinity(meters)) throw new GolemDomainException("a length needs a number");
+        if (meters < 0) throw new GolemDomainException("a length cannot be negative");
         InMeters = meters;
     }
 

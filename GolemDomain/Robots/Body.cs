@@ -21,11 +21,11 @@ internal sealed class Body
     /// Each a magnitude of its own kind — a duration where a length goes is refused by type, not accepted as a number.</summary>
     internal Body(Length radius, Speed speed, Duration linger)
     {
-        if (radius == null || radius.IsZero) throw new DomainException("a body needs a radius above zero");
-        if (speed == null || speed.IsZero) throw new DomainException("a body needs a cruise speed above zero");
+        if (radius == null || radius.IsZero) throw new GolemDomainException("a body needs a radius above zero");
+        if (speed == null || speed.IsZero) throw new GolemDomainException("a body needs a cruise speed above zero");
         Radius = radius;
         Speed = speed;
-        LingerAfterTold = linger ?? throw new DomainException("a body needs to know how long it lingers at a told stop, even not at all");
+        LingerAfterTold = linger ?? throw new GolemDomainException("a body needs to know how long it lingers at a told stop, even not at all");
     }
 
     /// <summary>The disk it occupies.</summary>

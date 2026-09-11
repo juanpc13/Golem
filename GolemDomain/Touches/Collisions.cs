@@ -34,7 +34,7 @@ internal sealed class Collisions
 
     internal Collisions(MapLayout layout)
     {
-        Layout = layout ?? throw new DomainException("collisions are measured over a layout");
+        Layout = layout ?? throw new GolemDomainException("collisions are measured over a layout");
     }
 
     // ---- the facts ----
@@ -43,7 +43,7 @@ internal sealed class Collisions
     /// mark's normal). Two touches within SameTouch are one mark. Returns how many marks it holds.</summary>
     internal int Mark(Pose touch)
     {
-        if (touch == null) throw new DomainException("a mark needs the pose of the touch");
+        if (touch == null) throw new GolemDomainException("a mark needs the pose of the touch");
         if (!marks.Any(m => m.DistanceTo(touch) < SameTouch)) marks.Add(new Mark(new Position(touch.X, touch.Y), touch.Heading));
         return marks.Count;
     }
@@ -138,7 +138,7 @@ internal sealed class Collisions
     /// point (within SameTouch) goes; the figure it was a vertex of is recomputed from what remains. Returns how many.</summary>
     internal int Unmark(Position at)
     {
-        if (at == null) throw new DomainException("taking a mark back needs where");
+        if (at == null) throw new GolemDomainException("taking a mark back needs where");
         return marks.RemoveAll(m => m.DistanceTo(at) < SameTouch);
     }
 

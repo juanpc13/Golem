@@ -12,7 +12,7 @@ internal sealed class Segment
 
     internal Segment(Position from, Position to)
     {
-        if (from == null || to == null) throw new DomainException("a segment needs both of its ends");
+        if (from == null || to == null) throw new GolemDomainException("a segment needs both of its ends");
         From = from;
         To = to;
     }

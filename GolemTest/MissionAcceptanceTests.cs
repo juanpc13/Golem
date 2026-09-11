@@ -67,9 +67,9 @@ public class MissionAcceptanceTests
         Refuses("b = Body(Meters(0.25), MetersPerSecond(2.0), Seconds(-1.0));", "Error while instantiating class 'Seconds'");
         // the magnitudes say what they are: a duration where a length goes is refused by type, not taken as a number
         Refuses("b = Body(Seconds(0.25), MetersPerSecond(2.0), Seconds(6.0));", "a value of type 'Length' is expected");
-        Assert.AreEqual("a body needs a radius above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(new Meters(0.0), new MetersPerSecond(2.0), new Seconds(6.0))).Message);
-        Assert.AreEqual("a body needs a cruise speed above zero", Assert.ThrowsException<DomainException>(() => new GolemDomain.Robots.Body(new Meters(0.25), new MetersPerSecond(0.0), new Seconds(6.0))).Message);
-        Assert.AreEqual("a duration cannot be negative", Assert.ThrowsException<DomainException>(() => new Seconds(-1.0)).Message);
+        Assert.AreEqual("a body needs a radius above zero", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Robots.Body(new Meters(0.0), new MetersPerSecond(2.0), new Seconds(6.0))).Message);
+        Assert.AreEqual("a body needs a cruise speed above zero", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Robots.Body(new Meters(0.25), new MetersPerSecond(0.0), new Seconds(6.0))).Message);
+        Assert.AreEqual("a duration cannot be negative", Assert.ThrowsException<GolemDomainException>(() => new Seconds(-1.0)).Message);
         Assert.AreEqual(0.25, new Centimeters(25.0).InMeters, 1e-9, "a length reads in metres whatever unit wrote it");
         Assert.AreEqual(90.0, new Minutes(1.5).InSeconds, 1e-9, "a duration reads in seconds whatever unit wrote it");
         Assert.AreEqual(4.0, new MetersPerSecond(2.0).TimeFor(new Meters(8.0)).InSeconds, 1e-9, "a speed knows how long a length takes");
@@ -1194,7 +1194,7 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    // A command the domain must refuse: the DomainException message surfaces through the perform.
+    // A command the domain must refuse: the GolemDomainException message surfaces through the perform.
     private void Refuses(string command, string because)
     {
         try

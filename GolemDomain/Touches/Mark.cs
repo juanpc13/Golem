@@ -23,8 +23,8 @@ internal sealed class Mark
 
     internal Mark(Position at, double heading)
     {
-        At = at ?? throw new DomainException("a mark needs where the touch fell");
-        if (double.IsNaN(heading) || double.IsInfinity(heading)) throw new DomainException("a mark needs the heading of the touch: its normal");
+        At = at ?? throw new GolemDomainException("a mark needs where the touch fell");
+        if (double.IsNaN(heading) || double.IsInfinity(heading)) throw new GolemDomainException("a mark needs the heading of the touch: its normal");
         Heading = heading;
     }
 

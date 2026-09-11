@@ -24,7 +24,7 @@ internal static class Catalog
             case CrossCorridorsName: return CrossCorridors();
             case RingCorridorName: return RingCorridor();
         }
-        throw new DomainException($"no map named '{name}': {string.Join(", ", Names())}");
+        throw new GolemDomainException($"no map named '{name}': {string.Join(", ", Names())}");
     }
 
     /// <summary>The warehouse the world builds (sim/world/plan.json) and the golems carry: a ring of nine areas

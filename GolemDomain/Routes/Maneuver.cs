@@ -15,7 +15,7 @@ internal sealed class Maneuver : Trajectory
 
     internal Maneuver(string strategy, IEnumerable<Leg> legs) : base(legs)
     {
-        if (string.IsNullOrWhiteSpace(strategy)) throw new DomainException("a maneuver names the strategy that produced it");
+        if (string.IsNullOrWhiteSpace(strategy)) throw new GolemDomainException("a maneuver names the strategy that produced it");
         Strategy = strategy;
     }
 }
@@ -36,7 +36,7 @@ internal sealed class Side
     {
         if (name == Right.Name) return Right;
         if (name == Left.Name) return Left;
-        throw new DomainException($"a side is 'right' or 'left', not '{name}'");
+        throw new GolemDomainException($"a side is 'right' or 'left', not '{name}'");
     }
 }
 
@@ -70,7 +70,7 @@ internal abstract class EvasionStrategy
             case StepRightName: return new StepAside(Side.Right);
             case StepLeftName:  return new StepAside(Side.Left);
         }
-        throw new DomainException($"no evasion strategy named '{name}': back-off, step-right or step-left");
+        throw new GolemDomainException($"no evasion strategy named '{name}': back-off, step-right or step-left");
     }
 
     internal static string[] Names() => new[] { BackOffName, StepRightName, StepLeftName };
@@ -85,7 +85,7 @@ internal sealed class BackOff : EvasionStrategy
 
     internal override Maneuver From(Position here, double heading)
     {
-        if (here == null) throw new DomainException("a maneuver starts where the body stands");
+        if (here == null) throw new GolemDomainException("a maneuver starts where the body stands");
         return new Maneuver(Name, new[] { new Leg(here.Along(heading + Math.PI, Distance), "back") });
     }
 }
@@ -102,7 +102,7 @@ internal sealed class StepAside : EvasionStrategy
 
     internal StepAside(Side side)
     {
-        if (side == null) throw new DomainException("stepping aside needs a side");
+        if (side == null) throw new GolemDomainException("stepping aside needs a side");
         Side = side;
     }
 
@@ -110,7 +110,7 @@ internal sealed class StepAside : EvasionStrategy
 
     internal override Maneuver From(Position here, double heading)
     {
-        if (here == null) throw new DomainException("a maneuver starts where the body stands");
+        if (here == null) throw new GolemDomainException("a maneuver starts where the body stands");
         var aside = here.Along(heading + Side.Turn, Step);
         var ahead = aside.Along(heading, Run);
         return new Maneuver(Name, new[] { new Leg(aside, "aside"), new Leg(ahead, "ahead") });

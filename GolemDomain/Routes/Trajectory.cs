@@ -24,7 +24,7 @@ internal class Trajectory
     /// <summary>A trajectory born whole — the planner's, or a maneuver's. Nothing can be added to it.</summary>
     internal Trajectory(IEnumerable<Leg> legs)
     {
-        if (legs == null) throw new DomainException("a trajectory needs its legs, even none");
+        if (legs == null) throw new GolemDomainException("a trajectory needs its legs, even none");
         this.legs = legs.ToList();
         decided = true;
     }
@@ -32,8 +32,8 @@ internal class Trajectory
     /// <summary>The road being decided for a mission: empty, until its acts add the legs, the last stop last.</summary>
     internal Trajectory(MapLayout layout, Mission mission)
     {
-        this.layout = layout ?? throw new DomainException("a road is decided on a layout");
-        this.mission = mission ?? throw new DomainException("a road is decided for a mission");
+        this.layout = layout ?? throw new GolemDomainException("a road is decided on a layout");
+        this.mission = mission ?? throw new GolemDomainException("a road is decided for a mission");
         legs = new List<Leg>();
     }
 
@@ -43,23 +43,23 @@ internal class Trajectory
     /// meets it.</summary>
     internal Trajectory Via(Passage passage, Position at)
     {
-        if (passage == null || at == null) throw new DomainException("a road crosses a passage at a point");
+        if (passage == null || at == null) throw new GolemDomainException("a road crosses a passage at a point");
         if (passage is Door door && layout.PointOf(door).DistanceTo(at) > 1e-6)
-            throw new DomainException($"the door {door.Name} stands at ({Fmt(layout.PointOf(door).X)}, {Fmt(layout.PointOf(door).Y)}), not at ({Fmt(at.X)}, {Fmt(at.Y)})");
+            throw new GolemDomainException($"the door {door.Name} stands at ({Fmt(layout.PointOf(door).X)}, {Fmt(layout.PointOf(door).Y)}), not at ({Fmt(at.X)}, {Fmt(at.Y)})");
         return Add(new Leg(at, passage.Name));
     }
 
     /// <summary>A leg: skirt a mark through this point.</summary>
-    internal Trajectory Around(Position at) => Add(new Leg(at ?? throw new DomainException("a detour needs its point"), Leg.Detour));
+    internal Trajectory Around(Position at) => Add(new Leg(at ?? throw new GolemDomainException("a detour needs its point"), Leg.Detour));
 
     /// <summary>A leg: step out of a peer's way to this point.</summary>
-    internal Trajectory Aside(Position at) => Add(new Leg(at ?? throw new DomainException("a courtesy step needs its point"), Leg.Courtesy));
+    internal Trajectory Aside(Position at) => Add(new Leg(at ?? throw new GolemDomainException("a courtesy step needs its point"), Leg.Courtesy));
 
     /// <summary>A leg: reach this stop (named by the zone it stands in). When every stop ahead has its leg the road is
     /// decided: doors gain their straight crossings and the mission takes it.</summary>
     internal Trajectory Stop(Position at)
     {
-        if (at == null) throw new DomainException("a stop needs its point");
+        if (at == null) throw new GolemDomainException("a stop needs its point");
         Add(new Leg(at, layout.ZoneAt(at).Name));
         if (StopCount == mission.StopsAhead.Count())
         {
@@ -71,8 +71,8 @@ internal class Trajectory
 
     private Trajectory Add(Leg leg)
     {
-        if (mission == null) throw new DomainException("this road was born whole: nothing can be added to it");
-        if (decided) throw new DomainException($"mission {mission.Id}'s road is decided: nothing can be added after its last stop");
+        if (mission == null) throw new GolemDomainException("this road was born whole: nothing can be added to it");
+        if (decided) throw new GolemDomainException($"mission {mission.Id}'s road is decided: nothing can be added after its last stop");
         legs.Add(leg);
         return this;
     }
@@ -87,7 +87,7 @@ internal class Trajectory
 
     internal Leg LegAt(int index)
     {
-        if (index < 0 || index >= legs.Count) throw new DomainException($"the trajectory has {legs.Count} legs, not a leg {index}");
+        if (index < 0 || index >= legs.Count) throw new GolemDomainException($"the trajectory has {legs.Count} legs, not a leg {index}");
         return legs[index];
     }
 
@@ -95,7 +95,7 @@ internal class Trajectory
     {
         get
         {
-            if (legs.Count == 0) throw new DomainException("an empty trajectory has no last leg");
+            if (legs.Count == 0) throw new GolemDomainException("an empty trajectory has no last leg");
             return legs[^1];
         }
     }
@@ -106,7 +106,7 @@ internal class Trajectory
     /// <summary>The segments a body walks, from where it starts: one straight run to each leg's point in turn.</summary>
     internal IReadOnlyList<Segment> Segments(Position from)
     {
-        if (from == null) throw new DomainException("a trajectory is walked from somewhere");
+        if (from == null) throw new GolemDomainException("a trajectory is walked from somewhere");
         var segments = new List<Segment>();
         Position here = from;
         foreach (var leg in legs)

@@ -30,7 +30,7 @@ internal abstract class Map
 
     protected Map(string name)
     {
-        if (string.IsNullOrWhiteSpace(name)) throw new DomainException("a map needs a name");
+        if (string.IsNullOrWhiteSpace(name)) throw new GolemDomainException("a map needs a name");
         Name = name;
     }
 
@@ -40,7 +40,7 @@ internal abstract class Map
     /// Refuses a repeated name.</summary>
     internal virtual Area Area(string name)
     {
-        if (areas.Any(a => a.Name == name)) throw new DomainException($"area '{name}' already exists on map '{Name}'");
+        if (areas.Any(a => a.Name == name)) throw new GolemDomainException($"area '{name}' already exists on map '{Name}'");
         var area = NewArea(name);
         areas.Add(area);
         return area;
@@ -84,18 +84,18 @@ internal abstract class Map
     internal virtual Area Find(string name)
     {
         foreach (var a in areas) if (a.Name == name) return a;
-        throw new DomainException($"unknown area '{name}' on map '{Name}'");
+        throw new GolemDomainException($"unknown area '{name}' on map '{Name}'");
     }
 
     internal Door FindDoor(string a, string b) =>
-        Doors.FirstOrDefault(d => d.JoinsNamed(a, b)) ?? throw new DomainException($"no door between '{a}' and '{b}' on map '{Name}'");
+        Doors.FirstOrDefault(d => d.JoinsNamed(a, b)) ?? throw new GolemDomainException($"no door between '{a}' and '{b}' on map '{Name}'");
 
     internal Opening FindOpening(string a, string b) =>
-        Openings.FirstOrDefault(o => o.JoinsNamed(a, b)) ?? throw new DomainException($"no open stretch between '{a}' and '{b}' on map '{Name}'");
+        Openings.FirstOrDefault(o => o.JoinsNamed(a, b)) ?? throw new GolemDomainException($"no open stretch between '{a}' and '{b}' on map '{Name}'");
 
     /// <summary>The passage the journal names: kitchen/north for a door, north~center for an opening.</summary>
     internal Passage FindPassage(string name) =>
-        passages.FirstOrDefault(p => p.Name == name) ?? throw new DomainException($"no passage named '{name}' on map '{Name}'");
+        passages.FirstOrDefault(p => p.Name == name) ?? throw new GolemDomainException($"no passage named '{name}' on map '{Name}'");
 
     internal bool KnowsPassage(string name) => passages.Any(p => p.Name == name);
 
@@ -123,10 +123,10 @@ internal abstract class Map
     internal bool HasOpeningBetween(Area a, Area b) => Openings.Any(o => o.Joins(a, b));
 
     internal Door DoorBetween(Area a, Area b) =>
-        Doors.FirstOrDefault(d => d.Joins(a, b)) ?? throw new DomainException($"no door between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
+        Doors.FirstOrDefault(d => d.Joins(a, b)) ?? throw new GolemDomainException($"no door between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
 
     internal Opening OpeningBetween(Area a, Area b) =>
-        Openings.FirstOrDefault(o => o.Joins(a, b)) ?? throw new DomainException($"no open stretch between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
+        Openings.FirstOrDefault(o => o.Joins(a, b)) ?? throw new GolemDomainException($"no open stretch between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
 
-    private static string Named(Area a) => a?.Name ?? throw new DomainException("an area is needed, not nothing");
+    private static string Named(Area a) => a?.Name ?? throw new GolemDomainException("an area is needed, not nothing");
 }

@@ -9,8 +9,8 @@ internal abstract class Duration
 
     protected Duration(double seconds)
     {
-        if (double.IsNaN(seconds) || double.IsInfinity(seconds)) throw new DomainException("a duration needs a number");
-        if (seconds < 0) throw new DomainException("a duration cannot be negative");
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds)) throw new GolemDomainException("a duration needs a number");
+        if (seconds < 0) throw new GolemDomainException("a duration cannot be negative");
         InSeconds = seconds;
     }
 

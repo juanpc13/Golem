@@ -14,9 +14,9 @@ internal class Area
 
     internal Area(string name, Map map)
     {
-        if (string.IsNullOrWhiteSpace(name)) throw new DomainException("an area needs a name");
+        if (string.IsNullOrWhiteSpace(name)) throw new GolemDomainException("an area needs a name");
         Name = name;
-        Map = map ?? throw new DomainException($"area '{name}' belongs to a map");
+        Map = map ?? throw new GolemDomainException($"area '{name}' belongs to a map");
     }
 
     // ---- telling the map what leaves this area (creating: by object, or by name when the neighbour is not created yet) ----
