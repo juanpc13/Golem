@@ -1125,23 +1125,23 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    // The road is decided act by act, all in one command — Route, then a Via / Around / Aside per leg and a Stop
-    // per stop — from the one-line text g.Plan renders (the test reads the plan as a human does, the journal never
+    // The road is decided act by act, all in one command — the road opened with Route, then its own Via / Around /
+    // Aside per leg and Stop per stop — from the one-line text g.Plan renders (the test reads the plan as a human does, the journal never
     // holds that text).
     private void Route(int id, string plan)
     {
         var legs = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var script = new System.Text.StringBuilder("{\ng.Route(@id);\n");
+        var script = new System.Text.StringBuilder("{\nroute = g.Route(@id);\n");
         for (int i = 0; i < legs.Length; i++)
         {
             int n = i + 1;   // legs read from 1
             string name = legs[i][..legs[i].LastIndexOf('@')];
             script.Append(
-                name == "around" ? $"around{n} = Position(@x{n}, @y{n}); g.Around(@id, around{n});\n"
-                : name == "aside" ? $"aside{n} = Position(@x{n}, @y{n}); g.Aside(@id, aside{n});\n"
-                : name.Contains('/') ? $"door{n} = map.FindDoor(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); g.Via(@id, door{n}, at{n});\n"
-                : name.Contains('~') ? $"opening{n} = map.FindOpening(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); g.Via(@id, opening{n}, at{n});\n"
-                : $"stop{n} = Position(@x{n}, @y{n}); g.Stop(@id, stop{n});\n");
+                name == "around" ? $"around{n} = Position(@x{n}, @y{n}); route.Around(around{n});\n"
+                : name == "aside" ? $"aside{n} = Position(@x{n}, @y{n}); route.Aside(aside{n});\n"
+                : name.Contains('/') ? $"door{n} = map.FindDoor(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); route.Via(door{n}, at{n});\n"
+                : name.Contains('~') ? $"opening{n} = map.FindOpening(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); route.Via(opening{n}, at{n});\n"
+                : $"stop{n} = Position(@x{n}, @y{n}); route.Stop(stop{n});\n");
         }
         script.Append("}\n");
         perf.Actor.Using(script.ToString())

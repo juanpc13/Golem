@@ -71,22 +71,22 @@ public sealed record RoadLeg(string Kind, string A, string B, double X, double Y
 
     // ---- the acts the golem writes, one per leg, inside braces, step by step; values as @params (la{n}, lb{n}, lx{n}, ly{n}) ----
 
-    /// <summary>The lines that decide a road: Route, then each leg found or built from its @params, named after what it
-    /// is, and handed to its act. Legs count from 1. Meant to sit inside a braced block — alone (Script) or after
+    /// <summary>The lines that decide a road: the road opened (`route = g.Route(@id)`), then each leg found or built from
+    /// its @params, named after what it is, and handed to the road's own act. Legs count from 1. Meant to sit inside a braced block — alone (Script) or after
     /// the errand's own acts, in one entry.</summary>
     public static string Acts(IReadOnlyList<RoadLeg> legs)
     {
-        var acts = new StringBuilder("    g.Route(@id);\n");
+        var acts = new StringBuilder("    route = g.Route(@id);\n");
         for (int i = 0; i < legs.Count; i++)
         {
             int n = i + 1;
             acts.Append(legs[i].Kind switch
             {
-                "door" => $"    door{n} = map.FindDoor(@la{n}, @lb{n});\n    at{n} = Position(@lx{n}, @ly{n});\n    g.Via(@id, door{n}, at{n});\n",
-                "opening" => $"    opening{n} = map.FindOpening(@la{n}, @lb{n});\n    at{n} = Position(@lx{n}, @ly{n});\n    g.Via(@id, opening{n}, at{n});\n",
-                "around" => $"    around{n} = Position(@lx{n}, @ly{n});\n    g.Around(@id, around{n});\n",
-                "aside" => $"    aside{n} = Position(@lx{n}, @ly{n});\n    g.Aside(@id, aside{n});\n",
-                _ => $"    stop{n} = Position(@lx{n}, @ly{n});\n    g.Stop(@id, stop{n});\n",
+                "door" => $"    door{n} = map.FindDoor(@la{n}, @lb{n});\n    at{n} = Position(@lx{n}, @ly{n});\n    route.Via(door{n}, at{n});\n",
+                "opening" => $"    opening{n} = map.FindOpening(@la{n}, @lb{n});\n    at{n} = Position(@lx{n}, @ly{n});\n    route.Via(opening{n}, at{n});\n",
+                "around" => $"    around{n} = Position(@lx{n}, @ly{n});\n    route.Around(around{n});\n",
+                "aside" => $"    aside{n} = Position(@lx{n}, @ly{n});\n    route.Aside(aside{n});\n",
+                _ => $"    stop{n} = Position(@lx{n}, @ly{n});\n    route.Stop(stop{n});\n",
             });
         }
         return acts.ToString();

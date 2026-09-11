@@ -49,7 +49,7 @@ Every observation must end as a note that lets us conclude and improve the domai
 | Colisiones | `Touches.Collisions` | The module that keeps what the bodies LEARNED by touching (marks, peers met, bumps heard) and INTERPRETS it (obstacles, suspicions, who was near). Global `collisions`, built in `init` over the layout. |
 | Marca (hecho) | `Touches.Mark` | A body touched something uncharted: HAS a `Position` and a heading (its normal). A fact. |
 | Obstáculo (hipótesis) | `Touches.Obstacle` (`Thing`, `Peer`) | Marks joined by closeness: a point, a line, a polygon. A hypothesis, refined by each bump; never stored, always derived. |
-| Ruta / trayectoria | `Routes.Trajectory` | Ordered legs; `Leg` names what the journal writes (`kitchen/north@4,9.5`). |
+| Ruta / trayectoria | `Routes.Trajectory` | Ordered legs; `Leg` names what the journal writes (`kitchen/north@4,9.5`). Born whole (the planner's) or DECIDED act by act as the object `g.Route(@id)` returns: `route.Via(door, at)`, `route.Around(at)`, `route.Aside(at)`, `route.Stop(at)` — the last stop hands it to the mission (11-sep-2026). |
 | Planificador | `Routes.RoutePlanner` | Dijkstra over doors, openings and detours; consults the layout AND the collisions, owns neither; `EdgeCost` generic, `DistanceCost` today. Built at query time (`RoutePlanner(layout, collisions, radius)`), never a global. |
 | Maniobra de evasión | `Routes.Maneuver : Trajectory`, `Routes.EvasionStrategy` | `BackOff`, `StepAside(Side)`; the host's runtime probe still owns execution. |
 | Posición / pose / rectángulo | `Geometry.Position`, `Pose : Position`, `Segment`, `Rectangle`, `Location : Position` | Pure geometry, no map concepts; the layout composes them. Constructors are DSL-visible: `Position(4.0, 9.5)` — literals with a decimal point (the engine does not coerce an integer literal into a double parameter). |
@@ -68,15 +68,19 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - **The journal speaks in objects (10-sep-2026)**: values enter as `@params` and the template builds or
   finds the object — `g.Visit(@id, Position(@x, @y))`, `g.Visit(@id, map.Find(@area))`,
   `g.Cross(@id, map.FindDoor(@a, @b))` — several acts per command when an errand has several stops or a
-  road several legs (`g.Route(@id); g.Via(…); g.Stop(…)`). **Methods take instances, never names**: a
+  road several legs (`route = g.Route(@id); route.Via(…); route.Stop(…)`). **Methods take instances, never names**: a
   string enters only where an object is created (`Area('kitchen')`, `DoorTo('north')`, constructors) or
   found (`Find`, `FindDoor`, `FindOpening`, `FindPassage`, `Knows`); everything else takes the object
   (`Connects(a, b)`, `Touches(a, b)`, `Distance(from, to)`, `PointOf(door)`, `StepInto(door, side)`)
   (Juan, 10-sep: "evitemos parámetros primitivos si tenemos las instancias reales").
 - **A command template is a braced block, step by step, values as `@params`** (Juan, 10-sep): the object is
   found or built from the parameters, named after what it is, then handed to the act —
-  `{ point = map.Find(@area); g.Visit(@id, point); g.Route(@id); door1 = map.FindDoor(@la1, @lb1); at1 = Position(@lx1, @ly1); g.Via(@id, door1, at1); … stop3 = Position(@lx3, @ly3); g.Stop(@id, stop3); }`
-  — the errand and its whole plan, one entry. The host walks the plan in memory (the cursor is telemetry,
+  `{ point = map.Find(@area); g.Visit(@id, point); route = g.Route(@id); door1 = map.FindDoor(@la1, @lb1); at1 = Position(@lx1, @ly1); route.Via(door1, at1); … stop3 = Position(@lx3, @ly3); route.Stop(stop3); }`
+  — the errand and its whole plan, one entry. **The road is an object** (Juan, 11-sep: "route = g.Route(1) y empezar
+  a llamar los métodos del objeto"): `g.Route(@id)` returns the `Trajectory` being decided for the mission, and the
+  legs are ITS acts (`Via`, `Around`, `Aside`, `Stop`, each returning the road, so they chain); the last stop decides
+  it and the mission takes it. No `@id` on a leg, no hidden draft in the subject: state that belongs to an object is
+  never handled through a primitive key. The host walks the plan in memory (the cursor is telemetry,
   like the pose) and journals only what fulfils it (`Reach`) or interrupts it (`Bump`, `Graze`).
   Names: one stop is `point`, several are `point1`, `point2`… (no numeral when there is only one; legs and
   their `@params` count from 1, as a person counts them) — Juan, 10-sep.
@@ -170,8 +174,8 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
   contacts are ephemeral telemetry, transitions are journaled — entrusting (MoveTo/
   Cover/Follow with a `Position` or an area found, one act per stop) WITH its whole plan in the same
-  entry (Route, then Via / Around / Aside / Stop, one act per leg — asked of the golem with `g.Preview`
-  before the command), progress (Reach only: a stop reached implies the legs before it were walked; the
+  entry (`route = g.Route(@id)`, then the road's own Via / Around / Aside / Stop, one act per leg — asked of the
+  golem with `g.Preview` before the command), progress (Reach only: a stop reached implies the legs before it were walked; the
   last Reach completes — walking a door or a point is NOT journaled, Juan 10-sep: "no estar diciéndole
   cada cosa que va haciendo"), the interruption (Bump/Graze: the plan stops, another Route replaces what
   was left; also when the golem wakes with a plan underway),

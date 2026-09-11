@@ -122,7 +122,7 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Visit(id, area)` · `Visit(id, point)` | The operator sends the golem to a place, a point, or through several stops **in that order** (`{'kitchen', '9,8', 'garage'}`). Handles are minted by the actor and never reused. |
 | `Cover(id, stops)` | Several stops, and the golem **chooses the order** that makes the whole road shortest. |
 | `Follow(x, y)` | The golem follows its leader to a point a peer says it reached (handle minted inside). |
-| `Route(id)` · `Via(id, passage, at)` · `Around(id, at)` · `Aside(id, at)` · `Stop(id, at)` | The plan, one act per leg in the same entry as the errand: passages to cross (a door or an opening of the map, found), points to pass (around a mark, aside from a peer) and stops to reach, in order. Between stops it is always the shortest road. An errand one segment away has no road to decide and gets none. |
+| `route = Route(id)` · `route.Via(passage, at)` · `route.Around(at)` · `route.Aside(at)` · `route.Stop(at)` | The plan, one act per leg in the same entry as the errand: passages to cross (a door or an opening of the map, found), points to pass (around a mark, aside from a peer) and stops to reach, in order. Between stops it is always the shortest road. An errand one segment away has no road to decide and gets none. |
 | `Reach(id, at)` | A stop reached: the legs before it were walked, whatever they were. Reaching the last one completes the mission — there is no separate "complete". Told to the follower. |
 | `Bump(id, touch)` · `Bump(touch)` | The body touched something the map does not hold, heading that way — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is concluded afterwards, by the domain. |
 | `HearBump(who, touch, peerAt)` · `HearTouch(who, at, peerAt)` | A peer told it bumped (heading which way, standing where) or was touched while standing. A touch of my own there and then was that peer: a body, not a thing. A bump heard is learned as a mark, as the peer presumed; a touch heard is not (what touches a standing body is a body). |
@@ -138,7 +138,7 @@ concrete map, each area found once and told what it is in one train (`map = MapL
 map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
 map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the
 abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `g.Visit(1, Position(9.0, 8.0))`,
-the plan one act per leg in the errand's own entry (`g.Route(1); door1 = map.FindDoor('kitchen', 'north'); at1 = Position(4.0, 9.5); g.Via(1, door1, at1); … g.Stop(1, stop3);`)
+the plan one act per leg in the errand's own entry, on the road object the golem opens (`route = g.Route(1); door1 = map.FindDoor('kitchen', 'north'); at1 = Position(4.0, 9.5); route.Via(door1, at1); … route.Stop(stop3);`)
 — except what is told to the peers, which travels flat. Evolve the golem by appending a release, never by
 editing an applied one.
 

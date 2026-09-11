@@ -116,9 +116,7 @@ internal abstract class Map
     /// <summary>The areas one can pass into from an area, through any passage — the ones that exist by now.</summary>
     internal IReadOnlyList<Area> Neighbours(Area area) =>
         PassagesOf(area).Select(p => p.A == area.Name ? p.B : p.A).Distinct().Where(Knows).Select(Find).ToList();
-
-    /// <summary>Whether two areas connect through some passage — a door or an open stretch — as the map disposes it,
-    /// whatever their shapes and however they lie on a plane.</summary>
+        
     internal bool Connects(Area a, Area b) => passages.Any(p => p.Joins(a, b));
 
     internal bool HasDoorBetween(Area a, Area b) => Doors.Any(d => d.Joins(a, b));

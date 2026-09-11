@@ -24,7 +24,6 @@ internal sealed class Golem
     private readonly Body body;
     private readonly MapLayout layout;
     private readonly Collisions collisions;
-    private readonly Dictionary<int, List<Leg>> drafting = new();   // the road being decided, act by act, until its last stop
     private int idleBumps;       // times something touched the body while it stood without a mission
     private int lastHandle;      // a handle names one mission forever — even after letting go (idempotency keys hang on it)
 
@@ -160,56 +159,16 @@ internal sealed class Golem
         return null;
     }
 
-    /// <summary>The golem starts deciding a mission's road: the acts that follow (Via, Around, Aside, Stop) are its
-    /// legs, in order, the last stop last — all in one journal entry, with the errand itself when it is new. A new
-    /// road replaces what was left of the old one: after a bump, or when the golem wakes with a plan underway.
-    /// Returns the mission id.</summary>
-    internal int Route(int id)
+    /// <summary>The golem starts deciding a mission's road and returns it, empty: the acts on the road (Via, Around,
+    /// Aside, Stop) are its legs, in order, the last stop last — all in one journal entry, with the errand itself when
+    /// it is new: <c>route = g.Route(@id); route.Via(door1, at1); … route.Stop(stop3);</c>. The last stop decides it and
+    /// the mission takes it. A new road replaces what was left of the old one: after a bump, or when the golem wakes
+    /// with a plan underway.</summary>
+    internal Trajectory Route(int id)
     {
         var mission = Find(id);
         if (!mission.MayRoute) throw new DomainException($"mission {id} is not pending: no road to decide");
-        drafting[id] = new List<Leg>();
-        return id;
-    }
-
-    /// <summary>A leg of the road being decided: cross this passage at this point — a door where the layout stands
-    /// it, an opening where the road meets it. Returns how many legs the road holds so far.</summary>
-    internal int Via(int id, Passage passage, Position at)
-    {
-        if (passage == null || at == null) throw new DomainException($"mission {id}'s road crosses a passage at a point");
-        if (passage is Door door && layout.PointOf(door).DistanceTo(at) > 1e-6)
-            throw new DomainException($"the door {door.Name} stands at ({Fmt(layout.PointOf(door).X)}, {Fmt(layout.PointOf(door).Y)}), not at ({Fmt(at.X)}, {Fmt(at.Y)})");
-        return Draft(id, new Leg(at, passage.Name));
-    }
-
-    /// <summary>A leg of the road being decided: skirt a mark through this point. Returns how many legs so far.</summary>
-    internal int Around(int id, Position at) => Draft(id, new Leg(at ?? throw new DomainException("a detour needs its point"), Leg.Detour));
-
-    /// <summary>A leg of the road being decided: step out of a peer's way to this point. Returns how many legs so far.</summary>
-    internal int Aside(int id, Position at) => Draft(id, new Leg(at ?? throw new DomainException("a courtesy step needs its point"), Leg.Courtesy));
-
-    /// <summary>A leg of the road being decided: reach this stop (named by the zone it stands in). When every stop
-    /// ahead has its leg, the road is decided: doors gain their straight crossings and the mission takes it.
-    /// Returns how many legs the road holds.</summary>
-    internal int Stop(int id, Position at)
-    {
-        if (at == null) throw new DomainException("a stop needs its point");
-        int legs = Draft(id, new Leg(at, layout.ZoneAt(at).Name));
-        var mission = Find(id);
-        var draft = drafting[id];
-        if (draft.Count(l => l.IsStop) == mission.StopsAhead.Count())
-        {
-            mission.Route(layout.WithDoorCrossings(new Trajectory(draft)));
-            drafting.Remove(id);
-        }
-        return legs;
-    }
-
-    private int Draft(int id, Leg leg)
-    {
-        if (!drafting.TryGetValue(id, out var draft)) throw new DomainException($"mission {id} is not deciding a road: Route first");
-        draft.Add(leg);
-        return draft.Count;
+        return new Trajectory(layout, mission);
     }
 
     /// <summary>The road a NEW errand would take, before it exists: from a point, through stops given as two arrays

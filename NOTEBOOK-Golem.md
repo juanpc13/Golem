@@ -1260,3 +1260,29 @@ marks: (5.28, 5.86) (5.16, 5.85) (5.46, 5.85) (5.58, 5.86) (5.83, 5.94), normale
 Las cinco marcas caen sobre la cara norte de la caja (y = 5.85) y dentro de su ancho (5.15–5.85); antes: 4.94–6.08. Blue rodeó por la izquierda (`around@4.48,5.85`) y llegó a south sin ir por west.
 
 **Conclusión y pendiente**: el dato ya es honesto; ahora se ve el siguiente defecto. Necesitó cuatro choques para rodear una caja de 0.7 m porque la primera corrida tras retroceder se juzga con una relajación (`RoutePlanner.Sees`, nodo `Start`: "una marca dentro del propio radio es un estimado que salió mal… puede rozarla a `radius - 0.05`") que existía para compensar marcas corridas. Con las marcas en su sitio, esa relajación deja que el primer tramo pase a 0.2 m de una marca que está en la esquina de una cosa que sigue 0.7 m más: choca otra vez. Candidato: quitar o estrechar la relajación y probar de nuevo con la caja del centro (medir cuántos choques hacen falta). Segundo candidato, después: el alcance de las marcas exteriores de un polígono ya dibujado (0.25 a cada lado).
+
+---
+
+## 2026-09-11 · La ruta es un objeto: `route = g.Route(@id)` y los tramos son actos suyos
+
+**Contexto**: Juan: "los scripts de `g.Route(1)` ¿no deberían retornar un objeto tipo `route = g.Route(1)` y empezar a llamar los métodos del objeto `route.METODO`?"
+
+**Diagnóstico**: el objeto existía pero escondido. `Golem` guardaba `drafting[id]` (una lista de tramos por misión) y `Via`, `Around`, `Aside`, `Stop` recibían el `@id` para encontrarla: estado de un objeto manejado con una clave primitiva. `Routes.Trajectory` ya es la ruta del glosario, pero nacía terminada (la construía el planificador o el `Stop` final).
+
+**Ajuste al dominio** (`Routes.Trajectory`, `Golem`): `Trajectory` gana un segundo constructor, `Trajectory(layout, mission)`, la ruta en decisión; sus actos `Via(passage, at)`, `Around(at)`, `Aside(at)`, `Stop(at)` agregan el tramo y devuelven la misma ruta (tren posible). `Stop` cierra cuando la ruta tiene tantas paradas como la misión tiene por delante: `mission.Route(layout.WithDoorCrossings(this))`. Después de decidida, o si nació entera, no admite tramos (`IsDecided`). `Golem.Route(id)` devuelve esa ruta y pierde `Via/Around/Aside/Stop` y el diccionario. La validación de la puerta ("stands at (x, y), not at…") se mudó a `Trajectory.Via`, con el layout que la ruta recibe al nacer. Tests: 53 verdes sin tocar ninguna aserción; solo el helper `Route` escribe los actos nuevos.
+
+**Ajuste al host** (`RoadLeg.Acts`): `route = g.Route(@id);` y luego `route.Via(door1, at1); … route.Stop(stop4);`.
+
+**Observación en vivo** (blue → garage con la caja del centro puesta; journals anteriores en `journal-legacy-20260911-route/`):
+```
+define action 1 (id:int, area:string, lx1:double, ly1:double, la1:string, lb1:string, …) as { point = map.Find(area); g.Visit(id, point);
+    route = g.Route(id); opening1 = map.FindOpening(la1, lb1); at1 = Position(lx1,ly1); route.Via(opening1, at1);
+    opening2 = map.FindOpening(la2, lb2); at2 = Position(lx2,ly2); route.Via(opening2, at2);
+    door3 = map.FindDoor(la3, lb3); at3 = Position(lx3,ly3); route.Via(door3, at3); stop4 = Position(lx4,ly4); route.Stop(stop4); } end;
+ 3: { point = map.Find('garage'); g.Visit(1, point); route = g.Route(1); opening1 = map.FindOpening('north', 'center'); at1 = Position(5.5,8); route.Via(opening1, at1); … stop4 = Position(9,1.5); route.Stop(stop4); }
+17: { route = g.Route(1); around1 = Position(6.28,5.37); route.Around(around1); opening2 = map.FindOpening('center', 'south'); … route.Stop(stop4); }   ← el recálculo tras el choque
+29: { point = Position(9,1.5); g.Reach(1, point); } Expose 1 'rid'; Expose 9 'rx'; Expose 1.5 'ry';
+```
+El motor asigna a una variable local (entre llaves) lo que devuelve un método del sujeto y despacha los métodos del objeto devuelto; en la rehidratación la ruta se reconstruye al reejecutar las mismas sentencias (los tres golems arrancaron y blue caminó su plan). Blue chocó dos veces con la caja (marcas (5.9, 5.9) y (5.8, 5.8), sobre la esquina noreste de la caja) y llegó al garage por la derecha.
+
+**Conclusión**: regla general, ya vista dos veces (`map`, `route`): cuando un verbo del sujeto recibe una clave para encontrar un estado que otro verbo abrió, ese estado es un objeto que el primer verbo debe devolver. Candidatos a revisar con la misma lupa: `g.Visit(@id, point)` repetido por parada (¿`errand = g.Visit(point); errand.Then(point2)`?) — se propone antes en el PLAN, no ahora.
