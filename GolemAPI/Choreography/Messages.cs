@@ -51,29 +51,6 @@ public sealed class StopReached : IDispatchMessage
         $"{id}|{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}";
 }
 
-// The golem concluded a touch was a thing: a mark on the map of touches, with the heading of the touch (its normal).
-public sealed class ObstacleMarked : IDispatchMessage
-{
-    public static int TypeId => 'M';
-    public double X { get; private init; }
-    public double Y { get; private init; }
-    public double Heading { get; private init; }
-
-    public static IDispatchMessage Deserialize(string raw)
-    {
-        var parts = raw[1..].Split('|');
-        return new ObstacleMarked
-        {
-            X = double.Parse(parts[0], CultureInfo.InvariantCulture),
-            Y = double.Parse(parts[1], CultureInfo.InvariantCulture),
-            Heading = double.Parse(parts[2], CultureInfo.InvariantCulture)
-        };
-    }
-
-    public static string Payload(double x, double y, double heading) =>
-        $"{x.ToString("R", CultureInfo.InvariantCulture)}|{y.ToString("R", CultureInfo.InvariantCulture)}|{heading.ToString("R", CultureInfo.InvariantCulture)}";
-}
-
 // The golem concluded a touch was a peer: it met that body there. History, not geometry.
 public sealed class PeerMet : IDispatchMessage
 {

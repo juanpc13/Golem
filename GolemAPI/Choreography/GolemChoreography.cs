@@ -98,14 +98,36 @@ public sealed class GolemChoreography
             // `with` clause has no name a peer could bind): one match serves a bump on a mission's
             // road and a touch while standing idle alike.
             string bumped = string.Join("\n", peers.Select(p =>
-                $"tell BumpedAt with @x, @y, @who, @px, @py to {p} once 'bump-' + @who + '-' + @x + ',' + @y + '-{p}';"));
+                $"tell BumpedAt with @x, @y, @heading, @who, @px, @py to {p} once 'bump-' + @who + '-' + @x + ',' + @y + '-{p}';"));
             perf.Actor.Reactions.DefineReaction("echo-bumped")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Bumped").One()
                     .OnMatch(@"
-                        expose $x x, $y y, $who who, $px px, $py py;
+                        expose $x x, $y y, $heading heading, $who who, $px px, $py py;
                     ")
                 .Causation.Continue(bumped);
+
+            // A standing body touched: a body did it (things do not move). Told so the mover knows it met one; no mark.
+            string touched = string.Join("\n", peers.Select(p =>
+                $"tell TouchedAt with @x, @y, @who, @px, @py to {p} once 'touch-' + @who + '-' + @x + ',' + @y + '-{p}';"));
+            perf.Actor.Reactions.DefineReaction("echo-touched")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Touched").One()
+                    .OnMatch(@"
+                        expose $x tx, $y ty, $who twho, $px tpx, $py tpy;
+                    ")
+                .Causation.Continue(touched);
+
+            // It was a body: the mark the bump presumed is taken back, here and in every peer that learned it.
+            string met = string.Join("\n", peers.Select(p =>
+                $"tell MetPeer with @x, @y to {p} once 'met-{golem}-' + @x + ',' + @y + '-{p}';"));
+            perf.Actor.Reactions.DefineReaction("echo-met")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Met").One()
+                    .OnMatch(@"
+                        expose $x ex, $y ey;
+                    ")
+                .Causation.Continue(met);
 
             // Somebody took a thing away: the fleet must forget it together, or one golem would keep skirting
             // what another can already drive through.
@@ -119,15 +141,6 @@ public sealed class GolemChoreography
                     ")
                 .Causation.Continue(forgotten);
 
-            string marked = string.Join("\n", peers.Select(p =>
-                $"tell ObstacleFound with @x, @y, @heading to {p} once 'obstacle-{golem}-' + @x + ',' + @y + '-{p}';"));
-            perf.Actor.Reactions.DefineReaction("echo-marked")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Marked").One()
-                    .OnMatch(@"
-                        expose $x mx, $y my, $heading mh;
-                    ")
-                .Causation.Continue(marked);
         }
 
         if (tellDoneTo == null) return;
@@ -233,7 +246,7 @@ public sealed class GolemChoreography
             {
                 actor.Using(@"
                     { touch = Pose(@x, @y, @heading); g.Bump(touch); }
-                    expose @x x, @y y, @me who, @px px, @py py;
+                    expose @x tx, @y ty, @me twho, @px tpx, @py tpy;
                 ")
                 .WithParameters(p => {
                     p["x",       typeof(double)] = m.X;
@@ -253,7 +266,7 @@ public sealed class GolemChoreography
                 ",
                 @"
                     { touch = Pose(@x, @y, @heading); g.Bump(@id, touch); }
-                    expose @x x, @y y, @me who, @px px, @py py;
+                    expose @x x, @y y, @heading heading, @me who, @px px, @py py;
                 ")
             .WithParameters(p => {
                 p["id",      typeof(int)]    = m.Id;
@@ -268,28 +281,12 @@ public sealed class GolemChoreography
             Settle(refused, $"mission {m.Id} bumped into something at ({m.X:0.0}, {m.Y:0.0})");
         });
 
-        // The conclusions of a touch, in the golem's voice — the DOMAIN suspected (g.Suspect), the host only writes
-        // what it named. A mark: it was a thing (nobody else bumped there and then); the heading is the mark's normal.
-        dispatch.On<ObstacleMarked>((actor, m) =>
-        {
-            actor.Using(@"
-                { touch = Pose(@x, @y, @heading); g.Mark(touch); }
-                expose @x mx, @y my, @heading mh;
-            ")
-            .WithParameters(p => {
-                p["x",       typeof(double)] = m.X;
-                p["y",       typeof(double)] = m.Y;
-                p["heading", typeof(double)] = m.Heading;
-            })
-            .PerformCommand();
-            Console.WriteLine($"[golem {golem}] marked a thing at ({m.X:0.0}, {m.Y:0.0}) (entry {perf.CurrentEntryId})");
-        });
-
         // It was a peer: the body met another body there. History, told to nobody (the peer lived it too).
         dispatch.On<PeerMet>((actor, m) =>
         {
             actor.Using(@"
                 { at = Position(@x, @y); g.Met(@who, at); }
+                expose @x ex, @y ey;
             ")
             .WithParameters(p => {
                 p["who", typeof(string)] = m.Who;
@@ -367,10 +364,12 @@ public sealed class GolemChoreography
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
                 .Command("{ point = Position(@x, @y); g.Follow(point); }")
-            .Told("BumpedAt").With<double>("x").With<double>("y").With<string>("who").With<double>("px").With<double>("py")
-                .Command("{ at = Position(@x, @y); peer = Position(@px, @py); g.HearBump(@who, at, peer); }")
-            .Told("ObstacleFound").With<double>("x").With<double>("y").With<double>("heading")
-                .Command("{ touch = Pose(@x, @y, @heading); g.LearnMark(touch); }")
+            .Told("BumpedAt").With<double>("x").With<double>("y").With<double>("heading").With<string>("who").With<double>("px").With<double>("py")
+                .Command("{ touch = Pose(@x, @y, @heading); peer = Position(@px, @py); g.HearBump(@who, touch, peer); }")
+            .Told("TouchedAt").With<double>("x").With<double>("y").With<string>("who").With<double>("px").With<double>("py")
+                .Command("{ at = Position(@x, @y); peer = Position(@px, @py); g.HearTouch(@who, at, peer); }")
+            .Told("MetPeer").With<double>("x").With<double>("y")
+                .Command("{ at = Position(@x, @y); g.LearnMet(at); }")
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command("{ at = Position(@x, @y); g.LearnForget(at); }")
             .Start();
@@ -391,7 +390,6 @@ public sealed class GolemChoreography
             "routed"    => MissionRouted.TypeId,
             "reached"   => StopReached.TypeId,
             "bumped"    => MissionBumped.TypeId,
-            "marked"    => ObstacleMarked.TypeId,
             "met"       => PeerMet.TypeId,
             "grazed"    => MissionGrazed.TypeId,
             "abandoned" => MissionAbandoned.TypeId,
@@ -795,14 +793,41 @@ public sealed class GolemChoreography
             await WaitUntilAsync(() => MetCount() > metBefore, ct);
             return suspicion.Who;
         }
-        int marksBefore = Marks();
-        string mark = $"mission {id}: the domain suspects a thing — nobody else bumped there: a mark at ({hit.X:0.0}, {hit.Y:0.0}) with its normal, told to the peers ({suspicion.Conclusion})";
-        Console.WriteLine($"[golem {golem}] {mark}");
-        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", mark, DateTime.UtcNow));
-        Produce("marked", $"{golem}:mark:{hit.X:0.00},{hit.Y:0.00}:{DateTime.UtcNow.Ticks}", ObstacleMarked.Payload(hit.X, hit.Y, hit.Heading));
-        // wait for the mark to be applied (a touch within a tenth of a unit of an old mark adds none: then the wait times out)
-        await WaitUntilAsync(() => Marks() > marksBefore, ct);
+        string thing = $"mission {id}: nobody else bumped there and then — the mark the bump presumed at ({hit.X:0.0}, {hit.Y:0.0}) stands; reconsidering for {Reconsider.TotalSeconds:0}s";
+        Console.WriteLine($"[golem {golem}] {thing}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", thing, DateTime.UtcNow));
+        _ = ReconsiderAsync(id, hit, since, ct);
         return "";
+    }
+
+    // A peer may speak after the window: its own row goes through its journal, its reaction and the wire before it
+    // reaches mine, and a standing body tells its touch at most once a second. The host owns the clock, so it keeps
+    // asking the domain for a while; if the domain then suspects a peer, the conclusion is the same Met — the mark the
+    // bump presumed goes, here and in every peer that learned it. Otherwise the mark stands (10-sep-2026 lab: a ghost
+    // mark in the garage lived in three journals because red's TouchedAt came after the 2.5 s window).
+    private static readonly TimeSpan Reconsider = TimeSpan.FromSeconds(12);
+
+    private async Task ReconsiderAsync(int id, Collision hit, int since, CancellationToken ct)
+    {
+        try
+        {
+            var until = DateTime.UtcNow + Reconsider;
+            while (DateTime.UtcNow < until && !ct.IsCancellationRequested)
+            {
+                await Task.Delay(500, ct);
+                var suspicion = Suspect(hit, since);
+                if (suspicion.Kind != "peer") continue;
+                int metBefore = MetCount();
+                string late = $"mission {id}: {suspicion.Who} spoke after the window — it was there too: the mark the bump presumed at ({hit.X:0.0}, {hit.Y:0.0}) is taken back ({suspicion.Conclusion})";
+                Console.WriteLine($"[golem {golem}] {late}");
+                feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", late, DateTime.UtcNow));
+                Produce("met", $"{golem}:met:{suspicion.Who}:{hit.X:0.00},{hit.Y:0.00}:{DateTime.UtcNow.Ticks}", PeerMet.Payload(suspicion.Who, hit.X, hit.Y));
+                await WaitUntilAsync(() => MetCount() > metBefore, ct);
+                return;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception e) { Console.WriteLine($"[golem {golem}] reconsidering a mark failed: {e.Message}"); }
     }
 
     // Standing still for a while — and telling any touch meanwhile: whoever moved into me must hear it met a body.

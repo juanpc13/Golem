@@ -551,20 +551,18 @@ public class MissionAcceptanceTests
     // ---- marks: what bodies touched that the plan does not hold ----
 
     [TestMethod]
-    public void ABump_IsATouchToBeSettled_AndAMarkIsTheConclusion()
+    public void ABump_IsATouchAndAMarkAtOnce_UntilAPeerSpeaks()
     {
         Visit(1, 9.0, 1.5);                       // the garage
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));      // from the storage: down the east corridor
         Assert.AreEqual(0, Int("g.MarkCount()"));
         Assert.IsTrue(Bool("g.FitsAt(10.25, 5.5)"), "the corridor is clear as far as the map knows");
 
-        Bump(1, 10.25, 5.85, South);                // the crate's face — or a peer: not known yet
-        Assert.AreEqual(0, Int("g.MarkCount()"), "a bump is a touch, not yet a mark");
+        Bump(1, 10.25, 5.85, South);                // the crate's face — or a peer: presumed a thing, in one act
+        Assert.AreEqual(1, Int("g.MarkCount()"), "a bump is a touch AND a mark, with the heading of the touch as its normal");
         Assert.AreEqual(1, Int("g.Bumps(1)"));
         Assert.IsTrue(Bool("g.HasBumpedSinceRoute(1)"));
-        Assert.AreEqual("", Text("g.HeardBumpNear(10.25, 5.85, 0)"), "no peer said it bumped there");
-
-        Assert.AreEqual(1, Int("g.Mark(Pose(10.25, 5.85, -1.5708))"), "nobody else bumped: the golem marks it, with the heading of the touch as the mark's normal");
+        Assert.AreEqual("", Text("g.HeardBumpNear(10.25, 5.85, 0)"), "no peer said it bumped there: the mark stands");
         Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the body no longer fits where the mark reaches");
         Assert.IsTrue(Bool("g.HasRoomAt(10.25, 5.5)"), "the walls alone still leave room there: marks are what the body feels around");
         Assert.IsFalse(Bool("g.HasRoomAt(9.7, 5.5)"), "too close to the corridor's wall for the body");
@@ -578,18 +576,24 @@ public class MissionAcceptanceTests
     {
         Visit(1, 9.0, 1.5);
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
-        Assert.AreEqual(1, Int("g.HearBump('blue', Position(4.6, 9.5), Position(5.1, 9.5))"), "blue says it bumped in the kitchen's doorway, standing just past it");
+        Assert.AreEqual(1, Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))"), "blue says it bumped in the kitchen's doorway, standing just past it");
         int heard = Int("g.HeardBumpCount()");
 
         Bump(1, 4.7, 9.5, East);                    // my own touch, right there
         Assert.AreEqual("blue", Text("g.HeardBumpNear(4.7, 9.5, 0)"), "blue's bump is within a body's diameter of mine: it was blue");
         Assert.AreEqual("", Text("g.HeardBumpNear(4.7, 9.5, " + heard + ")"), "nothing heard after that count");
         Assert.AreEqual("", Text("g.HeardBumpNear(10.25, 5.85, 0)"), "a bump far away is somebody else's business");
-        Assert.AreEqual(0, Int("g.MarkCount()"), "meeting a body leaves no mark");
+        Assert.AreEqual(2, Int("g.MarkCount()"), "two marks presumed: blue's bump, heard, and my own");
+        Met("blue", 4.7, 9.5);
+        Assert.AreEqual(0, Int("g.MarkCount()"), "meeting a body takes both marks back: mine, and the one I learned from blue's bump there");
+        Assert.AreEqual(0, Int("g.LearnMet(Position(4.6, 9.5))"), "when blue tells it met a body too, nothing is left to take back");
+        Assert.AreEqual(0, Int("g.MarkCount()"), "a meeting leaves no mark on either side");
 
         Assert.AreEqual(1, Int("g.Bump(Pose(4.9, 9.5, 0.0))"), "a body standing idle that gets touched bumps too, without a mission");
         Assert.AreEqual(2, Int("g.Bump(Pose(4.9, 9.5, 0.0))"));
-        Refuses("g.HearBump('', Position(1.0, 1.0), Position(1.0, 1.0));", "needs to say who");
+        Refuses("g.HearBump('', Pose(1.0, 1.0, 0.0), Position(1.0, 1.0));", "needs to say who");
+        Assert.AreEqual(2, Int("g.HearTouch('red', Position(4.9, 9.5), Position(5.1, 9.5))"), "a standing peer touched: heard (the second bump heard)…");
+        Assert.AreEqual(0, Int("g.MarkCount()"), "…and no mark: what touches a standing body is a body");
     }
 
     [TestMethod]
@@ -657,8 +661,7 @@ public class MissionAcceptanceTests
         Visit(1, 9.0, 1.5);
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
 
-        Bump(1, 10.25, 5.85, South);                 // the crate, met halfway down the corridor
-        Mark(10.25, 5.85, South);                    // nobody else bumped: an obstacle
+        Bump(1, 10.25, 5.85, South);                 // the crate, met halfway down the corridor: bumped and marked at once
         string again = Text("g.Plan(1, 10.25, 6.3)");   // from where the body backed off to
         Assert.IsFalse(again.Contains("east/garage"), "the corridor is closed by the mark: " + again);
         StringAssert.Contains(again, "storage/east@10.25,8", "back out the way it came");
@@ -761,11 +764,11 @@ public class MissionAcceptanceTests
         Route(1, Text("g.Plan(1, 2.0, 9.5)"));
         Assert.IsFalse(Bool("g.HasBumpedSinceRoute(1)"));
 
-        Bump(1, 0.8, 8.2, South);
+        Bump(1, 2.0, 10.8, North);                // something by the kitchen's north wall
         Assert.IsTrue(Bool("g.HasBumpedSinceRoute(1)"), "the plan is interrupted: the golem decides another road");
         Assert.AreEqual("pending", Text("g.StatusOf(1)"), "but the mission goes on");
 
-        Route(1, Text("g.Plan(1, 0.8, 8.5)"));    // from where the body stands, the same stop ahead
+        Route(1, Text("g.Plan(1, 2.0, 10.4)"));   // from where the body stands, the same stop ahead
         Assert.IsFalse(Bool("g.HasBumpedSinceRoute(1)"));
         Assert.AreEqual(1, Int("g.StopsLeft(1)"));
 
@@ -782,7 +785,9 @@ public class MissionAcceptanceTests
         // red drives east across the kitchen toward the north hall; blue tells it bumped in the doorway and
         // stands just past it. Knowing where blue is, red's road starts by stepping out of the way.
         Visit(1, "north");
-        Int("g.HearBump('blue', Position(4.6, 9.5), Position(5.1, 9.5))");
+        Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
+        Bump(1, 4.7, 9.5, East);                      // my own touch, right there: presumed a thing…
+        Met("blue", 4.7, 9.5);                        // …until the domain names blue: both marks go, the way is clear to step aside
 
         string road = Text("g.PlanPast(1, 'blue', 4.6, 9.5, 0.0)");
         StringAssert.StartsWith(road, "aside@", "the first leg is the courtesy step: " + road);
@@ -804,7 +809,7 @@ public class MissionAcceptanceTests
     public void WithNowhereToStepAside_TheRoadIsThePlainOne()
     {
         Visit(1, "north");
-        Int("g.HearBump('blue', Position(4.6, 9.5), Position(5.1, 9.5))");
+        Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
         // hemmed in against the kitchen's north wall: neither side leaves room for the body
         string road = Text("g.PlanPast(1, 'blue', 2.0, 10.9, 1.5708)");
         Assert.IsFalse(road.Contains("aside@"), "no room to be polite: the plain road, and the meeting is settled by waiting: " + road);
@@ -914,7 +919,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual("Mark", doc.RootElement.GetProperty("thingVerb").GetString());
         Assert.AreEqual("", doc.RootElement.GetProperty("nobody").GetString());
 
-        Int("g.HearBump('blue', Position(4.6, 9.5), Position(5.1, 9.5))");
+        Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
         string peer = perf.Actor.Using(@"
             print g.Suspect(4.7, 9.5, 0.0, 0).Kind 'kind', g.Suspect(4.7, 9.5, 0.0, 0).Who 'who', g.Suspect(4.7, 9.5, 0.0, 0).Conclusion 'verb';
             print g.Suspect(4.7, 9.5, 0.0, 1).Kind 'later';
@@ -982,8 +987,8 @@ public class MissionAcceptanceTests
         // was estimated head-on, so the mark (4.94, 5.76) fell 0.19 from where the body then stood (4.8, 5.63) — inside
         // its own radius. A body cannot be inside a thing: the mark forbids walking further in, not leaving.
         Visit(1, 9.0, 1.5);                                                    // the garage
-        Mark(4.93672793175996, 5.75978159057928, -1.37257826652825);
-        Mark(5.14806941278059, 5.65085610890956, 0.0681849256515386);         // the second touch, stepping left into the crate's west face
+        LearnMark(4.93672793175996, 5.75978159057928, -1.37257826652825);
+        LearnMark(5.14806941278059, 5.65085610890956, 0.0681849256515386);    // the second touch, stepping left into the crate's west face
 
         string plan = Text("g.Plan(1, 4.8, 5.63)");
         StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
@@ -1023,17 +1028,6 @@ public class MissionAcceptanceTests
             p["id", typeof(int)]    = id;
             p["x",  typeof(double)] = x;
             p["y",  typeof(double)] = y;
-        })
-        .PerformCommand();
-
-    private void Mark(double x, double y, double heading) =>
-        perf.Actor.Using(@"
-            { touch = Pose(@x, @y, @heading); g.Mark(touch); }
-        ")
-        .WithParameters(p => {
-            p["x",       typeof(double)] = x;
-            p["y",       typeof(double)] = y;
-            p["heading", typeof(double)] = heading;
         })
         .PerformCommand();
 

@@ -38,11 +38,13 @@ in [CLAUDE.md](CLAUDE.md).
   something is told so by the simulator's contact sensor. The golem reckons where the touch happened
   (its pose plus its own radius) and holds that point against its map: a wall it knows is its own
   execution error, so it backs off and tries the leg again; anything else is a touch it journals and
-  tells (`g.Bump(1, 4.5, 9.5)`), then listens: a peer that says it bumped there and then is a body,
-  not a thing — the two coordinate (the name that sorts first has the way, the other backs down its
-  lane and steps aside), and no mark is made; nobody? then it was an obstacle, a mark on its map
-  (`g.Mark`), told to every peer (`g.LearnMark`), and the golem feels for a way past, right then left,
-  before deciding its road again around the marks. Only when no road fits its body does the mission fail.
+  tells (`{ touch = Pose(@x, @y, @heading); g.Bump(@id, touch); }`), presuming a thing: the mark is made in
+  the same row, and the peers that hear it mark it too. Then it listens: a peer that says it bumped or was
+  touched there and then is a body, not a thing — the golem concludes `g.Met(who, at)`, the mark comes back
+  here and in every peer (`MetPeer` → `LearnMet`), and the two coordinate (the name that sorts first has the
+  way, the other backs down its lane and steps aside); nobody? the mark stands, and the golem feels for a way
+  past, right then left, before deciding its road again around the marks. Only when no road fits its body does
+  the mission fail.
 - **The map is knowledge, and a module of its own.** Each golem carries the warehouse map in its journal
   (release `warehouse_v1`: a `MapLayout`, the concrete map — each area found once and told where it stands, how
   big it is, its doors and what it opens to) and plans the shortest road through doors and openings. The map
@@ -121,13 +123,12 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Cover(id, stops)` | Several stops, and the golem **chooses the order** that makes the whole road shortest. |
 | `Follow(x, y)` | The golem follows its leader to a point a peer says it reached (handle minted inside). |
 | `Route(id)` · `Via(id, passage, at)` · `Around(id, at)` · `Aside(id, at)` · `Stop(id, at)` | The plan, one act per leg in the same entry as the errand: passages to cross (a door or an opening of the map, found), points to pass (around a mark, aside from a peer) and stops to reach, in order. Between stops it is always the shortest road. An errand one segment away has no road to decide and gets none. |
-| `Reach(id, x, y)` | A stop reached: the legs before it were walked, whatever they were. Reaching the last one completes the mission — there is no separate "complete". Told to the follower. |
-| `Bump(id, x, y, heading)` · `Bump(x, y, heading)` | The body touched something the map does not hold, heading that way — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is concluded afterwards, by the domain. |
-| `HearBump(who, x, y)` | A peer told it bumped at a point. A touch of my own there and then was that peer: a body, not a thing. |
-| `Graze(id, x, y)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the mission up. |
-| `Mark(x, y, heading)` | The domain suspected a thing (nobody else bumped there and then): a **mark** on the map of touches with the heading as its normal, told to every peer. The golem then feels for a way past (a step right, then left, a body's width at a time) and, failing that, decides its road again around the marks. |
-| `Met(who, x, y)` | The domain suspected a peer: the body met that peer there. History among the obstacles (a `Peer`), never geometry. |
-| `LearnMark(x, y, heading)` | A peer told of a mark: the golem learns it without the bruise, and plans around it too. |
+| `Reach(id, at)` | A stop reached: the legs before it were walked, whatever they were. Reaching the last one completes the mission — there is no separate "complete". Told to the follower. |
+| `Bump(id, touch)` · `Bump(touch)` | The body touched something the map does not hold, heading that way — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is concluded afterwards, by the domain. |
+| `HearBump(who, touch, peerAt)` · `HearTouch(who, at, peerAt)` | A peer told it bumped (heading which way, standing where) or was touched while standing. A touch of my own there and then was that peer: a body, not a thing. A bump heard is learned as a mark, as the peer presumed; a touch heard is not (what touches a standing body is a body). |
+| `Graze(id, at)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the mission up. |
+| `Met(who, at)` | The domain concluded a peer: the body met that peer there. The mark its bump presumed comes back, and so does the one learned from that peer's bump there; the encounter stays among the obstacles as history (a `Peer`), never geometry. Told (`MetPeer`). |
+| `LearnMet(at)` | A peer said its touch there was a body: the golem takes back the mark it learned from that bump. |
 | `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
 | `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
 

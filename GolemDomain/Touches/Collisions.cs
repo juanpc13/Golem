@@ -134,6 +134,24 @@ internal sealed class Collisions
         return new ThingFound();
     }
 
+    /// <summary>A mark taken back: the touch that made it turned out to be a body, not a thing. Only the mark at that
+    /// point (within SameTouch) goes; the figure it was a vertex of is recomputed from what remains. Returns how many.</summary>
+    internal int Unmark(Position at)
+    {
+        if (at == null) throw new DomainException("taking a mark back needs where");
+        return marks.RemoveAll(m => m.DistanceTo(at) < SameTouch);
+    }
+
+    /// <summary>The marks learned from a peer's bumps near a point are taken back too: the encounter was mutual, so what
+    /// that peer presumed there was my body. Returns how many went.</summary>
+    internal int UnmarkHeardFrom(string who, Position at)
+    {
+        int gone = 0;
+        foreach (var h in heard)
+            if (h.Who == who && h.At.DistanceTo(at) <= MeetingReach) gone += Unmark(h.At);
+        return gone;
+    }
+
     // ---- forgetting: something that was there is not there any more ----
 
     /// <summary>Whether an obstacle stands at a point — its centre or any of its vertices within JoinWithin of

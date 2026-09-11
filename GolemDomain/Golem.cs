@@ -245,20 +245,24 @@ internal sealed class Golem
     internal Maneuver Evasion(double x, double y, double heading, string strategy) =>
         EvasionStrategy.Named(strategy).From(new Position(x, y), heading);
 
-    // ---- touches: the facts take their objects too (a Pose, a Position); what a reaction must tell the peers is
-    //      exposed beside the act as @params, because the matcher captures no object (Fase 0, P3) ----
+    // ---- touches: the facts take their objects (a Pose, a Position); what a reaction must tell the peers is exposed
+    //      beside the act as @params, because the matcher captures no object (Fase 0, P3). ONE row per touch (Juan,
+    //      10-sep): the bump presumes it touched a THING and marks it at once; if a peer says it bumped there and
+    //      then, Met takes the mark back — and the peers, told, take back what they learned (LearnMet). ----
 
     /// <summary>The body touched something the map does not hold — where, and heading which way — on this mission. A fact,
-    /// told to the peers; what it was is concluded afterwards (Mark or Met, by what the peers say). Returns the mission id.</summary>
+    /// told to the peers, and a mark at once: the golem presumes a thing until a peer says it was there too (Met takes
+    /// the mark back). The plan is interrupted. Returns the mission id.</summary>
     internal int Bump(int id, Pose touch)
     {
         if (touch == null) throw new DomainException($"mission {id}'s bump needs the pose of the touch");
         Find(id).Bump();
+        collisions.Mark(touch);
         return id;
     }
 
-    /// <summary>Something touched the body while it stood without a mission — a peer, most likely; told to the peers so
-    /// the one that moved knows it met a body. Returns how many such touches so far.</summary>
+    /// <summary>Something touched the body while it stood without a mission — a body, since things do not move; told
+    /// to the peers so the one that moved knows it met a body. No mark. Returns how many such touches so far.</summary>
     internal int Bump(Pose touch)
     {
         if (touch == null) throw new DomainException("a bump needs the pose of the touch");
@@ -274,22 +278,36 @@ internal sealed class Golem
         return id;
     }
 
-    /// <summary>A peer says it bumped at a point while it stood at another: heard and kept by the collisions module, so a
-    /// touch of my own there and then is known to be that peer — and so that, once we know we met, I can step out of ITS
-    /// way knowing where it is. The named counterpart of LearnMark, which hears of a MARK; this one hears of a BUMP.</summary>
-    internal int HearBump(string who, Position at, Position peerAt) => collisions.Hear(who, at, peerAt);
+    /// <summary>A moving peer says it bumped — where, heading which way — while it stood at another point: heard and kept,
+    /// so a touch of my own there and then is known to be that peer (and I know where it is, to step out of its way); and
+    /// learned as a mark, as the peer itself presumed — until it says it met a body (LearnMet). Returns how many bumps heard.</summary>
+    internal int HearBump(string who, Pose touch, Position peerAt)
+    {
+        int heard = collisions.Hear(who, touch, peerAt);
+        collisions.Mark(touch);
+        return heard;
+    }
 
-    /// <summary>The golem concludes what it touched was a thing (no peer bumped there and then): a mark with the heading
-    /// of the touch as its normal, told to the peers. Returns how many marks it holds.</summary>
-    internal int Mark(Pose touch) => collisions.Mark(touch);
+    /// <summary>A standing peer says something touched it — where, while it stood at another point: heard and kept, so a
+    /// touch of my own there and then is known to be that peer. No mark: what touches a standing body is a body.</summary>
+    internal int HearTouch(string who, Position at, Position peerAt) => collisions.Hear(who, at, peerAt);
 
-    /// <summary>A peer says a thing stands there, touched heading that way: the golem learns the mark without the bruise.
-    /// Returns how many marks it holds.</summary>
+    /// <summary>A peer tells of a mark it concluded on its own: the golem learns it without the bruise. Returns how many marks it holds.</summary>
     internal int LearnMark(Pose touch) => collisions.Mark(touch);
 
-    /// <summary>The golem concludes what it touched was a peer — who said it bumped there and then. History, kept among
-    /// the obstacles as a Peer; nothing to plan around. Returns how many bodies it has met.</summary>
-    internal int Met(string who, Position at) => collisions.Meet(who, at);
+    /// <summary>The golem concludes what it touched was a peer — who said it bumped there and then: the mark its bump
+    /// presumed is taken back, and the encounter is kept among the obstacles as a Peer, history, nothing to plan around.
+    /// Told to the peers, who take back what they learned. Returns how many bodies it has met.</summary>
+    internal int Met(string who, Position at)
+    {
+        int met = collisions.Meet(who, at);
+        collisions.Unmark(at);                    // what I presumed a thing was that body
+        collisions.UnmarkHeardFrom(who, at);      // and what it presumed there was mine: the encounter was mutual
+        return met;
+    }
+
+    /// <summary>A peer says its touch there was a body: the golem takes back the mark it learned from that bump. Returns how many marks went.</summary>
+    internal int LearnMet(Position at) => collisions.Unmark(at);
 
     /// <summary>The operator says what stood at a point is gone — somebody took it away — and the golem forgets the
     /// obstacle there with EVERY mark that outlined it: a body may pass again, and a touch after this is a NEW

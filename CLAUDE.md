@@ -85,17 +85,26 @@ whether it could or not, so the domain resolves what follows. Consequences:
   is an `@param` (program–value separability, paper 02).
   **The touches take their objects too, and what is told rides beside them as `expose`** (Juan, 10-sep:
   "el g.Bump aún no maneja posición… hay que corregirlo, y el g.Mark también"): `{ touch = Pose(@x, @y,
-  @heading); g.Bump(@id, touch); } expose @x x, @y y, @me who, @px px, @py py;` — the reaction that tells
-  the peers captures the `expose` labels, because the matcher captures literals, `@params` and `expose`
-  labels only, never an object variable (Fase 0, P3). Same for `Mark` (`mx, my, mh`), `Reach` (`rid, rx,
-  ry`) and `Forget` (`gx, gy`); `Graze`, `Met`, `HearBump`, `LearnMark`, `LearnForget` need no expose
-  (nothing captures them). Labels are distinct per act so no two reactions match one shape.
+  @heading); g.Bump(@id, touch); } expose @x x, @y y, @heading heading, @me who, @px px, @py py;` — the
+  reaction that tells the peers captures the `expose` labels, because the matcher captures literals, `@params`
+  and `expose` labels only, never an object variable (Fase 0, P3). Same for the idle `Bump(touch)` (`tx, ty,
+  twho, tpx, tpy` → `TouchedAt`), `Met` (`ex, ey` → `MetPeer`), `Reach` (`rid, rx, ry`) and `Forget` (`gx, gy`);
+  `Graze`, `HearBump`, `HearTouch`, `LearnMet`, `LearnForget` need no expose (nothing captures them). Labels are
+  distinct per act so no two reactions match one shape.
+  **One row per touch** (Juan, 10-sep: "mantengamos una sola fila… el mismo g.Bump internamente se lo setea"):
+  there is no `Mark` verb. `Bump(id, touch)` presumes a THING and marks it inside (`collisions.Mark`); the peers
+  that hear `BumpedAt` mark it too (`HearBump`). If a peer says it bumped or was touched there and then, the
+  conclusion is `Met(who, at)`: the mark comes back (mine and the one heard from `who`), and `MetPeer` makes every
+  peer take back what it learned (`LearnMet`). A standing body's touch is `Bump(touch)` without a mark (things
+  do not move) and travels as `TouchedAt` → `HearTouch`. The host owns the clock: it listens 2.5 s, then keeps
+  reconsidering for 12 s more, because a peer's word may arrive after the window (a ghost mark lived in three
+  journals on 10-sep before that).
 - **Modules are globals of the actor** (`body`, `map`, `collisions`), built in their own releases and handed
   to the golem (`g = Golem(body, map, collisions)`): a query may calculate with a module alone
   (`map.ZoneOf(Position(5.5, 5.5))`, `map.Connects('north', 'center')`, `collisions.All()`,
   `RoutePlanner(map, collisions, r)`). Auxiliary variables inside a command template become globals too:
   build the object inline or inside `{ }`.
-- A Reaction may conclude for the domain (`Causation.Continue("g.Mark(...)")`), and
+- A Reaction may conclude for the domain (`Causation.Continue("g.Met(...)")`), and
   the engine can judge ABSENCE in a window (`None().Within(span)`, journal-clock): the
   host's timers are candidates to disappear (NOTEBOOK, *protocolo de toques v2*).
 
@@ -166,8 +175,8 @@ whether it could or not, so the domain resolves what follows. Consequences:
   last Reach completes — walking a door or a point is NOT journaled, Juan 10-sep: "no estar diciéndole
   cada cosa que va haciendo"), the interruption (Bump/Graze: the plan stops, another Route replaces what
   was left; also when the golem wakes with a plan underway),
-  touches (Bump: the fact, told; HearBump: a peer's bump; Mark/LearnMark: the marks — a touch nobody
-  else reported; Forget/LearnForget), the ending (Fail/Abandon) — every write goes through one serial
+  touches (Bump: the fact, told, and the mark at once; HearBump/HearTouch: a peer's bump or touch; Met/LearnMet:
+  it was a body, the mark comes back; Forget/LearnForget), the ending (Fail/Abandon) — every write goes through one serial
   Dispatch, tells are reaction-only. The releases build the modules (`body_v1`, `warehouse_v1`, `init`);
   what the simulator reports (a collision with a crate) is reality. The
   language was fixed on 7-sep-2026 and rewritten in objects on 10-sep-2026 (local plan
