@@ -15,6 +15,20 @@ source /opt/ros/humble/setup.bash
 export LIBGL_ALWAYS_SOFTWARE=1
 export QT_X11_NO_MITSHM=1
 
+# The base image's supervisor re-runs this session whenever its Xvnc (:1) dies — and under load it
+# does. Reality must not be born twice: on 14-sep-2026 a cold boot stacked six Gazebo servers, six
+# bridges and six crate levers in a 4 GB VM and the whole engine drowned. If the world already runs,
+# this run only keeps the session alive (or brings back the picture alone, if that is what died).
+if pgrep -f "ign gazebo -s" >/dev/null; then
+  if pgrep -f "ign gazebo -g" >/dev/null; then
+    echo "[sim] the world and its picture are already running: this session only waits"
+    exec sleep infinity
+  fi
+  echo "[sim] the world runs but its picture died: starting the GUI alone"
+  export DISPLAY=:2
+  exec nice -n 10 ign gazebo -g -v 1
+fi
+
 ign gazebo -s -r -v 1 /world/arena.sdf &
 sleep 3
 

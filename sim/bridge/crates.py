@@ -83,7 +83,10 @@ class Levers(Node):
         self.create_subscription(String, "/sim/crate", self.on_crate, 10)
         self.create_subscription(String, "/sim/view", self.on_view, 10)
         self.telling = self.create_publisher(String, "/sim/crates", 10)
-        self.create_timer(2.0, self.tell_what_stands_there)
+        # Asking the world what stands there spawns `ign model --list` — a whole ruby process, ~1 s of CPU
+        # and 600 MB — so it is asked seldom: a slow heartbeat, plus at once after every order and whenever
+        # a page asks ("tell"), which is how a freshly opened kiosk learns the floor without waiting.
+        self.create_timer(10.0, self.tell_what_stands_there)
         self.get_logger().info(
             "levers over world '%s': /sim/crate (%s | clear), /sim/view (top); telling /sim/crates"
             % (world, " | ".join(SPOTS)))
@@ -141,7 +144,9 @@ class Levers(Node):
 
     def on_crate(self, m):
         order = (m.data or "").strip()
-        if order == "clear":
+        if order == "tell":
+            pass   # a page just opened and wants to know the floor: told below
+        elif order == "clear":
             for s in SPOTS:
                 self.remove(NAME % s)
             self.get_logger().info("cleared every crate")

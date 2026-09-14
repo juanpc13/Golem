@@ -1304,3 +1304,21 @@ upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger
 `/progress` de red: `speed 2.0, lingerAfterTold 6.0`; red fue a storage y llegó. `radius`, `speed` y `linger` son globales del actor (nivel del upgrade, P2a), como Juan pidió; el panel consulta `body.Radius.InMeters`.
 
 **Pendiente**: las lecturas del golem al host siguen siendo dobles en unidad base (`g.Radius()`); si algún día el host quiere la magnitud, la lee del módulo (`body.Radius.InMeters`). Otros números crudos del dominio que merecen la misma mirada: las constantes de `Collisions` (`MarkReach`, `MeetingReach`…) y de `MapLayout` (`DoorWidth`, `WallThickness`) — son metros y podrían declararse como tales.
+
+---
+
+## 2026-09-14 · Tras un reinicio en frío la realidad nació seis veces: la VM se ahogó y Docker dejó de contestar
+
+**Contexto**: Juan reinició la máquina y "no conectaba nada": los paneles no respondían, el kiosko decía *Failed to connect to server* y se quedaba en "reaching the world…".
+
+**Observación**: `docker ps` contestaba pero `docker logs` y `docker info` se colgaban y la API devolvía 500. Dentro de la VM de WSL (tope 4 GB en `~/.wslconfig` desde marzo): 3.7 GB usados, 1.9 GB de swap, carga 338, y en `golem-sim` SEIS servidores de Gazebo, seis `parameter_bridge`, seis `crates.py` y varios `ign model --list` de 600 MB cada uno, muchos en estado D. El registro del contenedor lo explicaba: `exited: vnc (exit status 255; not expected)` → `spawned: 'vnc'`. El supervisor de la imagen base reinicia su Xvnc cuando muere, y su `xstartup` es nuestro `kiosk.sh`: cada reinicio del VNC ejecutaba el guion completo y paría otro mundo encima del anterior, cuyos procesos sobreviven porque no son hijos de Xvnc. En un arranque en frío con la máquina cargada el VNC muere una vez, el segundo mundo agota la memoria, el swap hace morir el VNC otra vez, y la espiral se cierra sola. Reiniciar Docker Desktop no ayuda: los contenedores vuelven por `restart: unless-stopped` y repiten el ciclo.
+
+**Segundo factor**: `crates.py` preguntaba al mundo qué cajas hay cada 2 s con `ign model --list`, un proceso ruby de ~1 s de CPU y 600 MB por llamada: carga constante aun en reposo, y bajo presión se apilan.
+
+**Conclusión**: la infraestructura tenía dos fugas latentes que solo la memoria justa reveló. Es el paper 06 otra vez: el síntoma ("Docker no conecta") estaba dos capas por debajo de donde apareció.
+
+**Ajuste a la infraestructura** (`sim/kiosk/kiosk.sh`, `sim/bridge/crates.py`, `sim/kiosk/kiosk.html`): (1) `kiosk.sh` es idempotente: si ya corre `ign gazebo -s`, la sesión nueva solo espera (`exec sleep infinity`), o levanta únicamente la GUI si fue la imagen lo que murió; (2) el latido de `/sim/crates` pasa de 2 s a 10 s, y la página pide el piso al conectar publicando `tell` en `/sim/crate`, así una pestaña recién abierta no espera al latido; cada orden sigue contando el piso de inmediato. **Ajuste al dominio: ninguno.**
+
+**Verificación**: flota arriba con un solo servidor, un puente, un `crates.py`, una GUI; VM en 2.0 GB usados y 1 MB de swap (antes 3.7 GB y 1.9 GB), carga 6 (antes 338); los tres paneles contestan, el kiosko muestra la imagen con los tres cuerpos y la lista de cajas. Journals intactos (no se archivó nada: no cambió el lenguaje).
+
+**Receta si vuelve a pasar** (síntoma: `docker ps` sí, `docker logs` no): `docker compose stop` si el motor aún contesta; si no, `wsl --shutdown` y abrir Docker Desktop; con la imagen nueva el mundo ya no se duplica. **Pendiente (decisión de Juan)**: el tope de 4 GB en `~/.wslconfig` fue suficiente con el mundo nacido una vez, pero el margen es corto (2 GB libres con la flota quieta); subirlo a 6 GB daría aire en la máquina de 16 GB.

@@ -62,6 +62,7 @@
           [IN_CRATE, IN_VIEW].forEach(topic =>
               ros.send(JSON.stringify({ op: 'advertise', topic, type: TYPE })));
           ros.send(JSON.stringify({ op: 'subscribe', topic: OUT_CRATES, type: TYPE }));
+          ros.send(JSON.stringify({ op: 'publish', topic: IN_CRATE, msg: { data: 'tell' } }));   // what stands there, now
           enable(true);
           say("a crate the golems' map does not hold: whatever touches it meets a real obstacle.");
       };
