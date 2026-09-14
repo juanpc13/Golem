@@ -1399,3 +1399,34 @@ La numeración de `via{n}` cuenta los tramos (una parada nombrada ocupa su núme
 **Observación (método)**: la transformación se hizo con un guion idempotente sobre el árbol limpio (`git checkout -- GolemDomain` y volver a correr), no a mano: 176 ediciones a mano habrían dejado huecos, y el guion imprime el conteo por archivo para comparar contra el inventario. Lección de la semana repetida: cambios mecánicos anchos, por guion y verificados por conteo.
 
 **Conclusión**: una guarda en la puerta convierte un `NullReferenceException` anónimo en una frase del dominio que el motor devuelve al comando ("Error while instantiating…" o el mensaje mismo en un método) y que el journal no registra. Sin cambio en el lenguaje del journal; los journals siguen válidos. La verificación en vivo quedó pendiente porque Docker Desktop estaba cerrado al terminar: el cambio no toca ningún camino que la rehidratación ejecute con nulos, y los 56 tests rehidratan al golem entero.
+
+---
+
+## 2026-09-14 · El simulador no arrancaba: el motor de Docker estaba apagado
+
+**Contexto**: Juan reporta que el simulador no arranca. Antes de tocar `sim/` conviene separar dos cosas que se parecen desde afuera: que el simulador falle, o que no haya dónde correrlo.
+
+**Observación**:
+1. `docker compose ps` no respondió con contenedores sino con el error del socket: `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`. Ese mensaje **no habla del simulador**: dice que el motor no está.
+2. Confirmado desde Windows: el proceso de Docker Desktop no existía, el servicio `com.docker.service` estaba **Stopped**, y la distro `docker-desktop` de WSL, **Stopped**.
+3. Arrancado Docker Desktop, el motor respondió en unos tres segundos y **los cuatro contenedores se levantaron solos**, porque el compose los declara `restart: unless-stopped`. No hizo falta `compose up`.
+4. Comprobado que el simulador sí arranca por dentro, no solo que el contenedor está "Up": `ign gazebo -s -r` (física) y `ign gazebo -g` (imagen), el `parameter_bridge`, `teleport.py`, `crates.py` y rosbridge, que registró a los tres golems conectándose y a la página del kiosko suscribiéndose a `/sim/crates`. El mundo contesta a `ign model --list` y la captura tomada dentro del contenedor (display :2) muestra la arena desde arriba con los tres cuerpos y el factor de tiempo real al 80%.
+5. **Gotcha de diagnóstico propio**: el primer `pgrep -a "ign|rosbridge"` no encontró nada y casi me hace concluir que Gazebo no corría. `pgrep -a` casa contra el **nombre** del proceso; hace falta `pgrep -af` para casar la línea de comando completa, que es donde viven `ign gazebo -s -r` y el rosbridge lanzado por python.
+
+**Conclusión**: no había avería. La causa era que el motor de Docker estaba apagado, y el síntoma se confunde con "el simulador no arranca" porque todos los comandos de docker fallan igual. La señal que los distingue es el error del *npipe*: si aparece, nada de lo que se pruebe dentro del contenedor tiene sentido todavía.
+
+**Ajuste al dominio**: ninguno; es operación, no dominio.
+
+**Pendiente**: nada. Queda como receta: ante "no arranca", primero `docker info`; si da el error del npipe, arrancar Docker Desktop y esperar a que el motor responda; recién entonces mirar el log de la sesión del kiosko (`~ubuntu/.vnc/*.log`), que es donde escribe `kiosk.sh`.
+
+---
+
+## 2026-09-14 · Inventario de la superficie del journal: qué recibe objetos, qué valida, qué sobra
+
+**Contexto**: Juan pidió "una lista de los métodos y los parámetros que reciben: cuáles ya tienen el ajuste de objetos, cuáles las validaciones, cuáles aún reciben primitivos y si se pueden sustituir, y cuáles ya no se usan". Un guion contó, por miembro de `Golem` y `Route`, el tipo de parámetros, las guardas y los usos en host, panel y tests.
+
+**Observación**: todos los actos del journal reciben objetos y validan (`Visit/Cover/Follow`, `Then`, `Via`, `Stop`, `Reach`, `Bump`, `Graze`, `Pause/Resume/Announce`, `LearnMet/Forget/LearnForget`). Quedan primitivos legítimos: `g.Find(id)` (búsqueda), `Fail/Abandon(why)` (texto; candidato a un `Reason` con variantes, paper 01) y `who` en `HearBump/HearTouch/Met` (la identidad del journal ajeno no es objeto del dominio). Las lecturas reciben `id` y `x, y` porque la pose es telemetría de la consulta y el id la clave del host. Sin uso en el host: `g.LearnMark`, `g.Evasion` (+ `Maneuver`, `EvasionStrategy`, `Side`) y `Route.ReadReason`; solo en tests: `Plan`, `PlanPast`, `NextHandle`, `KnowsPlace`, `PlaceCount`, `PassageCount`, `HeardBumpNear`, `WasAnnounced`, `HeadingKind`, `StatusOf`, `Places` (lecturas de laboratorio, se quedan).
+
+**Ajuste al dominio** (`Golem`, `Routes.Route`, `Touches.Suspicion`; `Routes/Maneuver.cs` eliminado): fuera `LearnMark`, `Evasion` y la familia de maniobras (el paso de cortesía de `RoadPast` se calcula en el golem: `CourtesyStep = 0.5` a la derecha y luego a la izquierda de la proa), fuera `ReadReason` y el campo `reason` (la razón es del acto y la guarda el journal). `Suspect(Pose touch, int since)` con guarda; `ThingFound.Conclusion` pasa de `"Mark"` a `"Bump"`: desde la fila única no hay verbo `Mark`, la conclusión de una cosa es que la marca del choque se queda. Host: `g.Suspect(Pose(@x, @y, @heading), @since)`. Tests: 55 verdes; el helper del laboratorio planta marcas con `collisions.Mark(touch)` sobre el módulo global, que es lo que un laboratorio hace: calcular con un módulo solo.
+
+**Conclusión**: el inventario por guion (parámetros, guardas, usos) es barato y vale repetirlo tras cada cambio de lenguaje; deja ver muertos que la lectura del código no delata. **Pendiente**: el tanteo alrededor de una marca sigue siendo pasos del host (`StepAsideAsync`, `FeelForAWayPastAsync`): la doctrina pide que el dominio decida la maniobra y el host la ejecute; se propone en el PLAN antes de tocarlo.

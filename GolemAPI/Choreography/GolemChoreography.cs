@@ -1321,9 +1321,9 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @kind = g.Suspect(@x, @y, @heading, @since).Kind;
-            @who = g.Suspect(@x, @y, @heading, @since).Who;
-            @verb = g.Suspect(@x, @y, @heading, @since).Conclusion;
+            @kind = g.Suspect(Pose(@x, @y, @heading), @since).Kind;
+            @who = g.Suspect(Pose(@x, @y, @heading), @since).Who;
+            @verb = g.Suspect(Pose(@x, @y, @heading), @since).Conclusion;
         ")
         .WithParameters(rented, p => {
             p["x",       typeof(double)]              = hit.X;

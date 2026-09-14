@@ -4,13 +4,14 @@ namespace GolemDomain.Touches;
 /// What the golem suspects its body touched — the hypothesis the collisions module forms from its own facts, so
 /// that the host never reasons: a wall it knows (its own execution error), a peer that said it bumped there and
 /// then, or a thing nobody charted. Each variant names the conclusion the golem then writes in its journal, in
-/// its own voice: Graze, Met or Mark. (Provisional name, Juan 8-sep: may be renamed later.)
+/// its own voice: Graze, Met — or nothing more than the Bump already written, whose mark stands (one row per touch,
+/// 10-sep-2026). (Provisional name, Juan 8-sep: may be renamed later.)
 /// </summary>
 internal abstract class Suspicion
 {
     /// <summary>wall, peer or thing.</summary>
     internal abstract string Kind { get; }
-    /// <summary>The verb the golem concludes with: Graze, Met or Mark.</summary>
+    /// <summary>The verb the golem concludes with: Graze, Met — or Bump, the one already written, whose mark stands.</summary>
     internal abstract string Conclusion { get; }
     /// <summary>Who, when a peer was met; "" otherwise.</summary>
     internal virtual string Who => "";
@@ -41,5 +42,5 @@ internal sealed class PeerMet : Suspicion
 internal sealed class ThingFound : Suspicion
 {
     internal override string Kind => "thing";
-    internal override string Conclusion => "Mark";
+    internal override string Conclusion => "Bump";
 }

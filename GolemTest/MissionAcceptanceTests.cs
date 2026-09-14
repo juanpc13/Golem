@@ -171,38 +171,6 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
-    public void AnEvasion_IsAManeuver_ATrajectoryOfItsOwn()
-    {
-        // the body at the middle of the center hall, heading east (0 rad), touched something: step right, run ahead
-        string json = perf.Actor.Using(@"
-            foreach (legs in g.Evasion(@x, @y, @heading, 'step-right').Legs()) { print legs.Name 'leg', legs.At.X 'x', legs.At.Y 'y'; }
-            foreach (back in g.Evasion(@x, @y, @heading, 'back-off').Legs()) { print back.Name 'leg', back.At.X 'x', back.At.Y 'y'; }
-        ")
-        .WithParameters(p => {
-            p["x",       typeof(double)] = 5.5;
-            p["y",       typeof(double)] = 5.5;
-            p["heading", typeof(double)] = 0.0;
-        })
-        .PerformQuery();
-
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var legs = doc.RootElement.GetProperty("legs");
-        Assert.AreEqual(2, legs.GetArrayLength(), "aside, then ahead");
-        Assert.AreEqual("aside", legs[0].GetProperty("leg").GetString());
-        Assert.AreEqual(5.5, legs[0].GetProperty("x").GetDouble(), 0.001);
-        Assert.AreEqual(5.0, legs[0].GetProperty("y").GetDouble(), 0.001, "right of an eastward lane is south: half a metre");
-        Assert.AreEqual("ahead", legs[1].GetProperty("leg").GetString());
-        Assert.AreEqual(6.7, legs[1].GetProperty("x").GetDouble(), 0.001, "then 1.2 ahead in the new lane");
-        Assert.AreEqual(5.0, legs[1].GetProperty("y").GetDouble(), 0.001);
-        var back = doc.RootElement.GetProperty("back");
-        Assert.AreEqual(1, back.GetArrayLength());
-        Assert.AreEqual("back", back[0].GetProperty("leg").GetString());
-        Assert.AreEqual(4.6, back[0].GetProperty("x").GetDouble(), 0.001, "0.9 back along the lane");
-
-        Refuses("g.Evasion(5.5, 5.5, 0.0, 'teleport');", "no evasion strategy named");
-    }
-
-    [TestMethod]
     public void TheShortestRoad_CutsThroughTheCenter_WhenThatIsShorter()
     {
         // kitchen (2,9.5) -> door (4,9.5) -> the open boundary north~center at its middle (5.5,8) -> the open
@@ -622,8 +590,8 @@ public class MissionAcceptanceTests
         Assert.IsTrue(Bool("g.HasRoomAt(10.25, 5.5)"), "the walls alone still leave room there: marks are what the body feels around");
         Assert.IsFalse(Bool("g.HasRoomAt(9.7, 5.5)"), "too close to the corridor's wall for the body");
 
-        Assert.AreEqual(1, Int("g.LearnMark(Pose(10.25, 5.9, -1.5708))"), "a peer's touch within a tenth of a unit is the same mark");
-        Assert.AreEqual(2, Int("g.LearnMark(Pose(10.3, 6.6, -1.5708))"), "a peer's touch further along is another mark");
+        Assert.AreEqual(1, Int("collisions.Mark(Pose(10.25, 5.9, -1.5708))"), "a touch within a tenth of a unit is the same mark");
+        Assert.AreEqual(2, Int("collisions.Mark(Pose(10.3, 6.6, -1.5708))"), "a touch further along is another mark");
     }
 
     [TestMethod]
@@ -654,10 +622,10 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void MarksCloseTogether_AreJoinedIntoOneObstacle_WhoseVerticesOutlineIt()
     {
-        LearnMark(10.25, 5.85, South);    // the crate's north face
-        LearnMark(10.25, 5.15, North);    // its south face
-        LearnMark(9.9, 5.5, East);        // its west face
-        LearnMark(8.0, 9.5, East);        // something else, far away in the storage room
+        PlantMark(10.25, 5.85, South);    // the crate's north face
+        PlantMark(10.25, 5.15, North);    // its south face
+        PlantMark(9.9, 5.5, East);        // its west face
+        PlantMark(8.0, 9.5, East);        // something else, far away in the storage room
         Assert.AreEqual(4, Int("g.MarkCount()"));
         Assert.AreEqual(2, Int("g.ObstacleCount()"), "three touches on one thing, one on another");
 
@@ -686,7 +654,7 @@ public class MissionAcceptanceTests
         string before = Text("g.Plan(1, 9.0, 9.5)");
         StringAssert.Contains(before, "storage/east@10.25,8 > east/garage@10.25,3", "the east corridor is the shortest road");
 
-        LearnMark(10.25, 5.85, South);                   // a peer bumped into something in the middle of the corridor
+        PlantMark(10.25, 5.85, South);                   // a peer bumped into something in the middle of the corridor
 
         string after = Text("g.Plan(1, 9.0, 9.5)");
         Assert.IsFalse(after.Contains("east/garage"), "between the mark and the corridor's walls the body does not fit: " + after);
@@ -698,7 +666,7 @@ public class MissionAcceptanceTests
     public void AMarkInAWideRoom_IsSkirted_WithAroundLegs()
     {
         Visit(1, 10.2, 9.5);                        // across the storage room
-        LearnMark(9.0, 9.5, East);                       // something in the middle of it, touched heading east
+        PlantMark(9.0, 9.5, East);                       // something in the middle of it, touched heading east
 
         string plan = Text("g.Plan(1, 7.6, 9.5)");
         StringAssert.Contains(plan, "around@", "the body skirts the mark: " + plan);
@@ -730,12 +698,12 @@ public class MissionAcceptanceTests
     public void ABodyStandingAmongMarks_CanStillLeave_ButNotThroughThem()
     {
         Visit(1, 9.0, 1.5);                        // the garage
-        LearnMark(7.6, 9.3, South);                      // two touches on something right beside the body...
-        LearnMark(8.2, 9.3, South);
+        PlantMark(7.6, 9.3, South);                      // two touches on something right beside the body...
+        PlantMark(8.2, 9.3, South);
         string plan = Text("g.Plan(1, 7.9, 9.55)");  // ...which stands between them, in the storage room
         StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
 
-        LearnMark(10.25, 5.85, South);                   // the crate closes the corridor too
+        PlantMark(10.25, 5.85, South);                   // the crate closes the corridor too
         // a body 0.15 north of that mark (it just backed off the crate; the touch was estimated a little short) leaves
         // the way it came and takes the long way round — never straight down through the mark (the 8-sep live run)
         string outNorth = Text("g.Plan(1, 10.25, 6.0)");
@@ -748,10 +716,10 @@ public class MissionAcceptanceTests
     {
         Visit(1, 2.0, 9.5);                          // the kitchen, from the storage
         Route(1, Text("g.Plan(1, 9.0, 9.5)"));
-        LearnMark(4.0, 9.2, East);                        // marks close the kitchen/north doorway...
-        LearnMark(4.0, 9.8, East);
-        LearnMark(0.75, 8.2, South);                      // ...and the kitchen/west one
-        LearnMark(0.75, 7.8, South);
+        PlantMark(4.0, 9.2, East);                        // marks close the kitchen/north doorway...
+        PlantMark(4.0, 9.8, East);
+        PlantMark(0.75, 8.2, South);                      // ...and the kitchen/west one
+        PlantMark(0.75, 7.8, South);
         Refuses("g.Plan(1, 9.0, 9.5);", "no road");
         Assert.AreEqual(7.0, Double("g.DistanceLeft(9.0, 9.5)"), 0.001, "straight from (9, 9.5) to (2, 9.5): a read never refuses");
         Assert.IsTrue(Double("g.SecondsLeft(9.0, 9.5)") > 0);
@@ -761,8 +729,8 @@ public class MissionAcceptanceTests
     public void WhenNoRoadFitsTheBody_ThePlanSaysSo()
     {
         Visit(1, 9.0, 1.5);                        // the garage has two doors
-        LearnMark(7.0, 1.5, East);                       // something in the south/garage door
-        LearnMark(10.25, 3.0, North);                    // and something in the east/garage door
+        PlantMark(7.0, 1.5, East);                       // something in the south/garage door
+        PlantMark(10.25, 3.0, North);                    // and something in the east/garage door
         Refuses("g.Plan(1, 2.0, 1.5);", "fits a body of radius 0.25 past 2 marks");
     }
 
@@ -874,10 +842,10 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void TheObstacles_AreReadAsAFlatList_EachWithItsZoneAndItsVertices()
     {
-        LearnMark(10.25, 5.85, South);      // three touches on the crate of the east corridor
-        LearnMark(10.25, 5.15, North);
-        LearnMark(9.9, 5.5, East);
-        LearnMark(2.0, 9.5, East);          // something else, a room away
+        PlantMark(10.25, 5.85, South);      // three touches on the crate of the east corridor
+        PlantMark(10.25, 5.15, North);
+        PlantMark(9.9, 5.5, East);
+        PlantMark(2.0, 9.5, East);          // something else, a room away
         Met("blue", 4.7, 9.5);              // and a body met in the north hall
 
         // the very query the panel's table runs: one row per obstacle, one per vertex under it
@@ -919,10 +887,10 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void WhenSomethingIsTakenAway_TheGolemForgetsItWithEveryVertex_AndANewTouchIsANewObstacle()
     {
-        LearnMark(10.25, 5.85, South);        // three touches on the crate of the east corridor
-        LearnMark(10.25, 5.15, North);
-        LearnMark(9.9, 5.5, East);
-        LearnMark(2.0, 9.5, East);            // and something else, a room away
+        PlantMark(10.25, 5.85, South);        // three touches on the crate of the east corridor
+        PlantMark(10.25, 5.15, North);
+        PlantMark(9.9, 5.5, East);
+        PlantMark(2.0, 9.5, East);            // and something else, a room away
         Assert.AreEqual(2, Int("g.ObstacleCount()"));
         Assert.AreEqual(4, Int("g.MarkCount()"));
         Assert.IsFalse(Bool("g.FitsAt(10.25, 5.5)"), "the crate is in the way");
@@ -938,7 +906,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(0, Int("g.Forget(Position(10.13, 5.5))"), "forgetting nothing drops nothing: it is not a refusal");
 
         // whatever is touched there next is a NEW obstacle, outlined by new marks
-        LearnMark(10.25, 5.5, South);
+        PlantMark(10.25, 5.5, South);
         Assert.AreEqual(2, Int("g.ObstacleCount()"));
         Assert.AreEqual(2, Int("g.ThingCount()"), "the new thing stands on its own, with nothing of the old one");
         Assert.AreEqual(2, Int("g.MarkCount()"), "one mark of the new thing, one of the untouched one");
@@ -948,7 +916,7 @@ public class MissionAcceptanceTests
     public void ForgettingAnEncounter_DropsThatPeer_AndLeavesTheThings()
     {
         Met("blue", 4.7, 9.5);
-        LearnMark(10.25, 5.85, South);
+        PlantMark(10.25, 5.85, South);
         Assert.AreEqual(2, Int("g.ObstacleCount()"));
 
         Assert.AreEqual(1, Int("g.Forget(Position(4.7, 9.5))"), "the encounter is dropped");
@@ -964,20 +932,20 @@ public class MissionAcceptanceTests
     {
         // the domain reasons over its own facts: the map, and what the peers said since the leg began
         string json = perf.Actor.Using(@"
-            print g.Suspect(0.05, 5.5, 3.1416, 0).Kind 'wall', g.Suspect(0.05, 5.5, 3.1416, 0).Conclusion 'wallVerb';
-            print g.Suspect(10.25, 5.9, -1.5708, 0).Kind 'thing', g.Suspect(10.25, 5.9, -1.5708, 0).Conclusion 'thingVerb', g.Suspect(10.25, 5.9, -1.5708, 0).Who 'nobody';
+            print g.Suspect(Pose(0.05, 5.5, 3.1416), 0).Kind 'wall', g.Suspect(Pose(0.05, 5.5, 3.1416), 0).Conclusion 'wallVerb';
+            print g.Suspect(Pose(10.25, 5.9, -1.5708), 0).Kind 'thing', g.Suspect(Pose(10.25, 5.9, -1.5708), 0).Conclusion 'thingVerb', g.Suspect(Pose(10.25, 5.9, -1.5708), 0).Who 'nobody';
         ").PerformQuery();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
         Assert.AreEqual("wall", doc.RootElement.GetProperty("wall").GetString(), "the corridor's outer wall");
         Assert.AreEqual("Graze", doc.RootElement.GetProperty("wallVerb").GetString(), "a wall I know: I grazed it");
         Assert.AreEqual("thing", doc.RootElement.GetProperty("thing").GetString(), "nothing on the map, nobody heard");
-        Assert.AreEqual("Mark", doc.RootElement.GetProperty("thingVerb").GetString());
+        Assert.AreEqual("Bump", doc.RootElement.GetProperty("thingVerb").GetString(), "nothing more to write: the bump's mark stands");
         Assert.AreEqual("", doc.RootElement.GetProperty("nobody").GetString());
 
         Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
         string peer = perf.Actor.Using(@"
-            print g.Suspect(4.7, 9.5, 0.0, 0).Kind 'kind', g.Suspect(4.7, 9.5, 0.0, 0).Who 'who', g.Suspect(4.7, 9.5, 0.0, 0).Conclusion 'verb';
-            print g.Suspect(4.7, 9.5, 0.0, 1).Kind 'later';
+            print g.Suspect(Pose(4.7, 9.5, 0.0), 0).Kind 'kind', g.Suspect(Pose(4.7, 9.5, 0.0), 0).Who 'who', g.Suspect(Pose(4.7, 9.5, 0.0), 0).Conclusion 'verb';
+            print g.Suspect(Pose(4.7, 9.5, 0.0), 1).Kind 'later';
         ").PerformQuery();
         using var doc2 = System.Text.Json.JsonDocument.Parse(peer);
         Assert.AreEqual("peer", doc2.RootElement.GetProperty("kind").GetString(), "blue bumped within a meeting's reach: it was blue");
@@ -1011,7 +979,7 @@ public class MissionAcceptanceTests
     public void MeetingAPeer_IsHistory_AmongTheObstacles_NeverGeometry()
     {
         Met("blue", 4.7, 9.5);
-        LearnMark(10.25, 5.85, South);
+        PlantMark(10.25, 5.85, South);
 
         Assert.AreEqual(1, Int("g.MetCount()"));
         Assert.AreEqual(2, Int("g.ObstacleCount()"), "a thing and a peer");
@@ -1042,8 +1010,8 @@ public class MissionAcceptanceTests
         // was estimated head-on, so the mark (4.94, 5.76) fell 0.19 from where the body then stood (4.8, 5.63) — inside
         // its own radius. A body cannot be inside a thing: the mark forbids walking further in, not leaving.
         Visit(1, 9.0, 1.5);                                                    // the garage
-        LearnMark(4.93672793175996, 5.75978159057928, -1.37257826652825);
-        LearnMark(5.14806941278059, 5.65085610890956, 0.0681849256515386);    // the second touch, stepping left into the crate's west face
+        PlantMark(4.93672793175996, 5.75978159057928, -1.37257826652825);
+        PlantMark(5.14806941278059, 5.65085610890956, 0.0681849256515386);    // the second touch, stepping left into the crate's west face
 
         string plan = Text("g.Plan(1, 4.8, 5.63)");
         StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
@@ -1052,7 +1020,7 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void AMarkKnowsItsNormal_TheSideTheBodyCameFromIsFree()
     {
-        LearnMark(5.5, 5.85, South);   // the crate's north face, touched by a body heading south: the thing lies south of the point
+        PlantMark(5.5, 5.85, South);   // the crate's north face, touched by a body heading south: the thing lies south of the point
 
         Assert.IsFalse(Bool("g.FitsAt(5.5, 5.5)"), "beyond the mark, along its normal: inside the thing");
         Assert.IsFalse(Bool("g.FitsAt(5.0, 5.85)"), "half a metre along the surface: within the mark's reach");
@@ -1086,9 +1054,10 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    private void LearnMark(double x, double y, double heading) =>
+    // The lab plants a mark straight on the collisions module — the global, as a query may calculate with a module alone.
+    private void PlantMark(double x, double y, double heading) =>
         perf.Actor.Using(@"
-            { touch = Pose(@x, @y, @heading); g.LearnMark(touch); }
+            { touch = Pose(@x, @y, @heading); collisions.Mark(touch); }
         ")
         .WithParameters(p => {
             p["x",       typeof(double)] = x;

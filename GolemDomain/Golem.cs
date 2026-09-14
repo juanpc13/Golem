@@ -180,14 +180,17 @@ internal sealed class Golem
     /// <summary>The road past a peer, in one line of text.</summary>
     internal string PlanPast(int id, string who, double x, double y, double heading) => RoadPast(id, who, x, y, heading).AsPlan();
 
+    /// <summary>The courtesy step: two radii of the body to one side of where it faces.</summary>
+    internal const double CourtesyStep = 0.5;
+
     // A body's width to one side of where the golem faces: its own right first (so two bodies facing each other
     // separate), then its left. The step must fit the body and must not walk INTO the peer.
     private Position StepOutOfTheWayOf(string who, Pose me)
     {
         var peer = collisions.LastKnownPositionOf(who);
-        foreach (var side in new[] { Side.Right, Side.Left })
+        foreach (var turn in new[] { -Math.PI / 2, Math.PI / 2 })   // right, then left
         {
-            var step = new StepAside(side).From(me, me.Heading).Legs()[0].At;
+            var step = me.Along(me.Heading + turn, CourtesyStep);
             if (!FitsAt(step.X, step.Y)) continue;
             if (peer != null && step.DistanceTo(peer) <= me.DistanceTo(peer)) continue;
             return step;
@@ -222,12 +225,6 @@ internal sealed class Golem
     internal double PlannedEndX() => LastPending().StopsAhead.Last().X;
     internal double PlannedEndY() => LastPending().StopsAhead.Last().Y;
 
-    /// <summary>The evasion maneuver a strategy ('back-off', 'step-right', 'step-left') plans from where the body
-    /// stands and the heading it had when it touched something: a trajectory to walk with foreach. A read: the
-    /// host executes it and reports what the body met.</summary>
-    internal Maneuver Evasion(double x, double y, double heading, string strategy) =>
-        EvasionStrategy.Named(strategy).From(new Position(x, y), heading);
-
     // ---- touches: the facts take their objects (a Pose, a Position); what a reaction must tell the peers is exposed
     //      beside the act as @params, because the matcher captures no object (Fase 0, P3). ONE row per touch (Juan,
     //      10-sep): the bump presumes it touched a THING and marks it at once; if a peer says it bumped there and
@@ -260,13 +257,6 @@ internal sealed class Golem
         if (at == null) throw new GolemDomainException("Golem.HearTouch: 'at' was not given");
         if (peerAt == null) throw new GolemDomainException("Golem.HearTouch: 'peerAt' was not given");
         return collisions.Hear(who, at, peerAt);
-    }
-
-    /// <summary>A peer tells of a mark it concluded on its own: the golem learns it without the bruise. Returns how many marks it holds.</summary>
-    internal int LearnMark(Pose touch)
-    {
-        if (touch == null) throw new GolemDomainException("Golem.LearnMark: 'touch' was not given");
-        return collisions.Mark(touch);
     }
 
     /// <summary>The golem concludes what it touched was a peer — who said it bumped there and then: the mark its bump
@@ -307,12 +297,16 @@ internal sealed class Golem
     /// <summary>Whether the golem holds an obstacle at (x, y) — what to consult before saying it is gone.</summary>
     internal bool KnowsObstacleAt(double x, double y) => collisions.KnowsAt(new Position(x, y));
 
-    /// <summary>What the golem suspects its body touched at (x, y), heading that way, given what it has heard since
-    /// the given count: a wall it knows (Kind 'wall': conclude Graze), a peer that bumped near there and then
-    /// (Kind 'peer', Who: conclude Met), or a thing nobody charted (Kind 'thing': conclude Mark). The domain reasons;
-    /// the host waits for the peers to speak, asks, and writes the conclusion the suspicion names.</summary>
-    internal Suspicion Suspect(double x, double y, double heading, int sinceCount) =>
-        collisions.Suspect(new Pose(x, y, heading), sinceCount);
+    /// <summary>What the golem suspects its body touched — the pose of the touch, as telemetry builds it in the query
+    /// (<c>g.Suspect(Pose(@x, @y, @heading), @since)</c>) — given what it has heard since the given count: a wall it
+    /// knows (Kind 'wall': conclude Graze), a peer that bumped near there and then (Kind 'peer', Who: conclude Met), or
+    /// a thing nobody charted (Kind 'thing': the mark the bump presumed stands). The domain reasons; the host waits for
+    /// the peers to speak, asks, and writes the conclusion the suspicion names.</summary>
+    internal Suspicion Suspect(Pose touch, int sinceCount)
+    {
+        if (touch == null) throw new GolemDomainException("Golem.Suspect: 'touch' was not given");
+        return collisions.Suspect(touch, sinceCount);
+    }
 
     /// <summary>How many bumps peers have told about so far — the count a leg starts from, so older news is not taken for this touch.</summary>
     internal int HeardBumpCount() => collisions.HeardCount;

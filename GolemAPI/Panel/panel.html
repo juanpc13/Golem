@@ -106,8 +106,8 @@
       it <b>choose the order</b> that makes the whole road shortest (<code>Cover</code>). Between stops it always
       takes the shortest road through the doors and open boundaries, journals it, and journals every passage
       crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body
-      bumps into there becomes a red <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.LearnMark</code>
-      it); marks close together are joined as the vertices of one <b>obstacle</b>, the figure of the thing nobody charted.
+      bumps into there becomes a red <b>mark</b> on this map (<code>route.Bump</code>, told to the peers, who <code>g.HearBump</code>
+      it and mark it too); marks close together are joined as the vertices of one <b>obstacle</b>, the figure of the thing nobody charted.
       The golem feels for a way past, right then left, and if none fits its body it decides the road again
       around the marks. Only when no road fits does the mission fail.</p></details>
       <div class="row" id="places"></div>

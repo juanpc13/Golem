@@ -5,8 +5,7 @@ namespace GolemDomain.Routes;
 
 /// <summary>
 /// A trajectory — Juan's RUTA / TRAYECTORIA: the ordered legs a body walks, one straight segment from each
-/// leg to the next. A mission's road is a trajectory; an evasion <see cref="Maneuver"/> is a trajectory of a
-/// special kind. It reads in one line — "kitchen/north@4,9.5 > north~center@5.5,8 > garage@9,1.5" — but the
+/// leg to the next. A route's way is a trajectory; so is the planner's answer before a route takes it. It reads in one line — "kitchen/north@4,9.5 > north~center@5.5,8 > garage@9,1.5" — but the
 /// journal writes it act by act on the ROUTE (`route.Via(via1); … route.Stop(point);`), never as text; the route
 /// takes the trajectory once its last stop is written.
 /// </summary>

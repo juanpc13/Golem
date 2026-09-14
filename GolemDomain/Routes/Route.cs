@@ -36,7 +36,6 @@ internal sealed class Route
     internal bool Paused { get; private set; }
 
     private RouteStatus status = RouteStatus.Pending;
-    private string reason = "";
     private Trajectory way = new(Array.Empty<Leg>());   // the plan: passages to cross, points to pass, stops to reach, in order
     private List<Leg> deciding;                          // the legs being written, until the last stop closes them; null between decisions
     private int nextLeg;                                 // the first leg not yet known to be walked
@@ -92,7 +91,6 @@ internal sealed class Route
 
     internal bool IsPending() => status == RouteStatus.Pending;
     internal string ReadStatus() => status.Name;
-    internal string ReadReason() => reason;
 
     // ---- the way: written as points, one act per leg, the last stop last — the route names each against the map ----
 
@@ -277,13 +275,12 @@ internal sealed class Route
 
     // ---- the ending ----
 
-    /// <summary>The world said no — a collision, a stall, no way — and the reason is kept.</summary>
+    /// <summary>The world said no — a collision, a stall, no way. The reason is the act's, kept by the journal.</summary>
     internal Route Fail(string why)
     {
         MustBePending();
         if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"failing route {Id} needs a reason");
         status = RouteStatus.Failed;
-        reason = why;
         return this;
     }
 
@@ -293,7 +290,6 @@ internal sealed class Route
         MustBePending();
         if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"abandoning route {Id} needs a reason");
         status = RouteStatus.Abandoned;
-        reason = why;
         return this;
     }
 
