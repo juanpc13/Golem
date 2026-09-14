@@ -320,6 +320,12 @@ internal sealed class Golem
     }
 
     /// <summary>The golem puts on record that it announces a reached stop to its peer (the tell follows in the same entry).</summary>
+    /// <summary>The operator holds a mission underway: the body stops where it stands until Resume. Returns the id.</summary>
+    internal int Pause(int id) { Find(id).Pause(); return id; }
+
+    /// <summary>The operator lets a held mission go on from where the body stands. Returns the id.</summary>
+    internal int Resume(int id) { Find(id).Resume(); return id; }
+
     internal int Announce(int id)
     {
         Find(id).Announce();
@@ -332,6 +338,7 @@ internal sealed class Golem
     internal bool Knows(int id) => missions.Any(m => m.Id == id);
     internal bool IsPending(int id) => Find(id).IsPending();
     internal bool IsFollowing(int id) => Find(id).Following;
+    internal bool IsPaused(int id) => Find(id).Paused;
     internal bool WasAnnounced(int id) => Find(id).Announced;
     internal bool IsRouted(int id) => Find(id).IsRouted;
     internal int LegsLeft(int id) => Find(id).LegsLeft;

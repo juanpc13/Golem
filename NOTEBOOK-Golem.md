@@ -1322,3 +1322,25 @@ upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger
 **Verificación**: flota arriba con un solo servidor, un puente, un `crates.py`, una GUI; VM en 2.0 GB usados y 1 MB de swap (antes 3.7 GB y 1.9 GB), carga 6 (antes 338); los tres paneles contestan, el kiosko muestra la imagen con los tres cuerpos y la lista de cajas. Journals intactos (no se archivó nada: no cambió el lenguaje).
 
 **Receta si vuelve a pasar** (síntoma: `docker ps` sí, `docker logs` no): `docker compose stop` si el motor aún contesta; si no, `wsl --shutdown` y abrir Docker Desktop; con la imagen nueva el mundo ya no se duplica. **Pendiente (decisión de Juan)**: el tope de 4 GB en `~/.wslconfig` fue suficiente con el mundo nacido una vez, pero el margen es corto (2 GB libres con la flota quieta); subirlo a 6 GB daría aire en la máquina de 16 GB.
+
+---
+
+## 2026-09-14 · Pausa y reanudación del trayecto: la retención en el journal, y un reinicio que se hacía pasar por pausa
+
+**Contexto**: Juan: "apliquemos una forma de poner pausa/continuar el trayecto actual en ejecución y que se registre en el journal".
+
+**Ajuste al dominio** (`Robots.Mission`, `Golem`): `Mission.Paused`; `Pause()` exige misión pendiente y no pausada; `Resume()` exige pausada. Ni el plan ni el cursor ni las paradas cambian: la pausa es una retención, distinta de la interrupción (`Bump`/`Graze`, que obligan a decidir otra ruta) y del final (`Fail`/`Abandon`). `Golem.Pause(id)`, `Golem.Resume(id)`, lectura `IsPaused(id)`. Test `APausedMission_KeepsItsPlanAndItsPlace_UntilResumed` (54 verdes): pausada sigue pendiente y enrutada con su parada por delante; doble pausa y reanudación sin pausa se rechazan; una misión completada no se pausa ("already completed").
+
+**Ajuste al host** (`GolemChoreography`, `GolemController`, panel): `ReadPlan` lee `paused`; en la cabeza del bucle, si la misión está pausada, `HoldWhilePausedAsync` detiene el cuerpo, anota en el panel y espera al journal contando los toques como los de un cuerpo parado; a mitad de tramo, un vigilante consulta `IsPaused` cada 300 ms y cancela la conducción del tramo con un token enlazado; al reanudar, el mismo tramo se retoma desde donde está el cuerpo (cursor intacto, sin recálculo). `POST /pause` y `POST /resume` con `Check` (pendiente; no pausada / pausada) y `g.Pause(@id)` / `g.Resume(@id)`; `/state` trae `paused`; botones Pause/Resume en el panel.
+
+**Observación 1 — la pausa que "funcionaba"**: en las dos primeras corridas el cuerpo se detuvo, el journal mostró `g.Pause(1)` y `g.Resume(1)` y la misión llegó… pero la nota del panel decía "paused at (0.0, 0.0)", luego "(NaN, NaN)": la pose del cuerpo era nula en ese instante, cuando `/body` la mostraba. `docker inspect`: **`RestartCount=2`**, y el registro: `clean shutdown at entry 76` → `rehydrated at entry 77`. La cancelación del tramo (`Task.Delay(Tick, ct)` dentro del navegador) escapaba como `OperationCanceledException`, subía hasta `Program.cs`, que la toma por el apagado ordenado, el proceso terminaba, Docker lo reiniciaba (`restart: unless-stopped`) y el golem rehidratado veía la pausa al despertar antes de recibir su primera pose. Se veía como una pausa y era una muerte y una resurrección.
+
+**Conclusión**: la rehidratación es tan buena que esconde caídas. Dos señales que hay que mirar siempre al verificar una función del host: `RestartCount` del contenedor y el par `clean shutdown`/`rehydrated` en el registro. Una función que "funciona" con la pose nula no funciona.
+
+**Corrección**: `catch (OperationCanceledException) when (pausedMidLeg.IsCancellationRequested && !ct.IsCancellationRequested)` alrededor de la conducción del tramo: la cancelación por pausa se distingue de la del apagado.
+
+**Observación 2 — verificado**: blue → kitchen, pausa a los 5 s: `paused by the operator at (0.9, 2.2)`, pose idéntica a los 3 y a los 8 s, `resumed — taking up the plan from where the body stands`, llega a (2, 9.5); `RestartCount` 0 antes y después; journal: `g.Pause(5);` … `g.Resume(5);` … `{ point = Position(2,9.5); g.Reach(5, point); }`. Segunda pausa con la misión ya pausada: `{"EWI":[{"Error":"the mission is already paused"}]}`.
+
+**De paso**: blue no encontraba ruta ("no road … past 9 marks") porque guardaba las marcas de las cajas del viernes (west, center y east) y el mundo regenerado ya no las tiene: el operador las olvidó con `/forget` (tres cosas), como manda la doctrina — la marca es un hecho, quien sabe que la cosa ya no está es el operador.
+
+**Pendiente**: una pausa que llega durante el protocolo de un choque (escucha y reconsideración) surte efecto al tramo siguiente, no en el acto; documentado, no corregido.

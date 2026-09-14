@@ -404,6 +404,30 @@ public class MissionAcceptanceTests
         Assert.AreEqual(1.5, legs[2].GetProperty("ey").GetDouble(), 0.001);
     }
 
+    // ---- the hold: Pause, Resume ----
+
+    [TestMethod]
+    public void APausedMission_KeepsItsPlanAndItsPlace_UntilResumed()
+    {
+        Visit(1, 2.0, 9.5);
+        Route(1, Text("g.Plan(1, 2.0, 9.5)"));
+        Assert.IsFalse(Bool("g.IsPaused(1)"));
+
+        perf.Actor.Using("g.Pause(@id);").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
+        Assert.IsTrue(Bool("g.IsPaused(1)"), "held");
+        Assert.IsTrue(Bool("g.IsPending(1)"), "a hold is not an ending");
+        Assert.IsTrue(Bool("g.IsRouted(1)"), "the plan keeps");
+        Assert.AreEqual(1, Int("g.StopsLeft(1)"), "and so do the stops ahead");
+        Refuses("g.Pause(1);", "already paused");
+
+        perf.Actor.Using("g.Resume(@id);").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
+        Assert.IsFalse(Bool("g.IsPaused(1)"), "let go on");
+        Refuses("g.Resume(1);", "is not paused");
+
+        Reach(1, 2.0, 9.5);
+        Refuses("g.Pause(1);", "already completed");
+    }
+
     // ---- the ending: Fail, Abandon, Announce ----
 
     [TestMethod]

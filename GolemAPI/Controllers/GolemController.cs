@@ -236,6 +236,32 @@ public class GolemController : Controller
         .PerformCheckThenCommand());
     }
 
+    // The operator holds the mission underway, or lets it go on. The mission is the one the golem is on (its
+    // next id, read first); the hold and the release are journaled acts of the golem, the body's stop is the
+    // host's obedience (the run loop reads the journal and stands).
+    [HttpPost("pause")]
+    public IActionResult Pause() => Hold("Pause", "!g.IsPaused(@id)", "the mission is already paused");
+
+    [HttpPost("resume")]
+    public IActionResult Resume() => Hold("Resume", "g.IsPaused(@id)", "the mission is not paused");
+
+    private IActionResult Hold(string verb, string precondition, string refusal)
+    {
+        using var board = JsonDocument.Parse(Board());
+        if (!board.RootElement.TryGetProperty("nextId", out var next)) return Conflict("nothing underway: no pending mission");
+        int id = next.GetInt32();
+        return Refusable(perf.Actor.Using(
+            $@"
+                Check(g.Knows(@id) && g.IsPending(@id)) Error 'the mission is no longer pending';
+                Check({precondition}) Error '{refusal}';
+            ",
+            $@"
+                g.{verb}(@id);
+            ")
+        .WithParameters(p => { p["id", typeof(int)] = id; })
+        .PerformCheckThenCommand());
+    }
+
     [HttpGet("state")]
     public IActionResult MissionBoard() => Content(Board(), "application/json");
 
@@ -272,7 +298,7 @@ public class GolemController : Controller
         perf.Actor.Using(@"
             print g.Pending() 'pending', g.Total() 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
-                print g.NextId() 'nextId', g.HeadingX() 'nextX', g.HeadingY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft';
+                print g.NextId() 'nextId', g.HeadingX() 'nextX', g.HeadingY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft', g.IsPaused(g.NextId()) 'paused';
             }
         ")
         .PerformQuery();

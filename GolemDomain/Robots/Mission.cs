@@ -22,6 +22,9 @@ internal sealed class Mission
     internal bool ChoosesOrder { get; }
     /// <summary>True once the golem has announced a reached stop to its peer.</summary>
     internal bool Announced { get; private set; }
+    /// <summary>Whether the operator holds the mission: the body stands where it is until it is resumed. The plan, the
+    /// cursor and the stops ahead are untouched — a pause is a hold, not an interruption.</summary>
+    internal bool Paused { get; private set; }
 
     private MissionStatus status = MissionStatus.Pending;
     private string reason = "";
@@ -165,6 +168,25 @@ internal sealed class Mission
     /// <summary>Whether a stop of this mission lies ahead at a point — what to consult before saying it was reached.</summary>
     internal bool IsStopAhead(double x, double y) =>
         IsPending() && StopsAhead.Any(s => Math.Abs(s.X - x) < 1e-6 && Math.Abs(s.Y - y) < 1e-6);
+
+    // ---- the hold (Juan, 14-sep-2026: "pausa/continuar el trayecto actual en ejecución") ----
+
+    /// <summary>The operator holds the mission: the body stops where it stands and waits. Only a pending mission
+    /// can be held, and only once.</summary>
+    internal void Pause()
+    {
+        MustBePending();
+        if (Paused) throw new GolemDomainException($"mission {Id} is already paused");
+        Paused = true;
+    }
+
+    /// <summary>The operator lets the mission go on: the body takes up the leg it was walking, from where it stands.</summary>
+    internal void Resume()
+    {
+        MustBePending();
+        if (!Paused) throw new GolemDomainException($"mission {Id} is not paused");
+        Paused = false;
+    }
 
     // ---- the ending ----
 

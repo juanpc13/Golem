@@ -129,6 +129,7 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `Graze(id, at)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the mission up. |
 | `Met(who, at)` | The domain concluded a peer: the body met that peer there. The mark its bump presumed comes back, and so does the one learned from that peer's bump there; the encounter stays among the obstacles as history (a `Peer`), never geometry. Told (`MetPeer`). |
 | `LearnMet(at)` | A peer said its touch there was a body: the golem takes back the mark it learned from that bump. |
+| `Pause(id)` · `Resume(id)` | The operator holds the mission underway: the body stops where it stands, the plan and the cursor keep, touches meanwhile are a standing body's; `Resume` takes the same leg up again from where the body stands. A hold, not an interruption — nothing is decided again. `POST /pause`, `POST /resume` (the mission is the one the golem is on). |
 | `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
 | `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
 

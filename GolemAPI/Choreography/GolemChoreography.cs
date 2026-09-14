@@ -513,6 +513,14 @@ public sealed class GolemChoreography
                 continue;
             }
 
+            // The operator holds the mission: the body stands where it is (touches told as a standing body's) until
+            // the journal says Resume; then the plan goes on from the same leg, cursor untouched. Nothing is decided.
+            if (plan.Paused)
+            {
+                await HoldWhilePausedAsync(plan.Id, ct);
+                continue;
+            }
+
             // The plan is written whole and walked in silence (Juan, 10-sep). It is decided HERE only when the mission
             // has none (a followed point), when the body bumped into something on it (the plan is interrupted: another
             // road from where the body stands, past the marks it did not know), or when the golem woke up with a plan
@@ -610,11 +618,28 @@ public sealed class GolemChoreography
                 lane = leg.IsCrossedStraight
                     ? Math.Atan2(leg.EY - leg.AY, leg.EX - leg.AX)
                     : Math.Atan2(leg.EY - from.Y, leg.EX - from.X);
-            if (leg.IsCrossedStraight)
-                outcome = await navigator.GoToAsync(leg.AX, leg.AY, LineUpWithin, ct);
-            if (outcome.Reached && !ct.IsCancellationRequested)
-                outcome = await navigator.GoToAsync(leg.EX, leg.EY, standoff ? LeaderStandoff : ArriveWithin, ct);
+            // A pause journaled mid-leg stops this drive: the leg is taken up again, from where the body stands, on resume.
+            using var pausedMidLeg = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var watching = new CancellationTokenSource();
+            _ = WatchForPauseAsync(plan.Id, pausedMidLeg, watching.Token);
+            try
+            {
+                if (leg.IsCrossedStraight)
+                    outcome = await navigator.GoToAsync(leg.AX, leg.AY, LineUpWithin, pausedMidLeg.Token);
+                if (outcome.Reached && !pausedMidLeg.IsCancellationRequested)
+                    outcome = await navigator.GoToAsync(leg.EX, leg.EY, standoff ? LeaderStandoff : ArriveWithin, pausedMidLeg.Token);
+            }
+            catch (OperationCanceledException) when (pausedMidLeg.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                // the drive's own waits throw on cancellation: a pause, not a shutdown — handled below
+            }
+            watching.Cancel();
             if (ct.IsCancellationRequested) break;
+            if (pausedMidLeg.IsCancellationRequested)
+            {
+                await ros.DriveAsync(0, 0, CancellationToken.None);
+                continue;   // the loop's head holds while paused; the cursor still points at this leg
+            }
 
             if (!outcome.Reached)
             {
@@ -830,6 +855,60 @@ public sealed class GolemChoreography
         catch (Exception e) { Console.WriteLine($"[golem {golem}] reconsidering a mark failed: {e.Message}"); }
     }
 
+    // The operator's hold: the body stops where it stands and the golem waits for the journal to say Resume,
+    // telling any touch meanwhile as a standing body's (whoever moves into a held body must hear it met one).
+    private async Task HoldWhilePausedAsync(int id, CancellationToken ct)
+    {
+        await ros.DriveAsync(0, 0, CancellationToken.None);
+        var pose = ros.LatestPose;
+        double hx = pose?.X ?? double.NaN, hy = pose?.Y ?? double.NaN;
+        string held = $"mission {id}: paused by the operator at ({hx:0.0}, {hy:0.0}) — standing until resumed";
+        Console.WriteLine($"[golem {golem}] {held}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", held, DateTime.UtcNow));
+        var seen = ros.LatestContact?.At ?? DateTime.MinValue;
+        while (!ct.IsCancellationRequested && IsPaused(id))
+        {
+            await Task.Delay(250, ct);
+            var touch = ros.LatestContact;
+            if (touch == null || touch.At <= seen) continue;
+            seen = touch.At;
+            TellTouchedStanding();
+        }
+        if (ct.IsCancellationRequested) return;
+        string back = $"mission {id}: resumed — taking up the plan from where the body stands";
+        Console.WriteLine($"[golem {golem}] {back}");
+        feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", back, DateTime.UtcNow));
+    }
+
+    // While a leg is driven, the journal is watched for a pause: the drive is cancelled the moment it appears.
+    private async Task WatchForPauseAsync(int id, CancellationTokenSource drive, CancellationToken watching)
+    {
+        try
+        {
+            while (!watching.IsCancellationRequested && !drive.IsCancellationRequested)
+            {
+                await Task.Delay(300, watching);
+                if (IsPaused(id)) { drive.Cancel(); return; }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception e) { Console.WriteLine($"[golem {golem}] watching for a pause failed: {e.Message}"); }
+    }
+
+    private bool IsPaused(int id)
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @paused = g.Knows(@id) && g.IsPending(@id) && g.IsPaused(@id);
+        ")
+        .WithParameters(rented, p => {
+            p["id", typeof(int)]                     = id;
+            p[Parameter.Out, "paused", typeof(bool)] = default;
+        })
+        .PerformQuery();
+        return rented["paused"].GetValue<bool>();
+    }
+
     // Standing still for a while — and telling any touch meanwhile: whoever moved into me must hear it met a body.
     private async Task StandAsync(TimeSpan span, CancellationToken ct)
     {
@@ -1028,7 +1107,7 @@ public sealed class GolemChoreography
     // ------------------------------------------------------------------
     // Typed reads: Out parameters through the rent-lease (never parsing print).
     // ------------------------------------------------------------------
-    private (bool Has, int Id, bool Routed, int StopsLeft, bool Following, int Newer, int Bumps, bool BumpedSinceRoute) ReadPlan()
+    private (bool Has, int Id, bool Routed, int StopsLeft, bool Following, int Newer, int Bumps, bool BumpedSinceRoute, bool Paused) ReadPlan()
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
@@ -1042,6 +1121,7 @@ public sealed class GolemChoreography
                 if (g.HasNewerFollowing(g.NextId())) { @newer = g.NewestFollowingId(); }
                 @bumps = g.Bumps(g.NextId());
                 @bumped = g.HasBumpedSinceRoute(g.NextId());
+                @paused = g.IsPaused(g.NextId());
             }
         ")
         .WithParameters(rented, p => {
@@ -1053,12 +1133,14 @@ public sealed class GolemChoreography
             p[Parameter.Out, "newer",     typeof(int)]    = default;
             p[Parameter.Out, "bumps",     typeof(int)]    = default;
             p[Parameter.Out, "bumped",    typeof(bool)]   = default;
+            p[Parameter.Out, "paused",    typeof(bool)]   = default;
         })
         .PerformQuery();
         return (rented["has"].GetValue<bool>(), rented["id"].GetValue<int>(),
                 rented["routed"].GetValue<bool>(), rented["stops"].GetValue<int>(),
                 rented["following"].GetValue<bool>(), rented["newer"].GetValue<int>(),
-                rented["bumps"].GetValue<int>(), rented["bumped"].GetValue<bool>());
+                rented["bumps"].GetValue<int>(), rented["bumped"].GetValue<bool>(),
+                rented["paused"].GetValue<bool>());
     }
 
     // The plan ahead of a mission, as the golem hands it out: every leg not yet known to be walked, with how each is walked.

@@ -123,10 +123,14 @@
         <button id="clear">Clear</button>
       </div>
       <div class="row">
+        <button id="pause" disabled>Pause</button>
+        <button id="resume" disabled>Resume</button>
         <button id="reset">Let go of everything</button>
         <button id="wipe" class="danger">Reset everything</button>
       </div>
-      <p class="hint"><b>Let go</b>: every pending mission is abandoned — one command, journaled as
+      <p class="hint"><b>Pause / Resume</b>: the mission underway is held — journaled as <code>g.Pause(id)</code>,
+      the body stops where it stands, the plan and the cursor keep — and let go on with <code>g.Resume(id)</code>.
+      <b>Let go</b>: every pending mission is abandoned — one command, journaled as
       <code>g.Abandon(id, reason)</code> per mission, nothing erased — and the body is put back on its mark.
       <b>Reset everything</b> (lab lever): wipes the journals of this golem AND its peers and reboots them reborn
       at entry 1 — all of them, because the hearer dedups the sender's tell ids.</p>
@@ -316,6 +320,8 @@ document.querySelectorAll('#presets button').forEach(b => {
   b.onclick = () => { document.getElementById('q').value = b.dataset.q; runQuery(b.dataset.q); };
 });
 
+document.getElementById('pause').onclick = async () => { await fetch('/pause', {method: 'POST'}); };
+document.getElementById('resume').onclick = async () => { await fetch('/resume', {method: 'POST'}); };
 document.getElementById('reset').onclick = async () => {
   if (!confirm('Abandon every pending mission (journaled, one command) and put the body back on its mark?')) return;
   await fetch('/reset', {method: 'POST'});
@@ -493,8 +499,10 @@ async function poll() {
       (await fetch('/body')).json(),
       (await fetch('/progress')).json()
     ]);
-    document.getElementById('pending').textContent = s.pending;
+    document.getElementById('pending').textContent = s.pending + (s.paused ? ' (paused)' : '');
     document.getElementById('total').textContent = s.total;
+    document.getElementById('pause').disabled = !s.hasNext || !!s.paused;
+    document.getElementById('resume').disabled = !s.paused;
 
     document.getElementById('left').textContent = pr.distanceLeft !== undefined ? pr.distanceLeft.toFixed(2) : (pr.hasNext ? pr.routeLength.toFixed(2) : '–');
     document.getElementById('eta').textContent = pr.secondsLeft !== undefined ? pr.secondsLeft.toFixed(1) + ' s' : (pr.hasNext ? pr.routeSeconds.toFixed(1) + ' s' : '–');

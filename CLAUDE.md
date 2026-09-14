@@ -179,7 +179,9 @@ whether it could or not, so the domain resolves what follows. Consequences:
   golem with `g.Preview` before the command), progress (Reach only: a stop reached implies the legs before it were walked; the
   last Reach completes — walking a door or a point is NOT journaled, Juan 10-sep: "no estar diciéndole
   cada cosa que va haciendo"), the interruption (Bump/Graze: the plan stops, another Route replaces what
-  was left; also when the golem wakes with a plan underway),
+  was left; also when the golem wakes with a plan underway), the hold (Pause/Resume, 14-sep-2026: the operator
+  holds the mission underway — the body stands, plan and cursor keep, nothing is decided again; the host cancels
+  the leg's drive with a linked token and takes the leg up again on Resume),
   touches (Bump: the fact, told, and the mark at once; HearBump/HearTouch: a peer's bump or touch; Met/LearnMet:
   it was a body, the mark comes back; Forget/LearnForget), the ending (Fail/Abandon) — every write goes through one serial
   Dispatch, tells are reaction-only. The releases build the modules (`body_v1`, `warehouse_v1`, `init`);
