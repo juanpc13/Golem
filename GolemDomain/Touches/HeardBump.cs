@@ -18,6 +18,7 @@ internal sealed class HeardBump
     {
         if (at == null) throw new GolemDomainException("a heard bump needs to say where");
         if (peerAt == null) throw new GolemDomainException("a heard bump needs to say where the peer stood");
+        if (ReferenceEquals(at, peerAt)) throw new GolemDomainException("HeardBump.HeardBump: 'at' and 'peerAt' are the same point");
         if (string.IsNullOrWhiteSpace(who)) throw new GolemDomainException("a heard bump needs to say who bumped");
         Who = who;
         At = at;

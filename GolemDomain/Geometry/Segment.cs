@@ -13,6 +13,7 @@ internal sealed class Segment
     internal Segment(Position from, Position to)
     {
         if (from == null || to == null) throw new GolemDomainException("a segment needs both of its ends");
+        if (ReferenceEquals(from, to)) throw new GolemDomainException("Segment.Segment: 'from' and 'to' are the same point");
         From = from;
         To = to;
     }

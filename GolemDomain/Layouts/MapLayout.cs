@@ -70,6 +70,7 @@ internal sealed class MapLayout : Map
     {
         if (a == null) throw new GolemDomainException("MapLayout.Touches: 'a' was not given");
         if (b == null) throw new GolemDomainException("MapLayout.Touches: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("MapLayout.Touches: 'a' and 'b' are the same area");
         return IsLaidOut(a) && IsLaidOut(b) && Of(a).Touches(Of(b));
     }
 
@@ -89,6 +90,7 @@ internal sealed class MapLayout : Map
         if (a == null) throw new GolemDomainException("MapLayout.DoorAt: 'a' was not given");
         if (b == null) throw new GolemDomainException("MapLayout.DoorAt: 'b' was not given");
         if (at == null) throw new GolemDomainException("MapLayout.DoorAt: 'at' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("MapLayout.DoorAt: 'a' and 'b' are the same area");
         return DoorAt(a?.Name, b?.Name, at);
     }
 
@@ -203,6 +205,7 @@ internal sealed class MapLayout : Map
         if (opening == null) throw new GolemDomainException("MapLayout.IsCrossed: 'opening' was not given");
         if (u == null) throw new GolemDomainException("MapLayout.IsCrossed: 'u' was not given");
         if (v == null) throw new GolemDomainException("MapLayout.IsCrossed: 'v' was not given");
+        if (ReferenceEquals(u, v)) throw new GolemDomainException("MapLayout.IsCrossed: 'u' and 'v' are the same point");
         var edge = EdgeOf(opening);
         if (edge.IsVertical)
         {
@@ -231,6 +234,7 @@ internal sealed class MapLayout : Map
         if (opening == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'opening' was not given");
         if (u == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'u' was not given");
         if (v == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'v' was not given");
+        if (ReferenceEquals(u, v)) throw new GolemDomainException("MapLayout.CrossingPoint: 'u' and 'v' are the same point");
         var edge = EdgeOf(opening);
         if (edge.IsVertical)
         {

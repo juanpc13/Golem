@@ -64,6 +64,7 @@ internal sealed class Collisions
     {
         if (at == null) throw new GolemDomainException("Collisions.Hear: 'at' was not given");
         if (peerAt == null) throw new GolemDomainException("Collisions.Hear: 'peerAt' was not given");
+        if (ReferenceEquals(at, peerAt)) throw new GolemDomainException("Collisions.Hear: 'at' and 'peerAt' are the same point");
         heard.Add(new HeardBump(who, at, peerAt));
         return heard.Count;
     }

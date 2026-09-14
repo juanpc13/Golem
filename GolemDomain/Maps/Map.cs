@@ -54,6 +54,7 @@ internal abstract class Map
     {
         if (a == null) throw new GolemDomainException("Map.Door: 'a' was not given");
         if (b == null) throw new GolemDomainException("Map.Door: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("Map.Door: 'a' and 'b' are the same area");
         return Door(Named(a), Named(b));
     }
 
@@ -61,6 +62,7 @@ internal abstract class Map
     /// area charted). Declaring it twice is one door.</summary>
     internal Door Door(string a, string b)
     {
+        if (a == b) throw new GolemDomainException($"area '{a}' has no door to itself");
         var existing = passages.OfType<Door>().FirstOrDefault(d => d.JoinsNamed(a, b));
         if (existing != null) return existing;
         var door = new Door(this, a, b);
@@ -73,12 +75,14 @@ internal abstract class Map
     {
         if (a == null) throw new GolemDomainException("Map.Open: 'a' was not given");
         if (b == null) throw new GolemDomainException("Map.Open: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("Map.Open: 'a' and 'b' are the same area");
         return Open(Named(a), Named(b));
     }
 
     /// <summary>An open stretch between two areas by name — the second may not exist yet.</summary>
     internal Opening Open(string a, string b)
     {
+        if (a == b) throw new GolemDomainException($"area '{a}' opens to no boundary of its own");
         var existing = passages.OfType<Opening>().FirstOrDefault(o => o.JoinsNamed(a, b));
         if (existing != null) return existing;
         var opening = new Opening(this, a, b);
@@ -146,6 +150,7 @@ internal abstract class Map
     {
         if (a == null) throw new GolemDomainException("Map.Connects: 'a' was not given");
         if (b == null) throw new GolemDomainException("Map.Connects: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("Map.Connects: 'a' and 'b' are the same area");
         return passages.Any(p => p.Joins(a, b));
     }
 
@@ -153,12 +158,14 @@ internal abstract class Map
     {
         if (a == null) throw new GolemDomainException("Map.HasDoorBetween: 'a' was not given");
         if (b == null) throw new GolemDomainException("Map.HasDoorBetween: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("Map.HasDoorBetween: 'a' and 'b' are the same area");
         return Doors.Any(d => d.Joins(a, b));
     }
     internal bool HasOpeningBetween(Area a, Area b)
     {
         if (a == null) throw new GolemDomainException("Map.HasOpeningBetween: 'a' was not given");
         if (b == null) throw new GolemDomainException("Map.HasOpeningBetween: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("Map.HasOpeningBetween: 'a' and 'b' are the same area");
         return Openings.Any(o => o.Joins(a, b));
     }
 
@@ -166,6 +173,7 @@ internal abstract class Map
     {
         if (a == null) throw new GolemDomainException("Map.DoorBetween: 'a' was not given");
         if (b == null) throw new GolemDomainException("Map.DoorBetween: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("Map.DoorBetween: 'a' and 'b' are the same area");
         return Doors.FirstOrDefault(d => d.Joins(a, b)) ?? throw new GolemDomainException($"no door between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
     }
 
@@ -173,6 +181,7 @@ internal abstract class Map
     {
         if (a == null) throw new GolemDomainException("Map.OpeningBetween: 'a' was not given");
         if (b == null) throw new GolemDomainException("Map.OpeningBetween: 'b' was not given");
+        if (ReferenceEquals(a, b)) throw new GolemDomainException("Map.OpeningBetween: 'a' and 'b' are the same area");
         return Openings.FirstOrDefault(o => o.Joins(a, b)) ?? throw new GolemDomainException($"no open stretch between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
     }
 

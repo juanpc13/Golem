@@ -52,6 +52,7 @@ internal sealed class Golem
     {
         if (from == null) throw new GolemDomainException("Golem.Distance: 'from' was not given");
         if (to == null) throw new GolemDomainException("Golem.Distance: 'to' was not given");
+        if (ReferenceEquals(from, to)) throw new GolemDomainException("Golem.Distance: 'from' and 'to' are the same area");
         return Planner().RoadLength(layout.Of(from).Center, layout.Of(to).Center);
     }
 
@@ -214,6 +215,7 @@ internal sealed class Golem
     {
         if (at == null) throw new GolemDomainException("Golem.HearTouch: 'at' was not given");
         if (peerAt == null) throw new GolemDomainException("Golem.HearTouch: 'peerAt' was not given");
+        if (ReferenceEquals(at, peerAt)) throw new GolemDomainException("Golem.HearTouch: 'at' and 'peerAt' are the same point");
         return collisions.Hear(who, at, peerAt);
     }
 

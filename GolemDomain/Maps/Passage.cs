@@ -38,7 +38,8 @@ internal abstract class Passage
     {
         if (one == null) throw new GolemDomainException("Passage.Joins: 'one' was not given");
         if (other == null) throw new GolemDomainException("Passage.Joins: 'other' was not given");
-        return one != null && other != null && ((A == one.Name && B == other.Name) || (A == other.Name && B == one.Name));
+        if (ReferenceEquals(one, other)) throw new GolemDomainException("Passage.Joins: 'one' and 'other' are the same area");
+        return (A == one.Name && B == other.Name) || (A == other.Name && B == one.Name);
     }
 
     /// <summary>The area across from a given one of the two.</summary>
