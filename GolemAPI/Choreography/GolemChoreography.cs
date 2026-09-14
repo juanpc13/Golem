@@ -1279,7 +1279,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @speed = g.Speed();
+            @speed = body.Speed.InMetersPerSecond;
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "speed", typeof(double)] = default;
@@ -1292,7 +1292,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @radius = g.Radius();
+            @radius = body.Radius.InMeters;
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "radius", typeof(double)] = default;
@@ -1305,7 +1305,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @linger = g.LingerAfterTold();
+            @linger = body.LingerAfterTold.InSeconds;
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "linger", typeof(double)] = default;

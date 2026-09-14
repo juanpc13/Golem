@@ -68,7 +68,7 @@ public class FloorPlanCatalogTests
         // boundaries), along the other aisle and in through a door — never through a wall. The two ways round
         // (north then east, west then south) are the same length: the planner may take either.
         Visit(1, "southeast");
-        string plan = Text("g.Plan(g.Find(1), Position(2.375, 8.625))");
+        string plan = Text("g.Road(g.Find(1), Position(2.375, 8.625)).AsPlan()");
         StringAssert.StartsWith(plan, "northwest/");
         Assert.AreEqual(2, plan.Split("crossing~").Length - 1, "in through one aisle, out through the other: " + plan);
         StringAssert.EndsWith(plan, "> southeast@8.63,2.38");
@@ -92,13 +92,13 @@ public class FloorPlanCatalogTests
         Assert.AreEqual(4.0, Double("g.Distance(map.Find('northwest'), map.Find('northeast'))"), 0.01, "two metres to the door, two more to the neighbour's center");
         // the corridor runs all the way round: from one stretch into the next through an open boundary, no door
         Visit(1, new[] { "9,10.25" });                    // the east end of the north corridor
-        string plan = Text("g.Plan(g.Find(1), Position(0.75, 10.25))");       // from the northwest corner of the ring
+        string plan = Text("g.Road(g.Find(1), Position(0.75, 10.25)).AsPlan()");       // from the northwest corner of the ring
         StringAssert.StartsWith(plan, "west-corridor~north-corridor@1.5,10.2");
         StringAssert.EndsWith(plan, "> north-corridor@9,10.25");
         Assert.IsFalse(plan.Contains('/'), "along the corridor, through no door: " + plan);
         // and cutting through a room beats going round when it is shorter: the planner takes the rooms' doors
         Visit(2, "east-corridor");
-        string across = Text("g.Plan(g.Find(2), Position(0.75, 10.25))");
+        string across = Text("g.Road(g.Find(2), Position(0.75, 10.25)).AsPlan()");
         StringAssert.Contains(across, "northeast/north-corridor@7.5,9.5 > northeast/east-corridor@9.5,7.5", "through the northeast room: " + across);
     }
 

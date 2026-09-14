@@ -56,9 +56,9 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void TheBody_IsReleasedIntoTheJournal_SizeSpeedAndLinger()
     {
-        Assert.AreEqual(0.25, Double("g.Radius()"), 0.001, "the body's size");
-        Assert.AreEqual(2.0, Double("g.Speed()"), 0.001, "its cruise speed");
-        Assert.AreEqual(6.0, Double("g.LingerAfterTold()"), 0.001, "its linger at a told stop");
+        Assert.AreEqual(0.25, Double("body.Radius.InMeters"), 0.001, "the body's size");
+        Assert.AreEqual(2.0, Double("body.Speed.InMetersPerSecond"), 0.001, "its cruise speed");
+        Assert.AreEqual(6.0, Double("body.LingerAfterTold.InSeconds"), 0.001, "its linger at a told stop");
         // A constructor's refusal reaches the DSL as "Error while instantiating class 'Body'": the engine wraps the
         // domain's exception and its reason is lost on the way (Fase 0 follow-up, 10-sep-2026). The C# tests below
         // keep the reasons; here we can only assert that the body was refused.
@@ -200,13 +200,13 @@ public class MissionAcceptanceTests
     public void TheGolem_TellsAKnownWallFromAnythingElse_ByItsMap()
     {
         // a point the body touched: on a boundary the map holds as a wall, or not
-        Assert.IsTrue(Bool("g.KnowsWallAt(Position(0.05, 5.5))"), "the corridor's outer wall");
-        Assert.IsTrue(Bool("g.KnowsWallAt(Position(4.0, 8.5))"), "the kitchen's east wall, by the door's jamb");
-        Assert.IsFalse(Bool("g.KnowsWallAt(Position(4.1, 9.2))"), "the kitchen/north doorway: no wall there, whatever was touched is something else");
-        Assert.IsTrue(Bool("g.KnowsWallAt(Position(4.05, 8.0))"), "the corner of the left block, met through the walls that end there");
-        Assert.IsFalse(Bool("g.KnowsWallAt(Position(10.25, 5.9))"), "the middle of the east corridor: whatever stands there is not on the map");
-        Assert.IsFalse(Bool("g.KnowsWallAt(Position(5.5, 8.0))"), "the open boundary north~center is not a wall");
-        Assert.IsFalse(Bool("g.KnowsWallAt(Position(5.5, 5.5))"), "the middle of the center hall");
+        Assert.IsTrue(Bool("map.IsWallAt(Position(0.05, 5.5), 0.3)"), "the corridor's outer wall");
+        Assert.IsTrue(Bool("map.IsWallAt(Position(4.0, 8.5), 0.3)"), "the kitchen's east wall, by the door's jamb");
+        Assert.IsFalse(Bool("map.IsWallAt(Position(4.1, 9.2), 0.3)"), "the kitchen/north doorway: no wall there, whatever was touched is something else");
+        Assert.IsTrue(Bool("map.IsWallAt(Position(4.05, 8.0), 0.3)"), "the corner of the left block, met through the walls that end there");
+        Assert.IsFalse(Bool("map.IsWallAt(Position(10.25, 5.9), 0.3)"), "the middle of the east corridor: whatever stands there is not on the map");
+        Assert.IsFalse(Bool("map.IsWallAt(Position(5.5, 8.0), 0.3)"), "the open boundary north~center is not a wall");
+        Assert.IsFalse(Bool("map.IsWallAt(Position(5.5, 5.5), 0.3)"), "the middle of the center hall");
     }
 
     // ---- entrusting: MoveTo, Cover, Follow ----
@@ -216,7 +216,7 @@ public class MissionAcceptanceTests
     {
         Visit(1, 2.0, 1.5);
 
-        Assert.AreEqual(1, Int("g.Pending()"));
+        Assert.AreEqual(1, Int("g.PendingRoutes().Count"));
         Assert.IsTrue(Bool("g.Find(1).IsPending()"));
         Assert.AreEqual(2.0, Double("g.Next().NextLeg.At.X"));
         Assert.IsFalse(Bool("g.Find(1).Following"), "the operator ordered it");
@@ -240,7 +240,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(3, Int("g.Find(1).StopsLeft"));
 
         // from the living room: garage first, back out through the same door, the center shortcut to the kitchen, then the storage
-        string plan = Text("g.Plan(g.Find(1), Position(2.0, 1.5))");
+        string plan = Text("g.Road(g.Find(1), Position(2.0, 1.5)).AsPlan()");
         StringAssert.StartsWith(plan, "living/south@4,1.5 > south/garage@7,1.5 > garage@9,1.5 > south/garage@7,1.5 > ");
         StringAssert.Contains(plan, "> kitchen@2,9.5 > kitchen/north@4,9.5 > north/storage@7,9.5 > storage@9,9.5");
         Assert.IsTrue(plan.IndexOf("garage@9,1.5") < plan.IndexOf("kitchen@2,9.5") && plan.IndexOf("kitchen@2,9.5") < plan.IndexOf("storage@9,9.5"), "the order is the operator's");
@@ -253,7 +253,7 @@ public class MissionAcceptanceTests
 
         // from the living room the shortest round is garage (7), then storage by the east corridor (8.9), then kitchen (7);
         // the order given would cost 7 + 12.9 + 7
-        string plan = Text("g.Plan(g.Find(1), Position(2.0, 1.5))");
+        string plan = Text("g.Road(g.Find(1), Position(2.0, 1.5)).AsPlan()");
         Assert.IsTrue(plan.IndexOf("garage@9,1.5") < plan.IndexOf("storage@9,9.5") && plan.IndexOf("storage@9,9.5") < plan.IndexOf("kitchen@2,9.5"),
             "garage, storage, kitchen — not the order given: " + plan);
         StringAssert.EndsWith(plan, "> kitchen@2,9.5");
@@ -270,7 +270,7 @@ public class MissionAcceptanceTests
         Assert.IsTrue(Bool("map.Knows('kitchen')"));
         Assert.IsFalse(Bool("map.Knows('attic')"));
         Assert.IsTrue(Bool("map.IsOnMap(Position(9.0, 8.0))"), "a point in the north hall");
-        Assert.AreEqual(1, Int("g.Total()"));
+        Assert.AreEqual(1, Int("g.Routes().Count"));
     }
 
     [TestMethod]
@@ -280,10 +280,10 @@ public class MissionAcceptanceTests
 
         Follow(8.5, 2.5);
 
-        Assert.AreEqual(2, Int("g.Total()"));
+        Assert.AreEqual(2, Int("g.Routes().Count"));
         Assert.IsTrue(Bool("g.Knows(2)"), "the followed point got handle 2");
         Assert.IsTrue(Bool("g.Find(2).Following"), "a Follow mission remembers who it came from");
-        Assert.AreEqual(2, Int("g.Total()"), "two routes, handles 1 and 2, minted inside");
+        Assert.AreEqual(2, Int("g.Routes().Count"), "two routes, handles 1 and 2, minted inside");
     }
 
     // ---- the road: Route, Cross, Reach ----
@@ -292,11 +292,11 @@ public class MissionAcceptanceTests
     public void APlan_ReadsLikeTheJournalWillWriteIt_AndNamesEveryPassageAndStop()
     {
         Visit(1, 2.0, 1.5);   // the living room
-        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));
+        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
 
         Visit(2, 9.0, 1.5);   // the garage
         Abandon(1, "the test moves on");
-        string plan = Text("g.Plan(g.Find(2), Position(2.0, 9.5))");
+        string plan = Text("g.Road(g.Find(2), Position(2.0, 9.5)).AsPlan()");
         StringAssert.StartsWith(plan, "kitchen/north@4,9.5 > ");
         StringAssert.Contains(plan, "north~center@");
         StringAssert.Contains(plan, "center~south@");
@@ -307,7 +307,7 @@ public class MissionAcceptanceTests
     public void RoutingAndReaching_ThePlanIsWalkedInSilence_AndAStopReachedImpliesTheLegsBeforeIt()
     {
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
 
         Assert.IsTrue(Bool("g.Find(1).IsRouted"));
         Assert.AreEqual(3, Int("g.Find(1).LegsLeft"), "two doors and the stop: the whole plan, in one entry");
@@ -325,7 +325,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(0, Int("g.Find(1).LegsLeft"), "the two doors were walked: reaching the stop says so");
         Assert.AreEqual("completed", Text("g.Find(1).Status"), "reaching the last stop completes the mission");
         Assert.IsFalse(Bool("g.Find(1).IsPending()"));
-        Assert.AreEqual(0, Int("g.Pending()"));
+        Assert.AreEqual(0, Int("g.PendingRoutes().Count"));
         Refuses("{ route = g.Find(1); route.Reach(Position(2.0, 1.5)); }", "already completed");
     }
 
@@ -333,7 +333,7 @@ public class MissionAcceptanceTests
     public void AMissionWithSeveralStops_ReachesEachInTurn_AndCompletesOnTheLast()
     {
         Visit(1, new[] { "north", "south" });
-        Route(1, Text("g.Plan(g.Find(1), Position(5.5, 5.5))"));   // from the center: up to the north hall, back down through the center to the south hall
+        Route(1, Text("g.Road(g.Find(1), Position(5.5, 5.5)).AsPlan()"));   // from the center: up to the north hall, back down through the center to the south hall
 
         Assert.AreEqual(2, Int("g.Find(1).StopsLeft"));
         Reach(1, 5.5, 9.5);
@@ -351,7 +351,7 @@ public class MissionAcceptanceTests
     {
         // kitchen (2,9.5) -> door kitchen/west at (0.75,8) on a horizontal wall -> west corridor -> door (0.75,3) -> living
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
 
         // the plan ahead, as the host takes it to walk: each leg with its approach and its exit
         string json = perf.Actor.Using(@"
@@ -402,7 +402,7 @@ public class MissionAcceptanceTests
     public void APausedMission_KeepsItsPlanAndItsPlace_UntilResumed()
     {
         Visit(1, 2.0, 9.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
         Assert.IsFalse(Bool("g.Find(1).Paused"));
 
         perf.Actor.Using("{ route = g.Find(@id); route.Pause(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
@@ -458,7 +458,7 @@ public class MissionAcceptanceTests
 
         Assert.AreEqual("abandoned", Text("g.Find(2).Status"));
         Assert.IsFalse(Bool("g.Find(2).IsPending()"));
-        Assert.AreEqual(2, Int("g.Pending()"), "the operator's garage and the newest followed point remain");
+        Assert.AreEqual(2, Int("g.PendingRoutes().Count"), "the operator's garage and the newest followed point remain");
         Assert.AreEqual(1, Int("g.FollowingCount()"));
     }
 
@@ -481,10 +481,10 @@ public class MissionAcceptanceTests
 
         Assert.IsTrue(perf.CurrentEntryId - entriesBefore <= 2,
             "one action for all the missions (plus the template of a shape seen for the first time), never one entry per mission");
-        Assert.AreEqual(0, Int("g.Pending()"));
-        Assert.AreEqual(2, Int("g.Total()"), "nothing is erased: the missions stay, abandoned");
+        Assert.AreEqual(0, Int("g.PendingRoutes().Count"));
+        Assert.AreEqual(2, Int("g.Routes().Count"), "nothing is erased: the missions stay, abandoned");
         Assert.AreEqual("abandoned", Text("g.Find(1).Status"));
-        Assert.AreEqual(2, Int("g.Total()"), "a spent handle is never minted again: the idempotency keys hang on it");
+        Assert.AreEqual(2, Int("g.Routes().Count"), "a spent handle is never minted again: the idempotency keys hang on it");
         Refuses("{ route = g.Find(1); route.Abandon('again'); }", "already abandoned");
     }
 
@@ -499,7 +499,7 @@ public class MissionAcceptanceTests
     public void AReachedStop_CanBeAnnounced_AndAMissionWithoutOneCannot()
     {
         Visit(1, 2.0, 9.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));   // already there: the stop alone
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));   // already there: the stop alone
         Reach(1, 2.0, 9.5);
         Visit(2, 9.0, 1.5);
 
@@ -576,12 +576,12 @@ public class MissionAcceptanceTests
     public void ABump_IsATouchAndAMarkAtOnce_UntilAPeerSpeaks()
     {
         Visit(1, 9.0, 1.5);                       // the garage
-        Route(1, Text("g.Plan(g.Find(1), Position(9.0, 9.5))"));      // from the storage: down the east corridor
-        Assert.AreEqual(0, Int("g.MarkCount()"));
+        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));      // from the storage: down the east corridor
+        Assert.AreEqual(0, Int("collisions.MarkCount"));
         Assert.IsTrue(Bool("g.FitsAt(Position(10.25, 5.5))"), "the corridor is clear as far as the map knows");
 
         Bump(1, 10.25, 5.85, South);                // the crate's face — or a peer: presumed a thing, in one act
-        Assert.AreEqual(1, Int("g.MarkCount()"), "a bump is a touch AND a mark, with the heading of the touch as its normal");
+        Assert.AreEqual(1, Int("collisions.MarkCount"), "a bump is a touch AND a mark, with the heading of the touch as its normal");
         Assert.AreEqual(1, Int("g.Find(1).Bumps"));
         Assert.IsTrue(Bool("g.Find(1).BumpedSinceRoute"));
         Assert.AreEqual("", Text("collisions.HeardNear(Position(10.25, 5.85), 0)"), "no peer said it bumped there: the mark stands");
@@ -597,25 +597,25 @@ public class MissionAcceptanceTests
     public void APeersBumpHeardThereAndThen_NamesWhoWasMet()
     {
         Visit(1, 9.0, 1.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(9.0, 9.5))"));
+        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));
         Assert.AreEqual(1, Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))"), "blue says it bumped in the kitchen's doorway, standing just past it");
-        int heard = Int("g.HeardBumpCount()");
+        int heard = Int("collisions.HeardCount");
 
         Bump(1, 4.7, 9.5, East);                    // my own touch, right there
         Assert.AreEqual("blue", Text("collisions.HeardNear(Position(4.7, 9.5), 0)"), "blue's bump is within a body's diameter of mine: it was blue");
         Assert.AreEqual("", Text("collisions.HeardNear(Position(4.7, 9.5), " + heard + ")"), "nothing heard after that count");
         Assert.AreEqual("", Text("collisions.HeardNear(Position(10.25, 5.85), 0)"), "a bump far away is somebody else's business");
-        Assert.AreEqual(2, Int("g.MarkCount()"), "two marks presumed: blue's bump, heard, and my own");
+        Assert.AreEqual(2, Int("collisions.MarkCount"), "two marks presumed: blue's bump, heard, and my own");
         Met("blue", 4.7, 9.5);
-        Assert.AreEqual(0, Int("g.MarkCount()"), "meeting a body takes both marks back: mine, and the one I learned from blue's bump there");
+        Assert.AreEqual(0, Int("collisions.MarkCount"), "meeting a body takes both marks back: mine, and the one I learned from blue's bump there");
         Assert.AreEqual(0, Int("g.LearnMet(Position(4.6, 9.5))"), "when blue tells it met a body too, nothing is left to take back");
-        Assert.AreEqual(0, Int("g.MarkCount()"), "a meeting leaves no mark on either side");
+        Assert.AreEqual(0, Int("collisions.MarkCount"), "a meeting leaves no mark on either side");
 
         Assert.AreEqual(1, Int("g.Bump(Pose(4.9, 9.5, 0.0))"), "a body standing idle that gets touched bumps too, without a mission");
         Assert.AreEqual(2, Int("g.Bump(Pose(4.9, 9.5, 0.0))"));
         Refuses("g.HearBump('', Pose(1.0, 1.0, 0.0), Position(1.0, 1.0));", "needs to say who");
         Assert.AreEqual(2, Int("g.HearTouch('red', Position(4.9, 9.5), Position(5.1, 9.5))"), "a standing peer touched: heard (the second bump heard)…");
-        Assert.AreEqual(0, Int("g.MarkCount()"), "…and no mark: what touches a standing body is a body");
+        Assert.AreEqual(0, Int("collisions.MarkCount"), "…and no mark: what touches a standing body is a body");
     }
 
     [TestMethod]
@@ -625,11 +625,11 @@ public class MissionAcceptanceTests
         PlantMark(10.25, 5.15, North);    // its south face
         PlantMark(9.9, 5.5, East);        // its west face
         PlantMark(8.0, 9.5, East);        // something else, far away in the storage room
-        Assert.AreEqual(4, Int("g.MarkCount()"));
-        Assert.AreEqual(2, Int("g.ObstacleCount()"), "three touches on one thing, one on another");
+        Assert.AreEqual(4, Int("collisions.MarkCount"));
+        Assert.AreEqual(2, Int("collisions.All().Count"), "three touches on one thing, one on another");
 
         string json = perf.Actor.Using(@"
-            foreach (obstacles in g.Obstacles()) {
+            foreach (obstacles in collisions.All()) {
                 print obstacles.Where 'zone', obstacles.Size 'size', obstacles.Shape 'shape', obstacles.Center.X 'cx';
                 foreach (vertices in obstacles.Vertices()) { print vertices.At.X 'x', vertices.At.Y 'y'; }
             }
@@ -650,12 +650,12 @@ public class MissionAcceptanceTests
     public void AMarkInACorridorTooNarrowForTheBody_ClosesIt_AndTheRoadGoesRound()
     {
         Visit(1, 9.0, 1.5);                        // the garage, from the storage center
-        string before = Text("g.Plan(g.Find(1), Position(9.0, 9.5))");
+        string before = Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()");
         StringAssert.Contains(before, "storage/east@10.25,8 > east/garage@10.25,3", "the east corridor is the shortest road");
 
         PlantMark(10.25, 5.85, South);                   // a peer bumped into something in the middle of the corridor
 
-        string after = Text("g.Plan(g.Find(1), Position(9.0, 9.5))");
+        string after = Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()");
         Assert.IsFalse(after.Contains("east/garage"), "between the mark and the corridor's walls the body does not fit: " + after);
         StringAssert.Contains(after, "north~center@");
         StringAssert.EndsWith(after, "> south/garage@7,1.5 > garage@9,1.5");
@@ -667,7 +667,7 @@ public class MissionAcceptanceTests
         Visit(1, 10.2, 9.5);                        // across the storage room
         PlantMark(9.0, 9.5, East);                       // something in the middle of it, touched heading east
 
-        string plan = Text("g.Plan(g.Find(1), Position(7.6, 9.5))");
+        string plan = Text("g.Road(g.Find(1), Position(7.6, 9.5)).AsPlan()");
         StringAssert.Contains(plan, "around@", "the body skirts the mark: " + plan);
         StringAssert.EndsWith(plan, "> storage@10.2,9.5");
 
@@ -681,10 +681,10 @@ public class MissionAcceptanceTests
     public void AfterABump_TheRoadIsDecidedAgain()
     {
         Visit(1, 9.0, 1.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(9.0, 9.5))"));
+        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));
 
         Bump(1, 10.25, 5.85, South);                 // the crate, met halfway down the corridor: bumped and marked at once
-        string again = Text("g.Plan(g.Find(1), Position(10.25, 6.3))");   // from where the body backed off to
+        string again = Text("g.Road(g.Find(1), Position(10.25, 6.3)).AsPlan()");   // from where the body backed off to
         Assert.IsFalse(again.Contains("east/garage"), "the corridor is closed by the mark: " + again);
         StringAssert.Contains(again, "storage/east@10.25,8", "back out the way it came");
         Route(1, again);
@@ -699,13 +699,13 @@ public class MissionAcceptanceTests
         Visit(1, 9.0, 1.5);                        // the garage
         PlantMark(7.6, 9.3, South);                      // two touches on something right beside the body...
         PlantMark(8.2, 9.3, South);
-        string plan = Text("g.Plan(g.Find(1), Position(7.9, 9.55))");  // ...which stands between them, in the storage room
+        string plan = Text("g.Road(g.Find(1), Position(7.9, 9.55)).AsPlan()");  // ...which stands between them, in the storage room
         StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
 
         PlantMark(10.25, 5.85, South);                   // the crate closes the corridor too
         // a body 0.15 north of that mark (it just backed off the crate; the touch was estimated a little short) leaves
         // the way it came and takes the long way round — never straight down through the mark (the 8-sep live run)
-        string outNorth = Text("g.Plan(g.Find(1), Position(10.25, 6.0))");
+        string outNorth = Text("g.Road(g.Find(1), Position(10.25, 6.0)).AsPlan()");
         StringAssert.StartsWith(outNorth, "storage/east@10.25,8 > ", "back out through the door it came in by: " + outNorth);
         Assert.IsFalse(outNorth.Contains("east/garage"), "not through the crate: " + outNorth);
     }
@@ -714,12 +714,12 @@ public class MissionAcceptanceTests
     public void WhenNoRoadFits_TheProgressReadsStillAnswer_AsTheCrowFlies()
     {
         Visit(1, 2.0, 9.5);                          // the kitchen, from the storage
-        Route(1, Text("g.Plan(g.Find(1), Position(9.0, 9.5))"));
+        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));
         PlantMark(4.0, 9.2, East);                        // marks close the kitchen/north doorway...
         PlantMark(4.0, 9.8, East);
         PlantMark(0.75, 8.2, South);                      // ...and the kitchen/west one
         PlantMark(0.75, 7.8, South);
-        Refuses("g.Plan(g.Find(1), Position(9.0, 9.5));", "no road");
+        Refuses("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan();", "no road");
         Assert.AreEqual(7.0, Double("g.DistanceLeft(Position(9.0, 9.5))"), 0.001, "straight from (9, 9.5) to (2, 9.5): a read never refuses");
         Assert.IsTrue(Double("g.SecondsLeft(Position(9.0, 9.5))") > 0);
     }
@@ -730,7 +730,7 @@ public class MissionAcceptanceTests
         Visit(1, 9.0, 1.5);                        // the garage has two doors
         PlantMark(7.0, 1.5, East);                       // something in the south/garage door
         PlantMark(10.25, 3.0, North);                    // and something in the east/garage door
-        Refuses("g.Plan(g.Find(1), Position(2.0, 1.5));", "fits a body of radius 0.25 past 2 marks");
+        Refuses("g.Road(g.Find(1), Position(2.0, 1.5)).AsPlan();", "fits a body of radius 0.25 past 2 marks");
     }
 
 
@@ -741,7 +741,7 @@ public class MissionAcceptanceTests
     public void AStopReached_ImpliesEveryLegBeforeIt_AndANonStopIsRefused()
     {
         Visit(1, 2.0, 1.5);                       // the living room, from the kitchen
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));    // kitchen/west > west/living > living
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));    // kitchen/west > west/living > living
         Assert.AreEqual(3, Int("g.Find(1).LegsLeft"));
 
         Refuses("{ route = g.Find(1); route.Reach(Position(0.75, 8.0)); }", "next stop is (2, 1.5)");   // a door of the plan is not a stop
@@ -754,7 +754,7 @@ public class MissionAcceptanceTests
     public void AnErrandOneSegmentAway_HasAPlanOfOneLeg_TheStopItself()
     {
         Visit(1, 2.0, 9.5);                        // a point of the kitchen, from the kitchen
-        string plan = Text("g.Plan(g.Find(1), Position(3.0, 9.0))");
+        string plan = Text("g.Road(g.Find(1), Position(3.0, 9.0)).AsPlan()");
         Assert.AreEqual("kitchen@2,9.5", plan, "same room, nothing in between: the plan is the stop alone");
         Route(1, plan);
         Assert.AreEqual(1, Int("g.Find(1).LegsLeft"));
@@ -783,14 +783,14 @@ public class MissionAcceptanceTests
     public void ATouch_InterruptsThePlan_AndAnotherRoadReplacesWhatWasLeft()
     {
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
         Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"));
 
         Bump(1, 2.0, 10.8, North);                // something by the kitchen's north wall
         Assert.IsTrue(Bool("g.Find(1).BumpedSinceRoute"), "the plan is interrupted: the golem decides another road");
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "but the mission goes on");
 
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 10.4))"));   // from where the body stands, the same stop ahead
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 10.4)).AsPlan()"));   // from where the body stands, the same stop ahead
         Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"));
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
 
@@ -811,7 +811,7 @@ public class MissionAcceptanceTests
         Bump(1, 4.7, 9.5, East);                      // my own touch, right there: presumed a thing…
         Met("blue", 4.7, 9.5);                        // …until the domain names blue: both marks go, the way is clear to step aside
 
-        string road = Text("g.PlanPast(g.Find(1), 'blue', Pose(4.6, 9.5, 0.0))");
+        string road = Text("g.RoadPast(g.Find(1), 'blue', Pose(4.6, 9.5, 0.0)).AsPlan()");
         StringAssert.StartsWith(road, "aside@", "the first leg is the courtesy step: " + road);
         StringAssert.EndsWith(road, "> north@5.5,9.5", "and then the errand goes on");
 
@@ -833,7 +833,7 @@ public class MissionAcceptanceTests
         Visit(1, "north");
         Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
         // hemmed in against the kitchen's north wall: neither side leaves room for the body
-        string road = Text("g.PlanPast(g.Find(1), 'blue', Pose(2.0, 10.9, 1.5708))");
+        string road = Text("g.RoadPast(g.Find(1), 'blue', Pose(2.0, 10.9, 1.5708)).AsPlan()");
         Assert.IsFalse(road.Contains("aside@"), "no room to be polite: the plain road, and the meeting is settled by waiting: " + road);
     }
 
@@ -849,8 +849,8 @@ public class MissionAcceptanceTests
 
         // the very query the panel's table runs: one row per obstacle, one per vertex under it
         string json = perf.Actor.Using(@"
-            print g.ObstacleCount() 'total';
-            foreach (obstacles in g.Obstacles()) {
+            print collisions.All().Count 'total';
+            foreach (obstacles in collisions.All()) {
                 print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size', obstacles.Who 'who';
                 foreach (vertices in obstacles.Vertices()) { print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal'; }
             }
@@ -890,8 +890,8 @@ public class MissionAcceptanceTests
         PlantMark(10.25, 5.15, North);
         PlantMark(9.9, 5.5, East);
         PlantMark(2.0, 9.5, East);            // and something else, a room away
-        Assert.AreEqual(2, Int("g.ObstacleCount()"));
-        Assert.AreEqual(4, Int("g.MarkCount()"));
+        Assert.AreEqual(2, Int("collisions.All().Count"));
+        Assert.AreEqual(4, Int("collisions.MarkCount"));
         Assert.IsFalse(Bool("g.FitsAt(Position(10.25, 5.5))"), "the crate is in the way");
 
         Assert.IsTrue(Bool("collisions.KnowsAt(Position(10.13, 5.5))"), "asked by its centre");
@@ -899,16 +899,16 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("collisions.KnowsAt(Position(5.5, 5.5))"), "and nothing stands in the middle of the centre hall");
 
         Assert.AreEqual(3, Int("g.Forget(Position(10.13, 5.5))"), "the three marks that outlined it go at once");
-        Assert.AreEqual(1, Int("g.ObstacleCount()"), "the other obstacle is untouched");
-        Assert.AreEqual(1, Int("g.MarkCount()"));
+        Assert.AreEqual(1, Int("collisions.All().Count"), "the other obstacle is untouched");
+        Assert.AreEqual(1, Int("collisions.MarkCount"));
         Assert.IsTrue(Bool("g.FitsAt(Position(10.25, 5.5))"), "a body may pass there again");
         Assert.AreEqual(0, Int("g.Forget(Position(10.13, 5.5))"), "forgetting nothing drops nothing: it is not a refusal");
 
         // whatever is touched there next is a NEW obstacle, outlined by new marks
         PlantMark(10.25, 5.5, South);
-        Assert.AreEqual(2, Int("g.ObstacleCount()"));
-        Assert.AreEqual(2, Int("g.ThingCount()"), "the new thing stands on its own, with nothing of the old one");
-        Assert.AreEqual(2, Int("g.MarkCount()"), "one mark of the new thing, one of the untouched one");
+        Assert.AreEqual(2, Int("collisions.All().Count"));
+        Assert.AreEqual(2, Int("collisions.Things().Count"), "the new thing stands on its own, with nothing of the old one");
+        Assert.AreEqual(2, Int("collisions.MarkCount"), "one mark of the new thing, one of the untouched one");
     }
 
     [TestMethod]
@@ -916,12 +916,12 @@ public class MissionAcceptanceTests
     {
         Met("blue", 4.7, 9.5);
         PlantMark(10.25, 5.85, South);
-        Assert.AreEqual(2, Int("g.ObstacleCount()"));
+        Assert.AreEqual(2, Int("collisions.All().Count"));
 
         Assert.AreEqual(1, Int("g.Forget(Position(4.7, 9.5))"), "the encounter is dropped");
-        Assert.AreEqual(0, Int("g.MetCount()"));
-        Assert.AreEqual(1, Int("g.ThingCount()"), "and the thing stays");
-        Assert.AreEqual(1, Int("g.MarkCount()"));
+        Assert.AreEqual(0, Int("collisions.EncounterCount"));
+        Assert.AreEqual(1, Int("collisions.Things().Count"), "and the thing stays");
+        Assert.AreEqual(1, Int("collisions.MarkCount"));
     }
 
     // ---- the second touch protocol: the domain suspects, the golem concludes ----
@@ -957,7 +957,7 @@ public class MissionAcceptanceTests
     public void GrazingAKnownWall_IsAFact_ThatSpendsTheGolemsPatienceOnTheLeg()
     {
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Plan(g.Find(1), Position(2.0, 9.5))"));   // kitchen/west > west/living > living
+        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));   // kitchen/west > west/living > living
         Assert.IsTrue(Bool("g.Find(1).MayRetryLeg"));
 
         Graze(1, 0.05, 8.5);
@@ -966,7 +966,7 @@ public class MissionAcceptanceTests
         Assert.IsTrue(Bool("g.Find(1).MayRetryLeg"), "two grazes: still patient");
         Graze(1, 0.05, 8.6);
         Assert.IsFalse(Bool("g.Find(1).MayRetryLeg"), "three grazes on one leg: patience spent, the mission is given up");
-        Assert.AreEqual(0, Int("g.MarkCount()"), "a graze leaves no mark: the wall was known");
+        Assert.AreEqual(0, Int("collisions.MarkCount"), "a graze leaves no mark: the wall was known");
 
         Reach(1, 2.0, 1.5);
         Assert.AreEqual(3, Int("g.Find(1).Grazes"), "the mission remembers every graze");
@@ -980,13 +980,13 @@ public class MissionAcceptanceTests
         Met("blue", 4.7, 9.5);
         PlantMark(10.25, 5.85, South);
 
-        Assert.AreEqual(1, Int("g.MetCount()"));
-        Assert.AreEqual(2, Int("g.ObstacleCount()"), "a thing and a peer");
-        Assert.AreEqual(1, Int("g.ThingCount()"), "only the thing is planned around");
+        Assert.AreEqual(1, Int("collisions.EncounterCount"));
+        Assert.AreEqual(2, Int("collisions.All().Count"), "a thing and a peer");
+        Assert.AreEqual(1, Int("collisions.Things().Count"), "only the thing is planned around");
         Assert.IsTrue(Bool("g.FitsAt(Position(4.7, 9.5))"), "the peer moved on: the body fits where it was met");
 
         string json = perf.Actor.Using(@"
-            foreach (obstacles in g.Obstacles()) { print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Who 'who', obstacles.Shape 'shape'; }
+            foreach (obstacles in collisions.All()) { print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Who 'who', obstacles.Shape 'shape'; }
         ").PerformQuery();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
         var list = doc.RootElement.GetProperty("obstacles");
@@ -1012,7 +1012,7 @@ public class MissionAcceptanceTests
         PlantMark(4.93672793175996, 5.75978159057928, -1.37257826652825);
         PlantMark(5.14806941278059, 5.65085610890956, 0.0681849256515386);    // the second touch, stepping left into the crate's west face
 
-        string plan = Text("g.Plan(g.Find(1), Position(4.8, 5.63))");
+        string plan = Text("g.Road(g.Find(1), Position(4.8, 5.63)).AsPlan()");
         StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
     }
 
@@ -1147,7 +1147,7 @@ public class MissionAcceptanceTests
         .PerformCommand();
 
     // The road is decided act by act, all in one command — the road opened with Route, then its own Via / Around /
-    // Aside per leg and Stop per stop — from the one-line text g.Plan renders (the test reads the plan as a human does, the journal never
+    // Aside per leg and Stop per stop — from the one-line text g.Road(…).AsPlan() renders (the test reads the plan as a human does, the journal never
     // holds that text).
     private void Route(int id, string plan)
     {

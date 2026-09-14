@@ -38,22 +38,13 @@ internal sealed class Golem
         if (collisions.Layout != layout) throw new GolemDomainException("the collisions must be measured over the golem's own layout");
     }
 
-    // ---- the body ----
+    // ---- the body, in base units, for the golem's own sums (the journal reads the module: body.Radius.InMeters) ----
 
-    internal double Radius() => body.Radius.InMeters;
-    internal double Speed() => body.Speed.InMetersPerSecond;
-    internal double LingerAfterTold() => body.LingerAfterTold.InSeconds;
+    private double Radius() => body.Radius.InMeters;
+    private double Speed() => body.Speed.InMetersPerSecond;
+    private double LingerAfterTold() => body.LingerAfterTold.InSeconds;
 
     // ---- the map, read through the golem only where the BODY enters the answer (the map itself is the global `map`) ----
-
-    /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a wall of a zone, within a tolerance
-    /// that absorbs the wall's thickness and the pose's error, outside its doorways. Touching a known wall is the
-    /// golem's own execution error; touching anything else is reality holding something the map does not.</summary>
-    internal bool KnowsWallAt(Position at)
-    {
-        if (at == null) throw new GolemDomainException("Golem.KnowsWallAt: 'at' was not given");
-        return layout.IsWallAt(at, MapLayout.WallTolerance);
-    }
 
     /// <summary>The shortest road between two areas, centre to centre, through the passages, for this body —
     /// <c>g.Distance(map.Find('kitchen'), map.Find('garage'))</c>.</summary>
@@ -77,14 +68,6 @@ internal sealed class Golem
         if (at == null) throw new GolemDomainException("Golem.HasRoomAt: 'at' was not given");
         return layout.HasRoom(at, Radius());
     }
-
-    // ---- the collisions, read through the golem ----
-
-    internal int MarkCount() => collisions.MarkCount;
-    internal int ObstacleCount() => collisions.All().Count;
-    internal IReadOnlyList<Obstacle> Obstacles() => collisions.All();
-    internal int ThingCount() => collisions.Things().Count;
-    internal int MetCount() => collisions.EncounterCount;
 
     // ---- routes: the entrusting (the operator's voice) — the golem hands the route out and every act on it is its own ----
 
@@ -150,10 +133,6 @@ internal sealed class Golem
         return planner.Road(from, stops);
     }
 
-    /// <summary>The same way, in one line of text — for a human or a test to read at a glance:
-    /// "kitchen/north@4,9.5 > kitchen@2,9.5 > north/storage@7,9.5 > storage@9,9.5".</summary>
-    internal string Plan(Route route, Position from) => Road(route, from).AsPlan();
-
     /// <summary>The way out of a peer's way and on to the stops still ahead, as objects: the first leg is the
     /// courtesy step — a body's width to ONE SIDE of where the golem faces, chosen so it moves away from the peer
     /// and where its own body fits; both bodies step to their own right when they can, which is how two of them
@@ -171,9 +150,6 @@ internal sealed class Golem
         legs.AddRange(planner.Road(aside, ahead).Legs());
         return new Trajectory(legs);
     }
-
-    /// <summary>The way past a peer, in one line of text.</summary>
-    internal string PlanPast(Route route, string who, Pose me) => RoadPast(route, who, me).AsPlan();
 
     /// <summary>The courtesy step: two radii of the body to one side of where it faces.</summary>
     internal const double CourtesyStep = 0.5;
@@ -287,9 +263,6 @@ internal sealed class Golem
         return collisions.Suspect(touch, sinceCount);
     }
 
-    /// <summary>How many bumps peers have told about so far — the count a leg starts from, so older news is not taken for this touch.</summary>
-    internal int HeardBumpCount() => collisions.HeardCount;
-
 
     // ---- routes: the progress — only what fulfils the plan is journaled ----
 
@@ -297,10 +270,10 @@ internal sealed class Golem
 
     internal bool Knows(int id) => routes.Any(m => m.Id == id);
     internal bool HasPendingMission() => routes.Any(m => m.IsPending());
-    internal int Pending() => routes.Count(m => m.IsPending());
-    /// <summary>The routes still pending, as objects — <c>foreach (route in g.PendingRoutes()) { route.Abandon(@reason); }</c>.</summary>
+    /// <summary>Every route the golem was ever handed, as objects — <c>g.Routes().Count</c> is how many.</summary>
+    internal IReadOnlyList<Route> Routes() => routes.ToList();
+    /// <summary>The routes still pending, as objects — <c>foreach (route in g.PendingRoutes()) { route.Abandon(@reason); }</c>, <c>g.PendingRoutes().Count</c>.</summary>
     internal IReadOnlyList<Route> PendingRoutes() => routes.Where(m => m.IsPending()).ToList();
-    internal int Total() => routes.Count;
     /// <summary>The newest pending point a peer told about — where the leader is now, as far as the follower knows. Consult HasNewerFollowing first.</summary>
     internal int NewestFollowingId() => routes.Where(m => m.IsPending() && m.Following).Select(m => m.Id).DefaultIfEmpty(0).Max();
     /// <summary>Whether a FOLLOWED route has been overtaken by a newer followed one; an operator's route never is.</summary>

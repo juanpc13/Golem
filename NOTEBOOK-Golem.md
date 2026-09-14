@@ -1455,3 +1455,17 @@ El bloque entre llaves también en la consulta: la variable `preview` muere con 
 **Observación en vivo** (journals actuales, compatibles; cero reinicios, cero errores de escritura): encargo de dos paradas por la vista previa nueva (`http 200`, `stopsLeft 2`), `/progress` con `distanceLeft 11.19` y `here west`, pausa y reanudación por `g.Find(@id).Paused` (segunda pausa rechazada: "the route is already paused"), llegada a las dos paradas. Red no encontró camino al norte "past 17 marks": la caja del centro sigue puesta y tres golems han chocado con ella toda la tarde; es la realidad, no un defecto.
 
 **Conclusión**: la superficie del golem quedó en lo que solo el golem sabe: su cuerpo y su flota de rutas. Todo lo demás lo responde el objeto al que pertenece. Regla escrita en CLAUDE.md. **Pendiente**: `Plan`/`PlanPast` son texto para humanos (los lee el laboratorio en 31 tests); el operador podría verlos en el panel en vez de la lista de puntos cruda.
+
+---
+
+## 2026-09-14 · El golem no envuelve nada: las últimas lecturas redundantes se van
+
+**Contexto**: Juan, tras el paso anterior: "de estos query o lecturas me estoy preguntando, ¿son necesarios o también podemos reducirlos?"
+
+**Observación previa (motor)**: sondeado con `/query` en blue antes de tocar código — `collisions.All().Count` → 3, `g.PendingRoutes().Count` → 0, `body.Radius.InMeters` → 0.25, `map.IsWallAt(Position(4.0, 8.5), 0.3)` → true; pero `map.Zones.Count` → *"Unknown property or method 'Count'"*: la DSL lee `.Count` de una lista que devuelve un método (`IReadOnlyList`), no de una propiedad `IEnumerable`. Regla anotada en CLAUDE.md.
+
+**Ajuste al dominio** (`Golem`): fuera once envolturas — `Radius`, `Speed`, `LingerAfterTold` quedan privadas para las sumas del propio golem (el planificador, el reloj), y el journal lee `body.Radius.InMeters`; fuera `MarkCount`, `ObstacleCount`, `Obstacles`, `ThingCount`, `MetCount`, `HeardBumpCount` (el módulo `collisions` responde), `KnowsWallAt` (`map.IsWallAt(Position, tolerancia)`), `Plan` y `PlanPast` (`g.Road(…).AsPlan()`); `Pending()` y `Total()` se vuelven `g.PendingRoutes().Count` y `g.Routes().Count` (lectura nueva `Routes()`, la lista entera). Host, panel (`/state`, `/progress`, `/obstacles`, botones de consulta) y tests reescritos; 55 verdes.
+
+**Observación en vivo** (journals compatibles; cero reinicios, cero errores): `/state` `{"pending":0,"total":9}`, `/progress` con velocidad y espera leídas del cuerpo, `/obstacles` con `collisions.All().Count`; blue → storage llegó (`mission 10 reached the stop (9.0, 9.5)`). Un encargo a living fue rechazado con "no road … past 17 marks": la flota guarda una cosa de un solo vértice en el pasillo west y otra en el east, además de la caja del centro (15 vértices); son marcas de toques entre cuerpos de la tarde que no se retractaron, y cierran los dos pasillos. Es el estado del mundo y del journal, no de las lecturas; el operador las olvida con `/forget` si la caja no está.
+
+**Conclusión**: la superficie de lectura del golem quedó en veinte miembros, cada uno con el cuerpo o la flota de rutas dentro de la respuesta. Lo demás lo responde el objeto dueño del dato. Con esto se cierra el inventario del 14-sep: escrituras en objetos y validadas, lecturas en objetos y sin envolturas. **Pendiente**: las dos marcas sueltas de los pasillos merecen mirarse — un toque entre cuerpos que no concluyó `Met` deja una marca que nadie retracta (el caso de la palabra tardía más allá de los 12 s).

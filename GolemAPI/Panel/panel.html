@@ -150,7 +150,7 @@
     <h2 style="margin-top:20px">Obstacles</h2>
     <div class="card" style="margin-bottom:20px">
       <p class="hint">What the golem HYPOTHESIZES from what its bodies touched — one query on <code>/obstacles</code>
-      walking <code>g.Obstacles()</code>. A <b>thing</b> is geometry the roads avoid: its vertices are the marks that
+      walking <code>collisions.All()</code>. A <b>thing</b> is geometry the roads avoid: its vertices are the marks that
       outlined it, each with the normal of the touch. A <b>peer</b> is a body it met — history, never planned around.
       The marks are facts; the figure is the guess, and every new touch refines it.</p>
       <table id="obstacles"><tbody></tbody></table>
@@ -166,22 +166,22 @@
     <div class="card ops" style="margin-bottom:20px">
       <div class="row">
         <input id="q" type="text" style="flex:1; width:auto" spellcheck="false"
-               placeholder="g.Pending()  —  or a full block: { print g.Next().Id 'id'; }">
+               placeholder="g.PendingRoutes().Count  —  or a full block: { print g.Next().Id 'id'; }">
         <button id="run">Query</button>
       </div>
       <div class="row" id="presets">
-        <button data-q="g.Pending()">Pending()</button>
-        <button data-q="g.Total()">Total()</button>
-        <button data-q="g.Radius()">Radius()</button>
-        <button data-q="g.Speed()">Speed()</button>
-        <button data-q="g.LingerAfterTold()">LingerAfterTold()</button>
+        <button data-q="g.PendingRoutes().Count">PendingRoutes().Count</button>
+        <button data-q="g.Routes().Count">Routes().Count</button>
+        <button data-q="body.Radius.InMeters">body.Radius.InMeters</button>
+        <button data-q="body.Speed.InMetersPerSecond">body.Speed.InMetersPerSecond</button>
+        <button data-q="body.LingerAfterTold.InSeconds">body.LingerAfterTold.InSeconds</button>
         <button data-q="g.RouteLength()">RouteLength()</button>
         <button data-q="g.RouteSeconds()">RouteSeconds()</button>
         <button data-q="g.Distance(map.Find('kitchen'), map.Find('garage'))">Distance(kitchen, garage)</button>
         <button data-q="map.ZoneAt(Position(5.5, 5.5)).Name">map.ZoneAt(Position(5.5, 5.5)).Name</button>
-        <button data-q="g.KnowsWallAt(Position(4.0, 8.5))">KnowsWallAt(Position(4.0, 8.5))</button>
-        <button data-q="g.MarkCount()">MarkCount()</button>
-        <button data-q="g.ObstacleCount()">ObstacleCount()</button>
+        <button data-q="map.IsWallAt(Position(4.0, 8.5), 0.3)">map.IsWallAt(Position(4.0, 8.5), 0.3)</button>
+        <button data-q="collisions.MarkCount">collisions.MarkCount</button>
+        <button data-q="collisions.All().Count">collisions.All().Count</button>
         <button data-q="collisions.HeardCount">collisions.HeardCount</button>
         <button data-q="{ foreach (places in map.Zones) { print places.Name 'name'; foreach (doors in places.Doorways()) { print doors.To 'to'; } } }">map.Zones as objects</button>
         <button data-q="map.AreaCount">map.AreaCount</button>

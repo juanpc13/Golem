@@ -221,7 +221,7 @@ public class GolemController : Controller
     [HttpGet("obstacles")]
     public IActionResult Obstacles() =>
         Content(perf.Actor.Using(@"
-            print g.ObstacleCount() 'total', g.ThingCount() 'things', collisions.EncounterCount 'met', collisions.MarkCount 'marks';
+            print collisions.All().Count 'total', collisions.Things().Count 'things', collisions.EncounterCount 'met', collisions.MarkCount 'marks';
             foreach (obstacles in collisions.All()) {
                 print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
                       obstacles.Who 'who', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
@@ -296,7 +296,7 @@ public class GolemController : Controller
         if (pose == null) return StatusCode(503, "no telemetry from the body yet");
 
         string answer = perf.Actor.Using(@"
-            print g.HasPendingMission() 'hasNext', g.Pending() 'pendingMissions', g.Speed() 'speed', g.LingerAfterTold() 'lingerAfterTold';
+            print g.HasPendingMission() 'hasNext', g.PendingRoutes().Count 'pendingMissions', body.Speed.InMetersPerSecond 'speed', body.LingerAfterTold.InSeconds 'lingerAfterTold';
             if (g.HasPendingMission()) {
                 print g.Next().Id 'mission', g.Next().StopsLeft 'stopsLeft', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
                 if (map.IsOnMap(Position(@x, @y))) {
@@ -316,7 +316,7 @@ public class GolemController : Controller
     // One query, one document: the board the panel paints from.
     private string Board() =>
         perf.Actor.Using(@"
-            print g.Pending() 'pending', g.Total() 'total', g.HasPendingMission() 'hasNext';
+            print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
                 print g.Next().Id 'nextId', g.Next().NextLeg.At.X 'nextX', g.Next().NextLeg.At.Y 'nextY', g.Next().StopsLeft 'stopsLeft', g.Next().Paused 'paused';
             }
