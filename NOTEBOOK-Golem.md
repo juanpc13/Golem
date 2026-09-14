@@ -1344,3 +1344,44 @@ upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger
 **De paso**: blue no encontraba ruta ("no road … past 9 marks") porque guardaba las marcas de las cajas del viernes (west, center y east) y el mundo regenerado ya no las tiene: el operador las olvidó con `/forget` (tres cosas), como manda la doctrina — la marca es un hecho, quien sabe que la cosa ya no está es el operador.
 
 **Pendiente**: una pausa que llega durante el protocolo de un choque (escucha y reconsideración) surte efecto al tramo siguiente, no en el acto; documentado, no corregido.
+
+---
+
+## 2026-09-14 · La ruta es el encargo: `route = g.Visit(point)`, el camino en puntos, los actos sobre la ruta
+
+**Contexto**: tres observaciones de Juan seguidas. Sobre `g.Fail(@id, …)`: "uno le setea el parámetro primero para buscar la misión, pero debería sacar la Route con un find y a la variable ponerle un fail". Sobre la separación misión/ruta: "yo todo este tiempo pensé que la Route era el encargado de devolver un objeto con la ruta completa… la idea es decir visit, luego llamar al route y devuelve un objeto con todos los puntos a visitar y eso es lo que se está siguiendo". Sobre los tramos: "esperaría que quizás algún Eval del puppeteer le fuéramos sacando todos esos puntos que conoce el objeto route… creando el listado de puntos en el script". Y sobre `g.Visit(@id, …)`: "el cálculo del siguiente id se puede hacer dentro del método para quitar ese primitivo".
+
+**Diagnóstico**: la separación `Mission` (encargo, estado) / `Trajectory` (tramos) era mía, no del dominio: lo que Juan llama ruta es el objeto que nace con el `Visit`, guarda las paradas, recibe el camino y es lo que el cuerpo sigue. Y los pasajes en el script (`opening1 = map.FindOpening(…)`) eran ruido: la ruta sabe qué es cada punto porque tiene el mapa.
+
+**Sobre el `Eval`** (guía `puppeteer-parameters`): los `Parameter.Eval` se resuelven al cargar argumentos, ANTES del cuerpo, y congelan un valor escalar en la cabecera de la entrada. La ruta no existe en ese momento (la crea el `g.Visit` del cuerpo), y su resultado no es una lista de objetos. Lo que Juan describe ya es lo que hace el host con `g.Preview` antes de escribir: los puntos que la ruta conoce, congelados como valores en el script. Y no se calculan dentro del cuerpo a propósito: si cambiara el planificador, la rehidratación decidiría otra ruta y la historia cambiaría (paper 05).
+
+**Ajuste al dominio** (`Routes.Route` nuevo; `Robots.Mission` y `MissionStatus` desaparecen → `RouteStatus`; `Golem`, `Trajectory`, `Leg`): `Route(id, stop, following, choosesOrder, layout, collisions)`. Paradas: `Then(Position|Area)`. Camino en puntos: `Via(Position)` — la ruta lo nombra contra el mapa: puerta si coincide con `PointOf(door)`, frontera si está sobre `EdgeOf(opening)`, `via` (nuevo `Leg.Waypoint`) si no; `Stop(Position|Area)` exige que sea una parada por delante y, cuando todas tienen su tramo, toma la trayectoria (`WithDoorCrossings`); un `Via` tras una ruta decidida abre la decisión siguiente. Marcha: `Reach(Position)`, `Bump(Pose)` (marca en `collisions`), `Graze(Position)`; retención `Pause()`/`Resume()`; final `Fail`, `Abandon`, `Announce`. `Golem`: `Visit/Cover/Follow` devuelven la ruta con el handle acuñado dentro (`lastHandle + 1`, determinista en la rehidratación, nunca reutilizado); `Find(id)` pasa a ser público y es el único lugar donde entra el id; desaparecen `Route(id)`, `Reach`, `Bump(id, …)`, `Graze`, `Pause`, `Resume`, `Fail`, `Abandon`, `Announce` del golem (queda `g.Bump(touch)` del cuerpo parado, sin ruta). `Trajectory` vuelve a nacer entera. Tests: 55 verdes; el helper `Route` escribe solo puntos y dos aserciones que esperaban `around`/`aside` como rumbo esperan ahora `via`.
+
+**Ajuste al host** (`RoadLeg.Acts/Bind/Script`, `GolemController.Errand`, handlers, `echo-reached`, panel): el encargo escribe `route = g.Visit(point1); route.Then(point2); via{n} = Position(@lx{n}, @ly{n}); route.Via(via{n}); route.Stop(point1)…` (una parada nombrada por el encargo se escribe con su misma variable; en un recálculo, `stop{n}`); desaparece el `Parameter.Eval` de `g.NextHandle()`. Handlers: `{ route = g.Find(@id); … }` para Reach, Bump, Graze, Fail, Abandon, Pause, Resume; `foreach (id in g.PendingIds()) { route = g.Find(id); route.Abandon(@reason); }`; la reacción `echo-reached` continúa con `{ route = g.Find(@missionId); route.Announce(); } tell PointVisited …` (un bloque entre llaves seguido de un `tell` en un `Causation.Continue` funciona).
+
+**Observación 1 — un tropiezo del motor**: la primera corrida falló al escribir: *"Unknown property or method 'Stop' on type 'Route'"*. `route.Stop(point1)` con `point1 = map.Find('kitchen')` entrega una `Zone`, y el motor liga por el tipo en tiempo de ejecución: sin sobrecarga `Stop(Area)`, el método "no existe". El mensaje engaña (dice que falta el método, no que falta la sobrecarga). Corregido con `Stop(Area)` y un test que escribe el encargo exactamente como el host. Lección: **todo acto que reciba lo que un `map.Find` devuelve necesita la sobrecarga con `Area`**.
+
+**Observación 2 — en vivo** (journals anteriores en `journal-legacy-20260914-route/` y `-route-b/`; cero reinicios, cero errores de escritura):
+```
+blue 3: { point1 = map.Find('kitchen'); route = g.Visit(point1); point2 = map.Find('garage'); route.Then(point2);
+          via1 = Position(4,9.5); route.Via(via1); route.Stop(point1); via3 = Position(4,9.5); route.Via(via3);
+          via4 = Position(5.5,8); route.Via(via4); via5 = Position(6.19,3); route.Via(via5); via6 = Position(7,1.5); route.Via(via6); route.Stop(point2); }
+red  3: { point1 = map.Find('living'); route = g.Cover(point1); point2 = map.Find('storage'); route.Then(point2); route.Stop(point1); via2 = …; … route.Stop(point2); }
+red    : { route = g.Find(1); point = Position(2,1.5); route.Reach(point); } Expose 1 'rid' …
+         { route = g.Find(1); route.Announce(); } tell PointVisited with 2, 1.5 to blue once …
+blue   : { point = Position(2,1.5); g.Follow(point); }
+         { route = g.Find(2); route.Abandon('superseded by mission 3'); }
+         { route = g.Find(3); via1 = Position(10.25,3); route.Via(via1); via2 = Position(10.25,8); route.Via(via2); stop3 = Position(9,9.5); route.Stop(stop3); }
+blue 4 : { point = map.Find('south'); route = g.Visit(point); via1 = …; route.Via(via1); via2 = …; via3 = …; route.Stop(point); }
+         { route = g.Find(4); route.Pause(); }
+         { touch = Pose(8.77,9.48,3.03); g.Bump(touch); } Expose … 'tx' …         ← red lo tocó mientras estaba pausado: toque de cuerpo parado
+         { route = g.Find(4); route.Resume(); }
+         { route = g.Find(4); touch = Pose(8.53,9.49,3.09); route.Bump(touch); } Expose … → tell BumpedAt …
+         { route = g.Find(4); via1 = Position(8.75,9.98); route.Via(via1); via2 = Position(7,9.5); … stop5 = Position(5.5,1.5); route.Stop(stop5); }   ← el recálculo
+         { route = g.Find(4); point = Position(5.5,1.5); route.Reach(point); }
+```
+La numeración de `via{n}` cuenta los tramos (una parada nombrada ocupa su número sin variable: `via1`, `Stop(point1)`, `via3`…). El host camina el plan leído de `g.RoadAhead` con los tramos ya nombrados por la ruta (las puertas conservan sus cruces rectos).
+
+**Conclusión**: regla general confirmada por tercera vez (`map`, `route` como trayectoria, `route` como encargo): cuando un verbo del sujeto recibe una clave para encontrar un estado que otro verbo abrió, ese estado es un objeto que el primero devuelve. El sujeto queda con lo que crea (`Visit`, `Cover`, `Follow`), lo que busca (`Find`), lo que oye (`HearBump`, `HearTouch`, `LearnMet`, `LearnForget`), lo que concluye (`Met`, `Forget`) y el toque del cuerpo parado (`Bump(touch)`).
+
+**Pendiente**: (1) el `Bump(touch)` del cuerpo parado sigue en el golem porque no hay ruta: candidato a ser del cuerpo (`body.Bump`?) si algún día el cuerpo journalea; (2) los nombres del host (`MissionRouted`, `MissionBumped`, `mission {id}` en el panel) hablan todavía de misiones: son del host, no del journal, y se renombran cuando toque el host.

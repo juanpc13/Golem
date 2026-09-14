@@ -49,7 +49,8 @@ Every observation must end as a note that lets us conclude and improve the domai
 | Colisiones | `Touches.Collisions` | The module that keeps what the bodies LEARNED by touching (marks, peers met, bumps heard) and INTERPRETS it (obstacles, suspicions, who was near). Global `collisions`, built in `init` over the layout. |
 | Marca (hecho) | `Touches.Mark` | A body touched something uncharted: HAS a `Position` and a heading (its normal). A fact. |
 | Obstáculo (hipótesis) | `Touches.Obstacle` (`Thing`, `Peer`) | Marks joined by closeness: a point, a line, a polygon. A hypothesis, refined by each bump; never stored, always derived. |
-| Ruta / trayectoria | `Routes.Trajectory` | Ordered legs; `Leg` names what the journal writes (`kitchen/north@4,9.5`). Born whole (the planner's) or DECIDED act by act as the object `g.Route(@id)` returns: `route.Via(door, at)`, `route.Around(at)`, `route.Aside(at)`, `route.Stop(at)` — the last stop hands it to the mission (11-sep-2026). |
+| Ruta (el encargo y su camino) | `Routes.Route` | Juan, 14-sep-2026: "visit, luego route devuelve un objeto con todos los puntos a visitar y eso es lo que se está siguiendo". ONE object for what was `Mission` + the road: the stops (`Then`), the way written as POINTS (`Via`, `Stop` — the route names each point against the map: a door where a door stands, an opening on a shared edge, a plain `via` elsewhere), the walk (`Reach`, `Bump`, `Graze`), the hold (`Pause`, `Resume`), the ending (`Fail`, `Abandon`, `Announce`). Handed out by `g.Visit(point)`, `g.Cover(point)`, `g.Follow(point)` — the handle minted inside, a deterministic function of the routes the golem holds — and found again by `g.Find(@id)`, the only place the id enters. The last `Stop` decides the way and a `Via` on a decided route opens a new decision (the recalculation after a bump). |
+| Trayectoria | `Routes.Trajectory` | Ordered legs, born whole: the planner's answer (`g.Preview`, `g.Road`), what a route holds once decided, an evasion maneuver. Never in the journal by itself. |
 | Planificador | `Routes.RoutePlanner` | Dijkstra over doors, openings and detours; consults the layout AND the collisions, owns neither; `EdgeCost` generic, `DistanceCost` today. Built at query time (`RoutePlanner(layout, collisions, radius)`), never a global. |
 | Maniobra de evasión | `Routes.Maneuver : Trajectory`, `Routes.EvasionStrategy` | `BackOff`, `StepAside(Side)`; the host's runtime probe still owns execution. |
 | Magnitud / unidad de medida | `Units.Length`, `Speed`, `Acceleration`, `Duration` (abstract) — `Meters`, `Centimeters`, `MetersPerSecond`, `MetersPerSecondSquared`, `Seconds`, `Minutes` (concrete) | Juan, 11-sep-2026: "una clase que nos especifique qué son esos números, tipo las unidades de medida y velocidad, aceleraciones, segundos". The magnitude is the abstract class, the UNIT is the concrete one the journal constructs, so a value says what it is where it is written; every magnitude reads in its SI base unit (`InMeters`, `InMetersPerSecond`, `InMetersPerSecondSquared`, `InSeconds`) whatever unit wrote it, and is never negative. A duration where a length goes is refused by the engine's static type check before anything runs ("a value of type 'Length' is expected"). Nothing in the domain takes a bare double for a physical quantity from the journal any more; `Acceleration` waits for the body that declares one. |
@@ -58,7 +59,7 @@ Every observation must end as a note that lets us conclude and improve the domai
 ## The domain is the brain (Juan, 8-sep-2026)
 
 "El único que toma las decisiones es el dominio, no el host." The domain decides
-everything the automaton does — the road, how a mission must end, the stages to
+everything the automaton does — the way, how a route must end, the stages to
 continue, what a touch was, what to do about it — and writes those decisions in its
 journal. The host only carries them out (drives the body, waits, listens) and reports
 whether it could or not, so the domain resolves what follows. Consequences:
@@ -67,37 +68,43 @@ whether it could or not, so the domain resolves what follows. Consequences:
   verb the domain concludes with), never the other way round.
 - The host owns only what the papers give it: the clock, the wire, the body.
 - **The journal speaks in objects (10-sep-2026)**: values enter as `@params` and the template builds or
-  finds the object — `g.Visit(@id, Position(@x, @y))`, `g.Visit(@id, map.Find(@area))`,
-  `g.Cross(@id, map.FindDoor(@a, @b))` — several acts per command when an errand has several stops or a
-  road several legs (`route = g.Route(@id); route.Via(…); route.Stop(…)`). **Methods take instances, never names**: a
+  finds the object — `route = g.Visit(map.Find(@area))`, `route.Via(Position(@x, @y))` — several acts per command
+  when an errand has several stops or a way several legs. **Methods take instances, never names or keys**: a
   string enters only where an object is created (`Area('kitchen')`, `DoorTo('north')`, constructors) or
   found (`Find`, `FindDoor`, `FindOpening`, `FindPassage`, `Knows`); everything else takes the object
   (`Connects(a, b)`, `Touches(a, b)`, `Distance(from, to)`, `PointOf(door)`, `StepInto(door, side)`)
-  (Juan, 10-sep: "evitemos parámetros primitivos si tenemos las instancias reales").
+  (Juan, 10-sep: "evitemos parámetros primitivos si tenemos las instancias reales"). **State a verb opens and
+  another verb finds by a key is an object the first verb must return** (Juan, 11/14-sep — `map`, then `route`):
+  the errand is the route, `g.Visit(point)` hands it out with its handle minted inside (like `Follow` always did),
+  later acts find it (`route = g.Find(@id)`), and no golem act takes a mission id any more.
 - **A command template is a braced block, step by step, values as `@params`** (Juan, 10-sep): the object is
-  found or built from the parameters, named after what it is, then handed to the act —
-  `{ point = map.Find(@area); g.Visit(@id, point); route = g.Route(@id); door1 = map.FindDoor(@la1, @lb1); at1 = Position(@lx1, @ly1); route.Via(door1, at1); … stop3 = Position(@lx3, @ly3); route.Stop(stop3); }`
-  — the errand and its whole plan, one entry. **The road is an object** (Juan, 11-sep: "route = g.Route(1) y empezar
-  a llamar los métodos del objeto"): `g.Route(@id)` returns the `Trajectory` being decided for the mission, and the
-  legs are ITS acts (`Via`, `Around`, `Aside`, `Stop`, each returning the road, so they chain); the last stop decides
-  it and the mission takes it. No `@id` on a leg, no hidden draft in the subject: state that belongs to an object is
-  never handled through a primitive key. The host walks the plan in memory (the cursor is telemetry,
-  like the pose) and journals only what fulfils it (`Reach`) or interrupts it (`Bump`, `Graze`).
-  Names: one stop is `point`, several are `point1`, `point2`… (no numeral when there is only one; legs and
-  their `@params` count from 1, as a person counts them) — Juan, 10-sep.
+  found or built from the parameters, named after what it is, then handed to the act — the errand and its whole
+  way, one entry, ONLY POINTS (Juan, 14-sep: "el listado de puntos en el script"; the route names each point
+  against the map, so no `map.FindDoor` in the plan):
+  `{ point1 = map.Find(@area1); route = g.Visit(point1); point2 = Position(@x2, @y2); route.Then(point2); via1 = Position(@lx1, @ly1); route.Via(via1); route.Stop(point1); via3 = Position(@lx3, @ly3); route.Via(via3); route.Stop(point2); }`
+  — a stop the errand named is written back as that very variable; a way decided again (after a bump, or at wake)
+  is `{ route = g.Find(@id); via1 = …; route.Via(via1); stop2 = Position(@lx2, @ly2); route.Stop(stop2); }`. The
+  legs stay written (not computed in the body from the pose): if the planner changed, a rehydration would decide
+  another way and history would change (paper 05). `Parameter.Eval` cannot pull the points off the route in the
+  same entry — it resolves before the body, when the route does not exist yet, and freezes scalars, not objects.
+  The host walks the plan in memory (the cursor is telemetry, like the pose) and journals only what fulfils it
+  (`route.Reach(point)`) or interrupts it (`route.Bump(touch)`, `route.Graze(at)`), the hold (`route.Pause()`,
+  `route.Resume()`) and the ending (`route.Fail(@reason)`, `route.Abandon(@reason)`) — each `{ route = g.Find(@id); … }`.
+  Names: one stop is `point`, several are `point1`, `point2`…; the points of the way are `via{n}`, a stop not named
+  by the errand `stop{n}` (legs and their `@params` count from 1, as a person counts them) — Juan, 10-sep.
   The braces matter: an assignment at the top level of a command becomes a global of the actor (Fase 0,
   P2a); inside `{ }` the name dies with the block (P2b). Never a literal value in a template: every value
   is an `@param` (program–value separability, paper 02).
   **The touches take their objects too, and what is told rides beside them as `expose`** (Juan, 10-sep:
   "el g.Bump aún no maneja posición… hay que corregirlo, y el g.Mark también"): `{ touch = Pose(@x, @y,
-  @heading); g.Bump(@id, touch); } expose @x x, @y y, @heading heading, @me who, @px px, @py py;` — the
+  @heading); route = g.Find(@id); route.Bump(touch); } expose @x x, @y y, @heading heading, @me who, @px px, @py py;` — the
   reaction that tells the peers captures the `expose` labels, because the matcher captures literals, `@params`
   and `expose` labels only, never an object variable (Fase 0, P3). Same for the idle `Bump(touch)` (`tx, ty,
   twho, tpx, tpy` → `TouchedAt`), `Met` (`ex, ey` → `MetPeer`), `Reach` (`rid, rx, ry`) and `Forget` (`gx, gy`);
   `Graze`, `HearBump`, `HearTouch`, `LearnMet`, `LearnForget` need no expose (nothing captures them). Labels are
   distinct per act so no two reactions match one shape.
   **One row per touch** (Juan, 10-sep: "mantengamos una sola fila… el mismo g.Bump internamente se lo setea"):
-  there is no `Mark` verb. `Bump(id, touch)` presumes a THING and marks it inside (`collisions.Mark`); the peers
+  there is no `Mark` verb. `route.Bump(touch)` presumes a THING and marks it inside (`collisions.Mark`); the peers
   that hear `BumpedAt` mark it too (`HearBump`). If a peer says it bumped or was touched there and then, the
   conclusion is `Met(who, at)`: the mark comes back (mine and the one heard from `who`), and `MetPeer` makes every
   peer take back what it learned (`LearnMet`). A standing body's touch is `Bump(touch)` without a mark (things
@@ -173,15 +180,15 @@ whether it could or not, so the domain resolves what follows. Consequences:
   golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech).
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
-  contacts are ephemeral telemetry, transitions are journaled — entrusting (MoveTo/
-  Cover/Follow with a `Position` or an area found, one act per stop) WITH its whole plan in the same
-  entry (`route = g.Route(@id)`, then the road's own Via / Around / Aside / Stop, one act per leg — asked of the
-  golem with `g.Preview` before the command), progress (Reach only: a stop reached implies the legs before it were walked; the
-  last Reach completes — walking a door or a point is NOT journaled, Juan 10-sep: "no estar diciéndole
-  cada cosa que va haciendo"), the interruption (Bump/Graze: the plan stops, another Route replaces what
-  was left; also when the golem wakes with a plan underway), the hold (Pause/Resume, 14-sep-2026: the operator
-  holds the mission underway — the body stands, plan and cursor keep, nothing is decided again; the host cancels
-  the leg's drive with a linked token and takes the leg up again on Resume),
+  contacts are ephemeral telemetry, transitions are journaled — entrusting (`route = g.Visit(point)` /
+  `g.Cover` / `g.Follow`, more stops with `route.Then`) WITH its whole way in the same entry (a `route.Via(via{n})`
+  per point, a `route.Stop(point)` per stop — asked of the golem with `g.Preview` before the command), progress
+  (`route.Reach(point)` only: a stop reached implies the legs before it were walked; the last Reach completes —
+  walking a door or a point is NOT journaled, Juan 10-sep: "no estar diciéndole cada cosa que va haciendo"), the
+  interruption (`route.Bump`/`route.Graze`: the plan stops, another way is written on the same route; also when the
+  golem wakes with a plan underway), the hold (`route.Pause()`/`route.Resume()`, 14-sep-2026: the operator holds the
+  route underway — the body stands, plan and cursor keep, nothing is decided again; the host cancels the leg's
+  drive with a linked token and takes the leg up again on Resume),
   touches (Bump: the fact, told, and the mark at once; HearBump/HearTouch: a peer's bump or touch; Met/LearnMet:
   it was a body, the mark comes back; Forget/LearnForget), the ending (Fail/Abandon) — every write goes through one serial
   Dispatch, tells are reaction-only. The releases build the modules (`body_v1`, `warehouse_v1`, `init`);

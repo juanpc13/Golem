@@ -9,7 +9,7 @@ using GolemDomain.Touches;
 namespace GolemDomain;
 
 /// <summary>
-/// The golem: the robot's mind — the executor that is entrusted missions, carries them out over its layout
+/// The golem: the robot's mind — the executor that is entrusted routes, carries them out over its layout
 /// with its body, and keeps how each one ended. The subject of its journal (the DSL's
 /// <c>g = Golem(body, map, collisions)</c>): it RECEIVES its modules, it does not build them — the
 /// <see cref="Body"/> it drives, the <see cref="MapLayout"/> (the concrete <see cref="Map"/> it was told, with
@@ -20,12 +20,12 @@ namespace GolemDomain;
 /// </summary>
 internal sealed class Golem
 {
-    private readonly List<Mission> missions = new();
+    private readonly List<Route> routes = new();
     private readonly Body body;
     private readonly MapLayout layout;
     private readonly Collisions collisions;
     private int idleBumps;       // times something touched the body while it stood without a mission
-    private int lastHandle;      // a handle names one mission forever — even after letting go (idempotency keys hang on it)
+    private int lastHandle;      // a handle names one route forever — even after letting go (idempotency keys hang on it)
 
     internal Golem(Body body, MapLayout map, Collisions collisions)
     {
@@ -83,27 +83,35 @@ internal sealed class Golem
     internal int ThingCount() => collisions.Things().Count;
     internal int MetCount() => collisions.EncounterCount;
 
-    // ---- missions: the entrusting (the operator's voice) ----
+    // ---- routes: the entrusting (the operator's voice) — the golem hands the route out and every act on it is its own ----
 
-    /// <summary>The operator sends the golem to a point: a new errand when the handle is new, one more stop of the
-    /// same errand — in this order — when the handle is the errand's. A stop off the map is refused.</summary>
-    internal int Visit(int id, Position stop) => Entrust(id, stop, following: false, choosesOrder: false);
+    /// <summary>The operator sends the golem to a point: a new route, handle minted here, returned to be told the rest —
+    /// <c>route = g.Visit(point); route.Then(point2); route.Via(via1); route.Stop(point);</c>. A stop off the map is refused.</summary>
+    internal Route Visit(Position stop) => Entrust(stop, following: false, choosesOrder: false);
 
-    /// <summary>The operator sends the golem to an area: its centre — <c>g.Visit(@id, map.Find(@area))</c>.</summary>
-    internal int Visit(int id, Area area) => Entrust(id, layout.Of(area).Center, following: false, choosesOrder: false);
+    /// <summary>The operator sends the golem to an area: its centre — <c>route = g.Visit(map.Find(@area))</c>.</summary>
+    internal Route Visit(Area area) => Entrust(Centre(area), following: false, choosesOrder: false);
 
-    /// <summary>The operator adds a stop to an errand whose order the golem may choose, so the whole road is shortest.</summary>
-    internal int Cover(int id, Position stop) => Entrust(id, stop, following: false, choosesOrder: true);
+    /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
+    internal Route Cover(Position stop) => Entrust(stop, following: false, choosesOrder: true);
 
-    /// <summary>The operator adds an area to an errand whose order the golem may choose.</summary>
-    internal int Cover(int id, Area area) => Entrust(id, layout.Of(area).Center, following: false, choosesOrder: true);
+    /// <summary>The operator opens a route through areas whose order the golem may choose.</summary>
+    internal Route Cover(Area area) => Entrust(Centre(area), following: false, choosesOrder: true);
 
-    /// <summary>The golem follows its leader to a point a peer says it reached — a mission with a handle of its own.
+    /// <summary>The golem follows its leader to a point a peer says it reached — a route of its own, handle minted here.
     /// (Leader–follower formation by told waypoints, not by sensing the leader: the follower knows where the leader
     /// WAS, which is why a newer told point supersedes an older one and the host keeps a standoff on arrival.)</summary>
-    internal int Follow(Position at) => Entrust(NextHandle(), at, following: true, choosesOrder: false);
+    internal Route Follow(Position at) => Entrust(at, following: true, choosesOrder: false);
 
-    // ---- missions: the road ----
+    /// <summary>A route the golem already holds, by its handle — to act on it later: <c>route = g.Find(@id); route.Reach(point);</c>.</summary>
+    internal Route Find(int id)
+    {
+        foreach (Route r in routes)
+            if (r.Id == id) return r;
+        throw new GolemDomainException($"unknown route {id}: consult Knows(id) first");
+    }
+
+    // ---- routes: the way, previewed ----
 
     /// <summary>The road the golem would walk from (x, y) through a mission's stops still ahead, as objects: the legs,
     /// each knowing its kind (door, opening, around, aside, stop), its passage's areas and its point — what the host
@@ -111,11 +119,11 @@ internal sealed class Golem
     /// Marks are skirted ('around' legs) or, where the body would not fit past them, avoided by another road.</summary>
     internal Trajectory Road(int id, double x, double y)
     {
-        var mission = Find(id);
+        var route = Find(id);
         var from = new Position(x, y);
-        var ahead = mission.StopsAhead.ToList();
+        var ahead = route.StopsAhead.ToList();
         var planner = Planner();
-        var stops = mission.ChoosesOrder ? planner.BestOrder(from, ahead) : ahead;
+        var stops = route.ChoosesOrder ? planner.BestOrder(from, ahead) : ahead;
         return planner.Road(from, stops);
     }
 
@@ -130,9 +138,9 @@ internal sealed class Golem
     /// nowhere to step, the road is the plain one from here.</summary>
     internal Trajectory RoadPast(int id, string who, double x, double y, double heading)
     {
-        var mission = Find(id);
+        var route = Find(id);
         var me = new Pose(x, y, heading);
-        var ahead = mission.StopsAhead.ToList();
+        var ahead = route.StopsAhead.ToList();
         var planner = Planner();
         var aside = StepOutOfTheWayOf(who, me);
         if (aside == null) return planner.Road(me, ahead);
@@ -157,18 +165,6 @@ internal sealed class Golem
             return step;
         }
         return null;
-    }
-
-    /// <summary>The golem starts deciding a mission's road and returns it, empty: the acts on the road (Via, Around,
-    /// Aside, Stop) are its legs, in order, the last stop last — all in one journal entry, with the errand itself when
-    /// it is new: <c>route = g.Route(@id); route.Via(door1, at1); … route.Stop(stop3);</c>. The last stop decides it and
-    /// the mission takes it. A new road replaces what was left of the old one: after a bump, or when the golem wakes
-    /// with a plan underway.</summary>
-    internal Trajectory Route(int id)
-    {
-        var mission = Find(id);
-        if (!mission.MayRoute) throw new GolemDomainException($"mission {id} is not pending: no road to decide");
-        return new Trajectory(layout, mission);
     }
 
     /// <summary>The road a NEW errand would take, before it exists: from a point, through stops given as two arrays
@@ -209,32 +205,12 @@ internal sealed class Golem
     //      10-sep): the bump presumes it touched a THING and marks it at once; if a peer says it bumped there and
     //      then, Met takes the mark back — and the peers, told, take back what they learned (LearnMet). ----
 
-    /// <summary>The body touched something the map does not hold — where, and heading which way — on this mission. A fact,
-    /// told to the peers, and a mark at once: the golem presumes a thing until a peer says it was there too (Met takes
-    /// the mark back). The plan is interrupted. Returns the mission id.</summary>
-    internal int Bump(int id, Pose touch)
-    {
-        if (touch == null) throw new GolemDomainException($"mission {id}'s bump needs the pose of the touch");
-        Find(id).Bump();
-        collisions.Mark(touch);
-        return id;
-    }
-
     /// <summary>Something touched the body while it stood without a mission — a body, since things do not move; told
     /// to the peers so the one that moved knows it met a body. No mark. Returns how many such touches so far.</summary>
     internal int Bump(Pose touch)
     {
         if (touch == null) throw new GolemDomainException("a bump needs the pose of the touch");
         return ++idleBumps;
-    }
-
-    /// <summary>The body grazed a wall the map KNOWS, on this mission: its own execution error, no discovery. Counted
-    /// against the golem's patience (MayRetryLeg). Returns the mission id.</summary>
-    internal int Graze(int id, Position at)
-    {
-        if (at == null) throw new GolemDomainException($"mission {id}'s graze needs where it happened");
-        Find(id).Graze();
-        return id;
     }
 
     /// <summary>A moving peer says it bumped — where, heading which way — while it stood at another point: heard and kept,
@@ -292,50 +268,12 @@ internal sealed class Golem
     /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a meeting's reach; "" for nobody.</summary>
     internal string HeardBumpNear(double x, double y, int sinceCount) => collisions.HeardNear(new Position(x, y), sinceCount);
 
-    // ---- missions: the progress — only what fulfils the plan is journaled ----
-
-    /// <summary>The golem reached a stop of its road: the legs before it were walked, whatever they were; reaching the
-    /// last one completes the mission. Told to the follower (exposed beside the act). Returns the mission id.</summary>
-    internal int Reach(int id, Position at)
-    {
-        if (at == null) throw new GolemDomainException($"mission {id} reaches a point");
-        Find(id).Reach(at.X, at.Y);
-        return id;
-    }
-
-    // ---- missions: the ending ----
-
-    /// <summary>The world said no — a collision, a stall, no road — and the reason is kept.</summary>
-    internal int Fail(int id, string reason)
-    {
-        Find(id).Fail(reason);
-        return id;
-    }
-
-    /// <summary>The golem lets a mission go, and why: a newer told point made it pointless, or the operator let go of everything.</summary>
-    internal int Abandon(int id, string reason)
-    {
-        Find(id).Abandon(reason);
-        return id;
-    }
-
-    /// <summary>The golem puts on record that it announces a reached stop to its peer (the tell follows in the same entry).</summary>
-    /// <summary>The operator holds a mission underway: the body stops where it stands until Resume. Returns the id.</summary>
-    internal int Pause(int id) { Find(id).Pause(); return id; }
-
-    /// <summary>The operator lets a held mission go on from where the body stands. Returns the id.</summary>
-    internal int Resume(int id) { Find(id).Resume(); return id; }
-
-    internal int Announce(int id)
-    {
-        Find(id).Announce();
-        return id;
-    }
+    // ---- routes: the progress — only what fulfils the plan is journaled ----
 
     // ---- reads (total: never throw when nothing is there) ----
 
     internal int NextHandle() => lastHandle + 1;
-    internal bool Knows(int id) => missions.Any(m => m.Id == id);
+    internal bool Knows(int id) => routes.Any(m => m.Id == id);
     internal bool IsPending(int id) => Find(id).IsPending();
     internal bool IsFollowing(int id) => Find(id).Following;
     internal bool IsPaused(int id) => Find(id).Paused;
@@ -354,16 +292,16 @@ internal sealed class Golem
     /// <summary>The kind of the leg ahead: door, opening, around, aside or stop.</summary>
     internal string HeadingKind(int id) => Find(id).NextLeg.Kind;
     internal bool HeadsToAStop(int id) => Find(id).NextLeg.IsStop;
-    internal bool HasPendingMission() => missions.Any(m => m.IsPending());
-    internal int Pending() => missions.Count(m => m.IsPending());
-    internal int[] PendingIds() => missions.Where(m => m.IsPending()).Select(m => m.Id).ToArray();
-    internal int FollowingCount() => missions.Count(m => m.IsPending() && m.Following);
-    internal int Total() => missions.Count;
+    internal bool HasPendingMission() => routes.Any(m => m.IsPending());
+    internal int Pending() => routes.Count(m => m.IsPending());
+    internal int[] PendingIds() => routes.Where(m => m.IsPending()).Select(m => m.Id).ToArray();
+    internal int FollowingCount() => routes.Count(m => m.IsPending() && m.Following);
+    internal int Total() => routes.Count;
     internal string StatusOf(int id) => Find(id).ReadStatus();
     /// <summary>The newest pending point a peer told about — where the leader is now, as far as the follower knows. Consult HasNewerFollowing first.</summary>
-    internal int NewestFollowingId() => missions.Where(m => m.IsPending() && m.Following).Select(m => m.Id).DefaultIfEmpty(0).Max();
+    internal int NewestFollowingId() => routes.Where(m => m.IsPending() && m.Following).Select(m => m.Id).DefaultIfEmpty(0).Max();
     /// <summary>Whether a FOLLOWED mission has been overtaken by a newer followed one; an operator's mission never is.</summary>
-    internal bool HasNewerFollowing(int id) => Find(id).Following && missions.Any(m => m.IsPending() && m.Following && m.Id > id);
+    internal bool HasNewerFollowing(int id) => Find(id).Following && routes.Any(m => m.IsPending() && m.Following && m.Id > id);
 
     // ---- the road ahead, answered from the golem's own knowledge ----
 
@@ -373,7 +311,7 @@ internal sealed class Golem
         var planner = Planner();
         double road = 0;
         Position previous = null;
-        foreach (Mission m in missions)
+        foreach (Route m in routes)
         {
             if (!m.IsPending()) continue;
             foreach (var stop in m.StopsAhead)
@@ -416,42 +354,30 @@ internal sealed class Golem
     // nobody charted, and between the two it finds the shortest road.
     private RoutePlanner Planner() => new(layout, collisions, Radius());
 
-    // A new handle opens an errand with this stop; the errand's own handle adds one more stop to it.
-    private int Entrust(int id, Position stop, bool following, bool choosesOrder)
+    // A new route with this stop: the handle is the next one, minted here (a deterministic function of the routes the
+    // golem holds, so the same on replay), and never reused — the idempotency keys of the host hang on it.
+    private Route Entrust(Position stop, bool following, bool choosesOrder)
     {
-        if (stop == null) throw new GolemDomainException($"mission {id} needs a stop");
-        if (layout.ZoneCount > 0 && !layout.IsOnMap(stop))
-            throw new GolemDomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
-        if (Knows(id))
-        {
-            Find(id).AddStop(stop, following, choosesOrder);
-            return id;
-        }
-        if (id <= lastHandle) throw new GolemDomainException($"handle {id} was already spent: handles are never reused");
-        missions.Add(new Mission(id, stop, following, choosesOrder));
-        lastHandle = id;
-        return id;
+        var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions);
+        routes.Add(route);
+        lastHandle = route.Id;
+        return route;
     }
 
-    private Mission NextPending()
+    private Position Centre(Area area) => layout.Of(area ?? throw new GolemDomainException("a route needs an area")).Center;
+
+    private Route NextPending()
     {
-        foreach (Mission m in missions)
+        foreach (Route m in routes)
             if (m.IsPending()) return m;
         throw new GolemDomainException("no pending mission: consult HasPendingMission() first");
     }
 
-    private Mission LastPending()
+    private Route LastPending()
     {
-        for (int i = missions.Count - 1; i >= 0; i--)
-            if (missions[i].IsPending()) return missions[i];
+        for (int i = routes.Count - 1; i >= 0; i--)
+            if (routes[i].IsPending()) return routes[i];
         throw new GolemDomainException("no pending mission: consult HasPendingMission() first");
-    }
-
-    private Mission Find(int id)
-    {
-        foreach (Mission m in missions)
-            if (m.Id == id) return m;
-        throw new GolemDomainException($"unknown mission {id}: consult Knows(id) first");
     }
 
     private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);

@@ -131,12 +131,12 @@ public class FloorPlanCatalogTests
         for (int i = 0; i < stops.Length; i++)
         {
             string n = stops.Length == 1 ? "" : (i + 1).ToString();
-            script.Append(stops[i].Contains(',') ? $"point{n} = Position(@x{n}, @y{n}); g.Visit(@id, point{n});\n" : $"point{n} = map.Find(@area{n}); g.Visit(@id, point{n});\n");
+            string act = i == 0 ? $"route = g.Visit(point{n});" : $"route.Then(point{n});";
+            script.Append(stops[i].Contains(',') ? $"point{n} = Position(@x{n}, @y{n}); {act}\n" : $"point{n} = map.Find(@area{n}); {act}\n");
         }
         script.Append("}\n");
         perf.Actor.Using(script.ToString())
         .WithParameters(p => {
-            p["id", typeof(int)] = id;
             for (int i = 0; i < stops.Length; i++)
             {
                 string n = stops.Length == 1 ? "" : (i + 1).ToString();
@@ -154,10 +154,9 @@ public class FloorPlanCatalogTests
 
     private void Visit(int id, string place) =>
         perf.Actor.Using(@"
-            { point = map.Find(@area); g.Visit(@id, point); }
+            { point = map.Find(@area); route = g.Visit(point); }
         ")
         .WithParameters(p => {
-            p["id",   typeof(int)]    = id;
             p["area", typeof(string)] = place;
         })
         .PerformCommand();

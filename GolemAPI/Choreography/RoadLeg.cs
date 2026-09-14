@@ -8,8 +8,9 @@ namespace GolemAPI.Choreography;
 // passage's two areas when it is one, the point — and, when the golem hands the plan out to be walked, how the
 // leg is walked (line up at the approach, end at the exit; both are the point for anything but a door). The host
 // invents nothing here: the legs come from g.Preview / g.Road / g.RoadPast / g.RoadAhead as objects, travel
-// through the ops queue in the wire form below, and are written back as the golem's own acts — Route, then a
-// Via / Around / Aside / Stop per leg, all in one journal entry — or walked one by one in the host's memory.
+// through the ops queue in the wire form below, and are written back as the ROUTE's own acts — a `route.Via(point)`
+// per leg and a `route.Stop(point)` per stop, only points, all in one journal entry (the route names each point
+// against the map; Juan, 14-sep-2026) — or walked one by one in the host's memory.
 public sealed record RoadLeg(string Kind, string A, string B, double X, double Y, double AX, double AY, double EX, double EY)
 {
     public RoadLeg(string kind, string a, string b, double x, double y) : this(kind, a, b, x, y, x, y, x, y) { }
@@ -69,46 +70,51 @@ public sealed record RoadLeg(string Kind, string A, string B, double X, double Y
         string.Join(" > ", legs.Select(l => (l.Kind switch { "door" => $"{l.A}/{l.B}", "opening" => $"{l.A}~{l.B}", _ => l.Kind })
                                          + $"@{l.X.ToString("0.##", CultureInfo.InvariantCulture)},{l.Y.ToString("0.##", CultureInfo.InvariantCulture)}"));
 
-    // ---- the acts the golem writes, one per leg, inside braces, step by step; values as @params (la{n}, lb{n}, lx{n}, ly{n}) ----
+    // ---- the acts the route writes, one per leg, inside braces, step by step; values as @params (lx{n}, ly{n}) ----
 
-    /// <summary>The lines that decide a road: the road opened (`route = g.Route(@id)`), then each leg found or built from
-    /// its @params, named after what it is, and handed to the road's own act. Legs count from 1. Meant to sit inside a braced block — alone (Script) or after
-    /// the errand's own acts, in one entry.</summary>
-    public static string Acts(IReadOnlyList<RoadLeg> legs)
+    /// <summary>The lines that decide a way on a route already in hand (`route`): a `via{n}` point per leg the way passes,
+    /// and for a stop the point the errand named (`point`, `point1`…) when it is one of them, else a `stop{n}` point.
+    /// Legs count from 1. Meant to sit inside a braced block — alone (Script) or after the errand's own acts.</summary>
+    public static string Acts(IReadOnlyList<RoadLeg> legs, IReadOnlyList<(double X, double Y, string Var)> stops = null)
     {
-        var acts = new StringBuilder("    route = g.Route(@id);\n");
+        var acts = new StringBuilder();
         for (int i = 0; i < legs.Count; i++)
         {
             int n = i + 1;
-            acts.Append(legs[i].Kind switch
+            if (legs[i].Kind == "stop")
             {
-                "door" => $"    door{n} = map.FindDoor(@la{n}, @lb{n});\n    at{n} = Position(@lx{n}, @ly{n});\n    route.Via(door{n}, at{n});\n",
-                "opening" => $"    opening{n} = map.FindOpening(@la{n}, @lb{n});\n    at{n} = Position(@lx{n}, @ly{n});\n    route.Via(opening{n}, at{n});\n",
-                "around" => $"    around{n} = Position(@lx{n}, @ly{n});\n    route.Around(around{n});\n",
-                "aside" => $"    aside{n} = Position(@lx{n}, @ly{n});\n    route.Aside(aside{n});\n",
-                _ => $"    stop{n} = Position(@lx{n}, @ly{n});\n    route.Stop(stop{n});\n",
-            });
+                string named = NamedStop(legs[i], stops);
+                acts.Append(named != null
+                    ? $"    route.Stop({named});\n"
+                    : $"    stop{n} = Position(@lx{n}, @ly{n});\n    route.Stop(stop{n});\n");
+            }
+            else acts.Append($"    via{n} = Position(@lx{n}, @ly{n});\n    route.Via(via{n});\n");
         }
         return acts.ToString();
     }
 
-    /// <summary>The road alone, as one braced command.</summary>
-    public static string Script(IReadOnlyList<RoadLeg> legs) => "{\n" + Acts(legs) + "}\n";
+    /// <summary>The way alone, decided again on a route found by its handle, as one braced command.</summary>
+    public static string Script(IReadOnlyList<RoadLeg> legs) => "{\n    route = g.Find(@id);\n" + Acts(legs) + "}\n";
 
-    /// <summary>Binds the legs' values to their @params (la, lb, lx, ly, counted from 1) — the same names Acts writes.</summary>
-    public static void Bind(dynamic p, IReadOnlyList<RoadLeg> legs)
+    /// <summary>Binds the legs' values to their @params (lx, ly, counted from 1) — the same names Acts writes; a stop the
+    /// errand named needs none.</summary>
+    public static void Bind(dynamic p, IReadOnlyList<RoadLeg> legs, IReadOnlyList<(double X, double Y, string Var)> stops = null)
     {
         for (int i = 0; i < legs.Count; i++)
         {
             int n = i + 1;
+            if (legs[i].Kind == "stop" && NamedStop(legs[i], stops) != null) continue;
             p[$"lx{n}", typeof(double)] = legs[i].X;
             p[$"ly{n}", typeof(double)] = legs[i].Y;
-            if (legs[i].Kind == "door" || legs[i].Kind == "opening")
-            {
-                p[$"la{n}", typeof(string)] = legs[i].A;
-                p[$"lb{n}", typeof(string)] = legs[i].B;
-            }
         }
+    }
+
+    private static string NamedStop(RoadLeg leg, IReadOnlyList<(double X, double Y, string Var)> stops)
+    {
+        if (stops == null) return null;
+        foreach (var s in stops)
+            if (Math.Abs(s.X - leg.X) < 1e-9 && Math.Abs(s.Y - leg.Y) < 1e-9) return s.Var;
+        return null;
     }
 
     private static string R(double d) => d.ToString("R", CultureInfo.InvariantCulture);

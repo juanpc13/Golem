@@ -161,7 +161,7 @@ public sealed class GolemChoreography
                     expose $missionId rid, $x rx, $y ry;
                 ")
             .Causation.Continue($@"
-                g.Announce(@missionId);
+                {{ route = g.Find(@missionId); route.Announce(); }}
                 tell PointVisited with @x, @y to {tellDoneTo} once 'visited-' + @missionId + '-' + @x + ',' + @y;
             ");
     }
@@ -186,7 +186,8 @@ public sealed class GolemChoreography
         {
             actor.Using(@"
                 foreach (id in g.PendingIds()) {
-                    g.Abandon(id, @reason);
+                    route = g.Find(id);
+                    route.Abandon(@reason);
                 }
             ")
             .WithParameters(p => {
@@ -206,7 +207,7 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id) && g.IsStopAhead(@id, @x, @y)) Error 'that is not a stop ahead';
                 ",
                 @"
-                    { point = Position(@x, @y); g.Reach(@id, point); }
+                    { route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }
                     expose @id rid, @x rx, @y ry;
                 ")
             .WithParameters(p => {
@@ -222,8 +223,8 @@ public sealed class GolemChoreography
         // closed the way — so it is a plain handler too, guarded by the domain's own rule.
         dispatch.On<MissionRouted>((actor, m) =>
         {
-            // The decision, act by act: Route opens it, a Via / Around / Aside per leg, a Stop per stop — one
-            // journal entry. The values ride as @params; the passages are objects of the map.
+            // The decision, act by act on the route found: a Via per point the way passes, a Stop per stop — one
+            // journal entry, only points; the route names each against the map.
             var legs = RoadLeg.Decode(m.Road);
             string refused = actor.Using(
                 @"
@@ -265,7 +266,7 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                 ",
                 @"
-                    { touch = Pose(@x, @y, @heading); g.Bump(@id, touch); }
+                    { route = g.Find(@id); touch = Pose(@x, @y, @heading); route.Bump(touch); }
                     expose @x x, @y y, @heading heading, @me who, @px px, @py py;
                 ")
             .WithParameters(p => {
@@ -305,7 +306,7 @@ public sealed class GolemChoreography
                     Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                 ",
                 @"
-                    { at = Position(@x, @y); g.Graze(@id, at); }
+                    { route = g.Find(@id); at = Position(@x, @y); route.Graze(at); }
                 ")
             .WithParameters(p => {
                 p["id", typeof(int)]    = m.Id;
@@ -328,7 +329,7 @@ public sealed class GolemChoreography
                             Check(g.Knows(@id) && g.IsPending(@id) && g.IsFollowing(@id) && g.HasNewerFollowing(@id)) Error 'nothing newer was told';
                         ",
                         @"
-                            g.Abandon(@id, @reason);
+                            { route = g.Find(@id); route.Abandon(@reason); }
                         ")
                     .WithParameters(p => {
                         p["id",     typeof(int)]    = m.Id;
@@ -345,7 +346,7 @@ public sealed class GolemChoreography
                             Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
                         ",
                         @"
-                            g.Fail(@id, @reason);
+                            { route = g.Find(@id); route.Fail(@reason); }
                         ")
                     .WithParameters(p => {
                         p["id",     typeof(int)]    = m.Id;
@@ -603,7 +604,8 @@ public sealed class GolemChoreography
                 probe = null;
                 string what = leg.Kind == "stop" ? "heading to a stop"
                             : leg.Kind == "around" ? "heading around a mark"
-                            : leg.Kind == "aside" ? "stepping aside" : $"heading to the passage {LegName(leg)}";
+                            : leg.Kind == "aside" ? "stepping aside"
+                            : leg.Kind == "via" ? "heading to a point" : $"heading to the passage {LegName(leg)}";
                 if (standoff) what += $", stopping {LeaderStandoff:0.0} short of the leader's spot";
                 Console.WriteLine($"[golem {golem}] mission {plan.Id}: {what} ({leg.X:0.0}, {leg.Y:0.0}) — leg {cursor + 1} of {legs.Count}");
                 feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "", $"mission {plan.Id}: {what} ({leg.X:0.0}, {leg.Y:0.0}) — leg {cursor + 1} of {legs.Count}", DateTime.UtcNow));

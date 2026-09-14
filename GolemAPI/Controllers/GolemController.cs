@@ -49,9 +49,11 @@ public class GolemController : Controller
         return Errand("Cover", stops);
     }
 
-    // The errand as the journal writes it — the stops AND the whole plan, in ONE entry (Juan, 10-sep: "con un solo
-    // [comando] podemos tener toda la ruta y seguir ese plan de punto"): each stop found or built from its @params
-    // (one is `point`, several are `point1`, `point2`…), then Route and one act per leg. The plan is asked of the
+    // The errand as the journal writes it — the route handed out AND its whole way, in ONE entry (Juan, 10-sep: "con un
+    // solo [comando] podemos tener toda la ruta y seguir ese plan de punto"; 14-sep: "visit devuelve el objeto de la
+    // ruta… el listado de puntos en el script"): the first stop found or built from its @params opens the route
+    // (`route = g.Visit(point)`), the others are added to it (`route.Then(point2)`), then a `route.Via(via{n})` per point
+    // the way passes and a `route.Stop(point)` per stop. The plan is asked of the
     // golem beforehand (g.Preview: a read, in this same request), from where the body stands — or, when the golem is
     // busy, from where its last pending mission ends, since that is where it will stand when this one comes up.
     private IActionResult Errand(string verb, string[] stops)
@@ -117,30 +119,32 @@ public class GolemController : Controller
         }
         catch (Exception ex) { return Conflict("no road: " + Innermost(ex)); }
 
-        // one entry: the stops, then the plan
+        // one entry: the route handed out with its first stop, the other stops added to it, then its way — a point per leg
         var check = new System.Text.StringBuilder("Check(");
         var acts = new System.Text.StringBuilder("{\n");
+        var named = new List<(double X, double Y, string Var)>();
         for (int i = 0; i < stops.Length; i++)
         {
             string n = stops.Length == 1 ? "" : (i + 1).ToString();
+            string act = i == 0 ? $"route = g.{verb}(point{n});" : $"route.Then(point{n});";
             if (i > 0) check.Append(" && ");
             if (IsPoint(stops[i]))
             {
                 check.Append($"g.IsOnMap(@x{n}, @y{n})");
-                acts.Append($"    point{n} = Position(@x{n}, @y{n});\n    g.{verb}(@id, point{n});\n");
+                acts.Append($"    point{n} = Position(@x{n}, @y{n});\n    {act}\n");
             }
             else
             {
                 check.Append($"map.Knows(@area{n})");
-                acts.Append($"    point{n} = map.Find(@area{n});\n    g.{verb}(@id, point{n});\n");
+                acts.Append($"    point{n} = map.Find(@area{n});\n    {act}\n");
             }
+            named.Add((xs[i], ys[i], $"point{n}"));
         }
-        acts.Append(RoadLeg.Acts(legs));
+        acts.Append(RoadLeg.Acts(legs, named));
         acts.Append("}\n");
         check.Append(") Error 'a stop is neither an area nor a point on the map';");
         return Refusable(perf.Actor.Using(check.ToString(), acts.ToString())
         .WithParameters(p => {
-            p[Parameter.Eval, "id", typeof(int)] = "g.NextHandle()";
             for (int i = 0; i < stops.Length; i++)
             {
                 string n = stops.Length == 1 ? "" : (i + 1).ToString();
@@ -151,7 +155,7 @@ public class GolemController : Controller
                 }
                 else p[$"area{n}", typeof(string)] = stops[i];
             }
-            RoadLeg.Bind(p, legs);
+            RoadLeg.Bind(p, legs, named);
         })
         .PerformCheckThenCommand());
     }
@@ -256,7 +260,7 @@ public class GolemController : Controller
                 Check({precondition}) Error '{refusal}';
             ",
             $@"
-                g.{verb}(@id);
+                {{ route = g.Find(@id); route.{verb}(); }}
             ")
         .WithParameters(p => { p["id", typeof(int)] = id; })
         .PerformCheckThenCommand());

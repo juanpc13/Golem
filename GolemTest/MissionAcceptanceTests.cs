@@ -262,7 +262,7 @@ public class MissionAcceptanceTests
 
         Assert.AreEqual(9.0, Double("g.HeadingX()"), 0.001);
         Assert.AreEqual(9.5, Double("g.HeadingY()"), 0.001);
-        Refuses("g.Visit(2, map.Find('attic'));", "unknown area 'attic'");
+        Refuses("g.Visit(map.Find('attic'));", "unknown area 'attic'");
     }
 
     [TestMethod]
@@ -297,8 +297,8 @@ public class MissionAcceptanceTests
         Visit(1, new[] { "kitchen", "9,8" });
         Assert.AreEqual(2, Int("g.StopsLeft(1)"));
 
-        Refuses("g.Visit(2, map.Find('attic'));", "unknown area 'attic'");
-        Refuses("g.Visit(2, Position(3.0, 5.0));", "nowhere on the map");
+        Refuses("g.Visit(map.Find('attic'));", "unknown area 'attic'");
+        Refuses("g.Visit(Position(3.0, 5.0));", "nowhere on the map");
         Assert.IsTrue(Bool("g.KnowsPlace('kitchen')"));
         Assert.IsFalse(Bool("g.KnowsPlace('attic')"));
         Assert.IsTrue(Bool("g.IsOnMap(9.0, 8.0)"), "a point in the north hall");
@@ -348,8 +348,8 @@ public class MissionAcceptanceTests
         Assert.AreEqual(0.75, Double("g.HeadingX()"), 0.001, "the body heads to the first door, not to the stop");
 
         // walking the doors is not journaled: only a stop reached is, and it implies the legs before it were walked
-        Refuses("g.Reach(1, Position(0.75, 3.0));", "next stop is (2, 1.5)");
-        Refuses("g.Reach(1, Position(2.0, 2.0));", "next stop is (2, 1.5)");
+        Refuses("{ route = g.Find(1); route.Reach(Position(0.75, 3.0)); }", "next stop is (2, 1.5)");
+        Refuses("{ route = g.Find(1); route.Reach(Position(2.0, 2.0)); }", "next stop is (2, 1.5)");
         Assert.IsTrue(Bool("g.IsStopAhead(1, 2.0, 1.5)"));
         Assert.IsFalse(Bool("g.IsStopAhead(1, 0.75, 3.0)"), "a door is not a stop");
 
@@ -358,7 +358,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual("completed", Text("g.StatusOf(1)"), "reaching the last stop completes the mission");
         Assert.IsFalse(Bool("g.IsPending(1)"));
         Assert.AreEqual(0, Int("g.Pending()"));
-        Refuses("g.Reach(1, Position(2.0, 1.5));", "already completed");
+        Refuses("{ route = g.Find(1); route.Reach(Position(2.0, 1.5)); }", "already completed");
     }
 
     [TestMethod]
@@ -404,6 +404,30 @@ public class MissionAcceptanceTests
         Assert.AreEqual(1.5, legs[2].GetProperty("ey").GetDouble(), 0.001);
     }
 
+    [TestMethod]
+    public void TheErrandsWay_IsWrittenAsPoints_AndTheRouteNamesEachAgainstTheMap()
+    {
+        // exactly what the host writes: the route handed out with the area found, its way as points, the stop as the area itself
+        perf.Actor.Using(@"
+            { point = map.Find(@area); route = g.Visit(point);
+              via1 = Position(@x1, @y1); route.Via(via1);
+              via2 = Position(@x2, @y2); route.Via(via2);
+              route.Stop(point); }
+        ")
+        .WithParameters(p => {
+            p["area", typeof(string)] = "kitchen";
+            p["x1", typeof(double)] = 0.75; p["y1", typeof(double)] = 3.0;   // the door west/living, from the living room
+            p["x2", typeof(double)] = 0.75; p["y2", typeof(double)] = 8.0;   // the door kitchen/west
+        })
+        .PerformCommand();
+
+        Assert.IsTrue(Bool("g.IsRouted(1)"), "the last stop decided the way");
+        Assert.AreEqual("west/living", Text("g.HeadingTo(1)"), "a point where a door stands is that door");
+        Assert.AreEqual("door", Text("g.HeadingKind(1)"));
+        Assert.AreEqual(1, Int("g.StopsLeft(1)"));
+        Refuses("{ route = g.Find(1); route.Stop(Position(9.0, 1.5)); }", "is not a stop ahead of route 1");
+    }
+
     // ---- the hold: Pause, Resume ----
 
     [TestMethod]
@@ -413,19 +437,19 @@ public class MissionAcceptanceTests
         Route(1, Text("g.Plan(1, 2.0, 9.5)"));
         Assert.IsFalse(Bool("g.IsPaused(1)"));
 
-        perf.Actor.Using("g.Pause(@id);").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
+        perf.Actor.Using("{ route = g.Find(@id); route.Pause(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
         Assert.IsTrue(Bool("g.IsPaused(1)"), "held");
         Assert.IsTrue(Bool("g.IsPending(1)"), "a hold is not an ending");
         Assert.IsTrue(Bool("g.IsRouted(1)"), "the plan keeps");
         Assert.AreEqual(1, Int("g.StopsLeft(1)"), "and so do the stops ahead");
-        Refuses("g.Pause(1);", "already paused");
+        Refuses("{ route = g.Find(1); route.Pause(); }", "already paused");
 
-        perf.Actor.Using("g.Resume(@id);").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
+        perf.Actor.Using("{ route = g.Find(@id); route.Resume(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
         Assert.IsFalse(Bool("g.IsPaused(1)"), "let go on");
-        Refuses("g.Resume(1);", "is not paused");
+        Refuses("{ route = g.Find(1); route.Resume(); }", "is not paused");
 
         Reach(1, 2.0, 9.5);
-        Refuses("g.Pause(1);", "already completed");
+        Refuses("{ route = g.Find(1); route.Pause(); }", "already completed");
     }
 
     // ---- the ending: Fail, Abandon, Announce ----
@@ -436,7 +460,7 @@ public class MissionAcceptanceTests
         Visit(1, 2.0, 1.5);
 
         perf.Actor.Using(@"
-            g.Fail(@id, @reason);
+            { route = g.Find(@id); route.Fail(@reason); }
         ")
         .WithParameters(p => {
             p["id",     typeof(int)]    = 1;
@@ -447,7 +471,7 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("g.IsPending(1)"));
         Assert.IsFalse(Bool("g.HasPendingMission()"));
         Assert.AreEqual("failed", Text("g.StatusOf(1)"));
-        Refuses("g.Fail(1, 'again');", "already failed");
+        Refuses("{ route = g.Find(1); route.Fail('again'); }", "already failed");
     }
 
     [TestMethod]
@@ -479,7 +503,8 @@ public class MissionAcceptanceTests
 
         perf.Actor.Using(@"
             foreach (id in g.PendingIds()) {
-                g.Abandon(id, @reason);
+                route = g.Find(id);
+                route.Abandon(@reason);
             }
         ")
         .WithParameters(p => {
@@ -493,14 +518,14 @@ public class MissionAcceptanceTests
         Assert.AreEqual(2, Int("g.Total()"), "nothing is erased: the missions stay, abandoned");
         Assert.AreEqual("abandoned", Text("g.StatusOf(1)"));
         Assert.AreEqual(3, Int("g.NextHandle()"), "a spent handle is never minted again: the idempotency keys hang on it");
-        Refuses("g.Abandon(1, 'again');", "already abandoned");
+        Refuses("{ route = g.Find(1); route.Abandon('again'); }", "already abandoned");
     }
 
     [TestMethod]
     public void AbandoningNeedsAReason()
     {
         Visit(1, 2.0, 1.5);
-        Refuses("g.Abandon(1, '');", "needs a reason");
+        Refuses("{ route = g.Find(1); route.Abandon(''); }", "needs a reason");
     }
 
     [TestMethod]
@@ -512,7 +537,7 @@ public class MissionAcceptanceTests
         Visit(2, 9.0, 1.5);
 
         perf.Actor.Using(@"
-            g.Announce(@id);
+            { route = g.Find(@id); route.Announce(); }
         ")
         .WithParameters(p => {
             p["id", typeof(int)] = 1;
@@ -521,7 +546,7 @@ public class MissionAcceptanceTests
 
         Assert.IsTrue(Bool("g.WasAnnounced(1)"));
         Assert.IsFalse(Bool("g.WasAnnounced(2)"));
-        Refuses("g.Announce(2);", "only a reached stop is announced");
+        Refuses("{ route = g.Find(2); route.Announce(); }", "only a reached stop is announced");
     }
 
     // ---- the road ahead ----
@@ -681,7 +706,7 @@ public class MissionAcceptanceTests
 
         Route(1, plan);
         Assert.IsFalse(Bool("g.HeadsToAStop(1)"));
-        Assert.AreEqual("around", Text("g.HeadingTo(1)"), "the emergency point is the first leg of the plan");
+        Assert.AreEqual("via", Text("g.HeadingTo(1)"), "the emergency point is the first leg of the plan — written as a point, the route calls it a via");
         Assert.IsTrue(Int("g.LegsLeft(1)") >= 2);
     }
 
@@ -752,7 +777,7 @@ public class MissionAcceptanceTests
         Route(1, Text("g.Plan(1, 2.0, 9.5)"));    // kitchen/west > west/living > living
         Assert.AreEqual(3, Int("g.LegsLeft(1)"));
 
-        Refuses("g.Reach(1, Position(0.75, 8.0));", "next stop is (2, 1.5)");   // a door of the plan is not a stop
+        Refuses("{ route = g.Find(1); route.Reach(Position(0.75, 8.0)); }", "next stop is (2, 1.5)");   // a door of the plan is not a stop
         Reach(1, 2.0, 1.5);                                            // the stop: the two doors were walked
         Assert.AreEqual("completed", Text("g.StatusOf(1)"));
         Assert.AreEqual(0, Int("g.LegsLeft(1)"));
@@ -778,7 +803,7 @@ public class MissionAcceptanceTests
         Visit(1, new[] { "2,9.5", "3,10.5" });     // two points of the kitchen
         Assert.AreEqual(2, Int("g.StopsLeft(1)"));
 
-        Refuses("g.Reach(1, Position(3.0, 10.5));", "next stop is (2, 9.5)");
+        Refuses("{ route = g.Find(1); route.Reach(Position(3.0, 10.5)); }", "next stop is (2, 9.5)");
         Reach(1, 2.0, 9.5);
         Assert.AreEqual("pending", Text("g.StatusOf(1)"), "one stop reached, one to go");
         Assert.AreEqual(3.0, Double("g.HeadingX()"), 0.001);
@@ -830,7 +855,7 @@ public class MissionAcceptanceTests
         // the step is a leg to cross, never a stop: reaching it must not complete the errand
         Route(1, road);
         Assert.IsFalse(Bool("g.HeadsToAStop(1)"));
-        Assert.AreEqual("aside", Text("g.HeadingTo(1)"));
+        Assert.AreEqual("via", Text("g.HeadingTo(1)"), "the courtesy step arrives at the journal as a point: a via");
         Assert.AreEqual("pending", Text("g.StatusOf(1)"), "stepping aside is not arriving");
         Assert.AreEqual(1, Int("g.StopsLeft(1)"));
     }
@@ -979,7 +1004,7 @@ public class MissionAcceptanceTests
         Reach(1, 2.0, 1.5);
         Assert.AreEqual(3, Int("g.Grazes(1)"), "the mission remembers every graze");
         Assert.AreEqual("completed", Text("g.StatusOf(1)"), "the golem chose to go on and got there");
-        Refuses("g.Graze(2, Position(1.0, 1.0));", "unknown mission");
+        Refuses("{ route = g.Find(2); route.Graze(Position(1.0, 1.0)); }", "unknown route");
     }
 
     [TestMethod]
@@ -1040,7 +1065,7 @@ public class MissionAcceptanceTests
 
     private void Bump(int id, double x, double y, double heading) =>
         perf.Actor.Using(@"
-            { touch = Pose(@x, @y, @heading); g.Bump(@id, touch); }
+            { route = g.Find(@id); touch = Pose(@x, @y, @heading); route.Bump(touch); }
         ")
         .WithParameters(p => {
             p["id",      typeof(int)]    = id;
@@ -1052,7 +1077,7 @@ public class MissionAcceptanceTests
 
     private void Graze(int id, double x, double y) =>
         perf.Actor.Using(@"
-            { at = Position(@x, @y); g.Graze(@id, at); }
+            { route = g.Find(@id); at = Position(@x, @y); route.Graze(at); }
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
@@ -1085,10 +1110,9 @@ public class MissionAcceptanceTests
 
     private void Visit(int id, double x, double y) =>
         perf.Actor.Using(@"
-            { point = Position(@x, @y); g.Visit(@id, point); }
+            { point = Position(@x, @y); route = g.Visit(point); }
         ")
         .WithParameters(p => {
-            p["id", typeof(int)]    = id;
             p["x",  typeof(double)] = x;
             p["y",  typeof(double)] = y;
         })
@@ -1096,10 +1120,9 @@ public class MissionAcceptanceTests
 
     private void Visit(int id, string place) =>
         perf.Actor.Using(@"
-            { point = map.Find(@area); g.Visit(@id, point); }
+            { point = map.Find(@area); route = g.Visit(point); }
         ")
         .WithParameters(p => {
-            p["id",   typeof(int)]    = id;
             p["area", typeof(string)] = place;
         })
         .PerformCommand();
@@ -1116,12 +1139,12 @@ public class MissionAcceptanceTests
         for (int i = 0; i < stops.Length; i++)
         {
             string n = stops.Length == 1 ? "" : (i + 1).ToString();
-            script.Append(IsPoint(stops[i]) ? $"point{n} = Position(@x{n}, @y{n}); g.{verb}(@id, point{n});\n" : $"point{n} = map.Find(@area{n}); g.{verb}(@id, point{n});\n");
+            string act = i == 0 ? $"route = g.{verb}(point{n});" : $"route.Then(point{n});";
+            script.Append(IsPoint(stops[i]) ? $"point{n} = Position(@x{n}, @y{n}); {act}\n" : $"point{n} = map.Find(@area{n}); {act}\n");
         }
         script.Append("}\n");
         perf.Actor.Using(script.ToString())
         .WithParameters(p => {
-            p["id", typeof(int)] = id;
             for (int i = 0; i < stops.Length; i++)
             {
                 string n = stops.Length == 1 ? "" : (i + 1).ToString();
@@ -1161,17 +1184,14 @@ public class MissionAcceptanceTests
     private void Route(int id, string plan)
     {
         var legs = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var script = new System.Text.StringBuilder("{\nroute = g.Route(@id);\n");
+        var script = new System.Text.StringBuilder("{\nroute = g.Find(@id);\n");
         for (int i = 0; i < legs.Length; i++)
         {
             int n = i + 1;   // legs read from 1
             string name = legs[i][..legs[i].LastIndexOf('@')];
-            script.Append(
-                name == "around" ? $"around{n} = Position(@x{n}, @y{n}); route.Around(around{n});\n"
-                : name == "aside" ? $"aside{n} = Position(@x{n}, @y{n}); route.Aside(aside{n});\n"
-                : name.Contains('/') ? $"door{n} = map.FindDoor(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); route.Via(door{n}, at{n});\n"
-                : name.Contains('~') ? $"opening{n} = map.FindOpening(@a{n}, @b{n}); at{n} = Position(@x{n}, @y{n}); route.Via(opening{n}, at{n});\n"
-                : $"stop{n} = Position(@x{n}, @y{n}); route.Stop(stop{n});\n");
+            bool stop = name != "around" && name != "aside" && !name.Contains('/') && !name.Contains('~');
+            script.Append(stop ? $"stop{n} = Position(@x{n}, @y{n}); route.Stop(stop{n});\n"
+                               : $"via{n} = Position(@x{n}, @y{n}); route.Via(via{n});\n");
         }
         script.Append("}\n");
         perf.Actor.Using(script.ToString())
@@ -1180,18 +1200,9 @@ public class MissionAcceptanceTests
             for (int i = 0; i < legs.Length; i++)
             {
                 int n = i + 1;
-                int at = legs[i].LastIndexOf('@');
-                string name = legs[i][..at];
-                var xy = legs[i][(at + 1)..].Split(',');
+                var xy = legs[i][(legs[i].LastIndexOf('@') + 1)..].Split(',');
                 p[$"x{n}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
                 p[$"y{n}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
-                char sep = name.Contains('/') ? '/' : name.Contains('~') ? '~' : ' ';
-                if (sep != ' ')
-                {
-                    var ab = name.Split(sep);
-                    p[$"a{n}", typeof(string)] = ab[0];
-                    p[$"b{n}", typeof(string)] = ab[1];
-                }
             }
         })
         .PerformCommand();
@@ -1199,7 +1210,7 @@ public class MissionAcceptanceTests
 
     private void Reach(int id, double x, double y) =>
         perf.Actor.Using(@"
-            { point = Position(@x, @y); g.Reach(@id, point); }
+            { route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
@@ -1210,7 +1221,7 @@ public class MissionAcceptanceTests
 
     private void Abandon(int id, string reason) =>
         perf.Actor.Using(@"
-            g.Abandon(@id, @reason);
+            { route = g.Find(@id); route.Abandon(@reason); }
         ")
         .WithParameters(p => {
             p["id",     typeof(int)]    = id;

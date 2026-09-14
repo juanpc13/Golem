@@ -15,6 +15,9 @@ internal sealed class Leg
     internal const string Detour = "around";
     /// <summary>The name of a leg that steps out of a peer's way: a body stands there, and bodies move on.</summary>
     internal const string Courtesy = "aside";
+    /// <summary>A point the way passes through that is no passage and no stop — what the route calls a point it was given
+    /// bare (the planner's detours and courtesy steps arrive at the journal as points).</summary>
+    internal const string Waypoint = "via";
 
     internal Position At { get; }
     internal string Name { get; }
@@ -24,7 +27,7 @@ internal sealed class Leg
     internal bool IsStop => Kind == "stop";
     /// <summary>door, opening, around, aside or stop — what the journal's act for this leg is.</summary>
     internal string Kind =>
-        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
+        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name == Waypoint ? Waypoint : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
     /// <summary>A passage's two areas (the first and the second of its name); "" for a point or a stop.</summary>
     internal string A => Kind == "door" ? Name[..Name.IndexOf('/')] : Kind == "opening" ? Name[..Name.IndexOf('~')] : "";
     internal string B => Kind == "door" ? Name[(Name.IndexOf('/') + 1)..] : Kind == "opening" ? Name[(Name.IndexOf('~') + 1)..] : "";

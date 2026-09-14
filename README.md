@@ -38,7 +38,7 @@ in [CLAUDE.md](CLAUDE.md).
   something is told so by the simulator's contact sensor. The golem reckons where the touch happened
   (its pose plus its own radius) and holds that point against its map: a wall it knows is its own
   execution error, so it backs off and tries the leg again; anything else is a touch it journals and
-  tells (`{ touch = Pose(@x, @y, @heading); g.Bump(@id, touch); }`), presuming a thing: the mark is made in
+  tells (`{ route = g.Find(@id); touch = Pose(@x, @y, @heading); route.Bump(touch); }`), presuming a thing: the mark is made in
   the same row, and the peers that hear it mark it too. Then it listens: a peer that says it bumped or was
   touched there and then is a body, not a thing — the golem concludes `g.Met(who, at)`, the mark comes back
   here and in every peer (`MetPeer` → `LearnMet`), and the two coordinate (the name that sorts first has the
@@ -119,27 +119,29 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 
 | Verb | Meaning |
 |---|---|
-| `Visit(id, area)` · `Visit(id, point)` | The operator sends the golem to a place, a point, or through several stops **in that order** (`{'kitchen', '9,8', 'garage'}`). Handles are minted by the actor and never reused. |
-| `Cover(id, stops)` | Several stops, and the golem **chooses the order** that makes the whole road shortest. |
-| `Follow(x, y)` | The golem follows its leader to a point a peer says it reached (handle minted inside). |
-| `route = Route(id)` · `route.Via(passage, at)` · `route.Around(at)` · `route.Aside(at)` · `route.Stop(at)` | The plan, one act per leg in the same entry as the errand: passages to cross (a door or an opening of the map, found), points to pass (around a mark, aside from a peer) and stops to reach, in order. Between stops it is always the shortest road. An errand one segment away has no road to decide and gets none. |
-| `Reach(id, at)` | A stop reached: the legs before it were walked, whatever they were. Reaching the last one completes the mission — there is no separate "complete". Told to the follower. |
-| `Bump(id, touch)` · `Bump(touch)` | The body touched something the map does not hold, heading that way — on a mission's road, or while standing still. A fact, told to every peer with the golem's name; what it was is concluded afterwards, by the domain. |
+| `route = g.Visit(point)` · `g.Visit(area)` | The operator sends the golem to a point or a place: the golem hands out the ROUTE (its handle minted inside, never reused) and the rest is told to it. |
+| `route.Then(point)` | One more stop, after the ones given — in that order for a Visit, in the order the golem chooses for a Cover. |
+| `route = g.Cover(point)` | A route through several stops whose order the golem **chooses** so the whole way is shortest. |
+| `route = g.Follow(point)` | The golem follows its leader to a point a peer says it reached. |
+| `route.Via(point)` · `route.Stop(point)` | The way, one act per leg in the same entry as the errand, ONLY POINTS: the route names each against the map (a door where a door stands, an opening on a shared edge, a `via` elsewhere; a stop is one of its stops ahead, `route.Stop(point)` with the errand's own variable). The last stop decides the way; a `Via` on a decided route opens the next decision (after a bump). |
+| `route = g.Find(id)` | The route by its handle, to act on it later — the only place an id enters. |
+| `route.Reach(point)` | A stop reached: the legs before it were walked, whatever they were. Reaching the last one completes the route — there is no separate "complete". Told to the follower. |
+| `route.Bump(touch)` · `g.Bump(touch)` | The body touched something the map does not hold, heading that way — on a route, or while standing still (the golem's own act then, no route). A fact, told to every peer with the golem's name, and a mark at once on a route; what it was is concluded afterward: a peer that spoke there and then → `Met` takes the mark back. |
 | `HearBump(who, touch, peerAt)` · `HearTouch(who, at, peerAt)` | A peer told it bumped (heading which way, standing where) or was touched while standing. A touch of my own there and then was that peer: a body, not a thing. A bump heard is learned as a mark, as the peer presumed; a touch heard is not (what touches a standing body is a body). |
-| `Graze(id, at)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the mission up. |
+| `route.Graze(at)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the route up. |
 | `Met(who, at)` | The domain concluded a peer: the body met that peer there. The mark its bump presumed comes back, and so does the one learned from that peer's bump there; the encounter stays among the obstacles as history (a `Peer`), never geometry. Told (`MetPeer`). |
 | `LearnMet(at)` | A peer said its touch there was a body: the golem takes back the mark it learned from that bump. |
-| `Pause(id)` · `Resume(id)` | The operator holds the mission underway: the body stops where it stands, the plan and the cursor keep, touches meanwhile are a standing body's; `Resume` takes the same leg up again from where the body stands. A hold, not an interruption — nothing is decided again. `POST /pause`, `POST /resume` (the mission is the one the golem is on). |
-| `Fail(id, reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
-| `Abandon(id, reason)` | The golem let the mission go: a newer told point made it stale, or the operator let go of everything (one command, every pending mission). |
+| `route.Pause()` · `route.Resume()` | The operator holds the route underway: the body stops where it stands, the plan and the cursor keep, touches meanwhile are a standing body's; `Resume` takes the same leg up again from where the body stands. A hold, not an interruption — nothing is decided again. `POST /pause`, `POST /resume`. |
+| `route.Fail(reason)` | The world said no — in the navigator's words (`no road … that fits a body of radius 0.25 past 2 marks`, `blocked by blue after yielding 4 times`, `stalled`, `timeout`). |
+| `route.Abandon(reason)` | The golem let the route go: a newer told point made it stale, or the operator let go of everything (one command, every pending route). |
 
 Releases (versioned initialization inside the actor, applied once and journaled) build the golem's modules
 as globals of the actor and hand them to it: `body_v1` (`radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius, speed, linger);` — magnitudes that say what they are, read in SI base units), `warehouse_v1` — the
 concrete map, each area found once and told what it is in one train (`map = MapLayout('warehouse');
 map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
 map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the
-abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `g.Visit(1, Position(9.0, 8.0))`,
-the plan one act per leg in the errand's own entry, on the road object the golem opens (`route = g.Route(1); door1 = map.FindDoor('kitchen', 'north'); at1 = Position(4.0, 9.5); route.Via(door1, at1); … route.Stop(stop3);`)
+abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `route = g.Visit(Position(9.0, 8.0))`,
+the way one act per leg in the errand's own entry, on the route the golem hands out, only points (`{ point = map.Find('kitchen'); route = g.Visit(point); via1 = Position(4.0, 9.5); route.Via(via1); route.Stop(point); }`)
 — except what is told to the peers, which travels flat. Evolve the golem by appending a release, never by
 editing an applied one.
 
