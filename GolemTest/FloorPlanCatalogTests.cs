@@ -137,6 +137,33 @@ public class FloorPlanCatalogTests
         Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Routes.Route(1, null, false, false, map, new GolemDomain.Touches.Collisions(map))).Message);
     }
 
+    [TestMethod]
+    public void TwoObjectsOfOneKind_MustBeTwoDifferentObjects()
+    {
+        // Juan, 14-sep-2026: an act that takes two areas (two points, two ends) refuses the same object twice
+        var map = Catalog.Warehouse();
+        var kitchen = map.Find("kitchen");
+        var p = new GolemDomain.Geometry.Position(1.0, 1.0);
+        Assert.AreEqual("Map.Connects: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.Connects(kitchen, kitchen)).Message);
+        Assert.AreEqual("Map.DoorBetween: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.DoorBetween(kitchen, kitchen)).Message);
+        Assert.AreEqual("MapLayout.Touches: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.Touches(kitchen, kitchen)).Message);
+        Assert.AreEqual("area 'kitchen' has no door to itself", Assert.ThrowsException<GolemDomainException>(() => map.Door("kitchen", "kitchen")).Message);
+        Assert.AreEqual("Segment.Segment: 'from' and 'to' are the same point", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Geometry.Segment(p, p)).Message);
+        Assert.IsTrue(map.Connects(kitchen, map.Find("north")), "two different areas answer as before");
+    }
+
+    [TestMethod]
+    public void APosition_LivesOnTheFloorUnlessToldItsHeight()
+    {
+        // Juan, 14-sep-2026: two coordinates are a point on the floor (z = 0); the third dimension waits for the day it is needed
+        Born(Catalog.Warehouse().AsRelease());
+        Assert.AreEqual(0.0, Double("Position(4.0, 9.5).Z"), 1e-12, "on the floor");
+        Assert.AreEqual(1.2, Double("Position(4.0, 9.5, 1.2).Z"), 1e-12, "above it");
+        Assert.AreEqual(5.0, Double("Position(0.0, 0.0, 0.0).DistanceTo(Position(3.0, 4.0))"), 1e-9, "the plane's distance");
+        Assert.AreEqual(13.0, Double("Position(0.0, 0.0, 0.0).DistanceTo(Position(3.0, 4.0, 12.0))"), 1e-9, "distance in space");
+        Assert.AreEqual(1.2, Double("Position(1.0, 1.0, 1.2).Along(0.0, 2.0).Z"), 1e-12, "a run along a heading keeps the height");
+    }
+
     private void Visit(int id, string[] stops)
     {
         var script = new System.Text.StringBuilder("{\n");

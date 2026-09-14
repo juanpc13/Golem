@@ -37,7 +37,7 @@ Every observation must end as a note that lets us conclude and improve the domai
 | Juan says (ES) | Class / namespace (EN) | Notes |
 |---|---|---|
 | Robot | `Golem` (subject) + `Robots.Body` | The golem is the mind (journaled); it RECEIVES its modules — `g = Golem(body, layout, collisions)` — and builds none. `Body(radius, speed, linger)` is a module of its own (`body_v1`), built from magnitudes that say what they are: `radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius, speed, linger);` (11-sep-2026). Its *name* is the journal's identity (env `GOLEM`), not domain state. Its *estimated position* is telemetry: it enters queries as `@x, @y`, never the journal. |
-| Posición | `Geometry.Position` | The coordinate (x, y) on the Euclidean plane. Was `Waypoint`. |
+| Posición | `Geometry.Position` | The coordinate (x, y, z) in space (14-sep-2026): `Position(4.0, 9.5)` is the point on the floor (z = 0), `Position(4.0, 9.5, 1.2)` keeps the third dimension for the day a body climbs or touches above the floor. Distance is measured in space; the layout reads x and y only. Was `Waypoint`. |
 | Ubicación | `Geometry.Location : Position` | A position that means something on the map (a corner, a jamb, a mark). |
 | Segmento | `Geometry.Segment` | A straight run from position i to j. A `Wall` is one. |
 | Mapa / maqueta | `Maps.Map` (abstract) | The ABSTRACT contract of what a map DISPOSES, and nothing else (10-sep-2026): areas, passages, connectivity (`Connects(a, b)`), attributes (door width, wall height). Not one coordinate. Never instantiated: the concrete map is a `MapLayout`. |
@@ -100,6 +100,15 @@ whether it could or not, so the domain resolves what follows. Consequences:
   `?? throw`, never a `NullReferenceException` from inside. The message is the domain's when it has one to say
   ("a golem needs a body to drive"), else the uniform `"Type.Method: 'param' was not given"`. A `?? throw` stays
   only where it means "not found" (`Doors.FirstOrDefault(…) ?? throw`), which is not a null parameter.
+  **Two objects of one kind given to one method must be two different objects** (Juan, 14-sep: "que a y b no
+  pueden ser el mismo objeto"): after the null guards, `if (ReferenceEquals(a, b)) throw new GolemDomainException
+  ("Type.Method: 'a' and 'b' are the same area")` — every pair of areas (`Connects`, `Door`, `Open`, `DoorBetween`,
+  `Touches`, `Distance`, `Joins`…), the two ends of a `Segment`, the touch and the peer's place (`Hear`, `HearTouch`),
+  the two points of a crossing; the creators by name refuse it too ("area 'kitchen' has no door to itself"). NOT
+  where the same point is a legitimate answer: `Road(from, to)` and `RoadLength` (already there), `EdgeCost.Between`
+  (cost zero), `Leg(at, approach, exit)` (a leg that is no door has one point three times). Engine note: a method's
+  domain refusal inside a QUERY surfaces as "Exception has been thrown by the target of an invocation" — the reason is
+  kept only when it reaches the actor as a command (write-time error) or a C# test; the panel's ad-hoc console loses it.
 - **A command template is a braced block, step by step, values as `@params`** (Juan, 10-sep): the object is
   found or built from the parameters, named after what it is, then handed to the act — the errand and its whole
   way, one entry, ONLY POINTS (Juan, 14-sep: "el listado de puntos en el script"; the route names each point
