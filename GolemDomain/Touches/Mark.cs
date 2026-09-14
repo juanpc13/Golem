@@ -23,23 +23,33 @@ internal sealed class Mark
 
     internal Mark(Position at, double heading)
     {
-        At = at ?? throw new GolemDomainException("a mark needs where the touch fell");
+        if (at == null) throw new GolemDomainException("a mark needs where the touch fell");
+        At = at;
         if (double.IsNaN(heading) || double.IsInfinity(heading)) throw new GolemDomainException("a mark needs the heading of the touch: its normal");
         Heading = heading;
     }
 
     internal double Reach => Collisions.MarkReach;
 
-    internal double DistanceTo(Position p) => At.DistanceTo(p);
+    internal double DistanceTo(Position p)
+    {
+        if (p == null) throw new GolemDomainException("Mark.DistanceTo: 'p' was not given");
+        return At.DistanceTo(p);
+    }
 
     /// <summary>How far beyond the mark a position lies, along the normal (negative: on the side the body came from).</summary>
-    internal double Ahead(Position p) => (p.X - At.X) * Math.Cos(Heading) + (p.Y - At.Y) * Math.Sin(Heading);
+    internal double Ahead(Position p)
+    {
+        if (p == null) throw new GolemDomainException("Mark.Ahead: 'p' was not given");
+        return (p.X - At.X) * Math.Cos(Heading) + (p.Y - At.Y) * Math.Sin(Heading);
+    }
 
     /// <summary>Whether a body of this radius, centered at a position, would run into what the mark stands for:
     /// within the clearance (reach + radius + margin) of the point, unless it stands on the side the body came
     /// from, a radius and a margin clear of the surface.</summary>
     internal bool Blocks(Position center, double radius)
     {
+        if (center == null) throw new GolemDomainException("Mark.Blocks: 'center' was not given");
         if (At.DistanceTo(center) >= Reach + radius + Collisions.MarkMargin) return false;
         return Ahead(center) > -(radius + Collisions.MarkMargin);
     }

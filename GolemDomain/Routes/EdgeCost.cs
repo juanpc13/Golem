@@ -16,5 +16,10 @@ internal abstract class EdgeCost
 internal sealed class DistanceCost : EdgeCost
 {
     internal override string Name => "distance";
-    internal override double Between(Position a, Position b) => a.DistanceTo(b);
+    internal override double Between(Position a, Position b)
+    {
+        if (a == null) throw new GolemDomainException("DistanceCost.Between: 'a' was not given");
+        if (b == null) throw new GolemDomainException("DistanceCost.Between: 'b' was not given");
+        return a.DistanceTo(b);
+    }
 }

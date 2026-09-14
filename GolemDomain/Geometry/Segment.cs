@@ -27,6 +27,7 @@ internal sealed class Segment
     /// <summary>The point of this segment closest to a position.</summary>
     internal Position ClosestTo(Position p)
     {
+        if (p == null) throw new GolemDomainException("Segment.ClosestTo: 'p' was not given");
         double dx = To.X - From.X, dy = To.Y - From.Y;
         double length2 = dx * dx + dy * dy;
         double t = length2 < 1e-12 ? 0 : Math.Clamp(((p.X - From.X) * dx + (p.Y - From.Y) * dy) / length2, 0, 1);
@@ -34,5 +35,9 @@ internal sealed class Segment
     }
 
     /// <summary>How far a position lies from the closest point of this segment (zero when it lies on it).</summary>
-    internal double DistanceTo(Position p) => ClosestTo(p).DistanceTo(p);
+    internal double DistanceTo(Position p)
+    {
+        if (p == null) throw new GolemDomainException("Segment.DistanceTo: 'p' was not given");
+        return ClosestTo(p).DistanceTo(p);
+    }
 }

@@ -26,7 +26,8 @@ internal sealed class Zone : Area
     /// <summary>Where the zone stands: its south-west corner. Chainable.</summary>
     internal Zone At(Position southWest)
     {
-        corner = southWest ?? throw new GolemDomainException($"zone '{Name}' needs the corner it stands at");
+        if (southWest == null) throw new GolemDomainException($"zone '{Name}' needs the corner it stands at");
+        corner = southWest;
         return this;
     }
 
@@ -40,17 +41,22 @@ internal sealed class Zone : Area
     }
 
     /// <summary>Where the door into another area stands: a point on the shared wall. Chainable.</summary>
-    internal Zone DoorAt(Area area, Position at) { Layout.DoorAt(this, area, at); return this; }
+    internal Zone DoorAt(Area area, Position at) {
+        if (area == null) throw new GolemDomainException("Zone.DoorAt: 'area' was not given");
+        if (at == null) throw new GolemDomainException("Zone.DoorAt: 'at' was not given"); Layout.DoorAt(this, area, at); return this; }
 
     /// <summary>Where the door into another area, named (it may not be created yet), stands. Chainable.</summary>
-    internal Zone DoorAt(string area, Position at) { Layout.DoorAt(Name, area, at); return this; }
+    internal Zone DoorAt(string area, Position at) {
+        if (at == null) throw new GolemDomainException("Zone.DoorAt: 'at' was not given"); Layout.DoorAt(Name, area, at); return this; }
 
     /// <summary>A door into another area, its point still to be told with DoorAt. The train stays a zone's.</summary>
-    internal override Zone DoorTo(Area area) { base.DoorTo(area); return this; }
+    internal override Zone DoorTo(Area area) {
+        if (area == null) throw new GolemDomainException("Zone.DoorTo: 'area' was not given"); base.DoorTo(area); return this; }
     internal override Zone DoorTo(string area) { base.DoorTo(area); return this; }
 
     /// <summary>The whole boundary with another area is open. The train stays a zone's.</summary>
-    internal override Zone OpenTo(Area area) { base.OpenTo(area); return this; }
+    internal override Zone OpenTo(Area area) {
+        if (area == null) throw new GolemDomainException("Zone.OpenTo: 'area' was not given"); base.OpenTo(area); return this; }
     internal override Zone OpenTo(string area) { base.OpenTo(area); return this; }
 
     // ---- the geometry, once told ----
@@ -69,10 +75,18 @@ internal sealed class Zone : Area
     internal Position Center => Rect.Center;
 
     /// <summary>Inclusive on the edges: a point on a shared wall belongs to both zones.</summary>
-    internal bool Contains(Position at) => IsLaidOut && Rect.Contains(at);
+    internal bool Contains(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Zone.Contains: 'at' was not given");
+        return IsLaidOut && Rect.Contains(at);
+    }
 
     /// <summary>A point inside the zone and off every wall by at least the inset — an open edge does not count.</summary>
-    internal bool ContainsInset(Position at, double inset) => Contains(at) && Walls().All(w => w.DistanceTo(at) >= inset);
+    internal bool ContainsInset(Position at, double inset)
+    {
+        if (at == null) throw new GolemDomainException("Zone.ContainsInset: 'at' was not given");
+        return Contains(at) && Walls().All(w => w.DistanceTo(at) >= inset);
+    }
 
     // ---- what the zone holds, for whoever reads the map as objects ----
     //   foreach (zones in map.Zones) { print zones.Name 'name', …; foreach (doors in zones.Doorways()) { print doors.To 'to', doors.At.X 'x', …; } }
@@ -114,15 +128,23 @@ internal sealed class Zone : Area
 
     // ---- neighbours: two rectangles that share an edge ----
 
-    internal bool Touches(Zone other) => other != null && IsLaidOut && other.IsLaidOut && Rect.Touches(other.Rect);
+    internal bool Touches(Zone other)
+    {
+        if (other == null) throw new GolemDomainException("Zone.Touches: 'other' was not given");
+        return other != null && IsLaidOut && other.IsLaidOut && Rect.Touches(other.Rect);
+    }
 
     /// <summary>The edge shared with a neighbour. Consult Touches first.</summary>
-    internal Segment SharedEdgeWith(Zone other) =>
-        Rect.TrySharedEdge(other.Rect) ?? throw new GolemDomainException($"'{Name}' and '{other.Name}' share no wall");
+    internal Segment SharedEdgeWith(Zone other)
+    {
+        if (other == null) throw new GolemDomainException("Zone.SharedEdgeWith: 'other' was not given");
+        return Rect.TrySharedEdge(other.Rect) ?? throw new GolemDomainException($"'{Name}' and '{other.Name}' share no wall");
+    }
 
     /// <summary>A unit step across the shared wall, from this zone into the other.</summary>
     internal Position StepInto(Zone other)
     {
+        if (other == null) throw new GolemDomainException("Zone.StepInto: 'other' was not given");
         try { return Rect.StepInto(other.Rect); }
         catch (GolemDomainException) { throw new GolemDomainException($"'{Name}' and '{other.Name}' share no wall to step across"); }
     }

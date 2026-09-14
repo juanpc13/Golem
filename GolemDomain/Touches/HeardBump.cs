@@ -16,9 +16,11 @@ internal sealed class HeardBump
 
     internal HeardBump(string who, Position at, Position peerAt)
     {
+        if (at == null) throw new GolemDomainException("a heard bump needs to say where");
+        if (peerAt == null) throw new GolemDomainException("a heard bump needs to say where the peer stood");
         if (string.IsNullOrWhiteSpace(who)) throw new GolemDomainException("a heard bump needs to say who bumped");
         Who = who;
-        At = at ?? throw new GolemDomainException("a heard bump needs to say where");
-        PeerAt = peerAt ?? throw new GolemDomainException("a heard bump needs to say where the peer stood");
+        At = at;
+        PeerAt = peerAt;
     }
 }

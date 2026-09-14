@@ -34,7 +34,8 @@ internal sealed class Collisions
 
     internal Collisions(MapLayout layout)
     {
-        Layout = layout ?? throw new GolemDomainException("collisions are measured over a layout");
+        if (layout == null) throw new GolemDomainException("collisions are measured over a layout");
+        Layout = layout;
     }
 
     // ---- the facts ----
@@ -52,6 +53,7 @@ internal sealed class Collisions
     /// Returns how many encounters it holds.</summary>
     internal int Meet(string who, Position at)
     {
+        if (at == null) throw new GolemDomainException("Collisions.Meet: 'at' was not given");
         encounters.Add(new Peer(who, at, Layout.ZoneOf(at)?.Name ?? ""));
         return encounters.Count;
     }
@@ -60,6 +62,8 @@ internal sealed class Collisions
     /// there and then is known to be that peer, and so I know where it is when I step out of its way.</summary>
     internal int Hear(string who, Position at, Position peerAt)
     {
+        if (at == null) throw new GolemDomainException("Collisions.Hear: 'at' was not given");
+        if (peerAt == null) throw new GolemDomainException("Collisions.Hear: 'peerAt' was not given");
         heard.Add(new HeardBump(who, at, peerAt));
         return heard.Count;
     }
@@ -71,7 +75,11 @@ internal sealed class Collisions
     internal IReadOnlyList<HeardBump> Heard => heard;
 
     /// <summary>The marks standing in a zone (a mark on a shared wall stands in both).</summary>
-    internal IReadOnlyList<Mark> MarksIn(Zone zone) => marks.Where(m => zone.Contains(m.At)).ToList();
+    internal IReadOnlyList<Mark> MarksIn(Zone zone)
+    {
+        if (zone == null) throw new GolemDomainException("Collisions.MarksIn: 'zone' was not given");
+        return marks.Where(m => zone.Contains(m.At)).ToList();
+    }
 
     // ---- the hypotheses, derived every time ----
 
@@ -103,7 +111,11 @@ internal sealed class Collisions
     internal IReadOnlyList<Thing> Things() => All().OfType<Thing>().ToList();
 
     /// <summary>The obstacles whose centre stands in a zone.</summary>
-    internal IReadOnlyList<Obstacle> In(Zone zone) => All().Where(o => zone.Contains(o.Center)).ToList();
+    internal IReadOnlyList<Obstacle> In(Zone zone)
+    {
+        if (zone == null) throw new GolemDomainException("Collisions.In: 'zone' was not given");
+        return All().Where(o => zone.Contains(o.Center)).ToList();
+    }
 
     /// <summary>Who, among the bumps heard after the given count, bumped near a point — within a meeting's reach;
     /// "" for nobody. (Robotics resolves two bodies meeting with reciprocal velocity obstacles — van den Berg, Lin
@@ -111,6 +123,7 @@ internal sealed class Collisions
     /// bodies sense nothing but a touch, so they resolve it by speech: both tell the fact, and each concludes.)</summary>
     internal string HeardNear(Position at, int sinceCount)
     {
+        if (at == null) throw new GolemDomainException("Collisions.HeardNear: 'at' was not given");
         for (int i = heard.Count - 1; i >= sinceCount && i >= 0; i--)
             if (heard[i].At.DistanceTo(at) <= MeetingReach) return heard[i].Who;
         return "";
@@ -128,6 +141,7 @@ internal sealed class Collisions
     /// (Graze), a peer that bumped near there and then (Met), or a thing nobody charted (Mark).</summary>
     internal Suspicion Suspect(Pose touch, int sinceCount)
     {
+        if (touch == null) throw new GolemDomainException("Collisions.Suspect: 'touch' was not given");
         if (Layout.IsWallAt(touch, MapLayout.WallTolerance)) return new WallTouched();
         string who = HeardNear(touch, sinceCount);
         if (who != "") return new PeerMet(who);
@@ -146,6 +160,7 @@ internal sealed class Collisions
     /// that peer presumed there was my body. Returns how many went.</summary>
     internal int UnmarkHeardFrom(string who, Position at)
     {
+        if (at == null) throw new GolemDomainException("Collisions.UnmarkHeardFrom: 'at' was not given");
         int gone = 0;
         foreach (var h in heard)
             if (h.Who == who && h.At.DistanceTo(at) <= MeetingReach) gone += Unmark(h.At);
@@ -156,7 +171,11 @@ internal sealed class Collisions
 
     /// <summary>Whether an obstacle stands at a point — its centre or any of its vertices within JoinWithin of
     /// it. What the operator consults before saying it is gone.</summary>
-    internal bool KnowsAt(Position at) => Nearest(at) != null;
+    internal bool KnowsAt(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Collisions.KnowsAt: 'at' was not given");
+        return Nearest(at) != null;
+    }
 
     /// <summary>Someone took it away: the golem forgets the obstacle standing there and, with it, EVERY fact that
     /// outlined it — all its marks at once, because they were vertices of one thing and the thing is gone. A body
@@ -166,6 +185,7 @@ internal sealed class Collisions
     /// history still says what was believed and when it stopped being believed.</para></summary>
     internal int Forget(Position at)
     {
+        if (at == null) throw new GolemDomainException("Collisions.Forget: 'at' was not given");
         var target = Nearest(at);
         if (target == null) return 0;
         if (target is Thing thing)
@@ -199,15 +219,31 @@ internal sealed class Collisions
 
     /// <summary>Whether what has been learned stands in the way of a body of this radius at a point: any mark
     /// blocks it, unless the point lies on the side the touching body came from (the mark's normal).</summary>
-    internal bool Blocks(Position at, double radius) => marks.Any(m => m.Blocks(at, radius));
+    internal bool Blocks(Position at, double radius)
+    {
+        if (at == null) throw new GolemDomainException("Collisions.Blocks: 'at' was not given");
+        return marks.Any(m => m.Blocks(at, radius));
+    }
 
     /// <summary>Whether a straight run comes into what has been learned: judged at the run's closest point to
     /// each mark, on the mark's own terms.</summary>
-    internal bool Blocks(Segment run, double radius) => marks.Any(m => m.Blocks(run.ClosestTo(m.At), radius));
+    internal bool Blocks(Segment run, double radius)
+    {
+        if (run == null) throw new GolemDomainException("Collisions.Blocks: 'run' was not given");
+        return marks.Any(m => m.Blocks(run.ClosestTo(m.At), radius));
+    }
 
     /// <summary>How far the closest mark lies from a run; positive infinity when nothing has been learned.</summary>
-    internal double DistanceFrom(Segment run) => marks.Count == 0 ? double.PositiveInfinity : marks.Min(m => run.DistanceTo(m.At));
+    internal double DistanceFrom(Segment run)
+    {
+        if (run == null) throw new GolemDomainException("Collisions.DistanceFrom: 'run' was not given");
+        return marks.Count == 0 ? double.PositiveInfinity : marks.Min(m => run.DistanceTo(m.At));
+    }
 
     /// <summary>How far the closest mark lies from a point; positive infinity when nothing has been learned.</summary>
-    internal double DistanceFrom(Position at) => marks.Count == 0 ? double.PositiveInfinity : marks.Min(m => m.DistanceTo(at));
+    internal double DistanceFrom(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Collisions.DistanceFrom: 'at' was not given");
+        return marks.Count == 0 ? double.PositiveInfinity : marks.Min(m => m.DistanceTo(at));
+    }
 }

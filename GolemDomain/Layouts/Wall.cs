@@ -21,9 +21,12 @@ internal sealed class Wall
 
     internal Wall(Zone zone, Segment line, IReadOnlyList<PlacedDoor> doors)
     {
-        Zone = zone ?? throw new GolemDomainException("a wall bounds a zone");
-        Line = line ?? throw new GolemDomainException("a wall stands on a line");
-        this.doors = doors ?? throw new GolemDomainException("a wall knows its doors, even none");
+        if (zone == null) throw new GolemDomainException("a wall bounds a zone");
+        if (line == null) throw new GolemDomainException("a wall stands on a line");
+        if (doors == null) throw new GolemDomainException("a wall knows its doors, even none");
+        Zone = zone;
+        Line = line;
+        this.doors = doors;
     }
 
     internal Position From => Line.From;
@@ -34,11 +37,18 @@ internal sealed class Wall
     internal IReadOnlyList<PlacedDoor> Doors() => doors;
 
     /// <summary>How far a position lies from the wall's line.</summary>
-    internal double DistanceTo(Position at) => Line.DistanceTo(at);
+    internal double DistanceTo(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Wall.DistanceTo: 'at' was not given");
+        return Line.DistanceTo(at);
+    }
 
     /// <summary>Whether a touched point lies on this wall: within tolerance of its line (the wall's real thickness,
     /// the pose's error) and not in one of its doorways — within a door's gap there is no wall, whatever was
     /// touched there is something else.</summary>
-    internal bool Holds(Position at, double tolerance) =>
-        Line.DistanceTo(at) <= tolerance && !doors.Any(d => d.At.DistanceTo(at) <= MapLayout.DoorGap);
+    internal bool Holds(Position at, double tolerance)
+    {
+        if (at == null) throw new GolemDomainException("Wall.Holds: 'at' was not given");
+        return Line.DistanceTo(at) <= tolerance && !doors.Any(d => d.At.DistanceTo(at) <= MapLayout.DoorGap);
+    }
 }

@@ -125,6 +125,18 @@ public class FloorPlanCatalogTests
         .PerformCommand();
     }
 
+    [TestMethod]
+    public void AnObjectNotGiven_IsRefusedByTheDomain_BeforeAnythingRuns()
+    {
+        // Juan, 14-sep-2026: every method that takes an object checks it first, with an if, and refuses in the domain's voice
+        var map = Catalog.Warehouse();
+        var kitchen = map.Find("kitchen");
+        Assert.AreEqual("Map.Connects: 'a' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Connects(null, kitchen)).Message);
+        Assert.AreEqual("Zone.Contains: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => kitchen.Contains(null)).Message);
+        Assert.AreEqual("a golem needs a body to drive", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Golem(null, map, new GolemDomain.Touches.Collisions(map))).Message);
+        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Routes.Route(1, null, false, false, map, new GolemDomain.Touches.Collisions(map))).Message);
+    }
+
     private void Visit(int id, string[] stops)
     {
         var script = new System.Text.StringBuilder("{\n");

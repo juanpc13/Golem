@@ -17,9 +17,12 @@ internal sealed class PlacedDoor
 
     internal PlacedDoor(Door door, Position at, MapLayout layout)
     {
-        Door = door ?? throw new GolemDomainException("a placed door realizes a door of the map");
-        At = at ?? throw new GolemDomainException($"the door {door.Name} needs its point");
-        this.layout = layout ?? throw new GolemDomainException($"the door {door.Name} is placed by a layout");
+        if (door == null) throw new GolemDomainException("a placed door realizes a door of the map");
+        if (at == null) throw new GolemDomainException($"the door {door.Name} needs its point");
+        if (layout == null) throw new GolemDomainException($"the door {door.Name} is placed by a layout");
+        Door = door;
+        At = at;
+        this.layout = layout;
     }
 
     internal string Name => Door.Name;
@@ -41,7 +44,11 @@ internal sealed class PlacedDoor
     }
 
     /// <summary>A unit step through the door into one of its two areas, from the other.</summary>
-    internal Position StepInto(Area side) => layout.StepInto(Door, side);
+    internal Position StepInto(Area side)
+    {
+        if (side == null) throw new GolemDomainException("PlacedDoor.StepInto: 'side' was not given");
+        return layout.StepInto(Door, side);
+    }
 }
 
 /// <summary>A door as one zone sees it: the area across, where the door stands, how wide it is. Read, never written.</summary>
@@ -54,6 +61,8 @@ internal sealed class Doorway
 
     internal Doorway(Area across, Position at, double width)
     {
+        if (across == null) throw new GolemDomainException("Doorway.Doorway: 'across' was not given");
+        if (at == null) throw new GolemDomainException("Doorway.Doorway: 'at' was not given");
         Across = across;
         At = at;
         Width = width;
@@ -66,5 +75,9 @@ internal sealed class OpenSide
     internal Area Across { get; }
     internal string To => Across.Name;
 
-    internal OpenSide(Area across) => Across = across;
+    internal OpenSide(Area across)
+    {
+        if (across == null) throw new GolemDomainException("OpenSide.OpenSide: 'across' was not given");
+        Across = across;
+    }
 }

@@ -17,7 +17,8 @@ internal abstract class Passage
 
     internal Passage(Map map, string a, string b)
     {
-        this.map = map ?? throw new GolemDomainException("a passage belongs to a map");
+        if (map == null) throw new GolemDomainException("a passage belongs to a map");
+        this.map = map;
         if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) throw new GolemDomainException("a passage joins two named areas");
         if (a == b) throw new GolemDomainException($"a passage must join two different areas, not '{a}' twice");
         A = a;
@@ -28,12 +29,22 @@ internal abstract class Passage
     internal Area AreaA => map.Find(A);
     internal Area AreaB => map.Find(B);
 
-    internal bool Joins(Area area) => area != null && (A == area.Name || B == area.Name);
-    internal bool Joins(Area one, Area other) => one != null && other != null && ((A == one.Name && B == other.Name) || (A == other.Name && B == one.Name));
+    internal bool Joins(Area area)
+    {
+        if (area == null) throw new GolemDomainException("Passage.Joins: 'area' was not given");
+        return area != null && (A == area.Name || B == area.Name);
+    }
+    internal bool Joins(Area one, Area other)
+    {
+        if (one == null) throw new GolemDomainException("Passage.Joins: 'one' was not given");
+        if (other == null) throw new GolemDomainException("Passage.Joins: 'other' was not given");
+        return one != null && other != null && ((A == one.Name && B == other.Name) || (A == other.Name && B == one.Name));
+    }
 
     /// <summary>The area across from a given one of the two.</summary>
     internal Area OtherSide(Area area)
     {
+        if (area == null) throw new GolemDomainException("Passage.OtherSide: 'area' was not given");
         if (!Joins(area)) throw new GolemDomainException($"the passage {Name} does not join '{area?.Name}'");
         return A == area.Name ? AreaB : AreaA;
     }

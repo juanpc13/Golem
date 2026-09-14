@@ -34,10 +34,13 @@ internal sealed class RoutePlanner
 
     internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost)
     {
-        this.layout = layout ?? throw new GolemDomainException("a planner needs a layout");
-        this.collisions = collisions ?? throw new GolemDomainException("a planner needs to know what the bodies learned");
+        if (layout == null) throw new GolemDomainException("a planner needs a layout");
+        if (collisions == null) throw new GolemDomainException("a planner needs to know what the bodies learned");
+        if (cost == null) throw new GolemDomainException("a planner needs to know what an edge costs");
+        this.layout = layout;
+        this.collisions = collisions;
         if (radius < 0) throw new GolemDomainException("a body's radius cannot be negative");
-        this.cost = cost ?? throw new GolemDomainException("a planner needs to know what an edge costs");
+        this.cost = cost;
         this.radius = radius;
     }
 
@@ -45,12 +48,19 @@ internal sealed class RoutePlanner
     private bool Fits(Position at) => layout.HasRoom(at, radius) && !collisions.Blocks(at, radius);
 
     /// <summary>The shortest road from one point to another through the passages: the legs to walk, the stop last.</summary>
-    internal Trajectory Road(Position from, Position to) => Road(from, new[] { to });
+    internal Trajectory Road(Position from, Position to)
+    {
+        if (from == null) throw new GolemDomainException("RoutePlanner.Road: 'from' was not given");
+        if (to == null) throw new GolemDomainException("RoutePlanner.Road: 'to' was not given");
+        return Road(from, new[] { to });
+    }
 
     /// <summary>The road through several stops, in the order given: the shortest road from each stop to the next,
     /// walked as one — doors crossed straight, openings named where the walk meets them, marks skirted.</summary>
     internal Trajectory Road(Position from, IReadOnlyList<Position> stops)
     {
+        if (from == null) throw new GolemDomainException("RoutePlanner.Road: 'from' was not given");
+        if (stops == null) throw new GolemDomainException("RoutePlanner.Road: 'stops' was not given");
         var raw = new List<Leg>();
         Position here = from;
         foreach (var stop in stops)
@@ -62,7 +72,12 @@ internal sealed class RoutePlanner
     }
 
     /// <summary>How long the shortest road from one point to another is, leg to leg.</summary>
-    internal double RoadLength(Position from, Position to) => Road(from, to).Length(from);
+    internal double RoadLength(Position from, Position to)
+    {
+        if (from == null) throw new GolemDomainException("RoutePlanner.RoadLength: 'from' was not given");
+        if (to == null) throw new GolemDomainException("RoutePlanner.RoadLength: 'to' was not given");
+        return Road(from, to).Length(from);
+    }
 
     /// <summary>The order of stops that makes the whole road shortest, starting from a point. Every order is tried
     /// up to seven stops; beyond that the nearest stop is taken each time. (An open travelling-salesman tour over
@@ -70,6 +85,8 @@ internal sealed class RoutePlanner
     /// two answers robotics gives to multi-goal coverage; better heuristics, 2-opt say, would slot in here.)</summary>
     internal IReadOnlyList<Position> BestOrder(Position from, IReadOnlyList<Position> stops)
     {
+        if (from == null) throw new GolemDomainException("RoutePlanner.BestOrder: 'from' was not given");
+        if (stops == null) throw new GolemDomainException("RoutePlanner.BestOrder: 'stops' was not given");
         if (stops.Count < 2) return stops;
         var points = new List<Position> { from };
         points.AddRange(stops);
@@ -191,8 +208,14 @@ internal sealed class RoutePlanner
         internal IReadOnlyList<Zone> Zones { get; }
         internal Passage Via { get; }
         internal NodeKind Kind { get; }
-        internal Node(Position at, IReadOnlyList<Zone> zones, NodeKind kind) { At = at; Zones = zones; Kind = kind; }
-        internal Node(Position at, IReadOnlyList<Zone> zones, Passage via) { At = at; Zones = zones; Via = via; Kind = NodeKind.Passage; }
+        internal Node(Position at, IReadOnlyList<Zone> zones, NodeKind kind) {
+            if (at == null) throw new GolemDomainException("Node.Node: 'at' was not given");
+            if (zones == null) throw new GolemDomainException("Node.Node: 'zones' was not given");
+            if (kind == null) throw new GolemDomainException("Node.Node: 'kind' was not given"); At = at; Zones = zones; Kind = kind; }
+        internal Node(Position at, IReadOnlyList<Zone> zones, Passage via) {
+            if (at == null) throw new GolemDomainException("Node.Node: 'at' was not given");
+            if (zones == null) throw new GolemDomainException("Node.Node: 'zones' was not given");
+            if (via == null) throw new GolemDomainException("Node.Node: 'via' was not given"); At = at; Zones = zones; Via = via; Kind = NodeKind.Passage; }
     }
 
     // Two nodes see each other when they share a zone (a straight line inside a rectangle), or when they stand

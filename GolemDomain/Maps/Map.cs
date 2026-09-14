@@ -50,7 +50,12 @@ internal abstract class Map
     protected abstract Area NewArea(string name);
 
     /// <summary>A door between two areas: a gap in the wall they share. Declaring it twice (from either side) is one door.</summary>
-    internal Door Door(Area a, Area b) => Door(Named(a), Named(b));
+    internal Door Door(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("Map.Door: 'a' was not given");
+        if (b == null) throw new GolemDomainException("Map.Door: 'b' was not given");
+        return Door(Named(a), Named(b));
+    }
 
     /// <summary>A door between two areas by name — the second may not exist yet (a door is declared from the first
     /// area charted). Declaring it twice is one door.</summary>
@@ -64,7 +69,12 @@ internal abstract class Map
     }
 
     /// <summary>An open stretch between two areas: the whole boundary they share is free. Declared once from either side.</summary>
-    internal Opening Open(Area a, Area b) => Open(Named(a), Named(b));
+    internal Opening Open(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("Map.Open: 'a' was not given");
+        if (b == null) throw new GolemDomainException("Map.Open: 'b' was not given");
+        return Open(Named(a), Named(b));
+    }
 
     /// <summary>An open stretch between two areas by name — the second may not exist yet.</summary>
     internal Opening Open(string a, string b)
@@ -109,24 +119,66 @@ internal abstract class Map
     internal IEnumerable<Opening> Openings => passages.OfType<Opening>();
 
     /// <summary>The passages out of an area: its doors and its open stretches.</summary>
-    internal IEnumerable<Passage> PassagesOf(Area area) => passages.Where(p => p.Joins(area));
-    internal IEnumerable<Door> DoorsOf(Area area) => Doors.Where(d => d.Joins(area));
-    internal IEnumerable<Opening> OpeningsOf(Area area) => Openings.Where(o => o.Joins(area));
+    internal IEnumerable<Passage> PassagesOf(Area area)
+    {
+        if (area == null) throw new GolemDomainException("Map.PassagesOf: 'area' was not given");
+        return passages.Where(p => p.Joins(area));
+    }
+    internal IEnumerable<Door> DoorsOf(Area area)
+    {
+        if (area == null) throw new GolemDomainException("Map.DoorsOf: 'area' was not given");
+        return Doors.Where(d => d.Joins(area));
+    }
+    internal IEnumerable<Opening> OpeningsOf(Area area)
+    {
+        if (area == null) throw new GolemDomainException("Map.OpeningsOf: 'area' was not given");
+        return Openings.Where(o => o.Joins(area));
+    }
 
     /// <summary>The areas one can pass into from an area, through any passage — the ones that exist by now.</summary>
-    internal IReadOnlyList<Area> Neighbours(Area area) =>
-        PassagesOf(area).Select(p => p.A == area.Name ? p.B : p.A).Distinct().Where(Knows).Select(Find).ToList();
+    internal IReadOnlyList<Area> Neighbours(Area area)
+    {
+        if (area == null) throw new GolemDomainException("Map.Neighbours: 'area' was not given");
+        return PassagesOf(area).Select(p => p.A == area.Name ? p.B : p.A).Distinct().Where(Knows).Select(Find).ToList();
+    }
         
-    internal bool Connects(Area a, Area b) => passages.Any(p => p.Joins(a, b));
+    internal bool Connects(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("Map.Connects: 'a' was not given");
+        if (b == null) throw new GolemDomainException("Map.Connects: 'b' was not given");
+        return passages.Any(p => p.Joins(a, b));
+    }
 
-    internal bool HasDoorBetween(Area a, Area b) => Doors.Any(d => d.Joins(a, b));
-    internal bool HasOpeningBetween(Area a, Area b) => Openings.Any(o => o.Joins(a, b));
+    internal bool HasDoorBetween(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("Map.HasDoorBetween: 'a' was not given");
+        if (b == null) throw new GolemDomainException("Map.HasDoorBetween: 'b' was not given");
+        return Doors.Any(d => d.Joins(a, b));
+    }
+    internal bool HasOpeningBetween(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("Map.HasOpeningBetween: 'a' was not given");
+        if (b == null) throw new GolemDomainException("Map.HasOpeningBetween: 'b' was not given");
+        return Openings.Any(o => o.Joins(a, b));
+    }
 
-    internal Door DoorBetween(Area a, Area b) =>
-        Doors.FirstOrDefault(d => d.Joins(a, b)) ?? throw new GolemDomainException($"no door between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
+    internal Door DoorBetween(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("Map.DoorBetween: 'a' was not given");
+        if (b == null) throw new GolemDomainException("Map.DoorBetween: 'b' was not given");
+        return Doors.FirstOrDefault(d => d.Joins(a, b)) ?? throw new GolemDomainException($"no door between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
+    }
 
-    internal Opening OpeningBetween(Area a, Area b) =>
-        Openings.FirstOrDefault(o => o.Joins(a, b)) ?? throw new GolemDomainException($"no open stretch between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
+    internal Opening OpeningBetween(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("Map.OpeningBetween: 'a' was not given");
+        if (b == null) throw new GolemDomainException("Map.OpeningBetween: 'b' was not given");
+        return Openings.FirstOrDefault(o => o.Joins(a, b)) ?? throw new GolemDomainException($"no open stretch between '{Named(a)}' and '{Named(b)}' on map '{Name}'");
+    }
 
-    private static string Named(Area a) => a?.Name ?? throw new GolemDomainException("an area is needed, not nothing");
+    private static string Named(Area a)
+    {
+        if (a == null) throw new GolemDomainException("an area is needed, not nothing");
+        return a.Name;
+    }
 }

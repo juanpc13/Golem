@@ -21,5 +21,9 @@ internal sealed class Pose : Position
     internal Position Forward => new(Math.Cos(Heading), Math.Sin(Heading));
 
     /// <summary>How far ahead of this pose a position lies, along the heading (negative: behind).</summary>
-    internal double Ahead(Position p) => (p.X - X) * Math.Cos(Heading) + (p.Y - Y) * Math.Sin(Heading);
+    internal double Ahead(Position p)
+    {
+        if (p == null) throw new GolemDomainException("Pose.Ahead: 'p' was not given");
+        return (p.X - X) * Math.Cos(Heading) + (p.Y - Y) * Math.Sin(Heading);
+    }
 }

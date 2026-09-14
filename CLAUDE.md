@@ -77,6 +77,12 @@ whether it could or not, so the domain resolves what follows. Consequences:
   another verb finds by a key is an object the first verb must return** (Juan, 11/14-sep — `map`, then `route`):
   the errand is the route, `g.Visit(point)` hands it out with its handle minted inside (like `Follow` always did),
   later acts find it (`route = g.Find(@id)`), and no golem act takes a mission id any more.
+  **Every non-private method or constructor that receives an object checks it for null FIRST, with an explicit
+  `if`, and refuses with a `GolemDomainException`** (Juan, 14-sep-2026: "hay que dar una excepción del dominio…
+  con un if antes de procesarlo, en todos los métodos que reciban un objeto por parámetro") — never an inline
+  `?? throw`, never a `NullReferenceException` from inside. The message is the domain's when it has one to say
+  ("a golem needs a body to drive"), else the uniform `"Type.Method: 'param' was not given"`. A `?? throw` stays
+  only where it means "not found" (`Doors.FirstOrDefault(…) ?? throw`), which is not a null parameter.
 - **A command template is a braced block, step by step, values as `@params`** (Juan, 10-sep): the object is
   found or built from the parameters, named after what it is, then handed to the act — the errand and its whole
   way, one entry, ONLY POINTS (Juan, 14-sep: "el listado de puntos en el script"; the route names each point

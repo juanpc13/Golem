@@ -14,21 +14,24 @@ internal class Area
 
     internal Area(string name, Map map)
     {
+        if (map == null) throw new GolemDomainException($"area '{name}' belongs to a map");
         if (string.IsNullOrWhiteSpace(name)) throw new GolemDomainException("an area needs a name");
         Name = name;
-        Map = map ?? throw new GolemDomainException($"area '{name}' belongs to a map");
+        Map = map;
     }
 
     // ---- telling the map what leaves this area (creating: by object, or by name when the neighbour is not created yet) ----
 
     /// <summary>A door from this area into another. Chainable.</summary>
-    internal virtual Area DoorTo(Area area) { Map.Door(this, area); return this; }
+    internal virtual Area DoorTo(Area area) {
+        if (area == null) throw new GolemDomainException("Area.DoorTo: 'area' was not given"); Map.Door(this, area); return this; }
 
     /// <summary>A door from this area into another, named — it may not exist yet. Chainable.</summary>
     internal virtual Area DoorTo(string area) { Map.Door(Name, area); return this; }
 
     /// <summary>The whole boundary with another area is open — no wall, no door. Chainable.</summary>
-    internal virtual Area OpenTo(Area area) { Map.Open(this, area); return this; }
+    internal virtual Area OpenTo(Area area) {
+        if (area == null) throw new GolemDomainException("Area.OpenTo: 'area' was not given"); Map.Open(this, area); return this; }
 
     /// <summary>The whole boundary with another area, named, is open. Chainable.</summary>
     internal virtual Area OpenTo(string area) { Map.Open(Name, area); return this; }
@@ -41,5 +44,9 @@ internal class Area
     /// <summary>The areas one can pass into from here.</summary>
     internal IReadOnlyList<Area> Neighbours() => Map.Neighbours(this);
     /// <summary>Whether some passage joins this area to another.</summary>
-    internal bool Connects(Area other) => Map.Connects(this, other);
+    internal bool Connects(Area other)
+    {
+        if (other == null) throw new GolemDomainException("Area.Connects: 'other' was not given");
+        return Map.Connects(this, other);
+    }
 }

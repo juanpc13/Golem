@@ -29,9 +29,12 @@ internal sealed class Golem
 
     internal Golem(Body body, MapLayout map, Collisions collisions)
     {
-        this.body = body ?? throw new GolemDomainException("a golem needs a body to drive");
-        layout = map ?? throw new GolemDomainException("a golem needs its map, laid out");
-        this.collisions = collisions ?? throw new GolemDomainException("a golem needs its collisions module, even empty");
+        if (body == null) throw new GolemDomainException("a golem needs a body to drive");
+        if (map == null) throw new GolemDomainException("a golem needs its map, laid out");
+        if (collisions == null) throw new GolemDomainException("a golem needs its collisions module, even empty");
+        this.body = body;
+        layout = map;
+        this.collisions = collisions;
         if (collisions.Layout != layout) throw new GolemDomainException("the collisions must be measured over the golem's own layout");
     }
 
@@ -63,7 +66,12 @@ internal sealed class Golem
 
     /// <summary>The shortest road between two areas, centre to centre, through the passages, for this body —
     /// <c>g.Distance(map.Find('kitchen'), map.Find('garage'))</c>.</summary>
-    internal double Distance(Area from, Area to) => Planner().RoadLength(layout.Of(from).Center, layout.Of(to).Center);
+    internal double Distance(Area from, Area to)
+    {
+        if (from == null) throw new GolemDomainException("Golem.Distance: 'from' was not given");
+        if (to == null) throw new GolemDomainException("Golem.Distance: 'to' was not given");
+        return Planner().RoadLength(layout.Of(from).Center, layout.Of(to).Center);
+    }
 
     /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark.</summary>
     internal bool FitsAt(double x, double y)
@@ -87,21 +95,41 @@ internal sealed class Golem
 
     /// <summary>The operator sends the golem to a point: a new route, handle minted here, returned to be told the rest —
     /// <c>route = g.Visit(point); route.Then(point2); route.Via(via1); route.Stop(point);</c>. A stop off the map is refused.</summary>
-    internal Route Visit(Position stop) => Entrust(stop, following: false, choosesOrder: false);
+    internal Route Visit(Position stop)
+    {
+        if (stop == null) throw new GolemDomainException("Golem.Visit: 'stop' was not given");
+        return Entrust(stop, following: false, choosesOrder: false);
+    }
 
     /// <summary>The operator sends the golem to an area: its centre — <c>route = g.Visit(map.Find(@area))</c>.</summary>
-    internal Route Visit(Area area) => Entrust(Centre(area), following: false, choosesOrder: false);
+    internal Route Visit(Area area)
+    {
+        if (area == null) throw new GolemDomainException("Golem.Visit: 'area' was not given");
+        return Entrust(Centre(area), following: false, choosesOrder: false);
+    }
 
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
-    internal Route Cover(Position stop) => Entrust(stop, following: false, choosesOrder: true);
+    internal Route Cover(Position stop)
+    {
+        if (stop == null) throw new GolemDomainException("Golem.Cover: 'stop' was not given");
+        return Entrust(stop, following: false, choosesOrder: true);
+    }
 
     /// <summary>The operator opens a route through areas whose order the golem may choose.</summary>
-    internal Route Cover(Area area) => Entrust(Centre(area), following: false, choosesOrder: true);
+    internal Route Cover(Area area)
+    {
+        if (area == null) throw new GolemDomainException("Golem.Cover: 'area' was not given");
+        return Entrust(Centre(area), following: false, choosesOrder: true);
+    }
 
     /// <summary>The golem follows its leader to a point a peer says it reached — a route of its own, handle minted here.
     /// (Leader–follower formation by told waypoints, not by sensing the leader: the follower knows where the leader
     /// WAS, which is why a newer told point supersedes an older one and the host keeps a standoff on arrival.)</summary>
-    internal Route Follow(Position at) => Entrust(at, following: true, choosesOrder: false);
+    internal Route Follow(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Golem.Follow: 'at' was not given");
+        return Entrust(at, following: true, choosesOrder: false);
+    }
 
     /// <summary>A route the golem already holds, by its handle — to act on it later: <c>route = g.Find(@id); route.Reach(point);</c>.</summary>
     internal Route Find(int id)
@@ -218,6 +246,8 @@ internal sealed class Golem
     /// learned as a mark, as the peer itself presumed — until it says it met a body (LearnMet). Returns how many bumps heard.</summary>
     internal int HearBump(string who, Pose touch, Position peerAt)
     {
+        if (touch == null) throw new GolemDomainException("Golem.HearBump: 'touch' was not given");
+        if (peerAt == null) throw new GolemDomainException("Golem.HearBump: 'peerAt' was not given");
         int heard = collisions.Hear(who, touch, peerAt);
         collisions.Mark(touch);
         return heard;
@@ -225,16 +255,26 @@ internal sealed class Golem
 
     /// <summary>A standing peer says something touched it — where, while it stood at another point: heard and kept, so a
     /// touch of my own there and then is known to be that peer. No mark: what touches a standing body is a body.</summary>
-    internal int HearTouch(string who, Position at, Position peerAt) => collisions.Hear(who, at, peerAt);
+    internal int HearTouch(string who, Position at, Position peerAt)
+    {
+        if (at == null) throw new GolemDomainException("Golem.HearTouch: 'at' was not given");
+        if (peerAt == null) throw new GolemDomainException("Golem.HearTouch: 'peerAt' was not given");
+        return collisions.Hear(who, at, peerAt);
+    }
 
     /// <summary>A peer tells of a mark it concluded on its own: the golem learns it without the bruise. Returns how many marks it holds.</summary>
-    internal int LearnMark(Pose touch) => collisions.Mark(touch);
+    internal int LearnMark(Pose touch)
+    {
+        if (touch == null) throw new GolemDomainException("Golem.LearnMark: 'touch' was not given");
+        return collisions.Mark(touch);
+    }
 
     /// <summary>The golem concludes what it touched was a peer — who said it bumped there and then: the mark its bump
     /// presumed is taken back, and the encounter is kept among the obstacles as a Peer, history, nothing to plan around.
     /// Told to the peers, who take back what they learned. Returns how many bodies it has met.</summary>
     internal int Met(string who, Position at)
     {
+        if (at == null) throw new GolemDomainException("Golem.Met: 'at' was not given");
         int met = collisions.Meet(who, at);
         collisions.Unmark(at);                    // what I presumed a thing was that body
         collisions.UnmarkHeardFrom(who, at);      // and what it presumed there was mine: the encounter was mutual
@@ -242,15 +282,27 @@ internal sealed class Golem
     }
 
     /// <summary>A peer says its touch there was a body: the golem takes back the mark it learned from that bump. Returns how many marks went.</summary>
-    internal int LearnMet(Position at) => collisions.Unmark(at);
+    internal int LearnMet(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Golem.LearnMet: 'at' was not given");
+        return collisions.Unmark(at);
+    }
 
     /// <summary>The operator says what stood at a point is gone — somebody took it away — and the golem forgets the
     /// obstacle there with EVERY mark that outlined it: a body may pass again, and a touch after this is a NEW
     /// obstacle. Told to the peers, who forget it too. Returns how many facts it dropped.</summary>
-    internal int Forget(Position at) => collisions.Forget(at ?? throw new GolemDomainException("forgetting needs where"));
+    internal int Forget(Position at)
+    {
+        if (at == null) throw new GolemDomainException("forgetting needs where");
+        return collisions.Forget(at);
+    }
 
     /// <summary>A peer says what stood at a point is gone: the golem forgets it too, without having gone to see.</summary>
-    internal int LearnForget(Position at) => collisions.Forget(at ?? throw new GolemDomainException("forgetting needs where"));
+    internal int LearnForget(Position at)
+    {
+        if (at == null) throw new GolemDomainException("forgetting needs where");
+        return collisions.Forget(at);
+    }
 
     /// <summary>Whether the golem holds an obstacle at (x, y) — what to consult before saying it is gone.</summary>
     internal bool KnowsObstacleAt(double x, double y) => collisions.KnowsAt(new Position(x, y));
@@ -364,7 +416,11 @@ internal sealed class Golem
         return route;
     }
 
-    private Position Centre(Area area) => layout.Of(area ?? throw new GolemDomainException("a route needs an area")).Center;
+    private Position Centre(Area area)
+    {
+        if (area == null) throw new GolemDomainException("a route needs an area");
+        return layout.Of(area).Center;
+    }
 
     private Route NextPending()
     {

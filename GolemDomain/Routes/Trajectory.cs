@@ -58,7 +58,11 @@ internal class Trajectory
     }
 
     /// <summary>How long the walk is, from where it starts, leg to leg.</summary>
-    internal double Length(Position from) => Segments(from).Sum(s => s.Length);
+    internal double Length(Position from)
+    {
+        if (from == null) throw new GolemDomainException("Trajectory.Length: 'from' was not given");
+        return Segments(from).Sum(s => s.Length);
+    }
 
     /// <summary>The trajectory as the journal writes it: "name@x,y > name@x,y".</summary>
     internal string AsPlan() => string.Join(" > ", legs.Select(l => $"{l.Name}@{Fmt(l.At.X)},{Fmt(l.At.Y)}"));

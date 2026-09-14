@@ -23,8 +23,11 @@ internal sealed class Rectangle
     internal Position Center => new(X + Width / 2, Y + Height / 2);
 
     /// <summary>Inclusive on the edges: a point on a shared edge belongs to both rectangles.</summary>
-    internal bool Contains(Position at) =>
-        at.X >= X - 1e-9 && at.X <= X + Width + 1e-9 && at.Y >= Y - 1e-9 && at.Y <= Y + Height + 1e-9;
+    internal bool Contains(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Rectangle.Contains: 'at' was not given");
+        return at.X >= X - 1e-9 && at.X <= X + Width + 1e-9 && at.Y >= Y - 1e-9 && at.Y <= Y + Height + 1e-9;
+    }
 
     /// <summary>The four corners, counter-clockwise from the south-west.</summary>
     internal IReadOnlyList<Position> Corners() => new[]
@@ -46,11 +49,16 @@ internal sealed class Rectangle
     }
 
     /// <summary>Whether this rectangle and another share an edge (touch along it).</summary>
-    internal bool Touches(Rectangle other) => TrySharedEdge(other) != null;
+    internal bool Touches(Rectangle other)
+    {
+        if (other == null) throw new GolemDomainException("Rectangle.Touches: 'other' was not given");
+        return TrySharedEdge(other) != null;
+    }
 
     /// <summary>The edge shared with another rectangle, or null when they do not touch.</summary>
     internal Segment TrySharedEdge(Rectangle other)
     {
+        if (other == null) throw new GolemDomainException("Rectangle.TrySharedEdge: 'other' was not given");
         if (Math.Abs(X + Width - other.X) < 1e-6) return VerticalOverlap(other.X, other);
         if (Math.Abs(other.X + other.Width - X) < 1e-6) return VerticalOverlap(X, other);
         if (Math.Abs(Y + Height - other.Y) < 1e-6) return HorizontalOverlap(other.Y, other);
@@ -61,6 +69,7 @@ internal sealed class Rectangle
     /// <summary>A unit step across the shared edge, from this rectangle into the other.</summary>
     internal Position StepInto(Rectangle other)
     {
+        if (other == null) throw new GolemDomainException("Rectangle.StepInto: 'other' was not given");
         if (Math.Abs(X + Width - other.X) < 1e-6) return new Position(1, 0);
         if (Math.Abs(other.X + other.Width - X) < 1e-6) return new Position(-1, 0);
         if (Math.Abs(Y + Height - other.Y) < 1e-6) return new Position(0, 1);

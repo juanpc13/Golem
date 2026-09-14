@@ -1385,3 +1385,17 @@ La numeración de `via{n}` cuenta los tramos (una parada nombrada ocupa su núme
 **Conclusión**: regla general confirmada por tercera vez (`map`, `route` como trayectoria, `route` como encargo): cuando un verbo del sujeto recibe una clave para encontrar un estado que otro verbo abrió, ese estado es un objeto que el primero devuelve. El sujeto queda con lo que crea (`Visit`, `Cover`, `Follow`), lo que busca (`Find`), lo que oye (`HearBump`, `HearTouch`, `LearnMet`, `LearnForget`), lo que concluye (`Met`, `Forget`) y el toque del cuerpo parado (`Bump(touch)`).
 
 **Pendiente**: (1) el `Bump(touch)` del cuerpo parado sigue en el golem porque no hay ruta: candidato a ser del cuerpo (`body.Bump`?) si algún día el cuerpo journalea; (2) los nombres del host (`MissionRouted`, `MissionBumped`, `mission {id}` en el panel) hablan todavía de misiones: son del host, no del journal, y se renombran cuando toque el host.
+
+---
+
+## 2026-09-14 · Ningún método del dominio procesa un objeto que no le dieron
+
+**Contexto**: Juan: "hay varios métodos del dominio que reciben objetos, pero no validamos en cada uno si viene null; hay que dar una excepción del dominio con un `if` antes de procesarlo, en todos los métodos que reciban un objeto por parámetro".
+
+**Inventario**: un guion recorrió `GolemDomain/` buscando todo método o constructor no privado con parámetros de tipo objeto (`Position`, `Pose`, `Area`, `Zone`, `Door`, `Opening`, `Segment`, `Rectangle`, `Trajectory`, `Leg`, `Mark`, los módulos, listas) sin `== null` en su cuerpo: 95 miembros sin ninguna guarda y otros tantos con la guarda escrita como `?? throw` en línea. Los helpers privados se dejaron como están: reciben lo que el método público ya validó.
+
+**Ajuste al dominio** (20 archivos, 176 guardas): cada miembro abre con `if (x == null) throw new GolemDomainException(…)`, una línea por parámetro, antes de tocar nada; los miembros de expresión (`=>`) pasaron a bloque. Los `?? throw` que validaban un parámetro se convirtieron en `if` conservando su mensaje ("a golem needs a body to drive", "a wall bounds a zone"…); los que significan "no encontrado" (`Doors.FirstOrDefault(…) ?? throw`) se quedan, porque no hablan de un parámetro nulo. Donde el dominio no tenía frase propia, el mensaje es uniforme y buscable: `"Tipo.Método: 'parámetro' was not given"` (`"Map.Connects: 'a' was not given"`). Test nuevo `AnObjectNotGiven_IsRefusedByTheDomain_BeforeAnythingRuns` (56 verdes): el mensaje llega como excepción del dominio, no como `NullReferenceException` desde adentro.
+
+**Observación (método)**: la transformación se hizo con un guion idempotente sobre el árbol limpio (`git checkout -- GolemDomain` y volver a correr), no a mano: 176 ediciones a mano habrían dejado huecos, y el guion imprime el conteo por archivo para comparar contra el inventario. Lección de la semana repetida: cambios mecánicos anchos, por guion y verificados por conteo.
+
+**Conclusión**: una guarda en la puerta convierte un `NullReferenceException` anónimo en una frase del dominio que el motor devuelve al comando ("Error while instantiating…" o el mensaje mismo en un método) y que el journal no registra. Sin cambio en el lenguaje del journal; los journals siguen válidos. La verificación en vivo quedó pendiente porque Docker Desktop estaba cerrado al terminar: el cambio no toca ningún camino que la rehidratación ejecute con nulos, y los 56 tests rehidratan al golem entero.

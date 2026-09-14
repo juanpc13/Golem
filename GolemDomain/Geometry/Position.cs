@@ -16,11 +16,18 @@ internal class Position
         Y = y;
     }
 
-    internal double DistanceTo(Position other) =>
-        Math.Sqrt((X - other.X) * (X - other.X) + (Y - other.Y) * (Y - other.Y));
+    internal double DistanceTo(Position other)
+    {
+        if (other == null) throw new GolemDomainException("Position.DistanceTo: 'other' was not given");
+        return Math.Sqrt((X - other.X) * (X - other.X) + (Y - other.Y) * (Y - other.Y));
+    }
 
     /// <summary>The heading from here toward another position: radians, counter-clockwise from +x.</summary>
-    internal double HeadingTo(Position other) => Math.Atan2(other.Y - Y, other.X - X);
+    internal double HeadingTo(Position other)
+    {
+        if (other == null) throw new GolemDomainException("Position.HeadingTo: 'other' was not given");
+        return Math.Atan2(other.Y - Y, other.X - X);
+    }
 
     /// <summary>The position reached by running this far along a heading.</summary>
     internal Position Along(double heading, double distance) =>

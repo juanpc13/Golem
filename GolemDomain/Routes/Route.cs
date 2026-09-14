@@ -51,8 +51,11 @@ internal sealed class Route
 
     internal Route(int id, Position stop, bool following, bool choosesOrder, MapLayout layout, Collisions collisions)
     {
-        this.layout = layout ?? throw new GolemDomainException($"route {id} is decided on a layout");
-        this.collisions = collisions ?? throw new GolemDomainException($"route {id} needs the collisions module, even empty");
+        if (stop == null) throw new GolemDomainException("Route.Route: 'stop' was not given");
+        if (layout == null) throw new GolemDomainException($"route {id} is decided on a layout");
+        if (collisions == null) throw new GolemDomainException($"route {id} needs the collisions module, even empty");
+        this.layout = layout;
+        this.collisions = collisions;
         Id = id;
         Following = following;
         ChoosesOrder = choosesOrder;
@@ -64,6 +67,7 @@ internal sealed class Route
     /// <summary>One more stop, after the ones given — while the route is pending and before its way is decided.</summary>
     internal Route Then(Position stop)
     {
+        if (stop == null) throw new GolemDomainException("Route.Then: 'stop' was not given");
         MustBePending();
         if (Following) throw new GolemDomainException($"route {Id} follows a peer: a told point is one route each");
         if (IsRouted) throw new GolemDomainException($"route {Id} already has its way: no stop can be added");
@@ -72,7 +76,11 @@ internal sealed class Route
     }
 
     /// <summary>One more stop: an area's centre — <c>route.Then(map.Find(@area))</c>.</summary>
-    internal Route Then(Area area) => Then(layout.Of(area ?? throw new GolemDomainException($"route {Id} needs an area to add")).Center);
+    internal Route Then(Area area)
+    {
+        if (area == null) throw new GolemDomainException($"route {Id} needs an area to add");
+        return Then(layout.Of(area).Center);
+    }
 
     private Position OnTheMap(Position stop)
     {
@@ -121,7 +129,11 @@ internal sealed class Route
 
     /// <summary>A stop written as the area the errand named — <c>route.Stop(point)</c> where <c>point = map.Find(@area)</c>:
     /// its centre. (The engine binds a method by the runtime type of what it is given: an area needs its own way in.)</summary>
-    internal Route Stop(Area area) => Stop(layout.Of(area ?? throw new GolemDomainException($"route {Id} stops at an area")).Center);
+    internal Route Stop(Area area)
+    {
+        if (area == null) throw new GolemDomainException($"route {Id} stops at an area");
+        return Stop(layout.Of(area).Center);
+    }
 
     private Leg NameLeg(Position at)
     {

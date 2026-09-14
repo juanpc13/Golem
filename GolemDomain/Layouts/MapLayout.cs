@@ -48,17 +48,30 @@ internal sealed class MapLayout : Map
     internal override Zone Find(string name) => (Zone)base.Find(name);
 
     /// <summary>An area of this map, as the zone it is (every area of a laid-out map is a zone).</summary>
-    internal Zone Of(Area area) => area as Zone ?? throw new GolemDomainException(area == null ? "an area is needed, not nothing" : $"area '{area.Name}' is not of this map");
+    internal Zone Of(Area area)
+    {
+        if (area == null) throw new GolemDomainException("an area is needed, not nothing");
+        return area as Zone ?? throw new GolemDomainException($"area '{area.Name}' is not of this map");
+    }
 
     internal IEnumerable<Zone> Zones => areas.Cast<Zone>().Where(z => z.IsLaidOut);
     internal int ZoneCount => Zones.Count();
 
     /// <summary>Whether an area of this map has been told where it stands.</summary>
-    internal bool IsLaidOut(Area area) => area != null && Of(area).IsLaidOut;
+    internal bool IsLaidOut(Area area)
+    {
+        if (area == null) throw new GolemDomainException("MapLayout.IsLaidOut: 'area' was not given");
+        return area != null && Of(area).IsLaidOut;
+    }
 
     /// <summary>Whether two areas actually share an edge on the plane. Two areas may CONNECT (a passage joins them,
     /// information) without TOUCHING here (not aligned, not laid out yet): the map answers the first, the layout the second.</summary>
-    internal bool Touches(Area a, Area b) => IsLaidOut(a) && IsLaidOut(b) && Of(a).Touches(Of(b));
+    internal bool Touches(Area a, Area b)
+    {
+        if (a == null) throw new GolemDomainException("MapLayout.Touches: 'a' was not given");
+        if (b == null) throw new GolemDomainException("MapLayout.Touches: 'b' was not given");
+        return IsLaidOut(a) && IsLaidOut(b) && Of(a).Touches(Of(b));
+    }
 
     /// <summary>The zone with this name, laid out. Refuses an unknown or an unplaced area.</summary>
     internal Zone ZoneNamed(string name)
@@ -71,7 +84,13 @@ internal sealed class MapLayout : Map
     // ---- the doors, placed ----
 
     /// <summary>Where the door between two areas stands: a point on the wall they share. Chainable.</summary>
-    internal MapLayout DoorAt(Area a, Area b, Position at) => DoorAt(a?.Name, b?.Name, at);
+    internal MapLayout DoorAt(Area a, Area b, Position at)
+    {
+        if (a == null) throw new GolemDomainException("MapLayout.DoorAt: 'a' was not given");
+        if (b == null) throw new GolemDomainException("MapLayout.DoorAt: 'b' was not given");
+        if (at == null) throw new GolemDomainException("MapLayout.DoorAt: 'at' was not given");
+        return DoorAt(a?.Name, b?.Name, at);
+    }
 
     /// <summary>Where the door between two areas, named (the second may not be created yet), stands. Declares the door
     /// if the map did not dispose it yet. Chainable.</summary>
@@ -88,34 +107,54 @@ internal sealed class MapLayout : Map
     /// <summary>The doors that stand somewhere: each with its point and its jambs.</summary>
     internal IEnumerable<PlacedDoor> PlacedDoors => Doors.Where(d => doorPoints.ContainsKey(d.Name)).Select(d => new PlacedDoor(d, doorPoints[d.Name], this));
 
-    internal bool IsPlaced(Door door) => door != null && doorPoints.ContainsKey(door.Name);
+    internal bool IsPlaced(Door door)
+    {
+        if (door == null) throw new GolemDomainException("MapLayout.IsPlaced: 'door' was not given");
+        return door != null && doorPoints.ContainsKey(door.Name);
+    }
 
     /// <summary>Where a door stands. Consult IsPlaced first.</summary>
-    internal Position PointOf(Door door) =>
-        door != null && doorPoints.TryGetValue(door.Name, out var at) ? at : throw new GolemDomainException($"the door {door?.Name} stands nowhere yet");
+    internal Position PointOf(Door door)
+    {
+        if (door == null) throw new GolemDomainException("MapLayout.PointOf: 'door' was not given");
+        return door != null && doorPoints.TryGetValue(door.Name, out var at) ? at : throw new GolemDomainException($"the door {door?.Name} stands nowhere yet");
+    }
 
     /// <summary>A door, realized: its point, its jambs, its width.</summary>
-    internal PlacedDoor Placed(Door door) => new(door, PointOf(door), this);
+    internal PlacedDoor Placed(Door door)
+    {
+        if (door == null) throw new GolemDomainException("MapLayout.Placed: 'door' was not given");
+        return new(door, PointOf(door), this);
+    }
 
     // ---- where things stand ----
 
-    internal bool IsOnMap(Position at) => Zones.Any(z => z.Contains(at));
+    internal bool IsOnMap(Position at)
+    {
+        if (at == null) throw new GolemDomainException("MapLayout.IsOnMap: 'at' was not given");
+        return Zones.Any(z => z.Contains(at));
+    }
 
     /// <summary>The zone a point stands in, or null when the map holds nothing there (a solid block, off the floor):
     /// what a table needs to name the zone without refusing.</summary>
     internal Zone ZoneOf(Position at)
     {
+        if (at == null) throw new GolemDomainException("MapLayout.ZoneOf: 'at' was not given");
         foreach (var z in Zones) if (z.Contains(at)) return z;
         return null;
     }
 
     /// <summary>The zone a point stands in. A point on a shared wall belongs to the first laid out.</summary>
-    internal Zone ZoneAt(Position at) =>
-        ZoneOf(at) ?? throw new GolemDomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
+    internal Zone ZoneAt(Position at)
+    {
+        if (at == null) throw new GolemDomainException("MapLayout.ZoneAt: 'at' was not given");
+        return ZoneOf(at) ?? throw new GolemDomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
+    }
 
     /// <summary>Every zone a point stands in (two, on a shared wall).</summary>
     internal IReadOnlyList<Zone> ZonesOf(Position at)
     {
+        if (at == null) throw new GolemDomainException("MapLayout.ZonesOf: 'at' was not given");
         var zones = Zones.Where(z => z.Contains(at)).ToList();
         if (zones.Count == 0) throw new GolemDomainException($"the point ({Fmt(at.X)}, {Fmt(at.Y)}) is nowhere on the map");
         return zones;
@@ -123,25 +162,47 @@ internal sealed class MapLayout : Map
 
     /// <summary>Whether the WALLS leave room for a body of this radius at a point: inside a zone and off every wall by
     /// its radius plus a margin. What was learned by touching is the collisions module's answer, not this one's.</summary>
-    internal bool HasRoom(Position at, double radius) => Zones.Any(z => z.ContainsInset(at, radius + BodyMargin));
+    internal bool HasRoom(Position at, double radius)
+    {
+        if (at == null) throw new GolemDomainException("MapLayout.HasRoom: 'at' was not given");
+        return Zones.Any(z => z.ContainsInset(at, radius + BodyMargin));
+    }
 
     /// <summary>Whether a point lies on a wall the map knows: within tolerance of a wall of some zone and not in one
     /// of that wall's doorways. The corner of a solid block is known through the perpendicular walls that meet at it.</summary>
-    internal bool IsWallAt(Position at, double tolerance) => Zones.Any(z => z.Walls().Any(w => w.Holds(at, tolerance)));
+    internal bool IsWallAt(Position at, double tolerance)
+    {
+        if (at == null) throw new GolemDomainException("MapLayout.IsWallAt: 'at' was not given");
+        return Zones.Any(z => z.Walls().Any(w => w.Holds(at, tolerance)));
+    }
 
     // ---- the passages, in positions ----
 
     /// <summary>Whether both areas of an opening are laid out and actually share an edge.</summary>
-    internal bool Touches(Opening opening) =>
-        opening != null && Knows(opening.A) && Knows(opening.B) && Touches(opening.AreaA, opening.AreaB);
+    internal bool Touches(Opening opening)
+    {
+        if (opening == null) throw new GolemDomainException("MapLayout.Touches: 'opening' was not given");
+        return opening != null && Knows(opening.A) && Knows(opening.B) && Touches(opening.AreaA, opening.AreaB);
+    }
 
     /// <summary>The edge an opening frees. Consult Touches first.</summary>
-    internal Segment EdgeOf(Opening opening) => Of(opening.AreaA).SharedEdgeWith(Of(opening.AreaB));
-    internal Position MidpointOf(Opening opening) => EdgeOf(opening).Midpoint;
+    internal Segment EdgeOf(Opening opening)
+    {
+        if (opening == null) throw new GolemDomainException("MapLayout.EdgeOf: 'opening' was not given");
+        return Of(opening.AreaA).SharedEdgeWith(Of(opening.AreaB));
+    }
+    internal Position MidpointOf(Opening opening)
+    {
+        if (opening == null) throw new GolemDomainException("MapLayout.MidpointOf: 'opening' was not given");
+        return EdgeOf(opening).Midpoint;
+    }
 
     /// <summary>Whether the straight run u→v crosses the edge an opening frees.</summary>
     internal bool IsCrossed(Opening opening, Position u, Position v)
     {
+        if (opening == null) throw new GolemDomainException("MapLayout.IsCrossed: 'opening' was not given");
+        if (u == null) throw new GolemDomainException("MapLayout.IsCrossed: 'u' was not given");
+        if (v == null) throw new GolemDomainException("MapLayout.IsCrossed: 'v' was not given");
         var edge = EdgeOf(opening);
         if (edge.IsVertical)
         {
@@ -167,6 +228,9 @@ internal sealed class MapLayout : Map
     /// where the walls of the solid blocks stand; a narrow opening is crossed through its middle.</summary>
     internal Position CrossingPoint(Opening opening, Position u, Position v)
     {
+        if (opening == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'opening' was not given");
+        if (u == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'u' was not given");
+        if (v == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'v' was not given");
         var edge = EdgeOf(opening);
         if (edge.IsVertical)
         {
@@ -191,6 +255,7 @@ internal sealed class MapLayout : Map
     /// <summary>A unit step through a door into one of its two areas, from the other.</summary>
     internal Position StepInto(Door door, Area side)
     {
+        if (side == null) throw new GolemDomainException("MapLayout.StepInto: 'side' was not given");
         if (door == null || !door.Joins(side)) throw new GolemDomainException($"the door {door?.Name} does not open into '{side?.Name}'");
         return Of(door.OtherSide(side)).StepInto(Of(side));
     }
@@ -204,6 +269,7 @@ internal sealed class MapLayout : Map
     /// </summary>
     internal Trajectory WithDoorCrossings(Trajectory road)
     {
+        if (road == null) throw new GolemDomainException("MapLayout.WithDoorCrossings: 'road' was not given");
         var legs = road.Legs();
         var result = new List<Leg>();
         for (int i = 0; i < legs.Count; i++)

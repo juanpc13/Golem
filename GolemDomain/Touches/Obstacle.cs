@@ -40,9 +40,10 @@ internal sealed class Thing : Obstacle
 
     internal Thing(IReadOnlyList<Mark> vertices, Position center, string where)
     {
+        if (center == null) throw new GolemDomainException("a thing has a centre");
         if (vertices == null || vertices.Count == 0) throw new GolemDomainException("a thing is outlined by at least one mark");
         this.vertices = vertices;
-        this.center = center ?? throw new GolemDomainException("a thing has a centre");
+        this.center = center;
         this.where = where ?? "";
     }
 
@@ -66,9 +67,10 @@ internal sealed class Peer : Obstacle
 
     internal Peer(string who, Position at, string where)
     {
+        if (at == null) throw new GolemDomainException("a peer was met somewhere");
         if (string.IsNullOrWhiteSpace(who)) throw new GolemDomainException("a peer met has a name");
         this.who = who;
-        this.at = at ?? throw new GolemDomainException("a peer was met somewhere");
+        this.at = at;
         this.where = where ?? "";
     }
 
