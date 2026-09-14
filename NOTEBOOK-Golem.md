@@ -1430,3 +1430,28 @@ La numeración de `via{n}` cuenta los tramos (una parada nombrada ocupa su núme
 **Ajuste al dominio** (`Golem`, `Routes.Route`, `Touches.Suspicion`; `Routes/Maneuver.cs` eliminado): fuera `LearnMark`, `Evasion` y la familia de maniobras (el paso de cortesía de `RoadPast` se calcula en el golem: `CourtesyStep = 0.5` a la derecha y luego a la izquierda de la proa), fuera `ReadReason` y el campo `reason` (la razón es del acto y la guarda el journal). `Suspect(Pose touch, int since)` con guarda; `ThingFound.Conclusion` pasa de `"Mark"` a `"Bump"`: desde la fila única no hay verbo `Mark`, la conclusión de una cosa es que la marca del choque se queda. Host: `g.Suspect(Pose(@x, @y, @heading), @since)`. Tests: 55 verdes; el helper del laboratorio planta marcas con `collisions.Mark(touch)` sobre el módulo global, que es lo que un laboratorio hace: calcular con un módulo solo.
 
 **Conclusión**: el inventario por guion (parámetros, guardas, usos) es barato y vale repetirlo tras cada cambio de lenguaje; deja ver muertos que la lectura del código no delata. **Pendiente**: el tanteo alrededor de una marca sigue siendo pasos del host (`StepAsideAsync`, `FeelForAWayPastAsync`): la doctrina pide que el dominio decida la maniobra y el host la ejecute; se propone en el PLAN antes de tocarlo.
+
+---
+
+## 2026-09-14 · Las lecturas también hablan en objetos: la ruta responde por sí misma, el módulo por lo suyo, la vista previa cuenta paradas
+
+**Contexto**: tras el inventario de lecturas, Juan: "corrige estos otros casos; la idea es hacer de alto nivel, ya no interactuar con primitivos y llamar a los objetos usando los primitivos o instanciarlos con primitivos, tanto en escritura y lectura".
+
+**Ajuste al dominio** (`Golem`, `Routes.Route`, `Routes.Preview` nuevo):
+- Diecisiete lecturas por `id` del golem eran duplicados de propiedades de `Route`: fuera. El host y el panel preguntan a la ruta encontrada (`g.Find(@id).StopsLeft`), a la ruta en curso (`g.Next()`, que reemplaza `NextId`, `HeadingX`, `HeadingY`) o a las pendientes (`g.PendingRoutes()` en vez de `PendingIds`, así el `foreach` de "let go" es `foreach (route in g.PendingRoutes()) { route.Abandon(@reason); }`). `Route.ReadStatus()` es `Status`; `LegsAhead` devuelve una lista; `IsStopAhead(Position)`.
+- La telemetría entra como objeto construido en la consulta: `FitsAt(Position)`, `HasRoomAt(Position)`, `KnowsWallAt(Position)`, `DistanceLeft(Position)`, `SecondsLeft(Position)`, `Road(Route, Position)`, `Plan(Route, Position)`, `RoadPast(Route, who, Pose)`, `PlanPast`, `HasNewerFollowing(Route)`, `PlannedEnd()` devuelve la `Position`.
+- Lo que responde un módulo se le pregunta al módulo, que ya es global: fuera del golem `IsOnMap`, `PlaceAt`, `KnowsPlace`, `PlaceCount`, `PassageCount`, `Places`, `KnowsObstacleAt`, `HeardBumpNear`, `NextHandle`. En su lugar `map.IsOnMap(Position(…))`, `map.ZoneAt(…)`, `map.Knows(@area)`, `map.ZoneCount`, `collisions.KnowsAt(…)`, `collisions.HeardNear(…, since)`. Se quedan en el golem las lecturas donde entra el CUERPO (`FitsAt`, `HasRoomAt`, `KnowsWallAt`, `Distance`, `DistanceLeft`…) o la flota de rutas (`Knows(id)`, `HasPendingMission`, `Pending`, `Total`, `NewestFollowingId`).
+- `Preview` es un objeto: `g.Preview(Position from, bool choosesOrder)` devuelve una vista previa a la que se le cuentan las paradas una a una (`Then(Position|Area)`) y que responde `Legs()`. Antes recibía dos arreglos `double[] xs, ys`; ahora el controller escribe la consulta con la misma forma que el encargo:
+```
+{ preview = g.Preview(Position(@fx, @fy), @cover);
+  preview.Then(map.Find(@area1));
+  preview.Then(Position(@x2, @y2));
+  foreach (legs in preview.Legs()) { print legs.Kind 'kind', … } }
+```
+El bloque entre llaves también en la consulta: la variable `preview` muere con él.
+
+**Ajuste al host y al panel**: `ReadPlan` lee `g.Next().Id/.IsRouted/.StopsLeft/.Following/.Bumps/.BumpedSinceRoute/.Paused`; los `Check` dicen `g.Knows(@id) && g.Find(@id).IsPending()`; `/progress` usa `Position(@x, @y)` y `map.ZoneAt`; `/state` `g.Next().NextLeg.At.X`; `/forget` `collisions.KnowsAt(Position(@x, @y))`; los botones de consulta del panel preguntan al módulo. Tests: 55 verdes, reescritos por expresiones regulares (`g.Plan(1, 2.0, 9.5)` → `g.Plan(g.Find(1), Position(2.0, 9.5))`, `g.IsRouted(1)` → `g.Find(1).IsRouted`, …).
+
+**Observación en vivo** (journals actuales, compatibles; cero reinicios, cero errores de escritura): encargo de dos paradas por la vista previa nueva (`http 200`, `stopsLeft 2`), `/progress` con `distanceLeft 11.19` y `here west`, pausa y reanudación por `g.Find(@id).Paused` (segunda pausa rechazada: "the route is already paused"), llegada a las dos paradas. Red no encontró camino al norte "past 17 marks": la caja del centro sigue puesta y tres golems han chocado con ella toda la tarde; es la realidad, no un defecto.
+
+**Conclusión**: la superficie del golem quedó en lo que solo el golem sabe: su cuerpo y su flota de rutas. Todo lo demás lo responde el objeto al que pertenece. Regla escrita en CLAUDE.md. **Pendiente**: `Plan`/`PlanPast` son texto para humanos (los lee el laboratorio en 31 tests); el operador podría verlos en el panel en vez de la lista de puntos cruda.

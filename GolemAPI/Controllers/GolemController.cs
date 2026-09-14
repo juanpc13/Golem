@@ -87,7 +87,7 @@ public class GolemController : Controller
         double fromX, fromY;
         using (var busy = System.Text.Json.JsonDocument.Parse(perf.Actor.Using(@"
             print g.HasPendingMission() 'busy';
-            if (g.HasPendingMission()) { print g.PlannedEndX() 'x', g.PlannedEndY() 'y'; }
+            if (g.HasPendingMission()) { print g.PlannedEnd().X 'x', g.PlannedEnd().Y 'y'; }
         ").PerformQuery()))
         {
             if (busy.RootElement.GetProperty("busy").GetBoolean())
@@ -103,17 +103,33 @@ public class GolemController : Controller
             }
         }
 
-        // the plan, asked of the golem: the whole road through the stops, in the order given or the one it chooses
+        // the way, asked of the golem: a preview told the stops one by one, as objects, from the body's point (or the
+        // planned end); the legs come back in the order given or the one the golem chooses
+        var told = new System.Text.StringBuilder("{ preview = g.Preview(Position(@fx, @fy), @cover);\n");
+        for (int i = 0; i < stops.Length; i++)
+        {
+            string n = stops.Length == 1 ? "" : (i + 1).ToString();
+            told.Append(IsPoint(stops[i]) ? $"  preview.Then(Position(@x{n}, @y{n}));\n" : $"  preview.Then(map.Find(@area{n}));\n");
+        }
+        told.Append("  foreach (legs in preview.Legs()) { " + RoadLeg.PrintLegs + " } }");
         List<RoadLeg> legs;
         try
         {
-            legs = RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.Preview(@fx, @fy, @xs, @ys, @cover).Legs()) { " + RoadLeg.PrintLegs + " }")
+            legs = RoadLeg.FromQuery(perf.Actor.Using(told.ToString())
                 .WithParameters(p => {
-                    p["fx",    typeof(double)]   = fromX;
-                    p["fy",    typeof(double)]   = fromY;
-                    p["xs",    typeof(double[])] = xs;
-                    p["ys",    typeof(double[])] = ys;
-                    p["cover", typeof(bool)]     = verb == "Cover";
+                    p["fx",    typeof(double)] = fromX;
+                    p["fy",    typeof(double)] = fromY;
+                    p["cover", typeof(bool)]   = verb == "Cover";
+                    for (int i = 0; i < stops.Length; i++)
+                    {
+                        string n = stops.Length == 1 ? "" : (i + 1).ToString();
+                        if (IsPoint(stops[i]))
+                        {
+                            p[$"x{n}", typeof(double)] = xs[i];
+                            p[$"y{n}", typeof(double)] = ys[i];
+                        }
+                        else p[$"area{n}", typeof(string)] = stops[i];
+                    }
                 })
                 .PerformQuery());
         }
@@ -130,7 +146,7 @@ public class GolemController : Controller
             if (i > 0) check.Append(" && ");
             if (IsPoint(stops[i]))
             {
-                check.Append($"g.IsOnMap(@x{n}, @y{n})");
+                check.Append($"map.IsOnMap(Position(@x{n}, @y{n}))");
                 acts.Append($"    point{n} = Position(@x{n}, @y{n});\n    {act}\n");
             }
             else
@@ -227,7 +243,7 @@ public class GolemController : Controller
             return BadRequest("x and y must both be finite numbers");
         return Refusable(perf.Actor.Using(
             @"
-                Check(g.KnowsObstacleAt(@x, @y)) Error 'the golem holds no obstacle there';
+                Check(collisions.KnowsAt(Position(@x, @y))) Error 'the golem holds no obstacle there';
             ",
             @"
                 { at = Position(@x, @y); g.Forget(at); }
@@ -244,10 +260,10 @@ public class GolemController : Controller
     // next id, read first); the hold and the release are journaled acts of the golem, the body's stop is the
     // host's obedience (the run loop reads the journal and stands).
     [HttpPost("pause")]
-    public IActionResult Pause() => Hold("Pause", "!g.IsPaused(@id)", "the mission is already paused");
+    public IActionResult Pause() => Hold("Pause", "!g.Find(@id).Paused", "the route is already paused");
 
     [HttpPost("resume")]
-    public IActionResult Resume() => Hold("Resume", "g.IsPaused(@id)", "the mission is not paused");
+    public IActionResult Resume() => Hold("Resume", "g.Find(@id).Paused", "the route is not paused");
 
     private IActionResult Hold(string verb, string precondition, string refusal)
     {
@@ -256,7 +272,7 @@ public class GolemController : Controller
         int id = next.GetInt32();
         return Refusable(perf.Actor.Using(
             $@"
-                Check(g.Knows(@id) && g.IsPending(@id)) Error 'the mission is no longer pending';
+                Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
                 Check({precondition}) Error '{refusal}';
             ",
             $@"
@@ -282,9 +298,9 @@ public class GolemController : Controller
         string answer = perf.Actor.Using(@"
             print g.HasPendingMission() 'hasNext', g.Pending() 'pendingMissions', g.Speed() 'speed', g.LingerAfterTold() 'lingerAfterTold';
             if (g.HasPendingMission()) {
-                print g.NextId() 'mission', g.StopsLeft(g.NextId()) 'stopsLeft', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
-                if (g.IsOnMap(@x, @y)) {
-                    print g.DistanceLeft(@x, @y) 'distanceLeft', g.SecondsLeft(@x, @y) 'secondsLeft', g.PlaceAt(@x, @y).Name 'here';
+                print g.Next().Id 'mission', g.Next().StopsLeft 'stopsLeft', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
+                if (map.IsOnMap(Position(@x, @y))) {
+                    print g.DistanceLeft(Position(@x, @y)) 'distanceLeft', g.SecondsLeft(Position(@x, @y)) 'secondsLeft', map.ZoneAt(Position(@x, @y)).Name 'here';
                 }
             }
         ")
@@ -302,7 +318,7 @@ public class GolemController : Controller
         perf.Actor.Using(@"
             print g.Pending() 'pending', g.Total() 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
-                print g.NextId() 'nextId', g.HeadingX() 'nextX', g.HeadingY() 'nextY', g.StopsLeft(g.NextId()) 'stopsLeft', g.IsPaused(g.NextId()) 'paused';
+                print g.Next().Id 'nextId', g.Next().NextLeg.At.X 'nextX', g.Next().NextLeg.At.Y 'nextY', g.Next().StopsLeft 'stopsLeft', g.Next().Paused 'paused';
             }
         ")
         .PerformQuery();

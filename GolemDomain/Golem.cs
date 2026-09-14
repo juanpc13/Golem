@@ -44,25 +44,16 @@ internal sealed class Golem
     internal double Speed() => body.Speed.InMetersPerSecond;
     internal double LingerAfterTold() => body.LingerAfterTold.InSeconds;
 
-    // ---- the map and its layout, read through the golem ----
-
-    internal int PlaceCount() => layout.ZoneCount;
-    internal int PassageCount() => layout.PassageCount;
-    internal bool KnowsPlace(string name) => layout.Knows(name);
-    internal bool IsOnMap(double x, double y) => layout.IsOnMap(new Position(x, y));
-    /// <summary>The zone a point stands in — an object; <c>.Name</c> for its name.</summary>
-    internal Zone PlaceAt(double x, double y) => layout.ZoneAt(new Position(x, y));
-
-    /// <summary>The layout as objects, for whoever draws it: every zone, each knowing its corners, its walls (with
-    /// their doors), its doorways and its open sides —
-    /// <c>foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doorways()) { print doors.To 'to'; } }</c>.
-    /// The same objects the global <c>map</c> hands out: the golem is one way to reach them, not the only one.</summary>
-    internal IReadOnlyList<Zone> Places() => layout.Zones.ToList();
+    // ---- the map, read through the golem only where the BODY enters the answer (the map itself is the global `map`) ----
 
     /// <summary>Whether a point the body touched lies on a wall the golem KNOWS: a wall of a zone, within a tolerance
     /// that absorbs the wall's thickness and the pose's error, outside its doorways. Touching a known wall is the
     /// golem's own execution error; touching anything else is reality holding something the map does not.</summary>
-    internal bool KnowsWallAt(double x, double y) => layout.IsWallAt(new Position(x, y), MapLayout.WallTolerance);
+    internal bool KnowsWallAt(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Golem.KnowsWallAt: 'at' was not given");
+        return layout.IsWallAt(at, MapLayout.WallTolerance);
+    }
 
     /// <summary>The shortest road between two areas, centre to centre, through the passages, for this body —
     /// <c>g.Distance(map.Find('kitchen'), map.Find('garage'))</c>.</summary>
@@ -73,15 +64,19 @@ internal sealed class Golem
         return Planner().RoadLength(layout.Of(from).Center, layout.Of(to).Center);
     }
 
-    /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark.</summary>
-    internal bool FitsAt(double x, double y)
+    /// <summary>Whether this body stands clear at a point: on the map, off the walls and off every mark — <c>g.FitsAt(Position(@x, @y))</c>.</summary>
+    internal bool FitsAt(Position at)
     {
-        var at = new Position(x, y);
+        if (at == null) throw new GolemDomainException("Golem.FitsAt: 'at' was not given");
         return layout.HasRoom(at, Radius()) && !collisions.Blocks(at, Radius());
     }
 
     /// <summary>Whether the walls alone leave room for this body at a point — what it asks while feeling around a mark.</summary>
-    internal bool HasRoomAt(double x, double y) => layout.HasRoom(new Position(x, y), Radius());
+    internal bool HasRoomAt(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Golem.HasRoomAt: 'at' was not given");
+        return layout.HasRoom(at, Radius());
+    }
 
     // ---- the collisions, read through the golem ----
 
@@ -139,35 +134,35 @@ internal sealed class Golem
         throw new GolemDomainException($"unknown route {id}: consult Knows(id) first");
     }
 
-    // ---- routes: the way, previewed ----
+    // ---- routes: the way, previewed — reads that take the route and the body's pose as objects ----
 
-    /// <summary>The road the golem would walk from (x, y) through a mission's stops still ahead, as objects: the legs,
+    /// <summary>The way the golem would walk from a point through a route's stops still ahead, as objects: the legs,
     /// each knowing its kind (door, opening, around, aside, stop), its passage's areas and its point — what the host
-    /// reads to write the decision act by act. For a Cover mission the stops come out in the order the golem chose.
-    /// Marks are skirted ('around' legs) or, where the body would not fit past them, avoided by another road.</summary>
-    internal Trajectory Road(int id, double x, double y)
+    /// reads to write the decision act by act. For a Cover route the stops come out in the order the golem chose.
+    /// Marks are skirted ('around' legs) or, where the body would not fit past them, avoided by another way.</summary>
+    internal Trajectory Road(Route route, Position from)
     {
-        var route = Find(id);
-        var from = new Position(x, y);
+        if (route == null) throw new GolemDomainException("Golem.Road: 'route' was not given");
+        if (from == null) throw new GolemDomainException("Golem.Road: 'from' was not given");
         var ahead = route.StopsAhead.ToList();
         var planner = Planner();
         var stops = route.ChoosesOrder ? planner.BestOrder(from, ahead) : ahead;
         return planner.Road(from, stops);
     }
 
-    /// <summary>The same road, in one line of text — for a human or a test to read at a glance:
+    /// <summary>The same way, in one line of text — for a human or a test to read at a glance:
     /// "kitchen/north@4,9.5 > kitchen@2,9.5 > north/storage@7,9.5 > storage@9,9.5".</summary>
-    internal string Plan(int id, double x, double y) => Road(id, x, y).AsPlan();
+    internal string Plan(Route route, Position from) => Road(route, from).AsPlan();
 
-    /// <summary>The road out of a peer's way and on to the stops still ahead, as objects: the first leg is the
+    /// <summary>The way out of a peer's way and on to the stops still ahead, as objects: the first leg is the
     /// courtesy step — a body's width to ONE SIDE of where the golem faces, chosen so it moves away from the peer
     /// and where its own body fits; both bodies step to their own right when they can, which is how two of them
     /// pass instead of shove. The peer's position is what it told when it bumped (HearBump); without it, or with
-    /// nowhere to step, the road is the plain one from here.</summary>
-    internal Trajectory RoadPast(int id, string who, double x, double y, double heading)
+    /// nowhere to step, the way is the plain one from here.</summary>
+    internal Trajectory RoadPast(Route route, string who, Pose me)
     {
-        var route = Find(id);
-        var me = new Pose(x, y, heading);
+        if (route == null) throw new GolemDomainException("Golem.RoadPast: 'route' was not given");
+        if (me == null) throw new GolemDomainException("Golem.RoadPast: 'me' was not given");
         var ahead = route.StopsAhead.ToList();
         var planner = Planner();
         var aside = StepOutOfTheWayOf(who, me);
@@ -177,8 +172,8 @@ internal sealed class Golem
         return new Trajectory(legs);
     }
 
-    /// <summary>The road past a peer, in one line of text.</summary>
-    internal string PlanPast(int id, string who, double x, double y, double heading) => RoadPast(id, who, x, y, heading).AsPlan();
+    /// <summary>The way past a peer, in one line of text.</summary>
+    internal string PlanPast(Route route, string who, Pose me) => RoadPast(route, who, me).AsPlan();
 
     /// <summary>The courtesy step: two radii of the body to one side of where it faces.</summary>
     internal const double CourtesyStep = 0.5;
@@ -191,39 +186,26 @@ internal sealed class Golem
         foreach (var turn in new[] { -Math.PI / 2, Math.PI / 2 })   // right, then left
         {
             var step = me.Along(me.Heading + turn, CourtesyStep);
-            if (!FitsAt(step.X, step.Y)) continue;
+            if (!FitsAt(step)) continue;
             if (peer != null && step.DistanceTo(peer) <= me.DistanceTo(peer)) continue;
             return step;
         }
         return null;
     }
 
-    /// <summary>The road a NEW errand would take, before it exists: from a point, through stops given as two arrays
-    /// (x and y, in order — or in the order the golem chooses, for a Cover), for this body over this map and what it
-    /// learned. What the operator's command reads to write the errand and its whole plan in one entry.</summary>
-    internal Trajectory Preview(double fromX, double fromY, double[] xs, double[] ys, bool choosesOrder)
+    /// <summary>The way a NEW errand would take, before it exists: an object that is told the stops one by one and
+    /// answers the legs — <c>preview = g.Preview(Position(@x, @y), @cover); preview.Then(map.Find(@area)); …
+    /// preview.Legs()</c> — for this body over this map and what it learned. What the operator's command reads to
+    /// write the errand and its whole way in one entry.</summary>
+    internal Preview Preview(Position from, bool choosesOrder)
     {
-        if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length) throw new GolemDomainException("a preview needs its stops as two arrays of the same length");
-        var from = new Position(fromX, fromY);
-        var stops = xs.Select((x, i) => new Position(x, ys[i])).ToList();
-        foreach (var stop in stops)
-            if (!layout.IsOnMap(stop)) throw new GolemDomainException($"the point ({Fmt(stop.X)}, {Fmt(stop.Y)}) is nowhere on the map");
-        var planner = Planner();
-        return planner.Road(from, choosesOrder ? planner.BestOrder(from, stops) : stops);
+        if (from == null) throw new GolemDomainException("Golem.Preview: 'from' was not given");
+        return new Preview(layout, Planner(), from, choosesOrder);
     }
 
-    /// <summary>The plan ahead of a mission: every leg not yet known to be walked, each with how it is walked (line up
-    /// at the approach, end at the exit). What the host takes to walk the plan in its memory, leg by leg, journaling
-    /// nothing but what changes the plan or fulfils it.</summary>
-    internal Trajectory RoadAhead(int id) => new(Find(id).LegsAhead);
-
-    /// <summary>Whether a stop of the mission lies ahead at (x, y) — what to consult before saying it was reached.</summary>
-    internal bool IsStopAhead(int id, double x, double y) => Find(id).IsStopAhead(x, y);
-
-    /// <summary>Where the last pending mission ends: the point a NEW errand's plan should start from when the golem is
+    /// <summary>Where the last pending route ends: the point a NEW errand's way should start from when the golem is
     /// busy — it will stand there when the new errand comes up. Consult HasPendingMission first.</summary>
-    internal double PlannedEndX() => LastPending().StopsAhead.Last().X;
-    internal double PlannedEndY() => LastPending().StopsAhead.Last().Y;
+    internal Position PlannedEnd() => LastPending().StopsAhead.Last();
 
     // ---- touches: the facts take their objects (a Pose, a Position); what a reaction must tell the peers is exposed
     //      beside the act as @params, because the matcher captures no object (Fase 0, P3). ONE row per touch (Juan,
@@ -294,9 +276,6 @@ internal sealed class Golem
         return collisions.Forget(at);
     }
 
-    /// <summary>Whether the golem holds an obstacle at (x, y) — what to consult before saying it is gone.</summary>
-    internal bool KnowsObstacleAt(double x, double y) => collisions.KnowsAt(new Position(x, y));
-
     /// <summary>What the golem suspects its body touched — the pose of the touch, as telemetry builds it in the query
     /// (<c>g.Suspect(Pose(@x, @y, @heading), @since)</c>) — given what it has heard since the given count: a wall it
     /// knows (Kind 'wall': conclude Graze), a peer that bumped near there and then (Kind 'peer', Who: conclude Met), or
@@ -311,43 +290,26 @@ internal sealed class Golem
     /// <summary>How many bumps peers have told about so far — the count a leg starts from, so older news is not taken for this touch.</summary>
     internal int HeardBumpCount() => collisions.HeardCount;
 
-    /// <summary>Who, among the bumps heard after the given count, bumped near (x, y) — within a meeting's reach; "" for nobody.</summary>
-    internal string HeardBumpNear(double x, double y, int sinceCount) => collisions.HeardNear(new Position(x, y), sinceCount);
 
     // ---- routes: the progress — only what fulfils the plan is journaled ----
 
-    // ---- reads (total: never throw when nothing is there) ----
+    // ---- reads (total: never throw when nothing is there) — per-route questions are the ROUTE's own (g.Find(@id).StopsLeft) ----
 
-    internal int NextHandle() => lastHandle + 1;
     internal bool Knows(int id) => routes.Any(m => m.Id == id);
-    internal bool IsPending(int id) => Find(id).IsPending();
-    internal bool IsFollowing(int id) => Find(id).Following;
-    internal bool IsPaused(int id) => Find(id).Paused;
-    internal bool WasAnnounced(int id) => Find(id).Announced;
-    internal bool IsRouted(int id) => Find(id).IsRouted;
-    internal int LegsLeft(int id) => Find(id).LegsLeft;
-    internal int StopsLeft(int id) => Find(id).StopsLeft;
-    internal int Bumps(int id) => Find(id).Bumps;
-    /// <summary>The body bumped since the road was last decided: the road may be decided again.</summary>
-    internal bool HasBumpedSinceRoute(int id) => Find(id).BumpedSinceRoute;
-    internal int Grazes(int id) => Find(id).Grazes;
-    /// <summary>Whether the golem still retries the leg after grazing a known wall — its patience on this leg is not spent.</summary>
-    internal bool MayRetryLeg(int id) => Find(id).MayRetryLeg;
-    /// <summary>What the mission heads to first: a passage's name, around/aside for a point, or the zone of the stop.</summary>
-    internal string HeadingTo(int id) => Find(id).NextLeg.Name;
-    /// <summary>The kind of the leg ahead: door, opening, around, aside or stop.</summary>
-    internal string HeadingKind(int id) => Find(id).NextLeg.Kind;
-    internal bool HeadsToAStop(int id) => Find(id).NextLeg.IsStop;
     internal bool HasPendingMission() => routes.Any(m => m.IsPending());
     internal int Pending() => routes.Count(m => m.IsPending());
-    internal int[] PendingIds() => routes.Where(m => m.IsPending()).Select(m => m.Id).ToArray();
-    internal int FollowingCount() => routes.Count(m => m.IsPending() && m.Following);
+    /// <summary>The routes still pending, as objects — <c>foreach (route in g.PendingRoutes()) { route.Abandon(@reason); }</c>.</summary>
+    internal IReadOnlyList<Route> PendingRoutes() => routes.Where(m => m.IsPending()).ToList();
     internal int Total() => routes.Count;
-    internal string StatusOf(int id) => Find(id).ReadStatus();
     /// <summary>The newest pending point a peer told about — where the leader is now, as far as the follower knows. Consult HasNewerFollowing first.</summary>
     internal int NewestFollowingId() => routes.Where(m => m.IsPending() && m.Following).Select(m => m.Id).DefaultIfEmpty(0).Max();
-    /// <summary>Whether a FOLLOWED mission has been overtaken by a newer followed one; an operator's mission never is.</summary>
-    internal bool HasNewerFollowing(int id) => Find(id).Following && routes.Any(m => m.IsPending() && m.Following && m.Id > id);
+    /// <summary>Whether a FOLLOWED route has been overtaken by a newer followed one; an operator's route never is.</summary>
+    internal bool HasNewerFollowing(Route route)
+    {
+        if (route == null) throw new GolemDomainException("Golem.HasNewerFollowing: 'route' was not given");
+        return route.Following && routes.Any(m => m.IsPending() && m.Following && m.Id > route.Id);
+    }
+    private int FollowingCount() => routes.Count(m => m.IsPending() && m.Following);
 
     // ---- the road ahead, answered from the golem's own knowledge ----
 
@@ -372,27 +334,26 @@ internal sealed class Golem
     /// <summary>Seconds to run the whole pending route at the body's speed, lingering at every told stop. Answerable with no parameters.</summary>
     internal double RouteSeconds() => RouteLength() / Speed() + FollowingCount() * LingerAfterTold();
 
-    /// <summary>The road still ahead for a body standing at (x, y): to the first stop ahead through the passages, then the
-    /// route. When no road fits the body (marks closing every way), the distance as the crow flies: a read never refuses.</summary>
-    internal double DistanceLeft(double x, double y)
+    /// <summary>The way still ahead for a body standing at a point — <c>g.DistanceLeft(Position(@x, @y))</c>: to the first stop
+    /// ahead through the passages, then the route. When no way fits the body (marks closing every way), the distance as
+    /// the crow flies: a read never refuses.</summary>
+    internal double DistanceLeft(Position here)
     {
+        if (here == null) throw new GolemDomainException("Golem.DistanceLeft: 'here' was not given");
         if (!HasPendingMission()) return 0;
         var first = NextPending().StopsAhead.FirstOrDefault();
         if (first == null) return RouteLength();
-        var here = new Position(x, y);
         try { return Planner().RoadLength(here, first) + RouteLength(); }
         catch (GolemDomainException) { return here.DistanceTo(first) + RouteLength(); }
     }
 
-    /// <summary>Seconds until every pending mission is done, for a body standing at (x, y), at the body's speed and with its lingers.</summary>
-    internal double SecondsLeft(double x, double y) => DistanceLeft(x, y) / Speed() + FollowingCount() * LingerAfterTold();
+    /// <summary>Seconds until every pending route is done, for a body standing at a point, at the body's speed and with its lingers.</summary>
+    internal double SecondsLeft(Position here) => DistanceLeft(here) / Speed() + FollowingCount() * LingerAfterTold();
 
     // ---- reads (guarded: consult HasPendingMission() first) ----
 
-    internal int NextId() => NextPending().Id;
-    /// <summary>Where the body heads now: the first leg ahead of the next pending mission.</summary>
-    internal double HeadingX() => NextPending().NextLeg.At.X;
-    internal double HeadingY() => NextPending().NextLeg.At.Y;
+    /// <summary>The route the golem is on: the first pending one — <c>g.Next().Id</c>, <c>g.Next().NextLeg.At.X</c>, <c>g.Next().StopsLeft</c>.</summary>
+    internal Route Next() => NextPending();
 
     // ---- inside ----
 

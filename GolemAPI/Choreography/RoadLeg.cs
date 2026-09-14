@@ -7,7 +7,7 @@ namespace GolemAPI.Choreography;
 // One leg of a road as the host carries it: the kind of act it is (door, opening, around, aside, stop), the
 // passage's two areas when it is one, the point — and, when the golem hands the plan out to be walked, how the
 // leg is walked (line up at the approach, end at the exit; both are the point for anything but a door). The host
-// invents nothing here: the legs come from g.Preview / g.Road / g.RoadPast / g.RoadAhead as objects, travel
+// invents nothing here: the legs come from g.Preview(…).Legs() / g.Road / g.RoadPast / g.Find(@id).LegsAhead as objects, travel
 // through the ops queue in the wire form below, and are written back as the ROUTE's own acts — a `route.Via(point)`
 // per leg and a `route.Stop(point)` per stop, only points, all in one journal entry (the route names each point
 // against the map; Juan, 14-sep-2026) — or walked one by one in the host's memory.
@@ -36,7 +36,7 @@ public sealed record RoadLeg(string Kind, string A, string B, double X, double Y
     }
 
     // ---- from the golem's objects: the JSON a query prints when it walks the legs ----
-    //   foreach (legs in g.RoadAhead(@id).Legs()) { print legs.Kind 'kind', legs.A 'a', legs.B 'b', legs.At.X 'x', legs.At.Y 'y',
+    //   foreach (legs in g.Find(@id).LegsAhead) { print legs.Kind 'kind', legs.A 'a', legs.B 'b', legs.At.X 'x', legs.At.Y 'y',
     //                                               legs.Approach.X 'ax', legs.Approach.Y 'ay', legs.Exit.X 'ex', legs.Exit.Y 'ey'; }
 
     public static List<RoadLeg> FromQuery(string json)

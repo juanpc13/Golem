@@ -76,6 +76,20 @@ whether it could or not, so the domain resolves what follows. Consequences:
   another verb finds by a key is an object the first verb must return** (Juan, 11/14-sep — `map`, then `route`):
   the errand is the route, `g.Visit(point)` hands it out with its handle minted inside (like `Follow` always did),
   later acts find it (`route = g.Find(@id)`), and no golem act takes a mission id any more.
+  **The reads speak in objects too** (Juan, 14-sep: "hacer de alto nivel, ya no interactuar con primitivos… tanto
+  en escritura y lectura"): telemetry enters a query as `@x, @y` and the query builds the object —
+  `g.FitsAt(Position(@x, @y))`, `g.DistanceLeft(Position(@x, @y))`, `g.Suspect(Pose(@x, @y, @heading), @since)`,
+  `g.Road(g.Find(@id), Position(@x, @y))`, `g.RoadPast(g.Find(@id), @who, Pose(…))`; a per-route question is the
+  route's own property (`g.Find(@id).StopsLeft`, `.IsPending()`, `.Paused`, `.NextLeg.Name`, `.LegsAhead`, `.Status`),
+  the route underway is `g.Next()` (`g.Next().Id`, `g.Next().NextLeg.At.X`), the pending ones `g.PendingRoutes()`;
+  what a module answers alone is asked of the module (`map.IsOnMap(Position(…))`, `map.ZoneAt(…)`, `map.Knows(@area)`,
+  `collisions.KnowsAt(…)`, `collisions.HeardNear(…)`, `collisions.MarkCount`); and the way a NEW errand would take is
+  an object told its stops one by one — `{ preview = g.Preview(Position(@fx, @fy), @cover); preview.Then(map.Find(@area1));
+  preview.Then(Position(@x2, @y2)); foreach (legs in preview.Legs()) { … } }` — no arrays of numbers. The golem keeps
+  only the reads where the BODY enters the answer (`FitsAt`, `HasRoomAt`, `KnowsWallAt`, `Distance`, `DistanceLeft`,
+  `SecondsLeft`, `RouteLength`, `RouteSeconds`) or the fleet of routes does (`Knows(id)`, `HasPendingMission`, `Pending`,
+  `Total`, `NewestFollowingId`, `HasNewerFollowing(route)`, `PlannedEnd()`); `Plan`/`PlanPast` stay as the lab's
+  one-line reading of a way.
   **Every non-private method or constructor that receives an object checks it for null FIRST, with an explicit
   `if`, and refuses with a `GolemDomainException`** (Juan, 14-sep-2026: "hay que dar una excepción del dominio…
   con un if antes de procesarlo, en todos los métodos que reciban un objeto por parámetro") — never an inline

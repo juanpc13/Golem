@@ -166,7 +166,7 @@
     <div class="card ops" style="margin-bottom:20px">
       <div class="row">
         <input id="q" type="text" style="flex:1; width:auto" spellcheck="false"
-               placeholder="g.Pending()  —  or a full block: { print g.NextId() 'id'; }">
+               placeholder="g.Pending()  —  or a full block: { print g.Next().Id 'id'; }">
         <button id="run">Query</button>
       </div>
       <div class="row" id="presets">
@@ -178,19 +178,19 @@
         <button data-q="g.RouteLength()">RouteLength()</button>
         <button data-q="g.RouteSeconds()">RouteSeconds()</button>
         <button data-q="g.Distance(map.Find('kitchen'), map.Find('garage'))">Distance(kitchen, garage)</button>
-        <button data-q="g.PlaceAt(5.5, 5.5).Name">PlaceAt(5.5, 5.5)</button>
-        <button data-q="g.KnowsWallAt(4.0, 8.5)">KnowsWallAt(4.0, 8.5)</button>
+        <button data-q="map.ZoneAt(Position(5.5, 5.5)).Name">map.ZoneAt(Position(5.5, 5.5)).Name</button>
+        <button data-q="g.KnowsWallAt(Position(4.0, 8.5))">KnowsWallAt(Position(4.0, 8.5))</button>
         <button data-q="g.MarkCount()">MarkCount()</button>
         <button data-q="g.ObstacleCount()">ObstacleCount()</button>
-        <button data-q="g.HeardBumpCount()">HeardBumpCount()</button>
+        <button data-q="collisions.HeardCount">collisions.HeardCount</button>
         <button data-q="{ foreach (places in map.Zones) { print places.Name 'name'; foreach (doors in places.Doorways()) { print doors.To 'to'; } } }">map.Zones as objects</button>
         <button data-q="map.AreaCount">map.AreaCount</button>
         <button data-q="map.Connects(map.Find('north'), map.Find('center'))">map.Connects(north, center)</button>
         <button data-q="map.ZoneOf(Position(5.5, 5.5)).Name">map.ZoneOf(5.5, 5.5)</button>
         <button data-q="collisions.MarkCount">collisions.MarkCount</button>
         <button data-q="body.Radius.InMeters">body.Radius.InMeters</button>
-        <button data-q="g.FitsAt(10.25, 5.5)">FitsAt(10.25, 5.5)</button>
-        <button data-q="{ if (g.HasPendingMission()) { print g.NextId() 'id', g.HeadingTo(g.NextId()) 'heading', g.HeadsToAStop(g.NextId()) 'aStop', g.LegsLeft(g.NextId()) 'legsLeft', g.StopsLeft(g.NextId()) 'stopsLeft'; } }">Next leg</button>
+        <button data-q="g.FitsAt(Position(10.25, 5.5))">FitsAt(Position(10.25, 5.5))</button>
+        <button data-q="{ if (g.HasPendingMission()) { print g.Next().Id 'id', g.Next().NextLeg.Name 'heading', g.Next().NextLeg.IsStop 'aStop', g.Next().LegsLeft 'legsLeft', g.Next().StopsLeft 'stopsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <details class="hint"><summary>Why a query must stay read-only</summary><p>Queries read the golem's in-memory state and never touch the journal.

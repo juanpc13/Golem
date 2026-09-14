@@ -185,8 +185,7 @@ public sealed class GolemChoreography
         dispatch.On<EverythingLetGo>((actor, m) =>
         {
             actor.Using(@"
-                foreach (id in g.PendingIds()) {
-                    route = g.Find(id);
+                foreach (route in g.PendingRoutes()) {
                     route.Abandon(@reason);
                 }
             ")
@@ -204,7 +203,7 @@ public sealed class GolemChoreography
         {
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id) && g.IsStopAhead(@id, @x, @y)) Error 'that is not a stop ahead';
+                    Check(g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).IsStopAhead(Position(@x, @y))) Error 'that is not a stop ahead';
                 ",
                 @"
                     { route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }
@@ -228,7 +227,7 @@ public sealed class GolemChoreography
             var legs = RoadLeg.Decode(m.Road);
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
+                    Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
                 ",
                 RoadLeg.Script(legs))
             .WithParameters(p => {
@@ -263,7 +262,7 @@ public sealed class GolemChoreography
             }
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
+                    Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
                 ",
                 @"
                     { route = g.Find(@id); touch = Pose(@x, @y, @heading); route.Bump(touch); }
@@ -303,7 +302,7 @@ public sealed class GolemChoreography
         {
             string refused = actor.Using(
                 @"
-                    Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
+                    Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
                 ",
                 @"
                     { route = g.Find(@id); at = Position(@x, @y); route.Graze(at); }
@@ -326,7 +325,7 @@ public sealed class GolemChoreography
                 {
                     string refused = actor.Using(
                         @"
-                            Check(g.Knows(@id) && g.IsPending(@id) && g.IsFollowing(@id) && g.HasNewerFollowing(@id)) Error 'nothing newer was told';
+                            Check(g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).Following && g.HasNewerFollowing(g.Find(@id))) Error 'nothing newer was told';
                         ",
                         @"
                             { route = g.Find(@id); route.Abandon(@reason); }
@@ -343,7 +342,7 @@ public sealed class GolemChoreography
                 {
                     string refused = actor.Using(
                         @"
-                            Check(g.Knows(@id) && g.IsPending(@id)) Error 'mission is not pending';
+                            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
                         ",
                         @"
                             { route = g.Find(@id); route.Fail(@reason); }
@@ -901,7 +900,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @paused = g.Knows(@id) && g.IsPending(@id) && g.IsPaused(@id);
+            @paused = g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).Paused;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                     = id;
@@ -1062,7 +1061,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @fits = g.FitsAt(@x, @y);
+            @fits = g.FitsAt(Position(@x, @y));
         ")
         .WithParameters(rented, p => {
             p["x", typeof(double)]                  = x;
@@ -1115,15 +1114,15 @@ public sealed class GolemChoreography
         perf.Actor.Using(@"
             @has = g.HasPendingMission();
             if (g.HasPendingMission()) {
-                @id = g.NextId();
-                @routed = g.IsRouted(g.NextId());
-                @stops = g.StopsLeft(g.NextId());
-                @following = g.IsFollowing(g.NextId());
+                @id = g.Next().Id;
+                @routed = g.Next().IsRouted;
+                @stops = g.Next().StopsLeft;
+                @following = g.Next().Following;
                 @newer = 0;
-                if (g.HasNewerFollowing(g.NextId())) { @newer = g.NewestFollowingId(); }
-                @bumps = g.Bumps(g.NextId());
-                @bumped = g.HasBumpedSinceRoute(g.NextId());
-                @paused = g.IsPaused(g.NextId());
+                if (g.HasNewerFollowing(g.Next())) { @newer = g.NewestFollowingId(); }
+                @bumps = g.Next().Bumps;
+                @bumped = g.Next().BumpedSinceRoute;
+                @paused = g.Next().Paused;
             }
         ")
         .WithParameters(rented, p => {
@@ -1147,7 +1146,7 @@ public sealed class GolemChoreography
 
     // The plan ahead of a mission, as the golem hands it out: every leg not yet known to be walked, with how each is walked.
     private List<RoadLeg> RoadAhead(int id) =>
-        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.RoadAhead(@id).Legs()) { " + RoadLeg.PrintLegs + " }")
+        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.Find(@id).LegsAhead) { " + RoadLeg.PrintLegs + " }")
         .WithParameters(p => { p["id", typeof(int)] = id; })
         .PerformQuery());
 
@@ -1155,7 +1154,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @stops = g.StopsLeft(@id);
+            @stops = g.Find(@id).StopsLeft;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                   = id;
@@ -1169,7 +1168,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @bumps = g.Bumps(@id);
+            @bumps = g.Find(@id).Bumps;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                    = id;
@@ -1183,7 +1182,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @bumped = g.HasBumpedSinceRoute(@id);
+            @bumped = g.Find(@id).BumpedSinceRoute;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                      = id;
@@ -1197,7 +1196,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @heard = g.HeardBumpCount();
+            @heard = collisions.HeardCount;
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "heard", typeof(int)] = default;
@@ -1211,7 +1210,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @marks = g.MarkCount();
+            @marks = collisions.MarkCount;
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "marks", typeof(int)] = default;
@@ -1225,7 +1224,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @room = g.HasRoomAt(@x, @y);
+            @room = g.HasRoomAt(Position(@x, @y));
         ")
         .WithParameters(rented, p => {
             p["x", typeof(double)]                  = x;
@@ -1239,7 +1238,7 @@ public sealed class GolemChoreography
     // The road from where the body stands, as the golem's own objects: a query walks the legs and prints what
     // each one is; the host carries them to the act that writes them, inventing nothing.
     private List<RoadLeg> RoadFrom(int id, double x, double y) =>
-        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.Road(@id, @x, @y).Legs()) { " + RoadLeg.PrintLegs + " }")
+        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.Road(g.Find(@id), Position(@x, @y)).Legs()) { " + RoadLeg.PrintLegs + " }")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
             p["x",  typeof(double)] = x;
@@ -1251,7 +1250,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @routed = g.IsRouted(@id);
+            @routed = g.Find(@id).IsRouted;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                      = id;
@@ -1265,7 +1264,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @legs = g.LegsLeft(@id);
+            @legs = g.Find(@id).LegsLeft;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                   = id;
@@ -1340,7 +1339,7 @@ public sealed class GolemChoreography
 
     // The road out of a peer's way: the golem answers with the courtesy step first and then its errand.
     private List<RoadLeg> RoadPast(int id, string who, double x, double y, double heading) =>
-        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.RoadPast(@id, @who, @x, @y, @heading).Legs()) { " + RoadLeg.PrintLegs + " }")
+        RoadLeg.FromQuery(perf.Actor.Using("foreach (legs in g.RoadPast(g.Find(@id), @who, Pose(@x, @y, @heading)).Legs()) { " + RoadLeg.PrintLegs + " }")
         .WithParameters(p => {
             p["id",      typeof(int)]    = id;
             p["who",     typeof(string)] = who;
@@ -1354,7 +1353,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @may = g.MayRetryLeg(@id);
+            @may = g.Find(@id).MayRetryLeg;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                   = id;
@@ -1368,7 +1367,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @grazes = g.Grazes(@id);
+            @grazes = g.Find(@id).Grazes;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                     = id;
@@ -1382,7 +1381,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @met = g.MetCount();
+            @met = collisions.EncounterCount;
         ")
         .WithParameters(rented, p => {
             p[Parameter.Out, "met", typeof(int)] = default;
@@ -1395,7 +1394,7 @@ public sealed class GolemChoreography
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using(@"
-            @settled = g.HasPendingMission() == false || g.NextId() != @id;
+            @settled = g.HasPendingMission() == false || g.Next().Id != @id;
         ")
         .WithParameters(rented, p => {
             p["id", typeof(int)]                       = id;

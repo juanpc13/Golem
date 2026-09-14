@@ -90,7 +90,8 @@ internal sealed class Route
     }
 
     internal bool IsPending() => status == RouteStatus.Pending;
-    internal string ReadStatus() => status.Name;
+    /// <summary>pending, completed, failed or abandoned.</summary>
+    internal string Status => status.Name;
 
     // ---- the way: written as points, one act per leg, the last stop last — the route names each against the map ----
 
@@ -159,7 +160,7 @@ internal sealed class Route
     internal bool IsRouted => !way.IsEmpty;
     internal int LegsLeft => way.Count - nextLeg;
     /// <summary>The legs not yet known to be walked: the plan ahead, from the first one on.</summary>
-    internal IEnumerable<Leg> LegsAhead => way.Legs().Skip(nextLeg);
+    internal IReadOnlyList<Leg> LegsAhead => way.Legs().Skip(nextLeg).ToList();
     /// <summary>The leg the body heads to: the first ahead once routed; before that, the next stop itself.</summary>
     internal Leg NextLeg
     {
@@ -224,9 +225,12 @@ internal sealed class Route
         return this;
     }
 
-    /// <summary>Whether a stop of this route lies ahead at (x, y) — what to consult before saying it was reached.</summary>
-    internal bool IsStopAhead(double x, double y) =>
-        IsPending() && StopsAhead.Any(s => Math.Abs(s.X - x) < 1e-6 && Math.Abs(s.Y - y) < 1e-6);
+    /// <summary>Whether a stop of this route lies ahead at a point — what to consult before saying it was reached.</summary>
+    internal bool IsStopAhead(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Route.IsStopAhead: 'at' was not given");
+        return IsPending() && StopsAhead.Any(s => Same(s, at));
+    }
 
     /// <summary>The body touched something the map does not hold — where, heading which way — on this route: the plan
     /// is interrupted, and the golem presumes a THING there: a mark, at once (a peer that says it was there takes it
