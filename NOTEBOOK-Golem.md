@@ -1693,3 +1693,29 @@ blue → living con la caja (route 12, tras la corrección): bumped (5.2, 5.9) (
 **Conclusión**: el diálogo que Juan describió existe ahora físicamente: el `print` del comando vuelve al controller Y viaja al cuerpo como el mismo JSON; el cuerpo hace una sola cosa y avisa por un endpoint; el acto se escribe y su `print` es la siguiente orden. El host ya no tiene servo: un robot real solo tiene que hablar estos dos tópicos y estos cuatro endpoints. El `Robot` como `IOutputSink` deja además el camino abierto a que una Reaction emita el mismo `print` y llegue al cuerpo por la misma puerta.
 
 **Ajuste al dominio**: ninguno. **Pendiente**: (1) la pared junto a las jambas sigue tomándose por cosa (`Suspect`); (2) la regla de paso en una puerta cuando dos cuerpos entran por lados opuestos; (3) green ancla su odometría en el nodo y en la membrana por separado: dos relojes, una misma verdad al arrancar — vigilar que no diverjan tras un teletransporte.
+
+## 2026-09-16 · El choque es un interruptor: los motores paran, el cuerpo avisa, y la ruta mete la retirada y el rodeo como puntos de corrección
+
+**Contexto** (Juan, noche): "desde el momento exacto en que el robot choca con algo, en su chasis es como un botón que se acciona: los motores se detienen inmediatamente y el robot envía el bump al endpoint de choques, y este termina registrando el bump en el journal, y lo mejor es que eso desencadena otro print con el retroceso que debe hacer, porque el recálculo de la ruta termina metiendo más puntos para llegar al punto al que iba: retroceder un poco y pasar al lado; esos son los nuevos puntos insertados en el trayecto… posiciones legacy vs posiciones de corrección; si las de corrección no resuelven de A a B se recalcula hasta encontrar camino". Y dos precisiones: "la interfaz del robot es extremadamente sencilla, solo es mover / girar / choque / llegué" y "el que decide todo debe ser el dominio".
+
+**Ajuste al dominio** (`Routes.Route`, `Routes.Leg`, `Golem`, `Layouts.MapLayout`): `Bump(touch, me)` — el toque y dónde estaba el cuerpo mirando hacia dónde — marca y llama a `Correct(me, replan: true)`: `back = me.Along(me.Heading + π, retreat)` (la retirada del cuerpo, `Body.Retreat`, ahora en la ruta), una pierna `Leg.Retreat` ("back") y detrás el `Road` del planificador desde `back` por las paradas que faltan; si el planificador rechaza, queda solo la retirada y `Order` pide `decide` al acabarla (camino agotado sin completar). `Graze(at, me)` → `Correct(me, replan: false)`: retirada y las mismas piernas otra vez (sus rumbos se recalculan desde la retirada; `grazesOnLeg` se conserva). `Order` = `hold` | `decide` | `back` | `turn` | `run`; `IsWalkable` cubre `back`. `Reach` completa cuando `reached == stops.Count`. `Leg.IsCorrection`/`IsReverse`. `DoorGap` = `DoorWidth/2 − 0.15`. Pruebas: 63 verdes; `ABump_IsATouchAndAMarkAtOnce…` y `ATouch_InterruptsThePlan…` ahora esperan `Order == back` y `AsPlan()` empezando por `back@`; la paciencia con las paredes sobrevive a la retirada.
+
+**Ajuste al robot y al host**: `body.py` para los motores al primer contacto y reporta `bump` con `ptheta`; no retrocede; una sola vez por contacto (`pressed`/`released_since`: pegado a lo mismo no es otro choque hasta que el sensor calla 0.4 s — sin esto, la orden que llegaba mientras seguía pegado disparaba otro choque en el acto, y un cuerpo parado contra la caja pedía un paso de cortesía cada segundo); orden `back` = reversa suave hasta el punto o hasta empezar a alejarse; `arrived {route}` para giro y punto. Endpoints `/robot/arrived`, `/robot/bump`, `/robot/stuck`. `Robot.BumpedAsync`: `Suspect` → `Grazed(at, me)` o `Bumped(touch, me)`; el print (`back`) se obedece en el acto y la ventana de 2.5 s corre mientras el cuerpo retrocede; `Met` → `DecidedPast`. `Robot.RunAsync` espera la pose antes de decidir al despertar.
+
+**Observación en vivo** (journals archivados en `journal-legacy-20260916-toques/`; tres golems, cero reinicios):
+```
+1ª corrida — un error mío: el script de Bumped usaba @me para el nombre del golem y `me` para la pose → "Id me is already set as String":
+  el choque se rechazaba, el reloj reenviaba `run`, el cuerpo volvía a chocar… (renombrado a @name).
+2ª corrida — blue living → north (route 2): chocó en (3.9, 2.1) y, retrocediendo, en (3.9, 0.9): las JAMBAS de living/south,
+  tomadas por cosas ("nothing on my map there") porque DoorGap = 0.8 m las cubría; dos marcas falsas, la ruta se fue por west
+  y llegó a north. → DoorGap = 0.55 m; marcas olvidadas con /forget (red y green las olvidaron al oír a blue: 409).
+3ª corrida — blue north → living con la caja del centro (route 3):
+  heading to center~south (4.8, 3.0) · bumped into crate_center at (5.2, 5.9) heading -1.59 · the way corrected, backing off first (entry 256)
+  backing off to (5.3, 6.7) · [body_blue] route 3: back to (5.28, 6.71) · backed off (entry 260)
+  turning -2.93 · skirting to (4.5, 6.5) · passed (262) · turning -1.56 · center~south (4.6, 3.0) · passed (264)
+  living/south (4.0, 1.5) · passed (266) · turning 3.14 · reached the stop (2.0, 1.5) (entry 268). Una marca: la caja.
+```
+
+**Conclusión**: el cuerpo ya no decide nada — ni retrocede: para y avisa. La corrección es un acto del dominio (`route.Bump(touch, me)`) cuyo print es la primera orden nueva, `back`, y el rodeo son piernas de corrección en la misma lista que las del plan. El hallazgo colateral (las jambas) muestra por qué importaba: cada clasificación errada ahora inserta correcciones reales.
+
+**Pendiente**: (1) regla de paso en una puerta cuando dos cuerpos entran por lados opuestos; (2) el `within` de llegada y el `standoff` del seguidor siguen siendo del host (`Robot`): candidatos a decidirse en el dominio; (3) green ancla su odometría en el nodo y en la membrana por separado.

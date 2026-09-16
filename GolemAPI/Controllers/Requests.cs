@@ -83,32 +83,23 @@ public sealed record ResetRequest(bool? Cascade)
     }
 }
 
-// ---- what the ROBOT reports (sim/bridge/body.py posts these when it finished the one thing it was told) ----
+// ---- what the ROBOT reports (sim/bridge/body.py) — its whole vocabulary: it ARRIVED (a turn made, a point reached),
+//      it BUMPED into something, or it is STUCK (Juan, 16-sep-2026: "la interfaz del robot es extremadamente sencilla:
+//      mover / girar / choque / llegué") ----
 
-/// <summary>The body turned to the heading it was asked — <c>{"route": 3, "heading": -1.57}</c>.</summary>
-public sealed record TurnedReport(int? Route, double? Heading)
+/// <summary>The body did the one thing it was told — turned, or reached the point — <c>{"route": 3}</c> (route 0: a courtesy step).</summary>
+public sealed record ArrivedReport(int? Route)
 {
     public IEnumerable<string> Problems()
     {
-        if (!Route.HasValue || Route.Value < 0) yield return "give the route the turn belonged to";
-        if (!Heading.HasValue || !double.IsFinite(Heading.Value)) yield return "give the heading turned to, a finite number";
+        if (!Route.HasValue || Route.Value < 0) yield return "give the route the order belonged to (0 for a courtesy step)";
     }
 }
 
-/// <summary>The body reached the point it was sent to, named verbatim — <c>{"route": 3, "x": 4.0, "y": 9.5}</c> (route 0: a courtesy step).</summary>
-public sealed record ReachedReport(int? Route, double? X, double? Y)
-{
-    public IEnumerable<string> Problems()
-    {
-        if (!Route.HasValue || Route.Value < 0) yield return "give the route the point belonged to";
-        if (!X.HasValue || !Y.HasValue) yield return "give the point reached, x and y";
-        else if (!double.IsFinite(X.Value) || !double.IsFinite(Y.Value)) yield return "x and y must be finite numbers";
-    }
-}
-
-/// <summary>The body touched something — what the world calls it, where on the plane, heading into it, and where the
-/// body stood — <c>{"route": 3, "with": "crate_center", "x": 5.2, "y": 5.8, "heading": -1.57, "px": 5.2, "py": 6.6}</c>; route 0 while standing.</summary>
-public sealed record TouchedReport(int? Route, string With, double? X, double? Y, double? Heading, double? Px, double? Py)
+/// <summary>The body bumped into something: its motors stopped at once. What the world calls it, where the touch landed on
+/// the plane and heading into it, and where the body stood facing which way —
+/// <c>{"route": 3, "with": "crate_center", "x": 5.2, "y": 5.8, "heading": -1.57, "px": 5.2, "py": 6.05, "ptheta": -1.57}</c>; route 0 while standing.</summary>
+public sealed record BumpReport(int? Route, string With, double? X, double? Y, double? Heading, double? Px, double? Py, double? Ptheta)
 {
     public IEnumerable<string> Problems()
     {
@@ -116,8 +107,8 @@ public sealed record TouchedReport(int? Route, string With, double? X, double? Y
         if (string.IsNullOrWhiteSpace(With)) yield return "give what was touched, as the world names it";
         if (!X.HasValue || !Y.HasValue || !Heading.HasValue) yield return "give the touch: x, y and heading";
         else if (!double.IsFinite(X.Value) || !double.IsFinite(Y.Value) || !double.IsFinite(Heading.Value)) yield return "x, y and heading must be finite numbers";
-        if (!Px.HasValue || !Py.HasValue) yield return "give where the body stood: px and py";
-        else if (!double.IsFinite(Px.Value) || !double.IsFinite(Py.Value)) yield return "px and py must be finite numbers";
+        if (!Px.HasValue || !Py.HasValue || !Ptheta.HasValue) yield return "give where the body stood: px, py and ptheta";
+        else if (!double.IsFinite(Px.Value) || !double.IsFinite(Py.Value) || !double.IsFinite(Ptheta.Value)) yield return "px, py and ptheta must be finite numbers";
     }
 }
 

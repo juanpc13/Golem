@@ -90,8 +90,8 @@ public sealed class ReactionPatternLabTests
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }).PerformCommand();
-        perf.Actor.Using("{ route = g.Find(@id); touch = Pose(@x, @y, @h); route.Bump(touch); }")
-            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 3.0; p["y", typeof(double)] = 9.5; p["h", typeof(double)] = 3.14; }).PerformCommand();
+        perf.Actor.Using("{ route = g.Find(@id); touch = Pose(@x, @y, @h); me = Pose(@px, @py, @h); route.Bump(touch, me); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 3.0; p["y", typeof(double)] = 9.5; p["h", typeof(double)] = 3.14; p["px", typeof(double)] = 3.25; p["py", typeof(double)] = 9.5; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); route.Fail(@why); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["why", typeof(string)] = "the lab says so"; }).PerformCommand();
         // a second errand, late in the journal, written as the host writes it: does its own Stop fire the pattern?

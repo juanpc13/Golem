@@ -595,7 +595,8 @@ public class MissionAcceptanceTests
         Bump(1, 10.25, 5.85, South);                // the crate's face — or a peer: presumed a thing, in one act
         Assert.AreEqual(1, Int("collisions.MarkCount"), "a bump is a touch AND a mark, with the heading of the touch as its normal");
         Assert.AreEqual(1, Int("g.Find(1).Bumps"));
-        Assert.IsTrue(Bool("g.Find(1).BumpedSinceRoute"));
+        Assert.AreEqual("back", Text("g.Find(1).Order"), "the route corrected its way inside: back off first");
+        StringAssert.StartsWith(Text("g.Find(1).AsPlan()"), "back@", "the retreat is the first correction: " + Text("g.Find(1).AsPlan()"));
         Assert.AreEqual("", Text("collisions.HeardNear(Position(10.25, 5.85), 0)"), "no peer said it bumped there: the mark stands");
         Assert.IsFalse(Bool("g.FitsAt(Position(10.25, 5.5))"), "the body no longer fits where the mark reaches");
         Assert.IsTrue(Bool("g.HasRoomAt(Position(10.25, 5.5))"), "the walls alone still leave room there: marks are what the body feels around");
@@ -799,8 +800,9 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"));
 
         Bump(1, 2.0, 10.8, North);                // something by the kitchen's north wall
-        Assert.IsTrue(Bool("g.Find(1).BumpedSinceRoute"), "the plan is interrupted: the golem decides another road");
-        Assert.AreEqual("pending", Text("g.Find(1).Status"), "but the mission goes on");
+        Assert.AreEqual("back", Text("g.Find(1).Order"), "the touch corrected the way: the body backs off first, then the road around");
+        Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"), "nothing left to decide: the route decided inside");
+        Assert.AreEqual("pending", Text("g.Find(1).Status"), "and the mission goes on");
 
         Decide(1, 2.0, 10.4);   // from where the body stands, the same stop ahead
         Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"));
@@ -989,7 +991,7 @@ public class MissionAcceptanceTests
         Reach(1, 2.0, 1.5);
         Assert.AreEqual(3, Int("g.Find(1).Grazes"), "the mission remembers every graze");
         Assert.AreEqual("completed", Text("g.Find(1).Status"), "the golem chose to go on and got there");
-        Refuses("{ route = g.Find(2); route.Graze(Position(1.0, 1.0)); }", "unknown route");
+        Refuses("{ route = g.Find(2); route.Graze(Position(1.0, 1.0), Pose(1.0, 1.0, 0.0)); }", "unknown route");
     }
 
     [TestMethod]
@@ -1052,26 +1054,32 @@ public class MissionAcceptanceTests
 
     // ---- helpers: the same perform shapes the host uses ----
 
+    // The touch and where the body stood: one radius behind the touch, facing it (what the body reports).
     private void Bump(int id, double x, double y, double heading) =>
         perf.Actor.Using(@"
-            { route = g.Find(@id); touch = Pose(@x, @y, @heading); route.Bump(touch); }
+            { route = g.Find(@id); touch = Pose(@x, @y, @heading); me = Pose(@px, @py, @heading); route.Bump(touch, me); }
         ")
         .WithParameters(p => {
             p["id",      typeof(int)]    = id;
             p["x",       typeof(double)] = x;
             p["y",       typeof(double)] = y;
             p["heading", typeof(double)] = heading;
+            p["px",      typeof(double)] = x - 0.25 * Math.Cos(heading);
+            p["py",      typeof(double)] = y - 0.25 * Math.Sin(heading);
         })
         .PerformCommand();
 
-    private void Graze(int id, double x, double y) =>
+    private void Graze(int id, double x, double y, double heading = 0.0) =>
         perf.Actor.Using(@"
-            { route = g.Find(@id); at = Position(@x, @y); route.Graze(at); }
+            { route = g.Find(@id); at = Position(@x, @y); me = Pose(@px, @py, @heading); route.Graze(at, me); }
         ")
         .WithParameters(p => {
             p["id", typeof(int)]    = id;
             p["x",  typeof(double)] = x;
             p["y",  typeof(double)] = y;
+            p["heading", typeof(double)] = heading;
+            p["px", typeof(double)] = x - 0.25 * Math.Cos(heading);
+            p["py", typeof(double)] = y - 0.25 * Math.Sin(heading);
         })
         .PerformCommand();
 

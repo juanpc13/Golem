@@ -352,49 +352,41 @@ public class GolemController : Controller
         .PerformCommand());
 
     // ==================================================================
-    // THE ROBOT'S REPORTS (endpoints sim/bridge/body.py posts to when it finished the one thing it was told). Each writes
-    // the act, whole, right here, and hands the answer to the Robot: its print is the next order, sent on to the body.
-    // A report about an order the body was not given (superseded meanwhile) is acknowledged and not journaled.
+    // THE ROBOT'S REPORTS (endpoints sim/bridge/body.py posts to). The body's whole vocabulary is four words — it is told
+    // to TURN or to MOVE, it says it ARRIVED or it BUMPED (Juan, 16-sep-2026: "mover / girar / choque / llegué"; plus
+    // STUCK when it could not). Each endpoint writes the act, whole, right here, and hands the answer to the Robot: its
+    // print is the next order, sent on to the body. A report about an order the body was not given (superseded
+    // meanwhile) is acknowledged and not journaled.
     // ==================================================================
 
-    // The body turned in place to the heading the next leg asked: the route now asks it to run.
-    [HttpPost("robot/turned")]
-    public IActionResult RobotTurned([FromBody] TurnedReport report)
+    // The body did the one thing it was told: a turn made (route.Turn) or a point reached (route.Reach). A stop reached is
+    // counted (the last one completes the route) and told to the follower — the point rides beside the act as an expose:
+    // the reaction that tells captures no object; a door, an opening, a point to pass just moves the route past it. A
+    // courtesy step (route 0) is the golem's own business: nothing to journal.
+    [HttpPost("robot/arrived")]
+    public IActionResult RobotArrived([FromBody] ArrivedReport report)
     {
-        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"heading\": -1.57}");
+        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!robot.Expects(report.Route.Value, "turn")) return Accepted("not the turn the body was given");
-        var answer = Answer.Of(golemActor.Using(
-            @"
-                Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
-            ",
-            @"
-                {
-                    route = g.Find(@id);
-                    route.Turn();
-                }
-            " + NextOrder)
-            .WithParameters(p => { p["id", typeof(int)] = report.Route.Value; })
-            .PerformCheckThenCommand());
-        robot.Turned(answer);
-        return answer.Ok ? Accepted() : Conflict(answer.Refused);
-    }
-
-    // The body reached the point it was sent to. A stop is counted (the last one completes the route) and told to the
-    // follower — the point rides beside the act as an expose: the reaction that tells captures no object; a point of
-    // the way that is no stop — a door, an opening, a point to pass — just moves the route past it. A courtesy step
-    // (route 0) is the golem's own business: nothing to journal.
-    [HttpPost("robot/reached")]
-    public IActionResult RobotReached([FromBody] ReachedReport report)
-    {
-        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"x\": 4.0, \"y\": 9.5}");
-        var problems = report.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!robot.Expects(report.Route.Value, "run")) return Accepted("not the run the body was given");
-        if (report.Route.Value == 0) { robot.Reached(default); return Accepted(); }
+        var carrying = robot.Carrying;
+        if (carrying == null || carrying.Route != report.Route.Value) return Accepted("not the order the body was given");
+        if (carrying.Route == 0) { robot.Arrived(default); return Accepted(); }
         Answer answer;
-        if (robot.Carrying?.Kind == "stop")
+        if (carrying.What == "turn")
+            answer = Answer.Of(golemActor.Using(
+                @"
+                    Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
+                ",
+                @"
+                    {
+                        route = g.Find(@id);
+                        route.Turn();
+                    }
+                " + NextOrder)
+                .WithParameters(p => { p["id", typeof(int)] = carrying.Route; })
+                .PerformCheckThenCommand());
+        else if (carrying.Kind == "stop")
             answer = Answer.Of(golemActor.Using(
                 @"
                     Check(g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).IsStopAhead(Position(@x, @y))) Error 'that is not a stop ahead';
@@ -407,7 +399,7 @@ public class GolemController : Controller
                     }
                     expose @id rid, @x rx, @y ry;
                 " + NextOrder)
-                .WithParameters(p => { p["id", typeof(int)] = report.Route.Value; p["x", typeof(double)] = report.X.Value; p["y", typeof(double)] = report.Y.Value; })
+                .WithParameters(p => { p["id", typeof(int)] = carrying.Route; p["x", typeof(double)] = carrying.X; p["y", typeof(double)] = carrying.Y; })
                 .PerformCheckThenCommand());
         else
             answer = Answer.Of(golemActor.Using(
@@ -421,22 +413,23 @@ public class GolemController : Controller
                         route.Reach(point);
                     }
                 " + NextOrder)
-                .WithParameters(p => { p["id", typeof(int)] = report.Route.Value; p["x", typeof(double)] = report.X.Value; p["y", typeof(double)] = report.Y.Value; })
+                .WithParameters(p => { p["id", typeof(int)] = carrying.Route; p["x", typeof(double)] = carrying.X; p["y", typeof(double)] = carrying.Y; })
                 .PerformCheckThenCommand());
-        robot.Reached(answer);
+        robot.Arrived(answer);
         return answer.Ok ? Accepted() : Conflict(answer.Refused);
     }
 
-    // The body touched something and backed off. What it was — a wall it knows, a peer, a thing — is the domain's to
-    // say, after the peers had their window to speak: the Robot runs that protocol with the scripts below (Grazed,
-    // Bumped, Met, Decided, DecidedPast, TouchedStanding) and the print of the last of them is the next order.
-    [HttpPost("robot/touched")]
-    public IActionResult RobotTouched([FromBody] TouchedReport report)
+    // The body bumped into something: its motors stopped at once and it stands where it touched. What it was — a wall
+    // it knows, a peer, a thing — is the domain's to say (the Robot asks it and performs the scripts below: Grazed or
+    // Bumped — the route corrects its way inside, the retreat first — then, after the peers' window, Met and
+    // DecidedPast); the print of the act is the next order: back off.
+    [HttpPost("robot/bump")]
+    public IActionResult RobotBump([FromBody] BumpReport report)
     {
-        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"with\": \"crate_center\", \"x\": 5.2, \"y\": 5.8, \"heading\": -1.57, \"px\": 5.2, \"py\": 6.6}");
+        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"with\": \"crate_center\", \"x\": 5.2, \"y\": 5.8, \"heading\": -1.57, \"px\": 5.2, \"py\": 6.05, \"ptheta\": -1.57}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        _ = robot.TouchedAsync(report.Route.Value, report.With.Trim(), report.X.Value, report.Y.Value, report.Heading.Value, report.Px.Value, report.Py.Value);
+        _ = robot.BumpedAsync(report.Route.Value, report.With.Trim(), report.X.Value, report.Y.Value, report.Heading.Value, report.Px.Value, report.Py.Value, report.Ptheta.Value);
         return Accepted();
     }
 
@@ -447,7 +440,8 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"reason\": \"stalled\"}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!robot.Expects(report.Route.Value, "run") && !robot.Expects(report.Route.Value, "turn")) return Accepted("not the order the body was given");
+        var carrying = robot.Carrying;
+        if (carrying == null || carrying.Route != report.Route.Value) return Accepted("not the order the body was given");
         robot.Stuck(report.Route.Value, report.Reason.Trim());
         return Accepted();
     }
@@ -456,10 +450,11 @@ public class GolemController : Controller
     // The touch protocol's scripts — performed by the Robot once the peers had their say. Each returns the next order.
     // ==================================================================
 
-    // The body touched something the map does not hold, on its way: the route is interrupted (its order becomes
-    // `decide`) and the golem presumes a thing — a mark. Told to every peer with the golem's name and the pose of the
-    // touch (the expose: what a reaction can capture), so a peer that bumped there and then knows it met a body.
-    public static Answer Bumped(ActorV2 golemActor, int route, string me, double x, double y, double heading, double poseX, double poseY) => Answer.Of(golemActor.Using(
+    // The body bumped into something the map does not hold, on its way: the golem presumes a thing — a mark — and the
+    // route corrects its way inside (back off, then the road around; its print is 'back'). Told to every peer with the
+    // golem's name and the pose of the touch (the expose: what a reaction can capture), so a peer that bumped there and
+    // then knows it met a body.
+    public static Answer Bumped(ActorV2 golemActor, int route, string me, double x, double y, double heading, double poseX, double poseY, double poseTheta) => Answer.Of(golemActor.Using(
         @"
             Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
         ",
@@ -467,13 +462,14 @@ public class GolemController : Controller
             {
                 route = g.Find(@id);
                 touch = Pose(@x, @y, @heading);
-                route.Bump(touch);
+                me = Pose(@px, @py, @ptheta);
+                route.Bump(touch, me);
             }
-            expose @x x, @y y, @heading heading, @me who, @px px, @py py;
+            expose @x x, @y y, @heading heading, @name who, @px px, @py py;
         " + NextOrder)
         .WithParameters(p => {
             p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["heading", typeof(double)] = heading;
-            p["me", typeof(string)] = me; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY;
+            p["name", typeof(string)] = me; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY; p["ptheta", typeof(double)] = poseTheta;
         })
         .PerformCheckThenCommand());
 
@@ -492,8 +488,9 @@ public class GolemController : Controller
         })
         .PerformCommand());
 
-    // The body grazed a wall the map KNOWS: its own execution error, counted against the route's patience on the leg.
-    public static Answer Grazed(ActorV2 golemActor, int route, double x, double y) => Answer.Of(golemActor.Using(
+    // The body grazed a wall the map KNOWS: its own execution error, counted against the route's patience on the leg; the
+    // route backs off first and tries the same legs again (its print is 'back').
+    public static Answer Grazed(ActorV2 golemActor, int route, double x, double y, double poseX, double poseY, double poseTheta) => Answer.Of(golemActor.Using(
         @"
             Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
         ",
@@ -501,10 +498,11 @@ public class GolemController : Controller
             {
                 route = g.Find(@id);
                 at = Position(@x, @y);
-                route.Graze(at);
+                me = Pose(@px, @py, @ptheta);
+                route.Graze(at, me);
             }
         " + NextOrder)
-        .WithParameters(p => { p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; })
+        .WithParameters(p => { p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY; p["ptheta", typeof(double)] = poseTheta; })
         .PerformCheckThenCommand());
 
     // The golem concluded its touch was a peer: it met that body there. The mark its bump presumed comes back, here

@@ -27,8 +27,11 @@ internal sealed class MapLayout : Map
     internal const double DoorClearance = 0.6;
     internal const double OpeningMargin = 0.5;
     internal const double BodyMargin = 0.1;
-    // Within DoorGap of a door's point there is no wall (half the width plus a tenth for the pose's error).
-    internal const double DoorGap = DoorWidth / 2 + 0.1;
+    // Within DoorGap of a door's point there is no wall: the passage itself. The world cuts a gap DoorWidth wide but the
+    // walls' thickness eats into it (~1.25 m clear), so the JAMBS stand about 0.62 m from the door's point — a touch there
+    // is a wall (16-sep-2026 lab: two touches on the jambs of living/south, 0.6 m from the point, were taken for things
+    // and marked while the gap was DoorWidth / 2 + 0.1). Half the width minus the touch's estimation error.
+    internal const double DoorGap = DoorWidth / 2 - 0.15;
     // How far from a wall's line a touched point may fall and still be that wall (its thickness, the pose's error).
     internal const double WallTolerance = 0.3;
 

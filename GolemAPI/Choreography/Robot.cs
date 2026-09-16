@@ -44,7 +44,6 @@ public sealed class Robot : IOutputSink
     private int yields, yieldsFor;      // courtesy steps taken on the route underway
     private DateTime lingerUntil = DateTime.MinValue;   // the follower's linger: no order goes out to the body before this
     private DateTime lastStandingTouch = DateTime.MinValue;
-    private volatile bool deliberating;   // a touch is being weighed (the peers' window): the clock must not decide meanwhile
 
     public Robot(PerformanceV2 performance, ActorV2 golemActor, Rosbridge ros, PanelFeed feed, HttpBroker wire,
                  string golem, (double X, double Y) home, string journalPath)
@@ -86,6 +85,7 @@ public sealed class Robot : IOutputSink
                 break;
             case "turn":
             case "run":
+            case "back":
                 Send(order);
                 break;
             default:
@@ -108,7 +108,7 @@ public sealed class Robot : IOutputSink
             heardAtOrderStart = HeardBumpCount();
             wait = lingerUntil - DateTime.UtcNow;
         }
-        string what = order.What == "turn" ? $"turning to heading {order.Heading:0.00} for"
+        string what = order.What == "turn" ? $"turning to heading {order.Heading:0.00} for" : order.What == "back" ? "backing off to"
             : order.Kind switch { "stop" => "heading to a stop", "via" => "heading to a point", "around" => "skirting to", "aside" => "stepping aside to", _ => $"heading to the passage {order.Name}" };
         bool standoff = order.Following && order.IsLastStop;
         if (standoff) what += $", stopping {LeaderStandoff:0.0} short of the leader's spot";
@@ -188,23 +188,17 @@ public sealed class Robot : IOutputSink
         lock (gate) return carrying != null && carrying.Route == route && carrying.What == what;
     }
 
-    /// <summary>The body turned: the act was written; its print is the next order.</summary>
-    public void Turned(Answer answer)
-    {
-        var was = Carrying;
-        lock (gate) carrying = null;
-        Report(answer, $"route {was?.Route} turned to heading {was?.Heading:0.00}");
-    }
-
-    /// <summary>The body reached the point it was sent to: the act was written; its print is the next order. A follower
-    /// arriving at its last stop pulls over to its right and lingers, so the leader keeps its lead.</summary>
-    public void Reached(Answer answer)
+    /// <summary>The body did the one thing it was told — turned, or reached the point: the act was written; its print is
+    /// the next order. A follower arriving at its last stop pulls over to its right and lingers, so the leader keeps its lead.</summary>
+    public void Arrived(Answer answer)
     {
         var was = Carrying;
         lock (gate) carrying = null;
         if (was == null) return;
         if (was.Route == 0) { Note("courtesy step done"); return; }   // an aside: nothing journaled, nothing next
-        Report(answer, $"route {was.Route} {(was.Kind == "stop" ? "reached the stop" : "passed the point")} ({was.X:0.0}, {was.Y:0.0})");
+        Report(answer, was.What == "turn" ? $"route {was.Route} turned to heading {was.Heading:0.00}"
+            : was.What == "back" ? $"route {was.Route} backed off to ({was.X:0.0}, {was.Y:0.0})"
+            : $"route {was.Route} {(was.Kind == "stop" ? "reached the stop" : "passed the point")} ({was.X:0.0}, {was.Y:0.0})");
         if (answer.Ok && was.IsLastStop)
         {
             ReportLocalization(was.Route);
@@ -225,10 +219,12 @@ public sealed class Robot : IOutputSink
         Report(Safely(() => GolemController.Failed(golemActor, route, reason)), $"route {route} failed: {reason}");
     }
 
-    // The body touched something — on its way (route > 0) or standing (route 0). It has already backed off and stands.
-    // The DOMAIN says what it suspects (a wall it knows, a peer that spoke, a thing) and names the conclusion; the host
-    // only waits, asks and writes it (Juan, 8-sep: "the domain decides, the host follows").
-    public async Task TouchedAsync(int route, string with, double x, double y, double heading, double poseX, double poseY)
+    // The body bumped into something — on its way (route > 0) or standing (route 0) — and its motors stopped at once.
+    // The DOMAIN says what it suspects (a wall it knows, a peer that spoke, a thing) and what follows: the route corrects
+    // its way inside (back off, then the road around) and its print — 'back' — goes to the body AT ONCE; the peers get
+    // their window meanwhile, and if one of them was there the conclusion is Met and the route decides its way out of
+    // its way (Juan, 8-sep: "the domain decides, the host follows"; 16-sep: "el que decide todo debe ser el dominio").
+    public async Task BumpedAsync(int route, string with, double x, double y, double heading, double poseX, double poseY, double poseTheta)
     {
         Order was; int since;
         lock (gate) { was = carrying; since = heardAtOrderStart; }
@@ -245,33 +241,26 @@ public sealed class Robot : IOutputSink
             return;
         }
         lock (gate) carrying = null;
-        deliberating = true;
-        try { await WeighTouchAsync(route, with, x, y, heading, poseX, poseY, since); }
-        finally { deliberating = false; }
-    }
-
-    private async Task WeighTouchAsync(int route, string with, double x, double y, double heading, double poseX, double poseY, int since)
-    {
         var hit = new Collision(with, x, y, heading);
         string where = $"({x:0.0}, {y:0.0})";
         if (Suspect(hit, since).Kind == "wall")
         {
-            // A wall I know: my own execution error. The golem keeps its patience (the same thing, again) or has spent
-            // it (the route ends). Neither is the host's call.
+            // A wall I know: my own execution error. The route backs off and tries the same legs again while the golem's
+            // patience lasts; spent, the route ends. Neither is the host's call.
             Note($"route {route}: grazed {with} at {where}, a wall I know — telling the golem");
-            var grazed = Safely(() => GolemController.Grazed(golemActor, route, x, y));
+            var grazed = Safely(() => GolemController.Grazed(golemActor, route, x, y, poseX, poseY, poseTheta));
             if (!grazed.Ok) { Report(grazed, ""); return; }
-            if (MayRetryLeg(route)) { Report(grazed, $"route {route} grazed a wall it knows at {where}"); return; }   // the print: the same order, again
+            if (MayRetryLeg(route)) { Report(grazed, $"route {route} grazed a wall it knows at {where}: backing off to try again"); return; }
             Stuck(route, $"still grazing {with} at {where} after {Grazes(route)} grazes: patience spent");
             return;
         }
 
-        // Something the map does not hold. The touch is journaled and told (the bump interrupts the way); then the golem
-        // waits for the peers to speak and asks what it suspects — before deciding the way again.
-        Note($"route {route}: bumped into something at {where} heading {heading:0.00} — nothing on my map there; telling the peers and listening");
-        var bumped = Safely(() => GolemController.Bumped(golemActor, route, golem, x, y, heading, poseX, poseY));
+        // Something the map does not hold: the bump is journaled and told, the route corrected inside, and the body
+        // told to back off at once. Then the peers' window: was it a body?
+        Note($"route {route}: bumped into {with} at {where} heading {heading:0.00} — nothing on my map there; the route corrects its way; telling the peers and listening");
+        var bumped = Safely(() => GolemController.Bumped(golemActor, route, golem, x, y, heading, poseX, poseY, poseTheta));
         if (!bumped.Ok) { Report(bumped, ""); return; }
-        Console.WriteLine($"[golem {golem}] route {route} bumped into something at {where} (entry {performance.CurrentEntryId})");
+        Report(bumped, $"route {route} bumped into something at {where}: the way corrected, backing off first");
         var until = DateTime.UtcNow + Listen;
         var suspicion = Suspect(hit, since);
         while (suspicion.Kind != "peer" && DateTime.UtcNow < until)
@@ -300,7 +289,6 @@ public sealed class Robot : IOutputSink
         }
         Note($"route {route}: nobody else bumped there and then — the mark the bump presumed at {where} stands; reconsidering for {Reconsider.TotalSeconds:0}s");
         _ = ReconsiderAsync(route, hit, since);
-        Obey(bumped.Order);   // 'decide': the route decides its way again from where the body stands
     }
 
     // A peer may speak after the window: its own row goes through its journal, its reaction and the wire before it
@@ -332,14 +320,15 @@ public sealed class Robot : IOutputSink
     public async Task RunAsync(CancellationToken ct)
     {
         // Awake with a way underway: it was decided from wherever the body stood then, and the body may be anywhere
-        // now — decide it again from here before anything else.
+        // now — decide it again from here before anything else (once the body has said where it is).
+        var patience = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (ros.LatestPose == null && DateTime.UtcNow < patience && !ct.IsCancellationRequested) await Task.Delay(200, ct);
         var first = AskOrder();
         if (first != null && (first.What == "turn" || first.What == "run")) Decide(first.Route, "awake with a plan underway");
         else Obey(first);
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(2000, ct);
-            if (deliberating) continue;   // a touch is being weighed: its outcome brings the next order
             var now = AskOrder();
             var mine = Carrying;
             if (now == null) { if (mine != null && mine.Route != 0) Stand(); continue; }

@@ -321,7 +321,7 @@ internal sealed class Golem
     // golem holds, so the same on replay), and never reused — the idempotency keys of the host hang on it.
     private Route Entrust(Position from, Position stop, bool following, bool choosesOrder)
     {
-        var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions, Radius());
+        var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions, Radius(), body.Retreat.InMeters);
         if (from != null) route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
         routes.Add(route);
         lastHandle = route.Id;

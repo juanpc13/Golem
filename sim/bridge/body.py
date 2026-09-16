@@ -3,20 +3,22 @@
 time from its golem and reports what came of it (Juan, 16-sep-2026: "el robot solo es el cuerpo; nosotros le decimos
 qué hacer, y cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print").
 
-Orders arrive on /golem/<body>/order (std_msgs/String, the JSON the golem's journal printed, plus what the body needs):
-  {"order": "turn", "route": 3, "heading": -1.57, "body": {"speed": 2.0, "radius": 0.25, "retreat": 0.6}, ...}
-  {"order": "run",  "route": 3, "x": .., "y": .., "ax": .., "ay": .., "ex": .., "ey": .., "within": 0.25, "body": {...}, ...}
+Its whole vocabulary is four words (Juan: "mover / girar / choque / llegué"). Orders arrive on /golem/<body>/order
+(std_msgs/String, the JSON the golem's journal printed, plus what the body needs):
+  {"order": "turn", "route": 3, "heading": -1.57, "body": {"speed": 2.0, "radius": 0.25}, ...}     — turn in place
+  {"order": "run",  "route": 3, "x": .., "y": .., "ax": .., "ay": .., "ex": .., "ey": .., "within": 0.25, ...}  — move to a point
+  {"order": "back", "route": 3, "x": .., "y": .., "within": 0.15, ...}                             — move to a point IN REVERSE
   {"order": "stop"}                       — stand (the operator held the route, or nothing is pending)
   {"order": "stop", "anchor": true}       — stand, and take the world's word for where you are (after a teleport)
 A new order replaces whatever the body was doing. Reports go back to the golem's endpoints as JSON bodies:
-  POST /robot/turned  {"route", "heading"}
-  POST /robot/reached {"route", "x", "y"}                       — the point the order named, verbatim
-  POST /robot/touched {"route", "with", "x", "y", "heading", "px", "py"}   — route 0 when touched while standing
+  POST /robot/arrived {"route"}                                                         — the turn made, the point reached
+  POST /robot/bump    {"route", "with", "x", "y", "heading", "px", "py", "ptheta"}      — route 0 when touched while standing
   POST /robot/stuck   {"route", "reason"}
 The body drives /model/<body>/cmd_vel and watches its odometry — the world's truth, or its own wheels' reckoning
-anchored once to the truth (a real robot's lot) — and its contact sensor. A touch ends the order: the body backs off
-until it is free again and the body's own retreat further, then reports where the touch landed on the plane (one
-radius from its centre, in the direction the shell was pressed) and where it believes it stands.
+anchored once to the truth (a real robot's lot) — and its contact sensor, its bumper. THE BUMPER IS A SWITCH: the moment
+it fires the motors stop and the bump is reported — where the touch landed on the plane (one radius from the body's
+centre, in the direction the shell was pressed) and where the body stood, facing which way. What to do about it (back
+off, go around) is the golem's to say: it comes as the next order. The body decides nothing.
 
 Usage: body.py <body> <golem-url> [world|wheels]
 """
@@ -42,8 +44,6 @@ PROGRESS = 0.05             # m, an improvement smaller than this is noise
 LINE_UP_WITHIN = 0.15       # m, a door's approach is lined up tighter than a stop
 FACING_WITHIN = 0.05        # rad, close enough to call a turn made (~3 deg)
 BACK_OFF_SPEED = 0.4        # m/s, in reverse, after a touch
-FREE_FOR = 0.4              # s without a touch reported = free
-BACK_OFF_AT_MOST = 6.0      # s
 STANDING_TOUCH_EVERY = 1.0  # s, a standing body reports a touch at most this often
 
 
@@ -71,12 +71,14 @@ class Body(Node):
         self.calibrate = True
         self.contact = None          # (model, time, bearing) the last touch
         self.order = None            # the order being carried out (dict), None while standing
-        self.phase = None            # run: "approach" | "exit"; touch: "backing"
+        self.phase = None            # run: "approach" | "exit"
         self.began = 0.0
         self.best = float("inf")
         self.improved = 0.0
-        self.backing = None          # (touch, began, start pose, retreat, free_since)
+        self.closest = float("inf")  # a reverse move: the nearest it got to the point (moving away again = arrived)
         self.last_standing_touch = 0.0
+        self.pressed = None          # the model the bumper is still pressed against since it was reported: not a new bump until released
+        self.released_since = None   # when the bumper last went quiet (no contact message for a moment)
         self.lock = threading.Lock()
 
         self.cmd = self.create_publisher(Twist, "/model/%s/cmd_vel" % body, 10)
@@ -137,39 +139,51 @@ class Body(Node):
             what = order.get("order")
             if what == "stop":
                 self.order = None
-                self.backing = None
                 if order.get("anchor"):
                     self.calibrate = True
                 self.drive(0.0, 0.0)
                 return
-            if what not in ("turn", "run"):
+            if what not in ("turn", "run", "back"):
                 self.get_logger().warning("an order I do not know: %s" % what)
                 return
             self.order = order
             self.phase = "approach" if what == "run" and (order.get("ax") != order.get("ex") or order.get("ay") != order.get("ey")) else "exit"
+            self.closest = float("inf")
             self.began = time.time()
             self.best = float("inf")
             self.improved = self.began
-            self.backing = None
             self.get_logger().info("route %s: %s %s" % (order.get("route"), what,
                                    ("to heading %.2f" % order.get("heading", 0.0)) if what == "turn" else ("to (%.2f, %.2f)" % (order.get("x", 0.0), order.get("y", 0.0)))))
 
     # ---- the servo's beat ----
     def tick(self):
         with self.lock:
-            if self.backing is not None:
-                self.back_off()
-                return
             order = self.order
             now = time.time()
             touch = self.contact
+            # A bump is reported ONCE per contact: while the bumper stays pressed against the same thing (the golem's
+            # order — back off, step aside — is on its way, or being carried out), it is not a new bump. It is released
+            # when the sensor goes quiet for a moment; only then can that thing be bumped again.
+            in_contact = touch is not None and now - touch[1] < 0.3
+            if not in_contact:
+                if self.released_since is None:
+                    self.released_since = now
+                elif now - self.released_since > 0.4:
+                    self.pressed = None
+            else:
+                self.released_since = None
+            fresh = in_contact and (self.pressed is None or touch[0] != self.pressed)
             if order is None:
-                if touch is not None and now - touch[1] < 0.3 and now - self.last_standing_touch > STANDING_TOUCH_EVERY:
+                if fresh and now - self.last_standing_touch > STANDING_TOUCH_EVERY:
                     self.last_standing_touch = now
-                    self.report_touch(0, touch)
+                    self.pressed = touch[0]
+                    self.report_bump(0, touch, None)
                 return
-            if touch is not None and touch[1] > self.began:
-                self.begin_back_off(touch, order)
+            if fresh and touch[1] > self.began:
+                self.drive(0.0, 0.0)          # the bumper fired: the motors stop at once
+                self.order = None
+                self.pressed = touch[0]
+                self.report_bump(order.get("route", 0), touch, order)
                 return
             if self.pose is None:
                 return
@@ -178,7 +192,7 @@ class Body(Node):
                 deviation = normalize(order.get("heading", 0.0) - theta)
                 if abs(deviation) < FACING_WITHIN:
                     self.drive(0.0, 0.0)
-                    self.done(order, "turned", {"route": order.get("route", 0), "heading": order.get("heading", 0.0)})
+                    self.done(order, "arrived", {"route": order.get("route", 0)})
                     return
                 if now - self.began > TURN_TIMEOUT:
                     self.drive(0.0, 0.0)
@@ -188,6 +202,9 @@ class Body(Node):
                 if abs(angular) < 0.3:
                     angular = math.copysign(0.3, angular)
                 self.drive(0.0, angular)
+                return
+            if order["order"] == "back":
+                self.reverse_to(order, now)
                 return
             # a run: line up at the approach, then run to the exit (one leg, when the two coincide)
             if self.phase == "approach":
@@ -203,7 +220,7 @@ class Body(Node):
                     self.improved = now
                     return
                 self.drive(0.0, 0.0)
-                self.done(order, "reached", {"route": order.get("route", 0), "x": order["x"], "y": order["y"]})
+                self.done(order, "arrived", {"route": order.get("route", 0)})
                 return
             if distance < self.best - PROGRESS:
                 self.best = distance
@@ -225,45 +242,31 @@ class Body(Node):
             linear = min(cruise, 1.5 * (distance - within) + 0.15) * math.cos(deviation) if abs(deviation) < 0.35 else 0.0
             self.drive(linear, angular)
 
-    # After a touch the body is pressed against what it hit: it reverses until the world stops reporting the touch
-    # (plus a moment) and the body's own retreat further, so it stands clear before the golem decides again. It gives
-    # up after a while, or if it backs into something else.
-    def begin_back_off(self, touch, order):
-        self.backing = (touch, time.time(), self.pose, order.get("body", {}).get("retreat", 0.5), None, order)
-        self.drive(-BACK_OFF_SPEED, 0.0)
-
-    def back_off(self):
-        touch, began, start, retreat, free_since, order = self.backing
-        now = time.time()
-        latest = self.contact
-        stop = False
-        if latest is not None and latest[0] != touch[0] and latest[1] > began:
-            stop = True                                       # backed into something else
-        elif free_since is None and latest is not None and now - latest[1] > FREE_FOR:
-            free_since = now
-        if free_since is not None and (start is None or self.pose is None or math.hypot(self.pose[0] - start[0], self.pose[1] - start[1]) >= retreat):
-            stop = True
-        if now - began > BACK_OFF_AT_MOST:
-            stop = True
-        if not stop:
-            self.backing = (touch, began, start, retreat, free_since, order)
+    # A move in reverse, straight back to the point the golem chose (its own retreat behind where it stood): the body
+    # reverses, gently, until it is within reach of the point or starts moving away from it.
+    def reverse_to(self, order, now):
+        x, y, theta = self.pose
+        tx, ty, within = order["x"], order["y"], order.get("within", LINE_UP_WITHIN)
+        distance = math.hypot(tx - x, ty - y)
+        if distance < within or distance > self.closest + PROGRESS or now - self.began > 8.0:
+            self.drive(0.0, 0.0)
+            self.done(order, "arrived", {"route": order.get("route", 0)})
             return
-        self.drive(0.0, 0.0)
-        self.backing = None
-        self.order = None
-        self.report_touch(order.get("route", 0), touch, at=start)
+        self.closest = min(self.closest, distance)
+        self.drive(-min(BACK_OFF_SPEED, 1.0 * distance + 0.1), 0.0)
 
-    # Where the touch landed on the plane, as the body reckons it: one radius from the centre of the body it believed
-    # at the touch, in the direction the shell was pressed. The heading points into what was touched.
-    def report_touch(self, route, touch, at=None):
-        pose = at or self.pose
+    # Where the touch landed on the plane, as the body reckons it: one radius from the centre of the body it believes,
+    # in the direction the shell was pressed. The heading points into what was touched. And where the body stands,
+    # facing which way — the golem's route backs it off from there.
+    def report_bump(self, route, touch, order):
+        pose = self.pose
         if pose is None:
             return
-        radius = (self.order or {}).get("body", {}).get("radius", 0.25) if self.order else 0.25
+        radius = (order or {}).get("body", {}).get("radius", 0.25)
         heading = normalize(pose[2] + touch[2])
-        self.post("touched", {"route": route, "with": touch[0],
-                              "x": pose[0] + radius * math.cos(heading), "y": pose[1] + radius * math.sin(heading),
-                              "heading": heading, "px": pose[0], "py": pose[1]})
+        self.post("bump", {"route": route, "with": touch[0],
+                           "x": pose[0] + radius * math.cos(heading), "y": pose[1] + radius * math.sin(heading),
+                           "heading": heading, "px": pose[0], "py": pose[1], "ptheta": pose[2]})
 
     def done(self, order, what, report):
         self.order = None

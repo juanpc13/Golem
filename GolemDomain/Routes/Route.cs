@@ -24,6 +24,7 @@ internal sealed class Route
     private readonly MapLayout layout;         // where its doors stand and its stops lie
     private readonly Collisions collisions;    // what a bump on the way teaches, and what the planner skirts
     private readonly double radius;            // the body the way is planned for
+    private readonly double retreat;           // how far it backs off after a touch, before anything else
     private readonly List<Position> stops = new();
     /// <summary>Where to go, in the order given.</summary>
     internal IReadOnlyList<Position> Stops => stops;
@@ -51,15 +52,17 @@ internal sealed class Route
     /// <summary>How many times the golem retries after grazing a known wall before it gives the route up.</summary>
     internal const int PatienceWithWalls = 3;
 
-    internal Route(int id, Position stop, bool following, bool choosesOrder, MapLayout layout, Collisions collisions, double radius)
+    internal Route(int id, Position stop, bool following, bool choosesOrder, MapLayout layout, Collisions collisions, double radius, double retreat)
     {
         if (stop == null) throw new GolemDomainException("Route.Route: 'stop' was not given");
         if (layout == null) throw new GolemDomainException($"route {id} is decided on a layout");
         if (collisions == null) throw new GolemDomainException($"route {id} needs the collisions module, even empty");
         if (radius < 0) throw new GolemDomainException($"route {id} is planned for a body: its radius cannot be negative");
+        if (retreat < 0) throw new GolemDomainException($"route {id} is planned for a body: its retreat cannot be negative");
         this.layout = layout;
         this.collisions = collisions;
         this.radius = radius;
+        this.retreat = retreat;
         Id = id;
         Following = following;
         ChoosesOrder = choosesOrder;
@@ -165,12 +168,17 @@ internal sealed class Route
 
     internal bool IsRouted => !way.IsEmpty;
     /// <summary>What the route asks of the body NOW, one thing at a time: 'hold' (the operator paused it), 'decide' (it
-    /// has no way yet, or a bump interrupted the one it had: the way must be decided again from where the body stands),
-    /// 'turn' (turn in place to the next leg's heading) or 'run' (run to the next leg's point). The golem prints it after
-    /// every act that changes it; the body does that one thing and reports it.</summary>
-    internal string Order => Paused ? "hold" : (!IsRouted || BumpedSinceRoute) ? "decide" : (NextLeg.HasHeading && !turned) ? "turn" : "run";
-    /// <summary>Whether the body may act on the next leg now — turn or run: a way decided, not interrupted, not held.</summary>
-    internal bool IsWalkable => IsPending() && IsRouted && !BumpedSinceRoute && !Paused;
+    /// has no way yet, or its corrections ran out without a way: the way must be decided again from where the body
+    /// stands), 'back' (reverse to the correction point a touch inserted), 'turn' (turn in place to the next leg's
+    /// heading) or 'run' (run to the next leg's point). The golem prints it after every act that changes it; the body
+    /// does that one thing and reports it.</summary>
+    internal string Order => Paused ? "hold"
+        : (!IsRouted || nextLeg >= way.Count) ? "decide"
+        : NextLeg.IsReverse ? "back"
+        : BumpedSinceRoute ? "decide"
+        : (NextLeg.HasHeading && !turned) ? "turn" : "run";
+    /// <summary>Whether the body may act on the next leg now — back, turn or run: a leg ahead, not held.</summary>
+    internal bool IsWalkable => IsPending() && IsRouted && nextLeg < way.Count && !Paused && Order != "decide";
     internal int LegsLeft => way.Count - nextLeg;
     /// <summary>The legs not yet known to be walked: the plan ahead, from the first one on.</summary>
     internal IReadOnlyList<Leg> LegsAhead => way.Legs().Skip(nextLeg).ToList();
@@ -248,8 +256,7 @@ internal sealed class Route
             grazesOnLeg = 0;
         }
         reached++;
-        bool done = IsRouted ? !way.Legs().Skip(nextLeg).Any(l => l.IsStop) : reached == stops.Count;
-        if (done) status = RouteStatus.Completed;
+        if (reached == stops.Count) status = RouteStatus.Completed;
         return this;
     }
 
@@ -280,28 +287,66 @@ internal sealed class Route
         return IsPending() && StopsAhead.Any(s => Same(s, at));
     }
 
-    /// <summary>The body touched something the map does not hold — where, heading which way — on this route: the plan
-    /// is interrupted (the route asks 'decide'), and the golem presumes a THING there: a mark, at once (a peer that says
-    /// it was there takes it back — Met). Told to the peers (exposed beside the act).</summary>
-    internal Route Bump(Pose touch)
+    /// <summary>The body touched something the map does not hold — where and heading which way (the touch), and where the
+    /// body stood facing which way (me) — on this route. The golem presumes a THING there and marks it at once (a peer
+    /// that says it was there takes it back — Met; told to the peers, exposed beside the act). And the route CORRECTS
+    /// ITS WAY INSIDE (Juan, 16-sep-2026: "cuando choca queriendo llegar de A a B mete entre A y B otros puntos: ir para
+    /// atrás un poco y pasar al lado… posiciones de corrección"): first a leg to back off — in reverse, the body's own
+    /// retreat behind where it stood — then the planner's road from there through the stops ahead, skirting the figure
+    /// the mark now outlines. When no way fits from there, the retreat alone stays and the route asks 'decide' after it.</summary>
+    internal Route Bump(Pose touch, Pose me)
     {
         MustBePending();
         if (touch == null) throw new GolemDomainException($"route {Id}'s bump needs the pose of the touch");
+        if (me == null) throw new GolemDomainException($"route {Id}'s bump needs where the body stood");
+        if (ReferenceEquals(touch, me)) throw new GolemDomainException("Route.Bump: 'touch' and 'me' are the same pose");
         bumps++;
         bumpsSinceRoute++;
         collisions.Mark(touch);
+        Correct(me, replan: true);
         return this;
     }
 
     /// <summary>The body grazed a wall the map KNOWS, on this route: its own execution error, no discovery, counted
-    /// against its patience since the last stop reached or way decided.</summary>
-    internal Route Graze(Position at)
+    /// against its patience since the last stop reached or way decided. The way gains a retreat first, then goes on as
+    /// it was (the same legs, tried again from a body's length back).</summary>
+    internal Route Graze(Position at, Pose me)
     {
         MustBePending();
         if (at == null) throw new GolemDomainException($"route {Id}'s graze needs where it happened");
+        if (me == null) throw new GolemDomainException($"route {Id}'s graze needs where the body stood");
+        if (ReferenceEquals(at, me)) throw new GolemDomainException("Route.Graze: 'at' and 'me' are the same position");
         grazes++;
         grazesOnLeg++;
+        Correct(me, replan: false);
         return this;
+    }
+
+    // The corrections a touch inserts ahead of what was left: back off first (a leg walked in reverse, the body's retreat
+    // behind where it stood), then — replanning — the road from there through the stops ahead, or — not replanning — the
+    // legs that were left, walked again from the retreat point. If no road fits from there, the retreat alone stays and
+    // the route asks 'decide' once it is done (the way is exhausted without completing).
+    private void Correct(Pose me, bool replan)
+    {
+        var back = me.Along(me.Heading + Math.PI, retreat);
+        var legs = new List<Leg> { new(back, Leg.Retreat) };
+        if (replan)
+        {
+            try { legs.AddRange(Planner().Road(back, Ordered(back)).Legs()); }
+            catch (GolemDomainException)
+            {
+                way = new Trajectory(legs).WalkedFrom(me);   // stranded: back off, then decide again
+                nextLeg = 0;
+                turned = false;
+                return;
+            }
+        }
+        else
+            foreach (var left in way.Legs().Skip(nextLeg))
+                legs.Add(new Leg(left.At, left.Name, left.Approach, left.Exit));   // its heading is given again, from the retreat point
+        int patience = grazesOnLeg;
+        Take(new Trajectory(legs), me);
+        if (!replan) grazesOnLeg = patience;   // the same leg, tried again: the patience spent on it stays spent
     }
 
     // ---- the hold (Juan, 14-sep-2026: "pausa/continuar el trayecto actual en ejecución") ----

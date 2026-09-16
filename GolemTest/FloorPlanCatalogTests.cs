@@ -134,7 +134,7 @@ public class FloorPlanCatalogTests
         Assert.AreEqual("Map.Connects: 'a' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Connects(null, kitchen)).Message);
         Assert.AreEqual("Zone.Contains: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => kitchen.Contains(null)).Message);
         Assert.AreEqual("a golem needs a body to drive", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Golem(null, map, new GolemDomain.Touches.Collisions(map))).Message);
-        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Routes.Route(1, null, false, false, map, new GolemDomain.Touches.Collisions(map), 0.25)).Message);
+        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Routes.Route(1, null, false, false, map, new GolemDomain.Touches.Collisions(map), 0.25, 0.6)).Message);
     }
 
     [TestMethod]

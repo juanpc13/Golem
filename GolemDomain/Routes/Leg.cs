@@ -15,6 +15,9 @@ internal sealed class Leg
     internal const string Detour = "around";
     /// <summary>The name of a leg that steps out of a peer's way: a body stands there, and bodies move on.</summary>
     internal const string Courtesy = "aside";
+    /// <summary>The name of the leg a touch inserts first: back off, in reverse, to a point behind where the body stood
+    /// (Juan, 16-sep-2026: "el siguiente print sea retroceder un poco… pasos intermedios adicionales en la lista").</summary>
+    internal const string Retreat = "back";
     /// <summary>A point the way passes through that is no passage and no stop — what the route calls a point it was given
     /// bare (the planner's detours and courtesy steps arrive at the journal as points).</summary>
     internal const string Waypoint = "via";
@@ -27,7 +30,12 @@ internal sealed class Leg
     internal bool IsStop => Kind == "stop";
     /// <summary>door, opening, around, aside or stop — what the journal's act for this leg is.</summary>
     internal string Kind =>
-        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name == Waypoint ? Waypoint : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
+        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name == Retreat ? Retreat : Name == Waypoint ? Waypoint : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
+    /// <summary>A correction the way gained after a touch (back, around, aside), as opposed to a leg of the plan as first decided
+    /// (a door, an opening, a point, a stop) — Juan, 16-sep-2026: "posiciones legacy vs posiciones de corrección".</summary>
+    internal bool IsCorrection => Kind == Retreat || Kind == Detour || Kind == Courtesy;
+    /// <summary>Walked in reverse: no turn before it.</summary>
+    internal bool IsReverse => Kind == Retreat;
     /// <summary>A passage's two areas (the first and the second of its name); "" for a point or a stop.</summary>
     internal string A => Kind == "door" ? Name[..Name.IndexOf('/')] : Kind == "opening" ? Name[..Name.IndexOf('~')] : "";
     internal string B => Kind == "door" ? Name[(Name.IndexOf('/') + 1)..] : Kind == "opening" ? Name[(Name.IndexOf('~') + 1)..] : "";
