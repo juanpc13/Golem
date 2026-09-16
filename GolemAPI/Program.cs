@@ -3,9 +3,9 @@ using GolemAPI;
 using GolemAPI.Choreography;
 using GolemDomain;
 using GolemAPI.Membrane;
-using GolemAPI.Navigation;
 using GolemAPI.Panel;
 using Puppeteer;
+using Puppeteer.EventSourcing.Interpreter.Formatters;
 
 // The DSL renders numbers into the journal with the current culture: pin it, or a
 // Spanish-locale host would journal 11,08 and rehydrate a verb with the wrong arity.
@@ -15,10 +15,10 @@ System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureIn
 // GolemAPI bootstrap — the carátula around one actor. The pieces:
 //   GolemDomain/   — plain puppets (Golem, Body, MapLayout, Collisions, Mission): the DSL verbs.
 //   Membrane       — rosbridge websocket (telemetry, drive, teleport) + HttpBroker (tell wire).
-//   Navigation     — the seam to the body's locomotion (DiffDriveNavigator in Gazebo today, Nav2 tomorrow).
 //   Panel          — the page, the SSE feed, and the tap that shows the journal record by record.
-//   Controllers    — the actor's endpoints (GolemController) and the operator's (OperatorController).
-//   Choreography   — reactions (speech), the ops Saga, the mission loop.
+//   Controllers    — every journal script (GolemController: the operator's verbs, the robot's reports), the operator's (OperatorController).
+//   Choreography   — the Robot (the output target: the print switched on and sent to the body), the speech (reactions and uptakes).
+// The body itself is a ROS node in the simulator (sim/bridge/body.py): it takes one order at a time and reports back.
 // The journal is the only truth; if this process dies, it rehydrates and resumes.
 
 string journalPath = Environment.GetEnvironmentVariable("JOURNAL_PATH")
@@ -47,10 +47,6 @@ performance.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
 var golemActor = performance.Actor;   // the golem itself: every script (GolemController) and query is performed on it
 
 var ros = new Rosbridge(rosbridgeUrl, body, poseSource);
-// The mailbox between the scripts (GolemController: every command ends with the print of the next order) and the body's driver.
-var orders = new Orders();
-GolemDriver driver = null;
-var navigator = new DiffDriveNavigator(ros, () => driver.Speed(), () => driver.Radius(), () => driver.Retreat()); // speed, size and retreat: the body the golem declared in its journal
 var feed = new PanelFeed();
 // Where peers reach ME (the origin every outgoing frame carries, so acks find their way back).
 var myUrl = new Uri(Environment.GetEnvironmentVariable("MY_URL") ?? $"http://{golem}-golem:{panelPort}");
@@ -68,7 +64,10 @@ var peers = routes.Keys
 
 var speech = new GolemSpeech(performance, golemActor, wire, feed, golem, tellDoneTo, peers);
 speech.DefineReactions();
-driver = new GolemDriver(performance, golemActor, ros, navigator, feed, wire, orders, golem, home, journalPath);
+// The robot as the golem sees it: the OUTPUT TARGET of every print — parsed, switched on, sent to the body over the
+// websocket; the body reports back on the /robot/* endpoints. Registered as the actor's output target too.
+var robot = new Robot(performance, golemActor, ros, feed, wire, golem, home, journalPath);
+performance.OutputTarget(robot, new JsonFormatter());
 
 performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
 new JournalTap(performance, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands
@@ -82,8 +81,7 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddControllers();
 builder.Services.AddSingleton<PerformanceV2>(performance);
 builder.Services.AddSingleton<ActorV2>(golemActor);
-builder.Services.AddSingleton(driver);
-builder.Services.AddSingleton(orders);
+builder.Services.AddSingleton(robot);
 builder.Services.AddSingleton(feed);
 builder.Services.AddSingleton(wire);
 builder.Services.AddSingleton(ros);
@@ -112,15 +110,15 @@ feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
 if (performance.BornThisBoot)
 {
     await Task.Delay(500, ct); // let the advertise settle before the first publish
-    await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
+    await robot.PutBackHomeAsync(ct);
     feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
         $"reborn — body '{body}' put back on its mark at ({home.X}, {home.Y})", DateTime.UtcNow));
 }
 
-// --- The mission loop, until shutdown. ---
+// --- The clock, until shutdown: the journal asked now and then what it wants, when no print brought it. ---
 try
 {
-    await driver.RunAsync(ct);
+    await robot.RunAsync(ct);
 }
 catch (OperationCanceledException) { }
 

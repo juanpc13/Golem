@@ -37,6 +37,14 @@ ros2 run ros_gz_bridge parameter_bridge $(cat /world/bridge.args) &
 set +f
 python3 /golem/teleport.py arena &
 python3 /golem/crates.py arena &
+# The bodies: one node per body, the ROBOT the golem orders around — GOLEMS=name=url;name=url, POSE_SOURCES=name=wheels
+IFS=';' read -ra GOLEM_LIST <<< "${GOLEMS:-}"
+for entry in "${GOLEM_LIST[@]}"; do
+  [ -z "$entry" ] && continue
+  name="${entry%%=*}"; url="${entry#*=}"; src=world
+  case ";${POSE_SOURCES:-};" in *";${name}=wheels;"*) src=wheels;; esac
+  python3 /golem/body.py "$name" "$url" "$src" &
+done
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
 
 if [ "${KIOSK:-true}" != "true" ]; then

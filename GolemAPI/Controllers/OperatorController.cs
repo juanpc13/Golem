@@ -15,16 +15,16 @@ public class OperatorController : Controller
 {
     private readonly PerformanceV2 performance;
     private readonly ActorV2 golemActor;
-    private readonly GolemDriver driver;
+    private readonly Robot robot;
     private readonly PanelFeed feed;
     private readonly Rosbridge ros;
     private readonly GolemIdentity identity;
 
-    public OperatorController(PerformanceV2 performance, ActorV2 golemActor, GolemDriver driver, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
+    public OperatorController(PerformanceV2 performance, ActorV2 golemActor, Robot robot, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
     {
         this.performance = performance;
         this.golemActor = golemActor;
-        this.driver = driver;
+        this.robot = robot;
         this.feed = feed;
         this.ros = ros;
         this.identity = identity;
@@ -83,7 +83,7 @@ public class OperatorController : Controller
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
     {
-        await driver.LetGoAsync();
+        await robot.LetGoAsync();
         return Accepted();
     }
 
@@ -95,7 +95,7 @@ public class OperatorController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ResetRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        await driver.ResetEverythingAsync(request.Cascade.Value);
+        await robot.ResetEverythingAsync(request.Cascade.Value);
         return Accepted();
     }
 

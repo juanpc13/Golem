@@ -21,9 +21,10 @@ in [CLAUDE.md](CLAUDE.md).
 ┌───────┴────────┐  panel :8081                          panel :8082  ┌───┴────────────┐
 │  blue-golem    │                                                    │   red-golem    │
 │  actor + journal ./journal/blue                                     │   ./journal/red│
-│  DiffDriveNavigator                                                 │                │
+│  Robot = the output target: the print → /golem/blue/order          │                │
 └───────┬────────┘                                                    └───────┬────────┘
-        │  rosbridge (JSON over websocket) :9090                              │
+        │  rosbridge (JSON over websocket) :9090  ↓ orders                    │
+        │  HTTP /robot/turned|reached|touched|stuck ↑ reports                 │
         └────────────────────────────┬────────────────────────────────────────┘
                                      │
                           ┌──────────┴───────────┐
@@ -31,6 +32,7 @@ in [CLAUDE.md](CLAUDE.md).
                           │  Gazebo Fortress      │   physics · walls · bodies with contact
                           │  ros_gz_bridge        │   sensors · a crate the map does not know
                           │  rosbridge · teleport │   the world is GENERATED from sim/world/plan.json
+                          │  body.py × 3 (robots) │   each body: one order at a time, reported back
                           └──────────────────────┘
 ```
 
@@ -107,10 +109,10 @@ set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
 
 | Path | Role |
 |---|---|
-| `sim/` | The world. `world/plan.json` is the floor plan (places, doors, open boundaries, bodies, obstacles); `world/build_world.py` turns it into the Gazebo world and the bridge's topic mappings at image build; `kiosk/kiosk.sh` starts physics, bridges, rosbridge and the GUI; `bridge/teleport.py` is the lab lever that puts a body back on its mark. |
+| `sim/` | The world. `world/plan.json` is the floor plan (places, doors, open boundaries, bodies, obstacles); `world/build_world.py` turns it into the Gazebo world and the bridge's topic mappings at image build; `kiosk/kiosk.sh` starts physics, bridges, rosbridge, the GUI and one `bridge/body.py` per body — the ROBOT: it takes its golem's order on `/golem/<body>/order` (turn, run, stop), drives the body, backs off after a touch and reports to the golem's `/robot/*` endpoints; `bridge/teleport.py` is the lab lever that puts a body back on its mark. |
 | `GolemDomain/` | The pure domain, no framework references: `Golem` (the subject: missions, decisions, orders), `Body`, `Maps` (`Map`, `Area`, `Door`, `Opening`: information only), `Layouts` (`Layout`, `Zone`, `Wall`, the `Catalog`: the map on the plane), `Touches` (`Collisions`, `Mark`, `Obstacle`: what the bodies learned), `Routes` (`RoutePlanner`: Dijkstra over doors, openings and detours; doors are crossed straight, openings away from their corners). |
 | `GolemTest/` | Acceptance tests that enter through the actor's perform, against an in-memory journal, with the same release chain the host runs. `dotnet test GolemTest` |
-| `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Navigation/` (the seam to the body's locomotion), `Choreography/` (the `Orders` mailbox, `GolemDriver` — the body's servo, one order at a time —, `GolemSpeech` — the tell reactions and uptakes), `Panel/` (the page and the journal tap), `Controllers/` (`GolemController`: EVERY journal script, each ending in the print of the next order, which the command returns to whoever performed it). |
+| `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Choreography/` (`Robot` — the actor's output target: every print parsed, switched on and sent to the body over the websocket; `GolemSpeech` — the tell reactions and uptakes), `Panel/` (the page and the journal tap), `Controllers/` (`GolemController`: EVERY journal script, each ending in the print of the next order, which the command returns to whoever performed it; the robot reports on `/robot/turned`, `/robot/reached`, `/robot/touched`, `/robot/stuck`). |
 | `journal/` | The golems' journals (FileSystem backend), one folder per golem. Git-ignored; disposable in this spike. |
 | `PLAN-Golem.md` | The team's plan and decision log (Spanish): what was tried, what was retired, what the engine taught us. |
 
@@ -160,6 +162,7 @@ Endpoints, per golem:
 | `POST /reset` · `POST /reset-everything` `{"cascade": true}` | Abandon every pending mission (journaled, one command) and put the body back; wipe the journals of this golem and (with cascade) its peers and reboot them reborn |
 | `GET /events` | The panel's feed: the whole journal replayed, then every record as it lands, plus runtime events |
 | `POST /tell` | Where a peer's tells arrive |
+| `POST /robot/turned` · `/robot/reached` · `/robot/touched` · `/robot/stuck` | Where the BODY reports the one thing it was told (`sim/bridge/body.py`): the endpoint writes the act and the print of that act is the next order, sent back to the body |
 
 Environment of a golem container: `GOLEM` (identity, names the journal), `BODY` (the model it drives),
 `HOME_AT` (its mark), `ROSBRIDGE_URL`, `JOURNAL_PATH`, `PANEL_PORT`, `TELL_ROUTES` (tell topic → peer

@@ -17,6 +17,9 @@ services:
       - "9090:9090"  # rosbridge (the membrane)
     environment:
       - KIOSK=true   # false = headless: physics and bridges only, no picture (saves ~5 cores of software rendering)
+      # The bodies' nodes (sim/bridge/body.py): each body takes its golem's orders and reports to its golem's endpoints
+      - GOLEMS=blue=http://blue-golem:8080;red=http://red-golem:8080;green=http://green-golem:8080
+      - POSE_SOURCES=green=wheels   # green's body lives on its wheels' reckoning, like its golem
     shm_size: 512m
     security_opt:
       - seccomp=unconfined

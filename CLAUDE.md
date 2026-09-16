@@ -132,15 +132,26 @@ whether it could or not, so the domain resolves what follows. Consequences:
   (run to the leg's point), `hold` or `decide`. A command's print
   comes back to WHOEVER PERFORMED IT, at write time — `PerformCheckThenCommand` returns it; a refused Check returns
   `{"EWI":[{"Error":"…"}]}`, the domain's own words (lab 16-sep, `lab-print.txt`) — so the answer to a report IS the
-  next order (`Choreography/Orders.cs`: `Order`, `Answer`): no Reaction, no `OutputTarget`, no push in between. The
-  endpoint or the driver leaves that order in the `Orders` mailbox (latest wins; a different order drops the drive in
-  progress; a let-go drops it with no order) and `GolemDriver` takes ONE and does it: `hold` stands, `decide` writes
-  `route.Decide(from)` from the pose (`Decided`; `DecidedPast` out of a peer's way), `turn` turns the body in place,
-  `run` runs to the point — then REPORTS through the controller's script (`Turned`: `{ route = g.Find(@id); route.Turn(); }`;
-  `Passed`/`Reached`: `{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }`, `Bumped`, `Grazed`,
-  `Failed`…), whose print is the next order — "gira, luego ros le dice ya giré, se escribe que giró y esa escritura
-  imprime lo siguiente" (Juan, 16-sep). When nothing comes within 2 s
-  (a told point taken up as a `Follow`, a boot) the driver ASKS the same print as a query (`AskOrder`). Every point of
+  next order (`Choreography/Order.cs`: `Order`, `Answer`). **The print is handed to the ROBOT, the actor's OUTPUT
+  TARGET** (Juan, 16-sep, evening: "el print retorna al controller, pero ese mismo objeto analiza el JSON y tiene un
+  switch con las acciones disponibles; dentro de cada case están los llamados que viajan hasta el robot… el robot solo
+  es el cuerpo; cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print"):
+  `Choreography/Robot.cs` implements `IOutputSink` and is registered with `performance.OutputTarget(robot, JsonFormatter)`;
+  every command's returned print goes to `robot.Obey(print)`, which parses it and SWITCHES: `hold` → the body stands;
+  `decide` → `route.Decide(from)` from the pose (`Decided`; `DecidedPast` out of a peer's way) and the new print is
+  obeyed; `turn` / `run` → the SAME JSON travels to the body over the websocket (rosbridge, `std_msgs/String` on
+  `/golem/<body>/order`, plus `within` and the body the journal declared: speed, radius, retreat). The same order twice
+  is not resent; a different one replaces what the body was doing. **The body is a ROS node in the simulator**
+  (`sim/bridge/body.py`, one per body, launched by `kiosk.sh` from `GOLEMS`/`POSE_SOURCES`): it drives `cmd_vel`, watches
+  its odometry (the truth, or its wheels' reckoning anchored once) and its contact sensor, does that ONE thing and
+  reports on the golem's endpoints — `POST /robot/turned`, `/robot/reached` (the point verbatim), `/robot/touched`
+  (what, where on the plane, heading into it, where it stood; route 0 while standing), `/robot/stuck` — each a
+  validated JSON body whose endpoint writes the act whole (`route.Turn()`, `route.Reach(point)`) and hands the answer
+  back to the Robot: its print is the next order — "gira, luego ros le dice ya giré, se escribe que giró y esa escritura
+  imprime lo siguiente". The touch protocol lives in the Robot (`TouchedAsync`: `Suspect` → `Grazed` or `Bumped`, the
+  peers' window, `Met`, `DecidedPast` or `Decide`), performed with the controller's scripts; while a touch is weighed the
+  clock stays out of it. When nothing comes through a print (a told point taken up as a `Follow`, a boot) the Robot's
+  clock ASKS the same print as a query every 2 s (`AskOrder`) and obeys it if it differs from what the body carries. Every point of
   the way is journaled (the 10-sep "walk in silence" is superseded by the 16-sep dialogue). The host keeps only the
   clock (listening after a bump, the follower's linger), the wire, and the body's servo (turning to the heading,
   running, backing off the retreat). The courtesy step is the golem's (`g.Aside(Pose)`); the host walks it. The acts
@@ -227,7 +238,10 @@ whether it could or not, so the domain resolves what follows. Consequences:
   `sim/bridge/crates.py` (an rclpy node, brother of `teleport.py`) turns the topics into
   Gazebo's services: `/sim/crate` and `/sim/view` in, `/sim/crates` out (what stands there,
   so a button never lies), `/world/arena/create` · `/remove` and the GUI's
-  `/gui/move_to/pose` (the pose read from the world's own `<camera_pose>`). Reality is
+  `/gui/move_to/pose` (the pose read from the world's own `<camera_pose>`). **The bodies are ROS nodes here
+  too** (16-sep-2026, `sim/bridge/body.py`, one per body): each takes its golem's order on `/golem/<body>/order`
+  (turn, run, stop), drives `/model/<body>/cmd_vel`, backs off after a touch, and reports to its golem's
+  `/robot/*` endpoints — the robot is only the body; the golem tells it what to do, one thing at a time. Reality is
   GENERATED from `sim/world/plan.json` at image build (walls, doors, solid blocks, bodies
   with contact sensors); its `obstacles` are empty on purpose since 10-sep, so every test
   starts from a clean floor and the crates are pressed in as needed — they live only in the
@@ -242,10 +256,11 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - `GolemAPI/` — the generic golem program (ASP.NET controllers). One image, N
   golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech). Since 16-sep-2026 EVERY
-  journal script lives in `Controllers/GolemController.cs` (the endpoints' commands, the driver's reports, the tell
-  uptakes — each ending in `NextOrder`); `Choreography/` holds the `Orders` mailbox (order, answer, latest wins),
-  `GolemDriver` (the body's servo and the touch protocol's clock: one order at a time) and `GolemSpeech` (the tell
-  reactions and uptakes) — no mission loop, no legs in memory, no `OutputTarget`. **What the operator sends arrives as a
+  journal script lives in `Controllers/GolemController.cs` (the operator's verbs, the robot's reports, the touch
+  protocol's scripts, the tell uptakes — each ending in `NextOrder`); `Choreography/` holds the `Robot` (the actor's
+  OUTPUT TARGET: the print switched on and sent to the body over rosbridge; the touch protocol's clock; the reports'
+  bookkeeping) and `GolemSpeech` (the tell reactions and uptakes) — no mission loop, no legs in memory, no navigator:
+  the body's servo is the ROS node `sim/bridge/body.py`. **What the operator sends arrives as a
   JSON body, typed and validated before any script runs** (Juan, 16-sep: "debería ser por JSON… y validar que venga
   correcta"): `Controllers/Requests.cs` — `ErrandRequest` (`{"stops": [{"area": "kitchen"}, {"x": 9.0, "y": 8.0}]}`),
   `PointRequest`, `QueryRequest`, `ResetRequest` — each says what is wrong with it and the endpoint answers 400 with

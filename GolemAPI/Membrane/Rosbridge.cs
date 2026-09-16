@@ -38,6 +38,7 @@ public enum PoseSource { World, Wheels }
 //   /model/<body>/wheel_odometry  nav_msgs/Odometry          (out) where the wheels BELIEVE it is
 //   /model/<body>/contacts        ros_gz_interfaces/Contacts (out) what the body touches, by name, and where on its shell
 //   /sim/teleport                 geometry_msgs/PoseStamped  (in)  the lab lever: put a body on a mark
+//   /golem/<body>/order           std_msgs/String            (out) the golem's order to its body: the print, as JSON (body.py)
 // Everything arriving here is ephemeral telemetry; nothing of it reaches the journal.
 public sealed class Rosbridge : IAsyncDisposable
 {
@@ -63,6 +64,8 @@ public sealed class Rosbridge : IAsyncDisposable
     private string Odometry => $"/model/{body}/odometry";
     private string WheelOdometry => $"/model/{body}/wheel_odometry";
     private string Contacts => $"/model/{body}/contacts";
+    /// <summary>Where the golem's orders travel to its body (std_msgs/String: the JSON the journal printed, as such).</summary>
+    public string OrderTopic => $"/golem/{body}/order";
     private const string Teleport = "/sim/teleport";
 
     public Rosbridge(string url, string body, PoseSource source)
@@ -100,12 +103,20 @@ public sealed class Rosbridge : IAsyncDisposable
     {
         await SendAsync(new { op = "advertise", topic = CmdVel, type = "geometry_msgs/Twist" }, ct);
         await SendAsync(new { op = "advertise", topic = Teleport, type = "geometry_msgs/PoseStamped" }, ct);
+        await SendAsync(new { op = "advertise", topic = OrderTopic, type = "std_msgs/String" }, ct);
         await SendAsync(new { op = "subscribe", topic = Odometry, type = "nav_msgs/Odometry", throttle_rate = 50 }, ct);
         if (Source == PoseSource.Wheels)
             await SendAsync(new { op = "subscribe", topic = WheelOdometry, type = "nav_msgs/Odometry", throttle_rate = 50 }, ct);
         await SendAsync(new { op = "subscribe", topic = Contacts, type = "ros_gz_interfaces/Contacts", throttle_rate = 50 }, ct);
         reader = Task.Run(() => ReadLoopAsync(readerCts.Token), CancellationToken.None);
         Console.WriteLine($"[membrane] driving {CmdVel}; pose from {(Source == PoseSource.Wheels ? WheelOdometry + " (dead reckoning)" : Odometry + " (the world's truth)")}; contacts on {Contacts}");
+    }
+
+    /// <summary>A JSON document on a std_msgs/String topic — the order to the body, as the golem printed it.</summary>
+    public async Task PublishAsync(string topic, string json)
+    {
+        try { await SendAsync(new { op = "publish", topic, msg = new { data = json } }, CancellationToken.None); }
+        catch (Exception e) { Console.WriteLine($"[membrane] could not publish on {topic}: {e.Message}"); }
     }
 
     public Task DriveAsync(double linear, double angular, CancellationToken ct) =>

@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ros-humble-rosb
 COPY world/ /world/
 RUN python3 /world/build_world.py /world/plan.json /world
 
-COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh bridge/teleport.py bridge/crates.py /golem/
+COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh bridge/teleport.py bridge/crates.py bridge/body.py /golem/
 # The buttons' page becomes noVNC's index, so the ONE published port shows the levers with the
 # picture; the bare viewer stays at /vnc.html. The buttons need no port of their own: they order
 # through rosbridge (:9090) and crates.py turns those topics into the world's services.
