@@ -14,16 +14,14 @@ namespace GolemAPI.Controllers;
 public class OperatorController : Controller
 {
     private readonly PerformanceV2 performance;
-    private readonly ActorV2 golemActor;
-    private readonly Robot robot;
+    private readonly Robot robot;   // the golem's actor is its Actor: the lab console performs on robot.Actor
     private readonly PanelFeed feed;
     private readonly Rosbridge ros;
     private readonly GolemIdentity identity;
 
-    public OperatorController(PerformanceV2 performance, ActorV2 golemActor, Robot robot, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
+    public OperatorController(PerformanceV2 performance, Robot robot, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
     {
         this.performance = performance;
-        this.golemActor = golemActor;
         this.robot = robot;
         this.feed = feed;
         this.ros = ros;
@@ -72,7 +70,7 @@ public class OperatorController : Controller
             script = "{ print " + script.TrimEnd(';') + " 'value'; }";
         try
         {
-            return Content(golemActor.Using(script).PerformQuery(), "application/json");
+            return Content(robot.Actor.Using(script).PerformQuery(), "application/json");
         }
         catch (Exception ex)
         {

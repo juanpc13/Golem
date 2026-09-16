@@ -19,14 +19,12 @@ namespace GolemAPI.Controllers;
 // the perform's print output IS the response.
 public class GolemController : Controller
 {
-    private readonly ActorV2 golemActor;   // the golem itself: every script below is performed on it
-    private readonly Rosbridge ros;
-    private readonly Robot robot;          // the output target: every print ends up in its switch and travels to the body
+    // The Robot is all a controller needs: the golem itself is its Actor (every script here is `robot.Actor.Using(…)`),
+    // the body's pose is its telemetry, and every print goes back into it — the output target.
+    private readonly Robot robot;
 
-    public GolemController(ActorV2 golemActor, Rosbridge ros, Robot robot)
+    public GolemController(Robot robot)
     {
-        this.golemActor = golemActor;
-        this.ros = ros;
         this.robot = robot;
     }
 
@@ -71,7 +69,7 @@ public class GolemController : Controller
         Answer answer;
         try
         {
-            answer = Answer.Of(golemActor.Using(
+            answer = Answer.Of(robot.Actor.Using(
                 @"
                     Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
                 ",
@@ -96,7 +94,7 @@ public class GolemController : Controller
         {
             try
             {
-                answer = Answer.Of(golemActor.Using(
+                answer = Answer.Of(robot.Actor.Using(
                     @"
                         Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
                         Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
@@ -132,7 +130,7 @@ public class GolemController : Controller
         Answer answer;
         try
         {
-            answer = Answer.Of(golemActor.Using(
+            answer = Answer.Of(robot.Actor.Using(
                 @"
                     Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
                 ",
@@ -157,7 +155,7 @@ public class GolemController : Controller
         {
             try
             {
-                answer = Answer.Of(golemActor.Using(
+                answer = Answer.Of(robot.Actor.Using(
                     @"
                         Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
                         Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
@@ -184,7 +182,7 @@ public class GolemController : Controller
     {
         int? id = RouteUnderway();
         if (id == null) return Conflict("nothing underway: no pending route");
-        var answer = Answer.Of(golemActor.Using(
+        var answer = Answer.Of(robot.Actor.Using(
             @"
                 Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
                 Check(!g.Find(@id).Paused) Error 'the route is already paused';
@@ -206,7 +204,7 @@ public class GolemController : Controller
     {
         int? id = RouteUnderway();
         if (id == null) return Conflict("nothing underway: no pending route");
-        var answer = Answer.Of(golemActor.Using(
+        var answer = Answer.Of(robot.Actor.Using(
             @"
                 Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
                 Check(g.Find(@id).Paused) Error 'the route is not paused';
@@ -228,20 +226,20 @@ public class GolemController : Controller
     // (it will stand there when the new errand comes up). Null with no telemetry yet.
     private (double X, double Y)? WhereTheErrandStarts()
     {
-        using var busy = JsonDocument.Parse(golemActor.Using(@"
+        using var busy = JsonDocument.Parse(robot.Actor.Using(@"
             print g.HasPendingMission() 'busy';
             if (g.HasPendingMission()) { print g.PlannedEnd().X 'x', g.PlannedEnd().Y 'y'; }
         ").PerformQuery());
         if (busy.RootElement.GetProperty("busy").GetBoolean())
             return (busy.RootElement.GetProperty("x").GetDouble(), busy.RootElement.GetProperty("y").GetDouble());
-        var pose = ros.LatestPose;
+        var pose = robot.Pose;
         return pose == null ? null : (pose.X, pose.Y);
     }
 
     // The handle of the route just opened, to tell it the rest.
     private int Newest()
     {
-        using var doc = JsonDocument.Parse(golemActor.Using("print g.Newest().Id 'id';").PerformQuery());
+        using var doc = JsonDocument.Parse(robot.Actor.Using("print g.Newest().Id 'id';").PerformQuery());
         return doc.RootElement.GetProperty("id").GetInt32();
     }
 
@@ -262,7 +260,7 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         var (x, y) = (request.X, request.Y);
-        var answer = Answer.Of(golemActor.Using(
+        var answer = Answer.Of(robot.Actor.Using(
             @"
                 Check(collisions.KnowsAt(Position(@x, @y))) Error 'the golem holds no obstacle there';
             ",
@@ -310,7 +308,7 @@ public class GolemController : Controller
         if (carrying.Route == 0) { robot.Arrived(default); return Accepted(); }
         Answer answer;
         if (carrying.What == "turn")
-            answer = Answer.Of(golemActor.Using(
+            answer = Answer.Of(robot.Actor.Using(
                 @"
                     Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
                 ",
@@ -323,7 +321,7 @@ public class GolemController : Controller
                 .WithParameters(p => { p["id", typeof(int)] = carrying.Route; })
                 .PerformCheckThenCommand());
         else if (carrying.Kind == "stop")
-            answer = Answer.Of(golemActor.Using(
+            answer = Answer.Of(robot.Actor.Using(
                 @"
                     Check(g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).IsStopAhead(Position(@x, @y))) Error 'that is not a stop ahead';
                 ",
@@ -338,7 +336,7 @@ public class GolemController : Controller
                 .WithParameters(p => { p["id", typeof(int)] = carrying.Route; p["x", typeof(double)] = carrying.X; p["y", typeof(double)] = carrying.Y; })
                 .PerformCheckThenCommand());
         else
-            answer = Answer.Of(golemActor.Using(
+            answer = Answer.Of(robot.Actor.Using(
                 @"
                     Check(g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).IsLegAhead(Position(@x, @y))) Error 'that is not a point ahead';
                 ",
@@ -557,7 +555,7 @@ public class GolemController : Controller
     // The map as it is laid out: zones, doors and open sides — read from the map module itself.
     [HttpGet("map")]
     public IActionResult Map() =>
-        Content(golemActor.Using(@"
+        Content(robot.Actor.Using(@"
             print map.Name 'map';
             foreach (places in map.Zones) {
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h',
@@ -575,7 +573,7 @@ public class GolemController : Controller
     // The obstacles the golem hypothesizes: one row per obstacle and, under it, one per vertex — the touches that outlined it.
     [HttpGet("obstacles")]
     public IActionResult Obstacles() =>
-        Content(golemActor.Using(@"
+        Content(robot.Actor.Using(@"
             print collisions.All().Count 'total', collisions.Things().Count 'things',
                   collisions.EncounterCount 'met', collisions.MarkCount 'marks';
             foreach (obstacles in collisions.All()) {
@@ -596,9 +594,9 @@ public class GolemController : Controller
     [HttpGet("progress")]
     public IActionResult Progress()
     {
-        var pose = ros.LatestPose;
+        var pose = robot.Pose;
         if (pose == null) return StatusCode(503, "no telemetry from the body yet");
-        return Content(golemActor.Using(@"
+        return Content(robot.Actor.Using(@"
             print g.HasPendingMission() 'hasNext', g.PendingRoutes().Count 'pendingMissions',
                   body.Speed.InMetersPerSecond 'speed', body.LingerAfterTold.InSeconds 'lingerAfterTold';
             if (g.HasPendingMission()) {
@@ -617,7 +615,7 @@ public class GolemController : Controller
 
     // One query, one document: the board the panel paints from.
     private string Board() =>
-        golemActor.Using(@"
+        robot.Actor.Using(@"
             print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
                 print g.Next().Id 'nextId',

@@ -24,10 +24,10 @@ public sealed class GolemSpeech
     private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
 
-    public GolemSpeech(PerformanceV2 performance, ActorV2 golemActor, HttpBroker wire, PanelFeed feed, string golem, string tellDoneTo, IReadOnlyList<string> peers)
+    public GolemSpeech(PerformanceV2 performance, HttpBroker wire, PanelFeed feed, string golem, string tellDoneTo, IReadOnlyList<string> peers)
     {
         this.performance = performance;
-        this.golemActor = golemActor;
+        this.golemActor = performance.Actor;
         this.wire = wire;
         this.feed = feed;
         this.golem = golem;

@@ -271,7 +271,9 @@ whether it could or not, so the domain resolves what follows. Consequences:
   protocol's scripts, the tell uptakes — each ending in `NextOrder`); `Choreography/` holds the `Robot` (the actor's
   OUTPUT TARGET: the print switched on and sent to the body over rosbridge; the touch protocol's clock; the reports'
   bookkeeping) and `GolemSpeech` (the tell reactions and uptakes) — no mission loop, no legs in memory, no navigator:
-  the body's servo is the ROS node `sim/bridge/body.py`. **What the operator sends arrives as a
+  the body's servo is the ROS node `sim/bridge/body.py`. The controllers receive the `Robot` singleton alone and perform every
+  script on `robot.Actor.Using(…)` (Juan, 16-sep); the Robot reads the golem's answers from a query's print, never from a
+  rented Out lease (found empty under the panel's concurrent polls). **What the operator sends arrives as a
   JSON body, typed and validated before any script runs** (Juan, 16-sep: "debería ser por JSON… y validar que venga
   correcta"): `Controllers/Requests.cs` — `ErrandRequest` (`{"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]}` — points only, never places: Juan, 16-sep),
   `PointRequest`, `QueryRequest`, `ResetRequest` — each says what is wrong with it and the endpoint answers 400 with

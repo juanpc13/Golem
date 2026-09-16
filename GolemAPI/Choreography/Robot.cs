@@ -45,11 +45,11 @@ public sealed class Robot : IOutputSink
     private DateTime lingerUntil = DateTime.MinValue;   // the follower's linger: no order goes out to the body before this
     private DateTime lastStandingTouch = DateTime.MinValue;
 
-    public Robot(PerformanceV2 performance, ActorV2 golemActor, Rosbridge ros, PanelFeed feed, HttpBroker wire,
+    public Robot(PerformanceV2 performance, Rosbridge ros, PanelFeed feed, HttpBroker wire,
                  string golem, (double X, double Y) home, string journalPath)
     {
         this.performance = performance;
-        this.golemActor = golemActor;
+        this.golemActor = performance.Actor;   // the golem itself, taken from the performance once
         this.ros = ros;
         this.feed = feed;
         this.wire = wire;
@@ -57,6 +57,12 @@ public sealed class Robot : IOutputSink
         this.home = home;
         this.journalPath = journalPath;
     }
+
+    /// <summary>The golem itself — the actor every script is performed on (Juan, 16-sep-2026: "en los controllers se pasa el
+    /// singleton de Robot y los scripts se hacen por `robot.Actor.Using(...)`").</summary>
+    public ActorV2 Actor => golemActor;
+    /// <summary>Where the body believes it stands (telemetry, never the journal's); null before the first word from it.</summary>
+    public Pose Pose => ros.LatestPose;
 
     /// <summary>The order the body is carrying out now — what a report from it must be about — or null while it stands.</summary>
     public Order Carrying { get { lock (gate) return carrying; } }
@@ -428,55 +434,46 @@ public sealed class Robot : IOutputSink
         catch (Exception e) { Console.WriteLine($"[golem {golem}] asking the order failed: {e.Message}"); return null; }
     }
 
+    // The golem's answers are read from the print of a query (JSON), never from a shared lease: the panel's polls and the
+    // body's reports reach the actor on different threads at once, and a rented Out parameter was found empty under
+    // that concurrency ("Unknown parameter v", 16-sep-2026 lab).
     private (string Kind, string Who, string Conclusion) Suspect(Collision hit, int since)
     {
-        using var rented = golemActor.RentedParameters();
-        golemActor.Using(@"
-            @kind = g.Suspect(Pose(@x, @y, @heading), @since).Kind;
-            @who = g.Suspect(Pose(@x, @y, @heading), @since).Who;
-            @verb = g.Suspect(Pose(@x, @y, @heading), @since).Conclusion;
+        using var doc = JsonDocument.Parse(golemActor.Using(@"
+            print g.Suspect(Pose(@x, @y, @heading), @since).Kind 'kind',
+                  g.Suspect(Pose(@x, @y, @heading), @since).Who 'who',
+                  g.Suspect(Pose(@x, @y, @heading), @since).Conclusion 'verb';
         ")
-        .WithParameters(rented, p => {
-            p["x", typeof(double)] = hit.X; p["y", typeof(double)] = hit.Y; p["heading", typeof(double)] = hit.Heading; p["since", typeof(int)] = since;
-            p[Parameter.Out, "kind", typeof(string)] = default; p[Parameter.Out, "who", typeof(string)] = default; p[Parameter.Out, "verb", typeof(string)] = default;
-        })
-        .PerformQuery();
-        return (rented["kind"].GetValue<string>() ?? "", rented["who"].GetValue<string>() ?? "", rented["verb"].GetValue<string>() ?? "");
+        .WithParameters(p => { p["x", typeof(double)] = hit.X; p["y", typeof(double)] = hit.Y; p["heading", typeof(double)] = hit.Heading; p["since", typeof(int)] = since; })
+        .PerformQuery());
+        var e = doc.RootElement;
+        return (e.GetProperty("kind").GetString() ?? "", e.GetProperty("who").GetString() ?? "", e.GetProperty("verb").GetString() ?? "");
     }
 
     private (double X, double Y) Aside(Pose pose)
     {
-        using var rented = golemActor.RentedParameters();
-        golemActor.Using(@"
-            @sx = g.Aside(Pose(@x, @y, @theta)).X;
-            @sy = g.Aside(Pose(@x, @y, @theta)).Y;
+        using var doc = JsonDocument.Parse(golemActor.Using(@"
+            print g.Aside(Pose(@x, @y, @theta)).X 'sx', g.Aside(Pose(@x, @y, @theta)).Y 'sy';
         ")
-        .WithParameters(rented, p => {
-            p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; p["theta", typeof(double)] = pose.Theta;
-            p[Parameter.Out, "sx", typeof(double)] = default; p[Parameter.Out, "sy", typeof(double)] = default;
-        })
-        .PerformQuery();
-        return (rented["sx"].GetValue<double>(), rented["sy"].GetValue<double>());
+        .WithParameters(p => { p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; p["theta", typeof(double)] = pose.Theta; })
+        .PerformQuery());
+        return (doc.RootElement.GetProperty("sx").GetDouble(), doc.RootElement.GetProperty("sy").GetDouble());
     }
 
-    private bool MayRetryLeg(int id)     => Read<bool>("@v = g.Find(@id).MayRetryLeg;", id);
-    private int Grazes(int id)           => Read<int>("@v = g.Find(@id).Grazes;", id);
-    private int HeardBumpCount()         => Read<int>("@v = collisions.HeardCount;");
-    private double Speed()               => Read<double>("@v = body.Speed.InMetersPerSecond;");
-    private double Radius()              => Read<double>("@v = body.Radius.InMeters;");
-    private double Retreat()             => Read<double>("@v = body.Retreat.InMeters;");
-    private double LingerAfterTold()     => Read<double>("@v = body.LingerAfterTold.InSeconds;");
+    private bool MayRetryLeg(int id)     => Read("print g.Find(@id).MayRetryLeg 'v';", id).GetBoolean();
+    private int Grazes(int id)           => Read("print g.Find(@id).Grazes 'v';", id).GetInt32();
+    private int HeardBumpCount()         => Read("print collisions.HeardCount 'v';").GetInt32();
+    private double Speed()               => Read("print body.Speed.InMetersPerSecond 'v';").GetDouble();
+    private double Radius()              => Read("print body.Radius.InMeters 'v';").GetDouble();
+    private double Retreat()             => Read("print body.Retreat.InMeters 'v';").GetDouble();
+    private double LingerAfterTold()     => Read("print body.LingerAfterTold.InSeconds 'v';").GetDouble();
 
-    private T Read<T>(string script, int? id = null)
+    private JsonElement Read(string script, int? id = null)
     {
-        using var rented = golemActor.RentedParameters();
-        golemActor.Using(script)
-        .WithParameters(rented, p => {
-            if (id.HasValue) p["id", typeof(int)] = id.Value;
-            p[Parameter.Out, "v", typeof(T)] = default;
-        })
-        .PerformQuery();
-        return rented["v"].GetValue<T>();
+        using var doc = JsonDocument.Parse(golemActor.Using(script)
+            .WithParameters(p => { if (id.HasValue) p["id", typeof(int)] = id.Value; })
+            .PerformQuery());
+        return doc.RootElement.GetProperty("v").Clone();
     }
 }
 

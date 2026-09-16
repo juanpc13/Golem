@@ -44,7 +44,6 @@ var ct = shutdown.Token;
 //     Start is what arms them and runs the release chain (OnHydrated). ---
 var performance = new GolemPerformance(golem, DomainLibrary.Assembly);
 performance.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
-var golemActor = performance.Actor;   // the golem itself: every script (GolemController) and query is performed on it
 
 var ros = new Rosbridge(rosbridgeUrl, body, poseSource);
 var feed = new PanelFeed();
@@ -62,11 +61,11 @@ var peers = routes.Keys
     .Distinct()
     .ToList();
 
-var speech = new GolemSpeech(performance, golemActor, wire, feed, golem, tellDoneTo, peers);
+var speech = new GolemSpeech(performance, wire, feed, golem, tellDoneTo, peers);
 speech.DefineReactions();
 // The robot as the golem sees it: the OUTPUT TARGET of every print — parsed, switched on, sent to the body over the
 // websocket; the body reports back on the /robot/* endpoints. Registered as the actor's output target too.
-var robot = new Robot(performance, golemActor, ros, feed, wire, golem, home, journalPath);
+var robot = new Robot(performance, ros, feed, wire, golem, home, journalPath);
 performance.OutputTarget(robot, new JsonFormatter());
 
 performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
@@ -80,7 +79,6 @@ builder.WebHost.UseUrls($"http://*:{panelPort}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddControllers();
 builder.Services.AddSingleton<PerformanceV2>(performance);
-builder.Services.AddSingleton<ActorV2>(golemActor);
 builder.Services.AddSingleton(robot);
 builder.Services.AddSingleton(feed);
 builder.Services.AddSingleton(wire);
