@@ -136,7 +136,7 @@ Every write goes through the actor's DSL and lands in the journal. The verbs:
 | `route.Abandon(reason)` | The golem let the route go: a newer told point made it stale, or the operator let go of everything (one command, every pending route). |
 
 Releases (versioned initialization inside the actor, applied once and journaled) build the golem's modules
-as globals of the actor and hand them to it: `body_v1` (`radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius, speed, linger);` — magnitudes that say what they are, read in SI base units), `warehouse_v1` — the
+as globals of the actor and hand them to it: `body_v1` (`radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); retreat = Meters(0.6); body = Body(radius, speed, linger, retreat);` — magnitudes that say what they are, read in SI base units; the retreat is how far the body backs off after a touch), `warehouse_v1` — the
 concrete map, each area found once and told what it is in one train (`map = MapLayout('warehouse');
 map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
 map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the

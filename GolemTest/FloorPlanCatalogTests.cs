@@ -119,7 +119,7 @@ public class FloorPlanCatalogTests
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
         perf.Actor.Using(
-            "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius, speed, linger); }\n"
+            "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); retreat = Meters(0.6); body = Body(radius, speed, linger, retreat); }\n"
             + mapRelease
             + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n")
         .PerformCommand();

@@ -29,6 +29,28 @@ internal sealed class Rectangle
         return at.X >= X - 1e-9 && at.X <= X + Width + 1e-9 && at.Y >= Y - 1e-9 && at.Y <= Y + Height + 1e-9;
     }
 
+    /// <summary>The same rectangle grown by a distance on every side.</summary>
+    internal Rectangle Inflated(double by) => new(X - by, Y - by, Width + 2 * by, Height + 2 * by);
+
+    /// <summary>How far a position lies from the rectangle: zero inside or on its edges.</summary>
+    internal double DistanceTo(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Rectangle.DistanceTo: 'at' was not given");
+        double dx = Math.Max(Math.Max(X - at.X, 0), at.X - (X + Width));
+        double dy = Math.Max(Math.Max(Y - at.Y, 0), at.Y - (Y + Height));
+        return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    /// <summary>Whether a run enters the rectangle: an end inside it, or the run crossing one of its edges.</summary>
+    internal bool IsCrossedBy(Segment run)
+    {
+        if (run == null) throw new GolemDomainException("Rectangle.IsCrossedBy: 'run' was not given");
+        if (Contains(run.From) || Contains(run.To)) return true;
+        foreach (var edge in Edges())
+            if (edge.Crosses(run)) return true;
+        return false;
+    }
+
     /// <summary>The four corners, counter-clockwise from the south-west.</summary>
     internal IReadOnlyList<Position> Corners() => new[]
     {

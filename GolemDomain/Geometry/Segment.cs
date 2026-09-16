@@ -35,6 +35,23 @@ internal sealed class Segment
         return new Position(From.X + t * dx, From.Y + t * dy);
     }
 
+    /// <summary>Whether this segment and another cross or touch (a shared point counts).</summary>
+    internal bool Crosses(Segment other)
+    {
+        if (other == null) throw new GolemDomainException("Segment.Crosses: 'other' was not given");
+        static double Turn(Position a, Position b, Position c) => (b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X);
+        static bool Within(Position a, Position b, Position c) =>
+            Math.Min(a.X, b.X) - 1e-9 <= c.X && c.X <= Math.Max(a.X, b.X) + 1e-9 && Math.Min(a.Y, b.Y) - 1e-9 <= c.Y && c.Y <= Math.Max(a.Y, b.Y) + 1e-9;
+        double d1 = Turn(other.From, other.To, From), d2 = Turn(other.From, other.To, To);
+        double d3 = Turn(From, To, other.From), d4 = Turn(From, To, other.To);
+        if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+        if (Math.Abs(d1) < 1e-12 && Within(other.From, other.To, From)) return true;
+        if (Math.Abs(d2) < 1e-12 && Within(other.From, other.To, To)) return true;
+        if (Math.Abs(d3) < 1e-12 && Within(From, To, other.From)) return true;
+        if (Math.Abs(d4) < 1e-12 && Within(From, To, other.To)) return true;
+        return false;
+    }
+
     /// <summary>How far a position lies from the closest point of this segment (zero when it lies on it).</summary>
     internal double DistanceTo(Position p)
     {

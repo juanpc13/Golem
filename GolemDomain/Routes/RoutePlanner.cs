@@ -44,8 +44,11 @@ internal sealed class RoutePlanner
         this.radius = radius;
     }
 
-    // A point is clear when the walls leave room AND nothing learned stands there.
-    private bool Fits(Position at) => layout.HasRoom(at, radius) && !collisions.Blocks(at, radius);
+    private IReadOnlyList<Thing> things = Array.Empty<Thing>();            // the things the marks outline, for one road
+    private IReadOnlyList<Rectangle> figures = Array.Empty<Rectangle>();   // their figures grown by the body: where its centre may not go
+
+    // A point is clear when the walls leave room AND no figure of a thing holds it.
+    private bool Fits(Position at) => layout.HasRoom(at, radius) && !figures.Any(f => f.Contains(at));
 
     /// <summary>The shortest road from one point to another through the passages: the legs to walk, the stop last.</summary>
     internal Trajectory Road(Position from, Position to)
@@ -140,7 +143,6 @@ internal sealed class RoutePlanner
 
     private List<Leg> RawRoad(Position from, Position to)
     {
-        double clearance = Collisions.MarkReach + radius + Collisions.MarkMargin;
         var start = new Node(from, layout.ZonesOf(from), NodeKind.Start);
         var goal = new Node(to, layout.ZonesOf(to), NodeKind.Goal);
         var nodes = new List<Node> { start };
@@ -149,15 +151,16 @@ internal sealed class RoutePlanner
         // an opening is a node too (its midpoint), so a road can chain two openings
         foreach (var o in layout.Openings)
             if (layout.Touches(o)) nodes.Add(new Node(layout.MidpointOf(o), new[] { layout.Of(o.AreaA), layout.Of(o.AreaB) }, o));
-        // around every mark, the points a body of this radius could pass through — only where it fits
-        // (a ring a little wider than the clearance, so the run between two neighbouring points stays clear)
-        foreach (var m in collisions.Marks)
-            for (int k = 0; k < 8; k++)
+        // around every THING, the corners of its figure grown by the body — a hair further out, so the run from one
+        // corner to the next stays clear — only where the body fits (the figure of a thing, not a ring per mark:
+        // the second way around a crate already takes the crate's real width; Juan, 14-sep-2026)
+        things = collisions.Things();
+        figures = things.Select(t => t.Extent(Collisions.MarkMargin).Inflated(radius)).ToList();
+        foreach (var figure in figures)
+            foreach (var corner in figure.Inflated(0.08).Corners())
             {
-                double angle = k * Math.PI / 4;
-                var p = new Position(m.At.X + (clearance + 0.08) * Math.Cos(angle), m.At.Y + (clearance + 0.08) * Math.Sin(angle));
-                if (!Fits(p)) continue;
-                nodes.Add(new Node(p, layout.Zones.Where(z => z.ContainsInset(p, radius + Collisions.MarkMargin)).ToArray(), NodeKind.Detour));
+                if (!Fits(corner)) continue;
+                nodes.Add(new Node(corner, layout.Zones.Where(z => z.ContainsInset(corner, radius + Collisions.MarkMargin)).ToArray(), NodeKind.Detour));
             }
         nodes.Add(goal);
 
@@ -220,25 +223,28 @@ internal sealed class RoutePlanner
 
     // Two nodes see each other when they share a zone (a straight line inside a rectangle), or when they stand
     // in two zones joined by an opening and the straight line between them crosses that opening — and, either
-    // way, the line keeps clear of every mark (judged at the run's closest point to the mark, on the mark's own
-    // terms: its reach along the surface, its normal toward the free side). The start may stand inside a mark's
-    // clearance (the body just backed off it, maybe from several): the first run out is judged by the body's own
-    // radius — it may not run THROUGH a mark, but it may brush past one at the distance it already stands from things.
+    // way, the run enters no figure of a thing grown by the body. The start may still stand inside such a figure
+    // (the body backed off its retreat, but the thing showed itself wider since; or a touch was estimated short): the
+    // first run out is judged mark by mark, on each mark's own terms — its reach along the surface, its normal toward
+    // the free side — it may not run THROUGH a mark, but it may leave the way it came.
     private bool Sees(Node u, Node v)
     {
         bool related = u.Zones.Intersect(v.Zones).Any() || OpeningCrossed(u, v) != null;
         if (!related) return false;
         var run = new Segment(u.At, v.At);
-        foreach (var m in collisions.Marks)
+        for (int i = 0; i < figures.Count; i++)
         {
-            if (!m.Blocks(run.ClosestTo(m.At), radius)) continue;
-            if (u.Kind == NodeKind.Start)
+            if (!figures[i].IsCrossedBy(run)) continue;
+            if (u.Kind == NodeKind.Start && figures[i].Contains(u.At))
             {
-                // The body stands where it stands. A mark within its own radius is an estimate gone wrong (the
-                // touch was taken head-on, it was a side graze): it cannot forbid the body from leaving, only
-                // from walking further into it — a run that never comes closer to the mark than the start is fine.
-                if (u.At.DistanceTo(m.At) < radius && run.DistanceTo(m.At) >= u.At.DistanceTo(m.At) - 1e-9) continue;
-                if (run.DistanceTo(m.At) >= radius - 0.05) continue;
+                foreach (var m in things[i].Vertices())
+                {
+                    if (!m.Blocks(run.ClosestTo(m.At), radius)) continue;
+                    if (u.At.DistanceTo(m.At) < radius && run.DistanceTo(m.At) >= u.At.DistanceTo(m.At) - 1e-9) continue;
+                    if (run.DistanceTo(m.At) >= radius - 0.05) continue;
+                    return false;
+                }
+                continue;
             }
             return false;
         }

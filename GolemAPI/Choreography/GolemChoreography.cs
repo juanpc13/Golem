@@ -1301,6 +1301,19 @@ public sealed class GolemChoreography
         return rented["radius"].GetValue<double>();
     }
 
+    public double Retreat()
+    {
+        using var rented = perf.Actor.RentedParameters();
+        perf.Actor.Using(@"
+            @retreat = body.Retreat.InMeters;
+        ")
+        .WithParameters(rented, p => {
+            p[Parameter.Out, "retreat", typeof(double)] = default;
+        })
+        .PerformQuery();
+        return rented["retreat"].GetValue<double>();
+    }
+
     private double LingerAfterTold()
     {
         using var rented = perf.Actor.RentedParameters();

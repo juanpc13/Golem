@@ -16,17 +16,19 @@ public sealed class DiffDriveNavigator : INavigator
     private const double Progress = 0.05;       // an improvement smaller than this is noise (m)
     private const double BackOffSpeed = 0.4;    // m/s, in reverse, after a collision
     private static readonly TimeSpan FreeFor = TimeSpan.FromMilliseconds(400);   // no touch reported this long = free
-    private static readonly TimeSpan BackOffAtMost = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan BackOffAtMost = TimeSpan.FromSeconds(6);
 
     private readonly Rosbridge ros;
     private readonly Func<double> cruiseSpeed;   // the golem's declared body speed (a journaled property)
     private readonly Func<double> bodyRadius;    // the golem's declared body size (a journaled property)
+    private readonly Func<double> retreat;       // how far the body backs off after a touch (the body's own, journaled)
 
-    public DiffDriveNavigator(Rosbridge ros, Func<double> cruiseSpeed, Func<double> bodyRadius)
+    public DiffDriveNavigator(Rosbridge ros, Func<double> cruiseSpeed, Func<double> bodyRadius, Func<double> retreat)
     {
         this.ros = ros;
         this.cruiseSpeed = cruiseSpeed;
         this.bodyRadius = bodyRadius;
+        this.retreat = retreat;
     }
 
     public async Task<Outcome> GoToAsync(double targetX, double targetY, double within, CancellationToken ct)
@@ -105,18 +107,25 @@ public sealed class DiffDriveNavigator : INavigator
     // a hit at speed the first half-second of "reverse" is still spent braking into the obstacle
     // — a fixed reverse time freed nothing. It gives up after a while, or if it backs into
     // something else.
+    // Backing off: until the touch is released, and then the body's own retreat further, so it stands clear of the
+    // mark it just made before the golem decides its way again. It stops early if it backs into something else.
     private async Task BackOffAsync(Contact touch, CancellationToken ct)
     {
         var began = DateTime.UtcNow;
+        var start = ros.LatestPose;
+        double back = retreat();
         try
         {
             await ros.DriveAsync(-BackOffSpeed, 0, ct);
+            bool free = false;
             while (DateTime.UtcNow - began < BackOffAtMost)
             {
                 await Task.Delay(Tick, ct);
                 var latest = ros.LatestContact;
                 if (latest.With != touch.With && latest.At > began) break;   // backed into something else
-                if (DateTime.UtcNow - latest.At > FreeFor) break;
+                if (!free && DateTime.UtcNow - latest.At > FreeFor) free = true;
+                var pose = ros.LatestPose;
+                if (free && (start == null || pose == null || Math.Sqrt((pose.X - start.X) * (pose.X - start.X) + (pose.Y - start.Y) * (pose.Y - start.Y)) >= back)) break;
             }
         }
         finally

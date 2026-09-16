@@ -223,15 +223,21 @@ internal sealed class Collisions
     internal bool Blocks(Position at, double radius)
     {
         if (at == null) throw new GolemDomainException("Collisions.Blocks: 'at' was not given");
-        return marks.Any(m => m.Blocks(at, radius));
+        return Figures(radius).Any(f => f.Contains(at));
     }
+
+    /// <summary>Where a body's CENTRE may not go: the figure of every thing (its extent with the mark margin) grown by
+    /// the body's radius. Derived every time, like the things themselves; a planner keeps the list for one road.</summary>
+    internal IReadOnlyList<Rectangle> Figures(double radius) => Things().Select(t => t.Extent(MarkMargin).Inflated(radius)).ToList();
+
+
 
     /// <summary>Whether a straight run comes into what has been learned: judged at the run's closest point to
     /// each mark, on the mark's own terms.</summary>
     internal bool Blocks(Segment run, double radius)
     {
         if (run == null) throw new GolemDomainException("Collisions.Blocks: 'run' was not given");
-        return marks.Any(m => m.Blocks(run.ClosestTo(m.At), radius));
+        return Figures(radius).Any(f => f.IsCrossedBy(run));
     }
 
     /// <summary>How far the closest mark lies from a run; positive infinity when nothing has been learned.</summary>

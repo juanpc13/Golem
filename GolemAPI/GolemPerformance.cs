@@ -69,7 +69,8 @@ internal sealed class GolemPerformance : PerformanceV2
                 radius = Meters(0.25);
                 speed = MetersPerSecond(2.0);
                 linger = Seconds(6.0);
-                body = Body(radius, speed, linger);
+                retreat = Meters(0.6);
+                body = Body(radius, speed, linger, retreat);
             }
             upgrade('warehouse_v1') {
                 map = MapLayout('warehouse');

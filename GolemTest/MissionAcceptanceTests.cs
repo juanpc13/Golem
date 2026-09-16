@@ -47,7 +47,7 @@ public class MissionAcceptanceTests
     // concrete MapLayout: areas with their positions, doors, openings, in one train each) and the golem that
     // RECEIVES its modules — each a global of the actor in its own right. Constructor literals carry a decimal point (Fase 0, P7).
     private static string Releases =>
-        "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); body = Body(radius, speed, linger); }\n"
+        "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); retreat = Meters(0.6); body = Body(radius, speed, linger, retreat); }\n"
         + Catalog.Warehouse().AsRelease()
         + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n";
 
@@ -62,13 +62,13 @@ public class MissionAcceptanceTests
         // A constructor's refusal reaches the DSL as "Error while instantiating class 'Body'": the engine wraps the
         // domain's exception and its reason is lost on the way (Fase 0 follow-up, 10-sep-2026). The C# tests below
         // keep the reasons; here we can only assert that the body was refused.
-        Refuses("b = Body(Meters(0.0), MetersPerSecond(2.0), Seconds(6.0));", "Error while instantiating class 'Body'");
-        Refuses("b = Body(Meters(0.25), MetersPerSecond(0.0), Seconds(6.0));", "Error while instantiating class 'Body'");
-        Refuses("b = Body(Meters(0.25), MetersPerSecond(2.0), Seconds(-1.0));", "Error while instantiating class 'Seconds'");
+        Refuses("b = Body(Meters(0.0), MetersPerSecond(2.0), Seconds(6.0), Meters(0.6));", "Error while instantiating class 'Body'");
+        Refuses("b = Body(Meters(0.25), MetersPerSecond(0.0), Seconds(6.0), Meters(0.6));", "Error while instantiating class 'Body'");
+        Refuses("b = Body(Meters(0.25), MetersPerSecond(2.0), Seconds(-1.0), Meters(0.6));", "Error while instantiating class 'Seconds'");
         // the magnitudes say what they are: a duration where a length goes is refused by type, not taken as a number
-        Refuses("b = Body(Seconds(0.25), MetersPerSecond(2.0), Seconds(6.0));", "a value of type 'Length' is expected");
-        Assert.AreEqual("a body needs a radius above zero", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Robots.Body(new Meters(0.0), new MetersPerSecond(2.0), new Seconds(6.0))).Message);
-        Assert.AreEqual("a body needs a cruise speed above zero", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Robots.Body(new Meters(0.25), new MetersPerSecond(0.0), new Seconds(6.0))).Message);
+        Refuses("b = Body(Seconds(0.25), MetersPerSecond(2.0), Seconds(6.0), Meters(0.6));", "a value of type 'Length' is expected");
+        Assert.AreEqual("a body needs a radius above zero", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Robots.Body(new Meters(0.0), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6))).Message);
+        Assert.AreEqual("a body needs a cruise speed above zero", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Robots.Body(new Meters(0.25), new MetersPerSecond(0.0), new Seconds(6.0), new Meters(0.6))).Message);
         Assert.AreEqual("a duration cannot be negative", Assert.ThrowsException<GolemDomainException>(() => new Seconds(-1.0)).Message);
         Assert.AreEqual(0.25, new Centimeters(25.0).InMeters, 1e-9, "a length reads in metres whatever unit wrote it");
         Assert.AreEqual(90.0, new Minutes(1.5).InSeconds, 1e-9, "a duration reads in seconds whatever unit wrote it");
@@ -697,9 +697,9 @@ public class MissionAcceptanceTests
     public void ABodyStandingAmongMarks_CanStillLeave_ButNotThroughThem()
     {
         Visit(1, 9.0, 1.5);                        // the garage
-        PlantMark(7.6, 9.3, South);                      // two touches on something right beside the body...
-        PlantMark(8.2, 9.3, South);
-        string plan = Text("g.Road(g.Find(1), Position(7.9, 9.55)).AsPlan()");  // ...which stands between them, in the storage room
+        PlantMark(8.2, 9.3, South);                      // two touches on something right beside the body — a thing 0.6 wide, a body's
+        PlantMark(8.8, 9.3, South);                      // width and a hand clear of the north/storage door (14-sep: one FIGURE, its berth is a box)
+        string plan = Text("g.Road(g.Find(1), Position(8.5, 9.55)).AsPlan()");  // ...which stands between them, in the storage room
         StringAssert.EndsWith(plan, "> garage@9,1.5", "a road out exists: " + plan);
 
         PlantMark(10.25, 5.85, South);                   // the crate closes the corridor too
@@ -1017,15 +1017,19 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
-    public void AMarkKnowsItsNormal_TheSideTheBodyCameFromIsFree()
+    public void AMarkIsAFigure_TheBodyKeepsABerthAroundIt_AndTheRetreatStandsClear()
     {
-        PlantMark(5.5, 5.85, South);   // the crate's north face, touched by a body heading south: the thing lies south of the point
-
-        Assert.IsFalse(Bool("g.FitsAt(Position(5.5, 5.5))"), "beyond the mark, along its normal: inside the thing");
-        Assert.IsFalse(Bool("g.FitsAt(Position(5.0, 5.85))"), "half a metre along the surface: within the mark's reach");
-        Assert.IsTrue(Bool("g.FitsAt(Position(4.85, 5.85))"), "0.65 along the surface: past the reach");
-        Assert.IsTrue(Bool("g.FitsAt(Position(5.5, 6.25))"), "0.4 back the way the body came: a radius and a margin clear of the surface — free (the old disc said no)");
-        Assert.IsFalse(Bool("g.FitsAt(Position(5.5, 6.1))"), "0.25 back: the body would touch the surface again");
+        // 14-sep-2026: a thing's figure is the box around its marks, grown by a mark's reach, a margin and the body;
+        // the body backs off its retreat (0.6) after a touch, which lands it outside that berth on the side it came from
+        PlantMark(5.5, 5.85, South);   // the crate's north face, touched by a body heading south
+        Assert.IsFalse(Bool("g.FitsAt(Position(5.5, 5.5))"), "beyond the mark: inside the thing");
+        Assert.IsFalse(Bool("g.FitsAt(Position(5.0, 5.85))"), "half a metre along the surface: within the berth");
+        Assert.IsTrue(Bool("g.FitsAt(Position(4.85, 5.85))"), "0.65 along the surface: past the berth");
+        Assert.IsFalse(Bool("g.FitsAt(Position(5.5, 6.25))"), "0.4 back: still within the berth (the old normal model said free — that is where the next bump came from)");
+        Assert.IsTrue(Bool("g.FitsAt(Position(5.5, 6.7))"), "0.85 back — the touch point plus the retreat — stands clear");
+        PlantMark(5.8, 5.85, South);   // a second touch 0.3 further along: one figure for both, the width the thing showed
+        Assert.IsFalse(Bool("g.FitsAt(Position(6.3, 5.85))"), "half a metre past the second mark: within the one figure's berth");
+        Assert.IsTrue(Bool("g.FitsAt(Position(6.45, 5.85))"), "0.65 past it: clear");
     }
 
     // ---- helpers: the same perform shapes the host uses ----

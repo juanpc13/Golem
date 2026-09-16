@@ -53,6 +53,18 @@ internal sealed class Thing : Obstacle
     internal override int Size => vertices.Count;
     internal override string Shape => Size == 1 ? "point" : Size == 2 ? "line" : "polygon";
     internal override IReadOnlyList<Mark> Vertices() => vertices;
+
+    /// <summary>The figure a way keeps clear of: the box around the vertices, grown by what every mark reaches, by
+    /// half of what the thing showed of its size between touches (the spread, up to one more reach), and by a margin —
+    /// so the second way around a crate already takes the crate's real width, not a vertex's (Juan, 14-sep-2026: "girar más"). Inflate it by the
+    /// body's radius to get where the body's CENTRE may not go.</summary>
+    internal Rectangle Extent(double margin)
+    {
+        double minX = vertices.Min(v => v.At.X), maxX = vertices.Max(v => v.At.X);
+        double minY = vertices.Min(v => v.At.Y), maxY = vertices.Max(v => v.At.Y);
+        double grow = Collisions.MarkReach + margin;
+        return new Rectangle(minX - grow, minY - grow, (maxX - minX) + 2 * grow, (maxY - minY) + 2 * grow);
+    }
 }
 
 /// <summary>
