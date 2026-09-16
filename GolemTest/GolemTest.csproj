@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GolemDomain\GolemDomain.csproj" />
+    <ProjectReference Include="..\GolemAPI\GolemAPI.csproj" />
   </ItemGroup>
 
 </Project>

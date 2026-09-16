@@ -10,6 +10,8 @@ namespace GolemAPI.Navigation;
 public interface INavigator
 {
     Task<Outcome> GoToAsync(double x, double y, double within, CancellationToken ct);
+    /// <summary>Turn in place to a heading (radians, counter-clockwise from +x) — one thing the route asks on its own.</summary>
+    Task<Outcome> TurnToAsync(double heading, CancellationToken ct);
 }
 
 // How a run ended: reached, or not — and why, in the navigator's words. A collision also says

@@ -32,9 +32,19 @@ internal sealed class Leg
     internal string A => Kind == "door" ? Name[..Name.IndexOf('/')] : Kind == "opening" ? Name[..Name.IndexOf('~')] : "";
     internal string B => Kind == "door" ? Name[(Name.IndexOf('/') + 1)..] : Kind == "opening" ? Name[(Name.IndexOf('~') + 1)..] : "";
 
+    /// <summary>Whether the way gave this leg its heading: false for the first leg of a way, walked from wherever the
+    /// body stands (its pose is telemetry, never the journal's), true for every leg after it.</summary>
+    internal bool HasHeading { get; }
+    /// <summary>The heading the body travels into this leg's point — from the previous leg's point — radians,
+    /// counter-clockwise from +x (Juan, 16-sep-2026: "los cálculos del ángulo al que debería girar" are the domain's).
+    /// Zero when the way gave none (HasHeading false).</summary>
+    internal double Heading { get; }
+
     internal Leg(Position at, string name) : this(at, name, at, at) { }
 
-    internal Leg(Position at, string name, Position approach, Position exit)
+    internal Leg(Position at, string name, Position approach, Position exit) : this(at, name, approach, exit, false, 0.0) { }
+
+    private Leg(Position at, string name, Position approach, Position exit, bool hasHeading, double heading)
     {
         if (at == null || approach == null || exit == null) throw new GolemDomainException("a leg needs its point, its approach and its exit");
         if (name == null) throw new GolemDomainException("a leg needs a name, even an empty one");
@@ -42,5 +52,14 @@ internal sealed class Leg
         Name = name;
         Approach = approach;
         Exit = exit;
+        HasHeading = hasHeading;
+        Heading = heading;
+    }
+
+    /// <summary>The same leg, told the point it is walked from: its heading is the bearing from there to its approach.</summary>
+    internal Leg WalkedFrom(Position previous)
+    {
+        if (previous == null) throw new GolemDomainException("Leg.WalkedFrom: 'previous' was not given");
+        return new Leg(At, Name, Approach, Exit, true, previous.HeadingTo(Approach));
     }
 }

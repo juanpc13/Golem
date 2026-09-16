@@ -67,7 +67,7 @@ public class FloorPlanCatalogTests
         // from the northwest room to the southeast one: out a door into an aisle, through the crossing (two open
         // boundaries), along the other aisle and in through a door — never through a wall. The two ways round
         // (north then east, west then south) are the same length: the planner may take either.
-        Visit(1, "southeast");
+        Visit(1, "southeast", 2.375, 8.625);
         string plan = Text("g.Road(g.Find(1), Position(2.375, 8.625)).AsPlan()");
         StringAssert.StartsWith(plan, "northwest/");
         Assert.AreEqual(2, plan.Split("crossing~").Length - 1, "in through one aisle, out through the other: " + plan);
@@ -91,13 +91,13 @@ public class FloorPlanCatalogTests
         // neighbouring rooms are joined directly: center to center through the door they share
         Assert.AreEqual(4.0, Double("g.Distance(map.Find('northwest'), map.Find('northeast'))"), 0.01, "two metres to the door, two more to the neighbour's center");
         // the corridor runs all the way round: from one stretch into the next through an open boundary, no door
-        Visit(1, new[] { "9,10.25" });                    // the east end of the north corridor
+        Visit(1, new[] { "9,10.25" }, 0.75, 10.25);                    // the east end of the north corridor
         string plan = Text("g.Road(g.Find(1), Position(0.75, 10.25)).AsPlan()");       // from the northwest corner of the ring
         StringAssert.StartsWith(plan, "west-corridor~north-corridor@1.5,10.2");
         StringAssert.EndsWith(plan, "> north-corridor@9,10.25");
         Assert.IsFalse(plan.Contains('/'), "along the corridor, through no door: " + plan);
         // and cutting through a room beats going round when it is shorter: the planner takes the rooms' doors
-        Visit(2, "east-corridor");
+        Visit(2, "east-corridor", 0.75, 10.25);
         string across = Text("g.Road(g.Find(2), Position(0.75, 10.25)).AsPlan()");
         StringAssert.Contains(across, "northeast/north-corridor@7.5,9.5 > northeast/east-corridor@9.5,7.5", "through the northeast room: " + across);
     }
@@ -134,7 +134,7 @@ public class FloorPlanCatalogTests
         Assert.AreEqual("Map.Connects: 'a' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Connects(null, kitchen)).Message);
         Assert.AreEqual("Zone.Contains: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => kitchen.Contains(null)).Message);
         Assert.AreEqual("a golem needs a body to drive", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Golem(null, map, new GolemDomain.Touches.Collisions(map))).Message);
-        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Routes.Route(1, null, false, false, map, new GolemDomain.Touches.Collisions(map))).Message);
+        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Routes.Route(1, null, false, false, map, new GolemDomain.Touches.Collisions(map), 0.25)).Message);
     }
 
     [TestMethod]
@@ -164,38 +164,37 @@ public class FloorPlanCatalogTests
         Assert.AreEqual(1.2, Double("Position(1.0, 1.0, 1.2).Along(0.0, 2.0).Z"), 1e-12, "a run along a heading keeps the height");
     }
 
-    private void Visit(int id, string[] stops)
+    private void Visit(int id, string[] stops, double fromX, double fromY)
     {
-        var script = new System.Text.StringBuilder("{\n");
         for (int i = 0; i < stops.Length; i++)
         {
-            string n = stops.Length == 1 ? "" : (i + 1).ToString();
-            string act = i == 0 ? $"route = g.Visit(point{n});" : $"route.Then(point{n});";
-            script.Append(stops[i].Contains(',') ? $"point{n} = Position(@x{n}, @y{n}); {act}\n" : $"point{n} = map.Find(@area{n}); {act}\n");
-        }
-        script.Append("}\n");
-        perf.Actor.Using(script.ToString())
-        .WithParameters(p => {
-            for (int i = 0; i < stops.Length; i++)
-            {
-                string n = stops.Length == 1 ? "" : (i + 1).ToString();
-                if (stops[i].Contains(','))
+            string stop = stops[i];
+            bool first = i == 0;
+            string script = stop.Contains(',')
+                ? (first ? "{ from = Position(@fx, @fy); point = Position(@x, @y); route = g.Visit(from, point); }" : "{ route = g.Find(@id); point = Position(@x, @y); route.Then(point); }")
+                : (first ? "{ from = Position(@fx, @fy); point = map.Find(@area); route = g.Visit(from, point); }" : "{ route = g.Find(@id); point = map.Find(@area); route.Then(point); }");
+            perf.Actor.Using(script)
+            .WithParameters(p => {
+                if (first) { p["fx", typeof(double)] = fromX; p["fy", typeof(double)] = fromY; }
+                else p["id", typeof(int)] = id;
+                if (stop.Contains(','))
                 {
-                    var xy = stops[i].Split(',');
-                    p[$"x{n}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
-                    p[$"y{n}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                    var xy = stop.Split(',');
+                    p["x", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                    p["y", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
                 }
-                else p[$"area{n}", typeof(string)] = stops[i];
-            }
-        })
-        .PerformCommand();
+                else p["area", typeof(string)] = stop;
+            })
+            .PerformCommand();
+        }
     }
 
-    private void Visit(int id, string place) =>
+    private void Visit(int id, string place, double fromX, double fromY) =>
         perf.Actor.Using(@"
-            { point = map.Find(@area); route = g.Visit(point); }
+            { from = Position(@fx, @fy); point = map.Find(@area); route = g.Visit(from, point); }
         ")
         .WithParameters(p => {
+            p["fx", typeof(double)] = fromX; p["fy", typeof(double)] = fromY;
             p["area", typeof(string)] = place;
         })
         .PerformCommand();

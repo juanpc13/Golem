@@ -42,12 +42,15 @@ var ct = shutdown.Token;
 
 // --- The actor. Storage first; then the tell transport and every Reaction, because
 //     Start is what arms them and runs the release chain (OnHydrated). ---
-var perf = new GolemPerformance(golem, DomainLibrary.Assembly);
-perf.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
+var performance = new GolemPerformance(golem, DomainLibrary.Assembly);
+performance.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
+var golemActor = performance.Actor;   // the golem itself: every script (GolemController) and query is performed on it
 
 var ros = new Rosbridge(rosbridgeUrl, body, poseSource);
-GolemChoreography flow = null;
-var navigator = new DiffDriveNavigator(ros, () => flow.Speed(), () => flow.Radius(), () => flow.Retreat()); // speed, size and retreat: the body the golem declared in its journal
+// The mailbox between the scripts (GolemController: every command ends with the print of the next order) and the body's driver.
+var orders = new Orders();
+GolemDriver driver = null;
+var navigator = new DiffDriveNavigator(ros, () => driver.Speed(), () => driver.Radius(), () => driver.Retreat()); // speed, size and retreat: the body the golem declared in its journal
 var feed = new PanelFeed();
 // Where peers reach ME (the origin every outgoing frame carries, so acks find their way back).
 var myUrl = new Uri(Environment.GetEnvironmentVariable("MY_URL") ?? $"http://{golem}-golem:{panelPort}");
@@ -63,21 +66,24 @@ var peers = routes.Keys
     .Distinct()
     .ToList();
 
-flow = new GolemChoreography(perf, ros, navigator, feed, wire, golem, body, home, tellDoneTo, peers, journalPath);
-flow.DefineReactions();
+var speech = new GolemSpeech(performance, golemActor, wire, feed, golem, tellDoneTo, peers);
+speech.DefineReactions();
+driver = new GolemDriver(performance, golemActor, ros, navigator, feed, wire, orders, golem, home, journalPath);
 
-perf.Start(); // rehydration + release chain + the .Cue() reactions come alive here
-new JournalTap(perf, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands
+performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
+new JournalTap(performance, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands
 Console.WriteLine($"[golem {golem}] journal at {journalPath}");
-Console.WriteLine($"[golem {golem}] rehydrated at entry {perf.CurrentEntryId}");
+Console.WriteLine($"[golem {golem}] rehydrated at entry {performance.CurrentEntryId}");
 
 // --- The controllers: the actor's endpoints and the operator's. ---
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls($"http://*:{panelPort}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddControllers();
-builder.Services.AddSingleton<PerformanceV2>(perf);
-builder.Services.AddSingleton(flow);
+builder.Services.AddSingleton<PerformanceV2>(performance);
+builder.Services.AddSingleton<ActorV2>(golemActor);
+builder.Services.AddSingleton(driver);
+builder.Services.AddSingleton(orders);
 builder.Services.AddSingleton(feed);
 builder.Services.AddSingleton(wire);
 builder.Services.AddSingleton(ros);
@@ -90,38 +96,38 @@ app.Lifetime.ApplicationStopping.Register(() => shutdown.Cancel());
 await app.StartAsync();
 Console.WriteLine($"[golem {golem}] controllers listening on :{panelPort}");
 
-feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "info", "",
-    $"golem awake — rehydrated at entry {perf.CurrentEntryId}", DateTime.UtcNow));
+feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "info", "",
+    $"golem awake — rehydrated at entry {performance.CurrentEntryId}", DateTime.UtcNow));
 
-// --- The choreography: the ops Saga and the tell uptake. ---
-flow.Awaken();
+// --- The speech: take up the peers' tells. ---
+speech.Listen();
 
 // --- The membrane: connect and bind to my body. The body exists in the world from the start
 //     (the sim builds it from the floor plan). A REBORN golem puts it back on its mark; a golem
 //     that merely restarted resumes with the body where it stands — as with a real robot. ---
 await ros.ConnectAsync(ct);
 await ros.BindAsync(ct);
-feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
     $"membrane connected to {rosbridgeUrl} — driving body '{body}', pose from {(poseSource == PoseSource.Wheels ? "the wheels (dead reckoning: the world's truth is shown to you, never to the golem)" : "the world's truth")}", DateTime.UtcNow));
-if (perf.BornThisBoot)
+if (performance.BornThisBoot)
 {
     await Task.Delay(500, ct); // let the advertise settle before the first publish
     await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
-    feed.Broadcast(new PanelEvent(perf.CurrentEntryId, "runtime", "",
+    feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
         $"reborn — body '{body}' put back on its mark at ({home.X}, {home.Y})", DateTime.UtcNow));
 }
 
 // --- The mission loop, until shutdown. ---
 try
 {
-    await flow.RunAsync(ct);
+    await driver.RunAsync(ct);
 }
 catch (OperationCanceledException) { }
 
 await ros.DisposeAsync();
-perf.Dispose();
+performance.Dispose();
 await app.StopAsync();
-Console.WriteLine($"[golem {golem}] clean shutdown at entry {perf.CurrentEntryId}");
+Console.WriteLine($"[golem {golem}] clean shutdown at entry {performance.CurrentEntryId}");
 
 static (double X, double Y) ParsePoint(string xy)
 {

@@ -218,7 +218,8 @@ public class MissionAcceptanceTests
 
         Assert.AreEqual(1, Int("g.PendingRoutes().Count"));
         Assert.IsTrue(Bool("g.Find(1).IsPending()"));
-        Assert.AreEqual(2.0, Double("g.Next().NextLeg.At.X"));
+        StringAssert.EndsWith(Text("g.Find(1).AsPlan()"), "living@2,1.5", "the way, decided inside, ends at the point");
+        Assert.AreEqual(0.75, Double("g.Next().NextLeg.At.X"), "the first thing is the first leg of the way: the door out of the kitchen");
         Assert.IsFalse(Bool("g.Find(1).Following"), "the operator ordered it");
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
     }
@@ -228,9 +229,9 @@ public class MissionAcceptanceTests
     {
         Visit(1, "storage");
 
-        Assert.AreEqual(9.0, Double("g.Next().NextLeg.At.X"), 0.001);
-        Assert.AreEqual(9.5, Double("g.Next().NextLeg.At.Y"), 0.001);
-        Refuses("g.Visit(map.Find('attic'));", "unknown area 'attic'");
+        StringAssert.EndsWith(Text("g.Find(1).AsPlan()"), "storage@9,9.5", "the way ends at the area's centre");
+        Assert.AreEqual(9.0, Double("g.Find(1).StopsAhead.Count") == 1 ? 9.0 : 0.0, 0.001);
+        Refuses("g.Visit(Position(2.0, 9.5), map.Find('attic'));", "unknown area 'attic'");
     }
 
     [TestMethod]
@@ -265,8 +266,8 @@ public class MissionAcceptanceTests
         Visit(1, new[] { "kitchen", "9,8" });
         Assert.AreEqual(2, Int("g.Find(1).StopsLeft"));
 
-        Refuses("g.Visit(map.Find('attic'));", "unknown area 'attic'");
-        Refuses("g.Visit(Position(3.0, 5.0));", "nowhere on the map");
+        Refuses("g.Visit(Position(2.0, 9.5), map.Find('attic'));", "unknown area 'attic'");
+        Refuses("g.Visit(Position(2.0, 9.5), Position(3.0, 5.0));", "nowhere on the map");
         Assert.IsTrue(Bool("map.Knows('kitchen')"));
         Assert.IsFalse(Bool("map.Knows('attic')"));
         Assert.IsTrue(Bool("map.IsOnMap(Position(9.0, 8.0))"), "a point in the north hall");
@@ -307,7 +308,7 @@ public class MissionAcceptanceTests
     public void RoutingAndReaching_ThePlanIsWalkedInSilence_AndAStopReachedImpliesTheLegsBeforeIt()
     {
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
+        Decide(1, 2.0, 9.5);
 
         Assert.IsTrue(Bool("g.Find(1).IsRouted"));
         Assert.AreEqual(3, Int("g.Find(1).LegsLeft"), "two doors and the stop: the whole plan, in one entry");
@@ -315,14 +316,21 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("g.Find(1).NextLeg.IsStop"));
         Assert.AreEqual(0.75, Double("g.Next().NextLeg.At.X"), 0.001, "the body heads to the first door, not to the stop");
 
-        // walking the doors is not journaled: only a stop reached is, and it implies the legs before it were walked
-        Refuses("{ route = g.Find(1); route.Reach(Position(0.75, 3.0)); }", "next stop is (2, 1.5)");
-        Refuses("{ route = g.Find(1); route.Reach(Position(2.0, 2.0)); }", "next stop is (2, 1.5)");
+        // one point at a time (16-sep): the body reports each point of the way it reaches and the route hands out the
+        // next; a point that is not on the way ahead is refused; a stop reached implies the legs before it were walked
+        Refuses("{ route = g.Find(1); route.Reach(Position(2.0, 2.0)); }", "next point is (0.75, 8)");
+        Assert.IsTrue(Bool("g.Find(1).IsLegAhead(Position(0.75, 8.0))"), "the first door is ahead");
         Assert.IsTrue(Bool("g.Find(1).IsStopAhead(Position(2.0, 1.5))"));
         Assert.IsFalse(Bool("g.Find(1).IsStopAhead(Position(0.75, 3.0))"), "a door is not a stop");
+        Reach(1, 0.75, 8.0);                                                   // the first door, reported
+        Assert.AreEqual(2, Int("g.Find(1).LegsLeft"));
+        Assert.AreEqual("west/living", Text("g.Find(1).NextLeg.Name"), "the route hands out the next point");
+        Assert.IsTrue(Bool("g.Find(1).NextLeg.HasHeading"), "and the heading to walk it with, from the previous point");
+        Assert.AreEqual(-1.5708, Double("g.Find(1).NextLeg.Heading"), 0.001, "straight south down the west corridor");
+        Assert.IsFalse(Bool("g.Find(1).IsLegAhead(Position(0.75, 8.0))"), "a point reached is behind");
 
-        Reach(1, 2.0, 1.5);
-        Assert.AreEqual(0, Int("g.Find(1).LegsLeft"), "the two doors were walked: reaching the stop says so");
+        Reach(1, 2.0, 1.5);                                                    // the stop, skipping the second door: it implies the door was walked
+        Assert.AreEqual(0, Int("g.Find(1).LegsLeft"), "the second door was walked: reaching the stop says so");
         Assert.AreEqual("completed", Text("g.Find(1).Status"), "reaching the last stop completes the mission");
         Assert.IsFalse(Bool("g.Find(1).IsPending()"));
         Assert.AreEqual(0, Int("g.PendingRoutes().Count"));
@@ -333,7 +341,7 @@ public class MissionAcceptanceTests
     public void AMissionWithSeveralStops_ReachesEachInTurn_AndCompletesOnTheLast()
     {
         Visit(1, new[] { "north", "south" });
-        Route(1, Text("g.Road(g.Find(1), Position(5.5, 5.5)).AsPlan()"));   // from the center: up to the north hall, back down through the center to the south hall
+        Decide(1, 5.5, 5.5);   // from the center: up to the north hall, back down through the center to the south hall
 
         Assert.AreEqual(2, Int("g.Find(1).StopsLeft"));
         Reach(1, 5.5, 9.5);
@@ -351,7 +359,7 @@ public class MissionAcceptanceTests
     {
         // kitchen (2,9.5) -> door kitchen/west at (0.75,8) on a horizontal wall -> west corridor -> door (0.75,3) -> living
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
+        Decide(1, 2.0, 9.5);
 
         // the plan ahead, as the host takes it to walk: each leg with its approach and its exit
         string json = perf.Actor.Using(@"
@@ -373,27 +381,31 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
-    public void TheErrandsWay_IsWrittenAsPoints_AndTheRouteNamesEachAgainstTheMap()
+    public void TheErrand_DecidesItsWholeWayInside_AndPrintsOnlyTheNextThing()
     {
-        // exactly what the host writes: the route handed out with the area found, its way as points, the stop as the area itself
+        // exactly what the host writes: where it starts and the area found — nothing else; the route holds the points
         perf.Actor.Using(@"
-            { point = map.Find(@area); route = g.Visit(point);
-              via1 = Position(@x1, @y1); route.Via(via1);
-              via2 = Position(@x2, @y2); route.Via(via2);
-              route.Stop(point); }
+            { from = Position(@fx, @fy); point = map.Find(@area); route = g.Visit(from, point); }
         ")
         .WithParameters(p => {
+            p["fx", typeof(double)] = 2.0; p["fy", typeof(double)] = 1.5;   // from the living room
             p["area", typeof(string)] = "kitchen";
-            p["x1", typeof(double)] = 0.75; p["y1", typeof(double)] = 3.0;   // the door west/living, from the living room
-            p["x2", typeof(double)] = 0.75; p["y2", typeof(double)] = 8.0;   // the door kitchen/west
         })
         .PerformCommand();
 
-        Assert.IsTrue(Bool("g.Find(1).IsRouted"), "the last stop decided the way");
-        Assert.AreEqual("west/living", Text("g.Find(1).NextLeg.Name"), "a point where a door stands is that door");
+        Assert.IsTrue(Bool("g.Find(1).IsRouted"), "the errand decided the way");
+        Assert.AreEqual("west/living@0.75,3 > kitchen/west@0.75,8 > kitchen@2,9.5", Text("g.Find(1).AsPlan()"), "the whole way, held by the route");
+        Assert.AreEqual("west/living", Text("g.Find(1).NextLeg.Name"), "the first thing is the door out of the living room");
         Assert.AreEqual("door", Text("g.Find(1).NextLeg.Kind"));
+        Assert.IsTrue(Bool("g.Find(1).NextLeg.HasHeading"), "the first leg has its heading too: the start is written");
+        Assert.AreEqual("turn", Text("g.Find(1).Order"), "one thing at a time: turn first");
+        perf.Actor.Using("{ route = g.Find(@id); route.Turn(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
+        Assert.AreEqual("run", Text("g.Find(1).Order"), "turned: now run to the door");
+        Refuses("{ route = g.Find(1); route.Turn(); }", "asked no turn now");
+        perf.Actor.Using("{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }).PerformCommand();
+        Assert.AreEqual("turn", Text("g.Find(1).Order"), "the next leg asks its turn again");
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
-        Refuses("{ route = g.Find(1); route.Stop(Position(9.0, 1.5)); }", "is not a stop ahead of route 1");
     }
 
     // ---- the hold: Pause, Resume ----
@@ -402,7 +414,7 @@ public class MissionAcceptanceTests
     public void APausedMission_KeepsItsPlanAndItsPlace_UntilResumed()
     {
         Visit(1, 2.0, 9.5);
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
+        Decide(1, 2.0, 9.5);
         Assert.IsFalse(Bool("g.Find(1).Paused"));
 
         perf.Actor.Using("{ route = g.Find(@id); route.Pause(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
@@ -499,7 +511,7 @@ public class MissionAcceptanceTests
     public void AReachedStop_CanBeAnnounced_AndAMissionWithoutOneCannot()
     {
         Visit(1, 2.0, 9.5);
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));   // already there: the stop alone
+        Decide(1, 2.0, 9.5);   // already there: the stop alone
         Reach(1, 2.0, 9.5);
         Visit(2, 9.0, 1.5);
 
@@ -576,7 +588,7 @@ public class MissionAcceptanceTests
     public void ABump_IsATouchAndAMarkAtOnce_UntilAPeerSpeaks()
     {
         Visit(1, 9.0, 1.5);                       // the garage
-        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));      // from the storage: down the east corridor
+        Decide(1, 9.0, 9.5);      // from the storage: down the east corridor
         Assert.AreEqual(0, Int("collisions.MarkCount"));
         Assert.IsTrue(Bool("g.FitsAt(Position(10.25, 5.5))"), "the corridor is clear as far as the map knows");
 
@@ -597,7 +609,7 @@ public class MissionAcceptanceTests
     public void APeersBumpHeardThereAndThen_NamesWhoWasMet()
     {
         Visit(1, 9.0, 1.5);
-        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));
+        Decide(1, 9.0, 9.5);
         Assert.AreEqual(1, Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))"), "blue says it bumped in the kitchen's doorway, standing just past it");
         int heard = Int("collisions.HeardCount");
 
@@ -671,9 +683,9 @@ public class MissionAcceptanceTests
         StringAssert.Contains(plan, "around@", "the body skirts the mark: " + plan);
         StringAssert.EndsWith(plan, "> storage@10.2,9.5");
 
-        Route(1, plan);
+        Decide(1, 7.6, 9.5);
         Assert.IsFalse(Bool("g.Find(1).NextLeg.IsStop"));
-        Assert.AreEqual("via", Text("g.Find(1).NextLeg.Name"), "the emergency point is the first leg of the plan — written as a point, the route calls it a via");
+        Assert.AreEqual("around", Text("g.Find(1).NextLeg.Name"), "the emergency point is the first leg of the plan: the route's own detour");
         Assert.IsTrue(Int("g.Find(1).LegsLeft") >= 2);
     }
 
@@ -681,13 +693,13 @@ public class MissionAcceptanceTests
     public void AfterABump_TheRoadIsDecidedAgain()
     {
         Visit(1, 9.0, 1.5);
-        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));
+        Decide(1, 9.0, 9.5);
 
         Bump(1, 10.25, 5.85, South);                 // the crate, met halfway down the corridor: bumped and marked at once
         string again = Text("g.Road(g.Find(1), Position(10.25, 6.3)).AsPlan()");   // from where the body backed off to
         Assert.IsFalse(again.Contains("east/garage"), "the corridor is closed by the mark: " + again);
         StringAssert.Contains(again, "storage/east@10.25,8", "back out the way it came");
-        Route(1, again);
+        Decide(1, 10.25, 6.3);
         Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"));
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
         Assert.AreEqual("pending", Text("g.Find(1).Status"));
@@ -714,7 +726,7 @@ public class MissionAcceptanceTests
     public void WhenNoRoadFits_TheProgressReadsStillAnswer_AsTheCrowFlies()
     {
         Visit(1, 2.0, 9.5);                          // the kitchen, from the storage
-        Route(1, Text("g.Road(g.Find(1), Position(9.0, 9.5)).AsPlan()"));
+        Decide(1, 9.0, 9.5);
         PlantMark(4.0, 9.2, East);                        // marks close the kitchen/north doorway...
         PlantMark(4.0, 9.8, East);
         PlantMark(0.75, 8.2, South);                      // ...and the kitchen/west one
@@ -741,10 +753,10 @@ public class MissionAcceptanceTests
     public void AStopReached_ImpliesEveryLegBeforeIt_AndANonStopIsRefused()
     {
         Visit(1, 2.0, 1.5);                       // the living room, from the kitchen
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));    // kitchen/west > west/living > living
+        Decide(1, 2.0, 9.5);    // kitchen/west > west/living > living
         Assert.AreEqual(3, Int("g.Find(1).LegsLeft"));
 
-        Refuses("{ route = g.Find(1); route.Reach(Position(0.75, 8.0)); }", "next stop is (2, 1.5)");   // a door of the plan is not a stop
+        Refuses("{ route = g.Find(1); route.Reach(Position(3.0, 3.0)); }", "next point is (0.75, 8)");   // not a point of the way
         Reach(1, 2.0, 1.5);                                            // the stop: the two doors were walked
         Assert.AreEqual("completed", Text("g.Find(1).Status"));
         Assert.AreEqual(0, Int("g.Find(1).LegsLeft"));
@@ -756,7 +768,7 @@ public class MissionAcceptanceTests
         Visit(1, 2.0, 9.5);                        // a point of the kitchen, from the kitchen
         string plan = Text("g.Road(g.Find(1), Position(3.0, 9.0)).AsPlan()");
         Assert.AreEqual("kitchen@2,9.5", plan, "same room, nothing in between: the plan is the stop alone");
-        Route(1, plan);
+        Decide(1, 3.0, 9.0);
         Assert.AreEqual(1, Int("g.Find(1).LegsLeft"));
         Assert.IsTrue(Bool("g.Find(1).NextLeg.IsStop"));
 
@@ -783,14 +795,14 @@ public class MissionAcceptanceTests
     public void ATouch_InterruptsThePlan_AndAnotherRoadReplacesWhatWasLeft()
     {
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));
+        Decide(1, 2.0, 9.5);
         Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"));
 
         Bump(1, 2.0, 10.8, North);                // something by the kitchen's north wall
         Assert.IsTrue(Bool("g.Find(1).BumpedSinceRoute"), "the plan is interrupted: the golem decides another road");
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "but the mission goes on");
 
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 10.4)).AsPlan()"));   // from where the body stands, the same stop ahead
+        Decide(1, 2.0, 10.4);   // from where the body stands, the same stop ahead
         Assert.IsFalse(Bool("g.Find(1).BumpedSinceRoute"));
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
 
@@ -811,7 +823,11 @@ public class MissionAcceptanceTests
         Bump(1, 4.7, 9.5, East);                      // my own touch, right there: presumed a thing…
         Met("blue", 4.7, 9.5);                        // …until the domain names blue: both marks go, the way is clear to step aside
 
-        string road = Text("g.RoadPast(g.Find(1), 'blue', Pose(4.6, 9.5, 0.0)).AsPlan()");
+        // the route decides its way out of blue's way itself: the courtesy step first, then the errand goes on
+        perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @heading); route.DecidePast(@who, me); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["who", typeof(string)] = "blue"; p["x", typeof(double)] = 4.6; p["y", typeof(double)] = 9.5; p["heading", typeof(double)] = 0.0; })
+            .PerformCommand();
+        string road = Text("g.Find(1).AsPlan()");
         StringAssert.StartsWith(road, "aside@", "the first leg is the courtesy step: " + road);
         StringAssert.EndsWith(road, "> north@5.5,9.5", "and then the errand goes on");
 
@@ -820,9 +836,8 @@ public class MissionAcceptanceTests
         Assert.AreEqual("aside@4.6,9", step, "a body's width to its right, off the line it was on");
 
         // the step is a leg to cross, never a stop: reaching it must not complete the errand
-        Route(1, road);
         Assert.IsFalse(Bool("g.Find(1).NextLeg.IsStop"));
-        Assert.AreEqual("via", Text("g.Find(1).NextLeg.Name"), "the courtesy step arrives at the journal as a point: a via");
+        Assert.AreEqual("aside", Text("g.Find(1).NextLeg.Name"), "the courtesy step is the route's own leg");
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "stepping aside is not arriving");
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
     }
@@ -833,7 +848,10 @@ public class MissionAcceptanceTests
         Visit(1, "north");
         Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
         // hemmed in against the kitchen's north wall: neither side leaves room for the body
-        string road = Text("g.RoadPast(g.Find(1), 'blue', Pose(2.0, 10.9, 1.5708)).AsPlan()");
+        perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @heading); route.DecidePast(@who, me); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["who", typeof(string)] = "blue"; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 10.9; p["heading", typeof(double)] = 1.5708; })
+            .PerformCommand();
+        string road = Text("g.Find(1).AsPlan()");
         Assert.IsFalse(road.Contains("aside@"), "no room to be polite: the plain road, and the meeting is settled by waiting: " + road);
     }
 
@@ -957,7 +975,7 @@ public class MissionAcceptanceTests
     public void GrazingAKnownWall_IsAFact_ThatSpendsTheGolemsPatienceOnTheLeg()
     {
         Visit(1, 2.0, 1.5);
-        Route(1, Text("g.Road(g.Find(1), Position(2.0, 9.5)).AsPlan()"));   // kitchen/west > west/living > living
+        Decide(1, 2.0, 9.5);   // kitchen/west > west/living > living
         Assert.IsTrue(Bool("g.Find(1).MayRetryLeg"));
 
         Graze(1, 0.05, 8.5);
@@ -1080,56 +1098,65 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    private void Visit(int id, double x, double y) =>
+    // The errand as the host writes it: from where the body stands (the kitchen's centre unless the test says), the
+    // route decides its way inside and holds the points — the journal never lists them (Juan, 16-sep-2026).
+    private void Visit(int id, double x, double y, double fromX = 2.0, double fromY = 9.5) =>
         perf.Actor.Using(@"
-            { point = Position(@x, @y); route = g.Visit(point); }
+            { from = Position(@fx, @fy); point = Position(@x, @y); route = g.Visit(from, point); }
         ")
         .WithParameters(p => {
+            p["fx", typeof(double)] = fromX; p["fy", typeof(double)] = fromY;
             p["x",  typeof(double)] = x;
             p["y",  typeof(double)] = y;
         })
         .PerformCommand();
 
-    private void Visit(int id, string place) =>
+    private void Visit(int id, string place, double fromX = 2.0, double fromY = 9.5) =>
         perf.Actor.Using(@"
-            { point = map.Find(@area); route = g.Visit(point); }
+            { from = Position(@fx, @fy); point = map.Find(@area); route = g.Visit(from, point); }
         ")
         .WithParameters(p => {
+            p["fx", typeof(double)] = fromX; p["fy", typeof(double)] = fromY;
             p["area", typeof(string)] = place;
         })
         .PerformCommand();
 
-    private void Visit(int id, string[] stops) => Errand("Visit", id, stops);
-    private void Cover(int id, string[] stops) => Errand("Cover", id, stops);
+    private void Visit(int id, string[] stops, double fromX = 2.0, double fromY = 9.5) => Errand("Visit", id, stops, fromX, fromY);
+    private void Cover(int id, string[] stops, double fromX = 2.0, double fromY = 9.5) => Errand("Cover", id, stops, fromX, fromY);
 
-    // Several stops are several acts in ONE command: an area by its name, a point as a Position — no list of
-    // strings encoding positions any more (Juan, 10-sep-2026: objects, one per statement).
-    private void Errand(string verb, int id, string[] stops)
+    // The way decided again from where the body stands — after a bump, or awake with a plan underway.
+    private void Decide(int id, double x, double y) =>
+        perf.Actor.Using(@"
+            { route = g.Find(@id); from = Position(@x, @y); route.Decide(from); }
+        ")
+        .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = x; p["y", typeof(double)] = y; })
+        .PerformCommand();
+
+    // Several stops: the first opens the route from the start, each further one is told to it (route.Then), one
+    // fixed template per stop — the route decides its way again through them all.
+    private void Errand(string verb, int id, string[] stops, double fromX, double fromY)
     {
-        // one stop is `point`, several are `point1`, `point2`… — and so are their @params
-        var script = new System.Text.StringBuilder("{\n");
         for (int i = 0; i < stops.Length; i++)
         {
-            string n = stops.Length == 1 ? "" : (i + 1).ToString();
-            string act = i == 0 ? $"route = g.{verb}(point{n});" : $"route.Then(point{n});";
-            script.Append(IsPoint(stops[i]) ? $"point{n} = Position(@x{n}, @y{n}); {act}\n" : $"point{n} = map.Find(@area{n}); {act}\n");
-        }
-        script.Append("}\n");
-        perf.Actor.Using(script.ToString())
-        .WithParameters(p => {
-            for (int i = 0; i < stops.Length; i++)
-            {
-                string n = stops.Length == 1 ? "" : (i + 1).ToString();
-                if (IsPoint(stops[i]))
+            string stop = stops[i];
+            bool first = i == 0;
+            string script = IsPoint(stop)
+                ? (first ? $"{{ from = Position(@fx, @fy); point = Position(@x, @y); route = g.{verb}(from, point); }}" : "{ route = g.Find(@id); point = Position(@x, @y); route.Then(point); }")
+                : (first ? $"{{ from = Position(@fx, @fy); point = map.Find(@area); route = g.{verb}(from, point); }}" : "{ route = g.Find(@id); point = map.Find(@area); route.Then(point); }");
+            perf.Actor.Using(script)
+            .WithParameters(p => {
+                if (first) { p["fx", typeof(double)] = fromX; p["fy", typeof(double)] = fromY; }
+                else p["id", typeof(int)] = id;
+                if (IsPoint(stop))
                 {
-                    var xy = stops[i].Split(',');
-                    p[$"x{n}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
-                    p[$"y{n}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
+                    var xy = stop.Split(',');
+                    p["x", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
+                    p["y", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
                 }
-                else p[$"area{n}", typeof(string)] = stops[i];
-            }
-        })
-        .PerformCommand();
+                else p["area", typeof(string)] = stop;
+            })
+            .PerformCommand();
+        }
     }
 
     private static bool IsPoint(string token)
@@ -1149,36 +1176,6 @@ public class MissionAcceptanceTests
             p["y", typeof(double)] = y;
         })
         .PerformCommand();
-
-    // The road is decided act by act, all in one command — the road opened with Route, then its own Via / Around /
-    // Aside per leg and Stop per stop — from the one-line text g.Road(…).AsPlan() renders (the test reads the plan as a human does, the journal never
-    // holds that text).
-    private void Route(int id, string plan)
-    {
-        var legs = plan.Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var script = new System.Text.StringBuilder("{\nroute = g.Find(@id);\n");
-        for (int i = 0; i < legs.Length; i++)
-        {
-            int n = i + 1;   // legs read from 1
-            string name = legs[i][..legs[i].LastIndexOf('@')];
-            bool stop = name != "around" && name != "aside" && !name.Contains('/') && !name.Contains('~');
-            script.Append(stop ? $"stop{n} = Position(@x{n}, @y{n}); route.Stop(stop{n});\n"
-                               : $"via{n} = Position(@x{n}, @y{n}); route.Via(via{n});\n");
-        }
-        script.Append("}\n");
-        perf.Actor.Using(script.ToString())
-        .WithParameters(p => {
-            p["id", typeof(int)] = id;
-            for (int i = 0; i < legs.Length; i++)
-            {
-                int n = i + 1;
-                var xy = legs[i][(legs[i].LastIndexOf('@') + 1)..].Split(',');
-                p[$"x{n}", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
-                p[$"y{n}", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
-            }
-        })
-        .PerformCommand();
-    }
 
     private void Reach(int id, double x, double y) =>
         perf.Actor.Using(@"
@@ -1201,7 +1198,6 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    // A command the domain must refuse: the GolemDomainException message surfaces through the perform.
     private void Refuses(string command, string because)
     {
         try

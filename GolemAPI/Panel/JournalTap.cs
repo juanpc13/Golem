@@ -15,7 +15,7 @@ internal sealed class JournalTap
 {
     private static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(600);
 
-    private readonly GolemPerformance perf;
+    private readonly GolemPerformance performance;
     private readonly PanelFeed feed;
     private readonly ConcurrentDictionary<int, (string[] Params, string Body)> templates = new();
     private readonly List<(long EntryId, byte[] Wire)> pending = new();
@@ -24,9 +24,9 @@ internal sealed class JournalTap
     private bool live;
     private Timer flushTimer;
 
-    internal JournalTap(GolemPerformance perf, PanelFeed feed)
+    internal JournalTap(GolemPerformance performance, PanelFeed feed)
     {
-        this.perf = perf;
+        this.performance = performance;
         this.feed = feed;
     }
 
@@ -34,7 +34,7 @@ internal sealed class JournalTap
     // order, then let the live records through — in entry order after a short grace.
     internal void Start()
     {
-        perf.WatchJournal((entryId, wire) =>
+        performance.WatchJournal((entryId, wire) =>
         {
             lock (gate)
             {
@@ -43,7 +43,7 @@ internal sealed class JournalTap
             }
         });
 
-        foreach (var record in perf.ReadJournalAfter(0))
+        foreach (var record in performance.ReadJournalAfter(0))
             Emit(record.EntryId, record.Record);
 
         lock (gate)

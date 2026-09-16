@@ -31,6 +31,59 @@ public sealed class DiffDriveNavigator : INavigator
         this.retreat = retreat;
     }
 
+    private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(15);
+    private const double FacingWithin = 0.05;   // rad: close enough to call the turn made (~3°)
+
+    // Turn in place until the body faces the heading: the route asked this one thing (Juan, 16-sep-2026: "si tiene
+    // que girar entonces gira, luego ros le dice ya giré"). A touch meanwhile ends it as a collision, like a run's.
+    public async Task<Outcome> TurnToAsync(double heading, CancellationToken ct)
+    {
+        var start = DateTime.UtcNow;
+        while (DateTime.UtcNow - start < TurnTimeout && !ct.IsCancellationRequested)
+        {
+            var pose = ros.LatestPose;
+            var hit = await TouchedAsync(start, pose?.X ?? 0, pose?.Y ?? 0, ct);
+            if (hit != null) return hit;
+            if (pose == null) { await Task.Delay(Tick, ct); continue; }
+            double deviation = NormalizeAngle(heading - pose.Theta);
+            if (Math.Abs(deviation) < FacingWithin)
+            {
+                await ros.DriveAsync(0, 0, ct);
+                return Outcome.Arrived;
+            }
+            double angular = Math.Clamp(3.0 * deviation, -1.5, 1.5);
+            if (Math.Abs(angular) < 0.3) angular = Math.Sign(angular) * 0.3;   // enough to move against friction
+            await ros.DriveAsync(0, angular, ct);
+            await Task.Delay(Tick, ct);
+        }
+        if (!ct.IsCancellationRequested)
+            await ros.DriveAsync(0, 0, ct);
+        return Outcome.Failed("turn timeout");
+    }
+
+    // The simulator's own definition of failure: its contact sensor says the body TOUCHED something since the run
+    // began. Where the touch happened, as the golem reckons it: one body radius from the centre of the body it
+    // believes, in the direction the shell was pressed (the contact's bearing — a flank hit on a corner lands on the
+    // flank, not on the nose). The heading points into what was touched. The world's name for it rides along as words.
+    // The body backs off before the verdict, so it stands free again. Null when nothing was touched.
+    private async Task<Outcome> TouchedAsync(DateTime since, double targetX, double targetY, CancellationToken ct)
+    {
+        var touch = ros.LatestContact;
+        if (touch == null || touch.At <= since) return null;
+        var atTouch = ros.LatestPose;
+        double r = bodyRadius();
+        double hitX, hitY, touchHeading;
+        if (atTouch == null)
+        {
+            hitX = targetX; hitY = targetY;
+            touchHeading = Math.Atan2(targetY - (ros.LatestPose?.Y ?? targetY), targetX - (ros.LatestPose?.X ?? targetX));
+        }
+        else (hitX, hitY, touchHeading) = touch.On(atTouch, r);
+        Console.WriteLine($"[navigator] touched {touch.With} at bearing {touch.Bearing * 180 / Math.PI:0}° off the nose — the touch lands at ({hitX:0.00}, {hitY:0.00})");
+        await BackOffAsync(touch, ct);
+        return Outcome.Collided(touch.With, hitX, hitY, touchHeading);
+    }
+
     public async Task<Outcome> GoToAsync(double targetX, double targetY, double within, CancellationToken ct)
     {
         var start = DateTime.UtcNow;
@@ -40,26 +93,8 @@ public sealed class DiffDriveNavigator : INavigator
 
         while (DateTime.UtcNow - start < RunTimeout && !ct.IsCancellationRequested)
         {
-            var touch = ros.LatestContact;
-            if (touch != null && touch.At > start)
-            {
-                // Where the touch happened, as the golem reckons it: one body radius from the centre of the
-                // body it believes, in the direction the shell was pressed (the contact's bearing — a flank hit
-                // on a corner lands on the flank, not on the nose). The heading points into what was touched.
-                // The world's name for what was hit rides along as words.
-                var atTouch = ros.LatestPose;
-                double r = bodyRadius();
-                double hitX, hitY, touchHeading;
-                if (atTouch == null)
-                {
-                    hitX = targetX; hitY = targetY;
-                    touchHeading = Math.Atan2(targetY - (ros.LatestPose?.Y ?? targetY), targetX - (ros.LatestPose?.X ?? targetX));
-                }
-                else (hitX, hitY, touchHeading) = touch.On(atTouch, r);
-                Console.WriteLine($"[navigator] touched {touch.With} at bearing {touch.Bearing * 180 / Math.PI:0}° off the nose — the touch lands at ({hitX:0.00}, {hitY:0.00})");
-                await BackOffAsync(touch, ct);
-                return Outcome.Collided(touch.With, hitX, hitY, touchHeading);
-            }
+            var hit = await TouchedAsync(start, targetX, targetY, ct);
+            if (hit != null) return hit;
 
             var pose = ros.LatestPose;
             if (pose == null) { await Task.Delay(Tick, ct); continue; }

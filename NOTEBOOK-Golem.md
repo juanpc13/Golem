@@ -1546,3 +1546,126 @@ Antes de hoy: 4–5 marcas seguidas para pasar la misma caja. Con la retirada, n
      Expose 1.5 'ry';                            action 2
 ```
 
+---
+
+## 2026-09-16 · Una cosa a la vez: el journal ordena, el cuerpo reporta, y la orden es un `print` empujado
+
+**Contexto**: Juan, revisando `RunAsync`: "debería ser un comando ejecutado que produce un print del siguiente punto que debe alcanzar y una vez alcanzado pide el siguiente… al `GolemPerformance` hay que ponerle el `perf.OutputTarget` apuntando al websocket… ya solo queda responsabilidad del robot decir si logré llegar o girar al punto indicado; una cosa a la vez, no una cola de acciones acumuladas". Y la corrección previa: la ruta debe traer también el ángulo al que girar; esos cálculos no estaban en el dominio.
+
+**Lo que dice el motor** (guías `puppeteer-materialized-views`, `puppeteer-reactions`; `IOutputSink.cs`): el `print` de un comando vuelve a quien lo ejecutó (pull). Lo que se empuja a un `OutputTarget` es el `print` del `.Program.Emit` de una Reaction — "pull vs push es propiedad del destino, el script es el mismo". El sink recibe un `PushDocument` (documento renderizado, nombre de la reacción, `EntryId`, las capturas). El empuje es efímero: sin outbox, sin reintento. El formateador por defecto del push es Toon; se pasa `JsonFormatter` para parsear.
+
+**Ajuste al dominio** (`Routes.Leg`, `Trajectory`, `Route`, `Golem`): `Leg.Heading`/`HasHeading` — la trayectoria da a cada tramo, salvo el primero, el rumbo desde la salida del anterior (`Leg.WalkedFrom`); el primero se camina desde donde esté el cuerpo, cuya pose es telemetría. `Route.Order` es lo que la ruta pide ahora: `hold` si está pausada, `decide` si no tiene camino o un choque lo interrumpió, `leg` si no; `IsWalkable`. `Route.Reach(point)` acepta cualquier punto del camino por delante (una puerta, una frontera, un punto, una parada), mueve el cursor y solo cuenta parada si lo es; `IsLegAhead`. `g.Aside(Pose)`: el paso de cortesía (derecha si cabe, si no izquierda, la misma pose si ninguna).
+
+**Ajuste al host** (`Orders.cs` nuevo, `GolemChoreography`, `Messages`, `RoadLeg`, `GolemController`, `Program`): ocho reacciones `next-order-*`, una por forma de acto que cambia la orden (`order` del encargo y del recálculo, `rid/rx/ry` de la parada, `vid/vx/vy` del punto pasado, la forma del `Bump`, `held`, `resumed`, `ended`, `letgo`), todas con el mismo `Emit`:
+```
+if (g.HasPendingMission()) { print g.Next().Id 'route', g.Next().Order 'order'; }
+if (g.HasPendingMission() && g.Next().IsWalkable) { print g.Next().NextLeg.Kind 'kind', … .At.X 'x', … .Heading 'heading', g.Next().Following 'following', g.Next().StopsLeft 'stopsLeft'; }
+```
+`perf.OutputTarget(orders, new JsonFormatter())`. `OrderSink` guarda la ÚLTIMA orden (una nueva sustituye a una no tomada), despierta al conductor y avisa para soltar la conducción en curso; se arma después de hidratar (lo que las reacciones repasan al arrancar es historia). El conductor (`RunAsync`, ya no un bucle de misión): toma una orden — `hold` → detiene el cuerpo y espera; `decide` → pregunta `g.Road(route, Position(pose))` y escribe el camino; `leg` → camina el tramo (aproximación y salida si es puerta) y reporta: `passed` (`route.Reach(via)` con `vid vx vy`) o `reached` (parada, `rid rx ry`); un toque sigue el protocolo de antes (pared → `Graze` y la misma orden otra vez; cosa → `Bump`, que hace la orden `decide`; compañero → `Met` y `RoadPast`). Si nada llega en 2 s, pregunta la misma proyección como consulta (`AskOrder`). Fuera: los tramos en memoria, el cursor, `lane`, `StepAsideAsync` con seno y coseno, `FeelForAWayPastAsync`, `HoldWhilePausedAsync`, `WatchForPauseAsync`, `ReadPlan`, `RoadAhead`. La coreografía pasó de 1420 a 1170 líneas quitando 560 e insertando 390 (Orders.cs aparte).
+
+**Observación en vivo** (journals anteriores en `journal-legacy-20260916-orders/`; la caja del centro seguía en el mundo):
+```
+blue → garage
+  { point = map.Find('garage'); route = g.Visit(point); via1 = …; route.Via(via1); … route.Stop(point); }   expose 1 'order'
+  route 1: heading to the passage north~center (5.5, 8.0)                         ← primera orden, sin rumbo: desde donde esté
+  { route = g.Find(1); via = Position(5.5,8); route.Reach(via); } Expose 1 'vid' …   ← el reporte
+  route 1: heading to the passage center~south on heading -1.43 (6.2, 3.0)         ← la siguiente, con el rumbo del dominio
+  { route = g.Find(1); touch = Pose(5.79,5.85,-1.57); route.Bump(touch); } …       ← la caja
+  route 1: another road around@6.47,6.53 > center~south@6.42,3 > south/garage@7,1.5 > stop@9,1.5   ← 'decide' cumplida
+  route 1: heading to a point (6.5, 6.5) / passed / heading … on heading -1.58 / passed / … / reached the stop (9.0, 1.5)
+pausa y reanudación: 'hold' detuvo el cuerpo (pose idéntica a los 3 y 8 s); Resume empujó el tramo y llegó
+encuentro: blue entró al garage donde red estaba parado — red "touched while standing", "making room: stepping to (8.6, 1.8)"
+  (el paso lo eligió g.Aside), blue concluyó Met cuatro veces y llegó; cero reinicios, cero errores en los tres golems.
+```
+Con la caja: un solo choque para pasarla en esta corrida (la retirada y la figura del lunes, más el rumbo del dominio).
+
+**Conclusión**: el diálogo es exactamente el de Juan: el journal dice "ve a este punto con este rumbo", el cuerpo va y dice "llegué" o "toqué", y esa palabra trae la siguiente orden. El host ya no sabe el plan. Dos consecuencias asumidas: el journal escribe cada punto del camino (cinco filas por encargo típico) — el "camina en silencio" del 10-sep queda superado por el "una cosa a la vez" del 16-sep —, y el empuje efímero se cubre preguntando la misma proyección cuando nada llega.
+
+**Pendiente**: (1) `decide` tras un choque la cumple el host preguntando `g.Road` desde la pose: es telemetría, se queda; (2) el primer tramo de un camino no trae rumbo — si se quisiera, el encargo tendría que escribir el punto de partida; (3) la caída por `WebSocketException` al reiniciar el simulador sigue sin atrapar.
+
+## 2026-09-16 · El script entero en el controller: la orden es el `print` del propio comando, y el `expose` solo donde un tell lo necesita
+
+**Contexto**: dos observaciones de Juan sobre la versión de la mañana. Primera: "hay que quitar los `expose @id rid, @x rx, @y ry;`, tengo entendido que no aportan nada de valor; ¿se pueden quitar todos?". Segunda: "el código no está bien, uno esperaría que todo esté ordenado en el `GolemController`, ahí tenemos acceso al actor ya configurado y ahí se ve el script entero relacionado a la acción, con los `print` del punto al que deberá moverse; pero todo lo tenemos metido en una clase de coreografía; refactoricemos".
+
+**Laboratorio 1 — ¿qué captura una Reaction de un comando entre llaves?** (`GolemTest/ReactionPatternLabTests.cs`, resultados en `bin/…/lab-patterns.txt`). Sobre un actor con los releases reales, definir una reacción por patrón y ejecutar un encargo, una parada, una pausa, una reanudación, un choque y un fallo:
+```
+definen: [_:Route].Reach(_)  [_:Route].Reach(_:Position)  [_:Route].Stop(_)  [_:Route].Via(_)  [_:Route].Then(_)
+         [_:Route].Bump(_)  [_:Route].Pause()  [_:Route].Pause  [_:Route].Resume()  [_:Route].Fail($why)
+         [_:Golem].Visit(_)  [_:Golem].Visit($p)  [_:Golem].Visit(_:Position)  [_:Golem].Find($id)
+rechaza: [_:Golem].Visit(_, _)  ("no overload accepts that number of arguments") y todo patrón anidado
+         (constructor dentro de la llamada, asignación dentro del patrón).
+disparan en una corrida: Stop(_)  Resume()  Then(_)  Visit(_:Position)      — con las capturas vacías (bindings[])
+callan en la misma:      Reach(_)  Via(_)  Pause()  Bump(_)  Fail($why)  Find($id)  Visit(_)
+```
+*Observación*: el acto mismo, sobre una variable local del bloque, ES un patrón válido: un `expose` que solo servía de gatillo (`vid vx vy` en `Reach`, `order`, `held`, `resumed`, `ended`, `letgo`) no aporta nada. Pero el disparo fue inconsistente entre corridas idénticas, y una reacción sobre el acto captura VACÍO: para llevar un valor a un tell (`PointVisited` necesita `x, y`; `BumpedAt` la pose y el nombre) el `expose` sigue siendo el único canal, porque el matcher no captura objetos (Fase 0, P3).
+
+**Laboratorio 2 — ¿a quién vuelve el `print` de un comando?** (`GolemTest/CommandPrintLabTests.cs` → `lab-print.txt`):
+```
+1 encargo + print (PerformCommand):              {"route":1,"order":"leg","kind":"door","x":0.75,"y":8.0,"hasHeading":false,…}
+2 Reach + expose + print (CheckThenCommand):     {"route":1,"order":"leg","kind":"stop","x":2.0,"y":1.5,"hasHeading":true,"heading":-1.38}
+3 Check rechazado:                               {"EWI":[{"Error":"not paused"}]}
+4 Pause + print:                                 {"route":1,"order":"hold"}
+5 última parada alcanzada (nada pendiente):      ''
+```
+*Observación*: el comando devuelve su `print` a quien lo ejecutó, en el mismo `PerformCheckThenCommand`, en el momento de escribir; el rechazo vuelve con las palabras del dominio. No hace falta que una Reaction lo empuje a un `OutputTarget` (la mañana lo hacía así, y el empuje era efímero y sin garantía entrada a entrada).
+
+**Conclusión**: la orden siguiente es el `print` con el que termina el propio comando que la cambió. Eso deja el script ENTERO — el acto y su `print` — en un solo lugar, el controller, como pidió Juan; las reacciones quedan solo para hablar (paper 04: el tell es una Reaction) y los `expose` solo donde un tell captura un valor.
+
+**Ajuste al host** (sin cambio de dominio): `GolemController` tiene todo script del journal — `NextOrder` (`g.Next().Id 'route', g.Next().Order 'order'` + el tramo si `IsWalkable`), el encargo (`/move`, `/cover`: primero los centros de las áreas, la vista previa `Preview`, luego `{ point1 = map.Find(@area1); route = g.Visit(point1); … via1 = Position(@lx1, @ly1); route.Via(via1); route.Stop(point1); }` + `NextOrder`), `/pause`, `/resume`, `/forget`, y los que ejecuta el conductor: `Passed`/`Reached` (`{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }` + `NextOrder`; `Reached` conserva `rid rx ry` para `echo-reached`), `Bumped`, `TouchedStanding`, `Grazed`, `Met`, `Decided` (`RoadLeg.Script(legs)` + `NextOrder`), `Failed`, `Abandoned`, `LetGo`, y las captaciones `Uptake*`. `Choreography/Orders.cs`: `Order` (route, what, kind, name, punto, aproximación, salida, rumbo, following, stopsLeft), `Answer` (la orden o el rechazo del Check, nunca ambos) y el buzón `Orders` (gana la última; `Arrived` suelta la conducción en curso; `Drop` para el let-go). `GolemDriver`: toma UNA orden — `hold` detiene, `decide` pregunta `g.Road(route, Position(pose))` y escribe `Decided`, `leg` camina el tramo con su rumbo — y reporta; si nada llega en 2 s pregunta `NextOrder` como query (`AskOrder`: el punto contado que se vuelve `Follow` cambia la orden sin script mío). `GolemSpeech`: `echo-bumped/touched/met/forgotten/reached` y `Listen()`. Se van `GolemChoreography.cs`, `Messages.cs`, `OrderSink`, `perf.OutputTarget`, las ocho `next-order-*`.
+
+**Observación en vivo** (journals conservados: solo cambian reacciones y exposes; tres golems, cero reinicios, cero excepciones):
+```
+blue → living con la caja del centro puesta desde el kiosco (la marca previa olvidada con /forget):
+  route 8: heading to the passage north~center (5.5, 8.0)                       ← la orden que devolvió el encargo
+  route 8 passed the point (5.5, 8.0) (entry 137)                                ← Passed; su print = la siguiente
+  route 8: heading to the passage center~south on heading -1.71 (4.8, 3.0)
+  [navigator] touched crate_center at bearing 7° off the nose — the touch lands at (5.24, 5.85)
+  route 8 bumped into something at (5.2, 5.8) (entry 139)                        ← Bumped; su print = 'decide'
+  nobody else bumped there and then — the mark stands; reconsidering for 12s
+  route 8 takes the road around@4.56,6.53 > center~south@4.59,3 > living/south@4,1.5 > stop@2,1.5 (entry 144)
+  passed (4.6, 6.5) · passed (4.6, 3.0) on heading -1.56 · passed (4.0, 1.5) · reached the stop (2.0, 1.5) (entry 148)
+pausa: 'hold', pose idéntica a los 3 y 7 s; segunda pausa rechazada "the route is already paused"; resume: siguió.
+let go a mitad de tramo (route 9): "let go of every pending route (entry 151)" y nada más — antes salían dos
+  "refused: route is not pending" porque la conducción en curso seguía y reportaba sobre la ruta abandonada;
+  ahora el let-go suelta la conducción (`Orders.Drop`).
+```
+Un choque para pasar la caja, cuatro tramos después, llegada. Igual que la versión de la mañana, con la mitad de las piezas.
+
+**Ajuste al dominio**: ninguno — el laboratorio fue del motor y del host. **Pendiente**: la caída por `WebSocketException` al reiniciar el simulador; el primer tramo sin rumbo; las marcas viejas de los corredores oeste/este.
+
+## 2026-09-16 · La ruta guarda sus puntos: el journal solo dice lo siguiente — gira, corre — y las plantillas son fijas
+
+**Contexto** (Juan, sobre los scripts del encargo): "el problema es la construcción de los scripts del journal: si resulta que necesitamos especificar cada uno de los `pointN`, pero eso ya no es así; ahora uno crea el visit, crea el objeto en memoria con todos los puntos, pero nunca los imprime, es algo que él tiene internamente y solo imprime el punto target… tampoco los `viaN`: la route tiene la lista de los puntos, y cuando `route.Reach` internamente se mueve al siguiente punto, el print dice todo lo necesario, que si tiene que girar entonces gira, luego ros le dice ya giré, luego se escribe en el journal que alcanzó a girar y esa misma escritura hace print de lo siguiente que hará, y así hasta completar todas las rutas que proponía la ruta… los scripts del controller deberían seguir una estructura bien redactada con parámetros, pero no armarse a punta de StringBuilder, eso terminaría creando demasiados actions; la idea es concentrar las acciones principales en unas cuantas".
+
+**Lo que cambia de doctrina**: el 10/14-sep se escribía el camino entero como puntos en la entrada del encargo (`via1… route.Stop(point)`), por el paper 05 ("si el planificador cambiara, una rehidratación decidiría otro camino"). Hoy la ruta decide y GUARDA su camino por dentro. Sigue siendo determinista en la reproducción: el planificador lee el layout y las colisiones, ambos estado del journal, y el origen del encargo se escribe (`from = Position(@fx, @fy)`); lo que queda expuesto es el cambio de código del planificador, un canje aceptado en el spike. A cambio: el journal no lista puntos, el encargo es UNA plantilla fija, y la primera pierna tiene rumbo (antes no, porque el origen no se escribía).
+
+**Ajuste al dominio** (`Routes.Route`, `Golem`, `Routes.Trajectory`, `Routes.Courtesy` nuevo; se van `Routes.Preview` y `Golem.RoadPast`):
+- `Route(id, stop, following, choosesOrder, layout, collisions, radius)`: `Decide(from)` planifica desde un punto por las paradas que faltan (`Ordered`: un Cover deja al planificador elegir el orden y lo adopta como propio, así lo alcanzado y lo que falta se leen de una sola lista) y toma la trayectoria `WalkedFrom(from)` (la primera pierna gana su rumbo); `DecidePast(who, me)` antepone el paso de cortesía (`Courtesy.StepOutOfTheWayOf`, compartido con `g.Aside`); `Then(point)` solo antes de arrancar y vuelve a decidir desde el origen.
+- El cursor: `Order` = `hold` | `decide` | `turn` (la pierna tiene rumbo y el cuerpo no ha girado) | `run`; `Turn()` marca el giro hecho y se rechaza cuando no toca ("asked no turn now"); `Reach(point)` avanza hasta esa pierna y **no salta paradas** (`AheadAt`: los pasos y puertas intermedios pueden quedar sin reportar, una parada no) — la prueba `SeveralStopsWithoutARoad_AreReachedInOrder` lo exigía y tenía razón.
+- `g.Visit(from, point|area)`, `g.Cover(from, point|area)` (rechazan `from` y `stop` como el mismo objeto, como toda pareja del mismo tipo), `g.Follow(point)` sin origen → `decide`; `g.Newest()`; `Road` queda como lectura; `route.AsPlan()`.
+- Pruebas: 59 verdes; las que escribían el camino a mano (`Route(id, plan)`) ahora `Decide(id, x, y)`; la de "el camino se escribe en puntos" pasó a ser `TheErrand_DecidesItsWholeWayInside_AndPrintsOnlyTheNextThing` (turn → run → Reach → turn).
+
+**Ajuste al host** (`GolemController`, `GolemDriver`, `Orders`, `INavigator`/`DiffDriveNavigator`; se va `RoadLeg.cs`): cada endpoint escribe su script completo, sin métodos que lo generalicen (Juan, misma tarde: "el controller en el endpoint debe explicar el script como tal") y en bloques verbatim de una sentencia por línea: `/move` y `/cover` su `{ from = Position(@fx, @fy); point = map.Find(@area); route = g.Visit(from, point); }` + `NextOrder` (el `from` es la pose, o el fin de la última ruta pendiente si el golem está ocupado) y, por cada parada adicional, su `{ route = g.Find(@id); point = …; route.Then(point); }` (una entrada, con el handle leído de `g.Newest()`); `/pause` y `/resume` cada uno con sus dos `Check` y su acto; la entrada del operador es un cuerpo JSON tipado (`Requests.cs`: `ErrandRequest`, `PointRequest`, `QueryRequest`, `ResetRequest`) que se valida antes de ejecutar nada — sin `[FromQuery]`; `Turned` (`{ route = g.Find(@id); route.Turn(); }`), `Passed`/`Reached`, `Decided` (`{ route = g.Find(@id); from = Position(@x, @y); route.Decide(from); }`), `DecidedPast`. El conductor: `turn` → `TurnToAsync(heading)` (giro en el sitio hasta 3°, un toque lo termina como colisión igual que a una carrera), `run` → como antes; `decide` → `Decided` desde la pose, y si el dominio rechaza dentro del comando (no hay camino) la ruta falla con la razón del planificador (`Safely`).
+
+**Observación en vivo** (journals reiniciados en `journal-legacy-20260916-puntos/`; tres golems, cero reinicios, cero excepciones; la caja del centro seguía en el mundo):
+```
+blue → living desde north (route 2), con pausa a mitad:
+  { from = Position(5.5, 9.5); point = map.Find('living'); route = g.Visit(from, point); }   → {"order":"turn","heading":-1.67,…}
+  route 2: turning to heading -1.67 for (5.5, 8.0) · turned (entry 9) · heading to the passage north~center · passed (entry 11)
+  turning -1.71 · turned (12) · heading to center~south (4.8, 3.0)
+  [navigator] touched crate_center at bearing 8° — the touch lands at (5.24, 5.86)
+  bumped (entry 14) · nobody else bumped there · another road — deciding the way from (5.2, 6.7) · decided (entry 20)   ← route.Decide(from)
+  turning -2.85 · turned (21) · heading to the passage around (4.6, 6.5) · passed (22)
+  turning -1.56 for (4.6, 3.0) · paused by the operator at (4.8, 6.6) [pose idéntica a los 3 y 8 s] · resumed · turning -1.56 · turned (27)
+  passed (4.6, 3.0) (28) · turning · turned (29) · passed living/south (4.0, 1.5) (30) · turning 3.14 · turned (31) · reached the stop (2.0, 1.5) (32)
+red → cover {kitchen, garage} desde living (route 1, dos entradas: Visit(from, kitchen) + Then(garage); eligió garage primero):
+  living/south · south/garage · reached garage (9.0, 1.5) (entry 16) · vuelta por south/garage · toque en wall_south_e_2 (7.05, 2.09)
+  tratado como cosa (bumped, entry 24) · decidió otra vía (30) · tocó a blue (7.0, 1.3) · Met blue · DecidedPast (43): aside (7.8, 1.1)
+  · east/garage · … · kitchen/north (4.0, 9.5) · reached the stop (2.0, 9.5) (entry 61) · pending 0
+```
+
+**Conclusión**: el diálogo es literalmente el de Juan — la escritura del acto imprime lo siguiente, el cuerpo hace UNA cosa y la reporta — y el journal quedó más corto y legible: un encargo es una plantilla de una línea, cada parada más una entrada, y el camino vive en el objeto. El giro como acción propia costó un método del navegador y nada del dominio que no fuera un bit (`turned`).
+
+**Observación posterior (misma tarde, tras el formato)**: blue (`/move` kitchen → storage, dos entradas) y red (`/cover` living, north) se cruzaron en la puerta kitchen/north desde lados opuestos: cada choque concluyó `Met`, cada uno escribió `DecidePast` con su paso a un lado (blue a (4.4, 9.9), red a (2.8, 9.0)), y volvieron a encontrarse en la misma jamba cuatro veces; blue falló "blocked by red after meeting it 4 times". El protocolo hizo lo suyo entrada a entrada; lo que falta es una regla de paso en una puerta (quién espera). Los dos `pause` seguidos: el segundo rechazado "the route is already paused"; `?place=attic` → "unknown area"; `?x=3&y=5` → "that point is nowhere on the map".
+
+**Pendiente**: (0) dos cuerpos que entran por la misma puerta desde lados opuestos se ceden el paso en vano hasta agotar `MaxYields` — hace falta que uno espere (el dominio decide quién, p. ej. el de menor handle); (1) red trató un roce con `wall_south_e_2` como cosa (`Suspect` no lo reconoció como pared a 0.05 m de la puerta south/garage): revisar la tolerancia de `map.IsWallAt` junto a las jambas; (2) `Then` tras arrancar se rechaza — si el operador quiere añadir una parada a una ruta en marcha, será un encargo nuevo; (3) la caída por `WebSocketException` al reiniciar el simulador.

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Choreography.Theater;
+using Puppeteer;
 using GolemAPI.Choreography;
 using GolemAPI.Membrane;
 using GolemAPI.Panel;
@@ -12,16 +13,18 @@ namespace GolemAPI.Controllers;
 // and the "let go of everything" lever.
 public class OperatorController : Controller
 {
-    private readonly PerformanceV2 perf;
-    private readonly GolemChoreography flow;
+    private readonly PerformanceV2 performance;
+    private readonly ActorV2 golemActor;
+    private readonly GolemDriver driver;
     private readonly PanelFeed feed;
     private readonly Rosbridge ros;
     private readonly GolemIdentity identity;
 
-    public OperatorController(PerformanceV2 perf, GolemChoreography flow, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
+    public OperatorController(PerformanceV2 performance, ActorV2 golemActor, GolemDriver driver, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
     {
-        this.perf = perf;
-        this.flow = flow;
+        this.performance = performance;
+        this.golemActor = golemActor;
+        this.driver = driver;
         this.feed = feed;
         this.ros = ros;
         this.identity = identity;
@@ -46,7 +49,7 @@ public class OperatorController : Controller
         {
             golem = identity.Golem,
             body = identity.Body,
-            entry = perf.CurrentEntryId,
+            entry = performance.CurrentEntryId,
             poseSource = ros.Source == PoseSource.Wheels ? "wheels" : "world",
             pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta },
             truth = truth == null ? null : new { x = truth.X, y = truth.Y, theta = truth.Theta },
@@ -59,16 +62,17 @@ public class OperatorController : Controller
     // wrapped as a query; a full block runs verbatim. Queries never journal — and are
     // not sandboxed: the operator keeps them read-only.
     [HttpPost("query")]
-    public async Task<IActionResult> AnswerAdHoc()
+    public IActionResult AnswerAdHoc([FromBody] QueryRequest request)
     {
-        using var reader = new StreamReader(Request.Body);
-        string script = (await reader.ReadToEndAsync()).Trim();
-        if (script.Length == 0) return BadRequest("a query is required");
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + QueryRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        string script = request.Script.Trim();
         if (!script.StartsWith("{"))
             script = "{ print " + script.TrimEnd(';') + " 'value'; }";
         try
         {
-            return Content(perf.Actor.Using(script).PerformQuery(), "application/json");
+            return Content(golemActor.Using(script).PerformQuery(), "application/json");
         }
         catch (Exception ex)
         {
@@ -79,16 +83,19 @@ public class OperatorController : Controller
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
     {
-        await flow.LetGoAsync();
+        await driver.LetGoAsync();
         return Accepted();
     }
 
-    // The hard reset: wipe the journal(s) and reboot reborn. cascade=true (the panel) resets
-    // the peers too; a peer asked by another golem gets cascade=false.
+    // The hard reset: wipe the journal(s) and reboot reborn. {"cascade": true} (the panel) resets
+    // the peers too; a peer asked by another golem gets {"cascade": false}.
     [HttpPost("reset-everything")]
-    public async Task<IActionResult> ResetEverything([FromQuery] bool cascade = true)
+    public async Task<IActionResult> ResetEverything([FromBody] ResetRequest request)
     {
-        await flow.ResetEverythingAsync(cascade);
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ResetRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        await driver.ResetEverythingAsync(request.Cascade.Value);
         return Accepted();
     }
 

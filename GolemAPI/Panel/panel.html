@@ -304,19 +304,20 @@ function renderStops() {
 }
 function addStop(stop) { stops.push(stop); renderStops(); }
 
-// Visit walks the stops in the order given (a single place or point takes the plain form, so the
-// journal reads g.Visit(7, 'kitchen')); Cover lets the golem choose the order.
+// Visit walks the stops in the order given; Cover lets the golem choose the order. Every stop travels as JSON:
+// a place is {"area": "kitchen"}, a point {"x": 9, "y": 8} — the golem validates the body before any script runs.
+async function post(path, body) {
+  return fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+}
+function asStop(s) {
+  if (!s.includes(',')) return {area: s};
+  const [x, y] = s.split(',');
+  return {x: +x, y: +y};
+}
 async function send(kind) {
   const out = document.getElementById('qout');
   if (stops.length === 0) { out.textContent = 'add a stop first'; return; }
-  let r;
-  if (kind === 'move' && stops.length === 1 && !stops[0].includes(','))
-    r = await fetch(`/move?place=${encodeURIComponent(stops[0])}`, {method: 'POST'});
-  else if (kind === 'move' && stops.length === 1)
-    r = await fetch(`/move?x=${stops[0].split(',')[0]}&y=${stops[0].split(',')[1]}`, {method: 'POST'});
-  else
-    r = await fetch(kind === 'move' ? '/move' : '/cover',
-                    {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({stops})});
+  const r = await post(kind === 'move' ? '/move' : '/cover', {stops: stops.map(asStop)});
   if (!r.ok) { out.textContent = 'refused: ' + await r.text(); return; }
   stops = []; renderStops();
 }
@@ -332,7 +333,7 @@ async function runQuery(script) {
   const out = document.getElementById('qout');
   out.textContent = '…';
   try {
-    const r = await fetch('/query', {method: 'POST', body: script});
+    const r = await post('/query', {script});
     out.textContent = script + '\n→ ' + await r.text();
   } catch (e) { out.textContent = 'golem unreachable: ' + e; }
 }
@@ -352,7 +353,7 @@ document.getElementById('reset').onclick = async () => {
 };
 document.getElementById('wipe').onclick = async () => {
   if (!confirm('Wipe the journals of this golem and its peers and reboot them from entry 1?')) return;
-  await fetch('/reset-everything', {method: 'POST'});
+  await post('/reset-everything', {cascade: true});
 };
 
 map.addEventListener('click', (ev) => {
@@ -395,7 +396,7 @@ document.getElementById('obstacles').addEventListener('click', async ev => {
   const b = ev.target.closest('button.gone');
   if (!b) return;
   b.disabled = true;
-  try { await fetch(`/forget?x=${b.dataset.x}&y=${b.dataset.y}`, { method: 'POST' }); } catch (e) {}
+  try { await post('/forget', {x: +b.dataset.x, y: +b.dataset.y}); } catch (e) {}
   drawObstacles();
 });
 

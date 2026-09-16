@@ -54,7 +54,8 @@ in [CLAUDE.md](CLAUDE.md).
   `Visit`, `Cover`, `Follow` (the entrusting) together with `Route` and its legs (the whole plan, in the same
   entry), `Reach` (a stop reached: the legs before it were walked; the last one completes the mission), `Bump`
   and `Graze` (a touch interrupts the plan; another `Route` replaces what was left), `Fail` and `Abandon` (the
-  ending). Walking a door or a point is not journaled: the plan said it, the body did it. Kill a golem
+  ending). The body does one thing at a time: every point of the way it reaches is reported (`route.Reach`), and
+  that report is what makes the golem hand out the next point — the host keeps no plan in memory. Kill a golem
   mid-mission and it rehydrates, decides its road again from where its body stands, and goes on.
 - **Speech is a reaction.** Red tells blue every stop it reaches; blue takes each told point as a mission of
   its own, follows, stops a body's length short of the leader, and abandons stale told points when newer
@@ -83,15 +84,15 @@ Then open:
 A first tour, from a shell:
 
 ```bash
-curl -X POST "localhost:8082/move?place=kitchen"
+curl -X POST localhost:8082/move -H "Content-Type: application/json" -d "{\"stops\": [{\"area\": \"kitchen\"}]}"
 ```
 
 Red plans its road, journals it, crosses two doors and reaches the kitchen; blue is told and follows.
 Send red on through several stops in one mission, in the order you give or in the order it finds shortest:
 
 ```bash
-curl -X POST localhost:8082/move  -H "Content-Type: application/json" -d "{\"stops\": [\"storage\", \"garage\"]}"
-curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"stops\": [\"garage\", \"kitchen\", \"storage\"]}"
+curl -X POST localhost:8082/move  -H "Content-Type: application/json" -d "{\"stops\": [{\"area\": \"storage\"}, {\"x\": 9.0, \"y\": 1.5}]}"
+curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"stops\": [{\"area\": \"garage\"}, {\"area\": \"kitchen\"}, {\"area\": \"storage\"}]}"
 ```
 
 Its shortest road from the kitchen to the garage cuts through the center hall, where a crate the map never
@@ -109,23 +110,24 @@ set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
 | `sim/` | The world. `world/plan.json` is the floor plan (places, doors, open boundaries, bodies, obstacles); `world/build_world.py` turns it into the Gazebo world and the bridge's topic mappings at image build; `kiosk/kiosk.sh` starts physics, bridges, rosbridge and the GUI; `bridge/teleport.py` is the lab lever that puts a body back on its mark. |
 | `GolemDomain/` | The pure domain, no framework references: `Golem` (the subject: missions, decisions, orders), `Body`, `Maps` (`Map`, `Area`, `Door`, `Opening`: information only), `Layouts` (`Layout`, `Zone`, `Wall`, the `Catalog`: the map on the plane), `Touches` (`Collisions`, `Mark`, `Obstacle`: what the bodies learned), `Routes` (`RoutePlanner`: Dijkstra over doors, openings and detours; doors are crossed straight, openings away from their corners). |
 | `GolemTest/` | Acceptance tests that enter through the actor's perform, against an in-memory journal, with the same release chain the host runs. `dotnet test GolemTest` |
-| `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Navigation/` (the seam to the body's locomotion), `Choreography/` (reactions, the ops saga, the mission loop), `Panel/` (the page and the journal tap), `Controllers/`. |
+| `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Navigation/` (the seam to the body's locomotion), `Choreography/` (the `Orders` mailbox, `GolemDriver` — the body's servo, one order at a time —, `GolemSpeech` — the tell reactions and uptakes), `Panel/` (the page and the journal tap), `Controllers/` (`GolemController`: EVERY journal script, each ending in the print of the next order, which the command returns to whoever performed it). |
 | `journal/` | The golems' journals (FileSystem backend), one folder per golem. Git-ignored; disposable in this spike. |
 | `PLAN-Golem.md` | The team's plan and decision log (Spanish): what was tried, what was retired, what the engine taught us. |
 
 ## The golem's surface
 
-Every write goes through the actor's DSL and lands in the journal. The verbs:
+Every write goes through the actor's DSL and lands in the journal. What the operator sends arrives as a JSON body, typed and validated (`Controllers/Requests.cs`) before any script runs. The verbs:
 
 | Verb | Meaning |
 |---|---|
-| `route = g.Visit(point)` · `g.Visit(area)` | The operator sends the golem to a point or a place: the golem hands out the ROUTE (its handle minted inside, never reused) and the rest is told to it. |
-| `route.Then(point)` | One more stop, after the ones given — in that order for a Visit, in the order the golem chooses for a Cover. |
-| `route = g.Cover(point)` | A route through several stops whose order the golem **chooses** so the whole way is shortest. |
+| `route = g.Visit(from, point)` · `g.Visit(from, area)` | The operator sends the golem to a point or a place, from where it stands: the golem hands out the ROUTE (its handle minted inside, never reused) with its WHOLE WAY decided inside — the route holds the points, the journal never lists them; refused when no way fits the body. |
+| `route.Then(point)` | One more stop, after the ones given (its own entry, `route = g.Find(@id)` first) — in that order for a Visit, in the order the golem chooses for a Cover; the route decides its way again through them all. |
+| `route = g.Cover(from, point)` | A route through several stops whose order the golem **chooses** so the whole way is shortest. |
 | `route = g.Follow(point)` | The golem follows its leader to a point a peer says it reached. |
-| `route.Via(point)` · `route.Stop(point)` | The way, one act per leg in the same entry as the errand, ONLY POINTS: the route names each against the map (a door where a door stands, an opening on a shared edge, a `via` elsewhere; a stop is one of its stops ahead, `route.Stop(point)` with the errand's own variable). The last stop decides the way; a `Via` on a decided route opens the next decision (after a bump). |
+| `route.Decide(from)` · `route.DecidePast(who, me)` | The way decided again by the route itself, from where the body stands — after a bump, or awake with a plan underway; out of a peer's way the first leg is the courtesy step the route chooses. |
+| `route.Turn()` | The body turned in place to the next leg's heading (every leg has one, the first from where the errand started): the route now asks it to run. |
 | `route = g.Find(id)` | The route by its handle, to act on it later — the only place an id enters. |
-| `route.Reach(point)` | A stop reached: the legs before it were walked, whatever they were. Reaching the last one completes the route — there is no separate "complete". Told to the follower. |
+| `route.Reach(point)` | A point of the way reached — a door, an opening, a point to pass, a stop — one at a time: the body reports each and the golem hands out the next (its `Order`: `turn`, `run`, `hold` or `decide`). A stop is never skipped. Reaching the last stop completes the route — there is no separate "complete". A stop reached is told to the follower. |
 | `route.Bump(touch)` · `g.Bump(touch)` | The body touched something the map does not hold, heading that way — on a route, or while standing still (the golem's own act then, no route). A fact, told to every peer with the golem's name, and a mark at once on a route; what it was is concluded afterward: a peer that spoke there and then → `Met` takes the mark back. |
 | `HearBump(who, touch, peerAt)` · `HearTouch(who, at, peerAt)` | A peer told it bumped (heading which way, standing where) or was touched while standing. A touch of my own there and then was that peer: a body, not a thing. A bump heard is learned as a mark, as the peer presumed; a touch heard is not (what touches a standing body is a body). |
 | `route.Graze(at)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. Journaled so the golem's patience on the leg (`MayRetryLeg`) decides whether to try again or give the route up. |
@@ -140,8 +142,8 @@ as globals of the actor and hand them to it: `body_v1` (`radius = Meters(0.25); 
 concrete map, each area found once and told what it is in one train (`map = MapLayout('warehouse');
 map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
 map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the
-abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `route = g.Visit(Position(9.0, 8.0))`,
-the way one act per leg in the errand's own entry, on the route the golem hands out, only points (`{ point = map.Find('kitchen'); route = g.Visit(point); via1 = Position(4.0, 9.5); route.Via(via1); route.Stop(point); }`)
+abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `{ from = Position(2.0, 1.5); point = map.Find('kitchen'); route = g.Visit(from, point); }`:
+the route decides its whole way inside and the journal prints only the next thing to do (`turn` to a heading, `run` to a point)
 — except what is told to the peers, which travels flat. Evolve the golem by appending a release, never by
 editing an applied one.
 
@@ -149,12 +151,13 @@ Endpoints, per golem:
 
 | Endpoint | What it does |
 |---|---|
-| `POST /move?place=` · `POST /move?x=&y=` · `POST /move` `{"stops": [...]}` | Send the golem to a place, a point, or through several stops in that order (409 when a stop is off the map) |
-| `POST /cover` `{"stops": [...]}` | Send it through several stops in the order it finds shortest |
+| `POST /move` `{"stops": [{"area": "kitchen"}, {"x": 9.0, "y": 8.0}]}` | Send the golem through stops in that order — a place by name or a point (400 when the body is malformed, 409 when the golem refuses: unknown area, a point off the map, no way that fits) |
+| `POST /cover` `{"stops": [...]}` | Send it through several stops in the order it finds shortest; same body |
+| `POST /pause` · `POST /resume` · `POST /forget` `{"x": 5.2, "y": 5.8}` | Hold the route underway and let it go on; forget the obstacle standing at a point (told to the peers) |
 | `GET /state` · `GET /progress` · `GET /map` | The mission board; road left and ETA from where the body stands; the map as the golem knows it — one query that walks the golem's `Place` objects and prints their properties (`foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doors()) { print doors.To 'to', doors.At.X 'x'; } }`), rendered by the engine as `{places: [{name, x, y, w, h, cx, cy, doors: [...], opens: [...], marks: [...]}]}` |
 | `GET /body` | Host telemetry: body, believed pose, the world's pose, the last thing the body touched |
-| `POST /query` | Ad-hoc read-only query in the DSL, e.g. `g.Distance('kitchen', 'garage')` |
-| `POST /reset` · `POST /reset-everything` | Abandon every pending mission (journaled, one command) and put the body back; wipe the journals of this golem and its peers and reboot them reborn |
+| `POST /query` `{"script": "g.PendingRoutes().Count"}` | Ad-hoc read-only query in the DSL |
+| `POST /reset` · `POST /reset-everything` `{"cascade": true}` | Abandon every pending mission (journaled, one command) and put the body back; wipe the journals of this golem and (with cascade) its peers and reboot them reborn |
 | `GET /events` | The panel's feed: the whole journal replayed, then every record as it lands, plus runtime events |
 | `POST /tell` | Where a peer's tells arrive |
 

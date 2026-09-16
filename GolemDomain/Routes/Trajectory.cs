@@ -6,8 +6,8 @@ namespace GolemDomain.Routes;
 /// <summary>
 /// A trajectory — Juan's RUTA / TRAYECTORIA: the ordered legs a body walks, one straight segment from each
 /// leg to the next. A route's way is a trajectory; so is the planner's answer before a route takes it. It reads in one line — "kitchen/north@4,9.5 > north~center@5.5,8 > garage@9,1.5" — but the
-/// journal writes it act by act on the ROUTE (`route.Via(via1); … route.Stop(point);`), never as text; the route
-/// takes the trajectory once its last stop is written.
+/// journal never holds it: the route decides it inside (`g.Visit(from, point)`, `route.Decide(from)`) and hands out
+/// one leg at a time.
 /// </summary>
 internal class Trajectory
 {
@@ -16,7 +16,22 @@ internal class Trajectory
     internal Trajectory(IEnumerable<Leg> legs)
     {
         if (legs == null) throw new GolemDomainException("a trajectory needs its legs, even none");
-        this.legs = legs.ToList();
+        var given = legs.ToList();
+        // every leg after the first is walked from the previous leg's exit: its heading is the way's to give
+        this.legs = new List<Leg>(given.Count);
+        for (int i = 0; i < given.Count; i++)
+            this.legs.Add(i == 0 || given[i].HasHeading ? given[i] : given[i].WalkedFrom(given[i - 1].Exit));
+    }
+
+    /// <summary>The same trajectory, told the point it is walked from: its first leg gains the heading from there (the
+    /// others already have theirs from the leg before). What a route takes when it decides its way from a point.</summary>
+    internal Trajectory WalkedFrom(Position from)
+    {
+        if (from == null) throw new GolemDomainException("Trajectory.WalkedFrom: 'from' was not given");
+        if (legs.Count == 0 || legs[0].HasHeading) return this;
+        var told = new List<Leg>(legs);
+        told[0] = legs[0].WalkedFrom(from);
+        return new Trajectory(told);
     }
 
     internal IReadOnlyList<Leg> Legs() => legs;

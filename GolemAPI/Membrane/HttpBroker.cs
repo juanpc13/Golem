@@ -72,12 +72,13 @@ public sealed class HttpBroker : IMessageBroker
     public IReadOnlyCollection<Uri> Peers => routes.Values.Distinct().ToArray();
 
     // Operator lever: ask a peer to reset itself too (best effort, short timeout).
-    public async Task<bool> AskPeerAsync(Uri peer, string relativePath)
+    public async Task<bool> AskPeerAsync(Uri peer, string relativePath, string json)
     {
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            using var answer = await Wire.PostAsync(new Uri(peer, relativePath), null, cts.Token);
+            using var body = new StringContent(json ?? "{}", System.Text.Encoding.UTF8, "application/json");
+            using var answer = await Wire.PostAsync(new Uri(peer, relativePath), body, cts.Token);
             return answer.IsSuccessStatusCode;
         }
         catch (Exception ex)

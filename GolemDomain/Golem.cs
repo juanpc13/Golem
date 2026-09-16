@@ -72,33 +72,42 @@ internal sealed class Golem
 
     // ---- routes: the entrusting (the operator's voice) — the golem hands the route out and every act on it is its own ----
 
-    /// <summary>The operator sends the golem to a point: a new route, handle minted here, returned to be told the rest —
-    /// <c>route = g.Visit(point); route.Then(point2); route.Via(via1); route.Stop(point);</c>. A stop off the map is refused.</summary>
-    internal Route Visit(Position stop)
+    /// <summary>The operator sends the golem to a point, from where it stands (or where its last pending route ends):
+    /// a new route, handle minted here, its way DECIDED INSIDE from that start — <c>{ from = Position(@fx, @fy);
+    /// point = Position(@x, @y); route = g.Visit(from, point); }</c> — and returned, to be told more stops
+    /// (<c>route.Then</c>) and to hand out one leg at a time (Juan, 16-sep-2026: "uno crea el visit, crea el objeto en
+    /// memoria con todos los puntos… y solo imprime el punto target"). Refused when no way fits the body.</summary>
+    internal Route Visit(Position from, Position stop)
     {
+        if (from == null) throw new GolemDomainException("Golem.Visit: 'from' was not given");
         if (stop == null) throw new GolemDomainException("Golem.Visit: 'stop' was not given");
-        return Entrust(stop, following: false, choosesOrder: false);
+        if (ReferenceEquals(from, stop)) throw new GolemDomainException("Golem.Visit: 'from' and 'stop' are the same position");
+        return Entrust(from, stop, following: false, choosesOrder: false);
     }
 
-    /// <summary>The operator sends the golem to an area: its centre — <c>route = g.Visit(map.Find(@area))</c>.</summary>
-    internal Route Visit(Area area)
+    /// <summary>The operator sends the golem to a place: its centre — <c>route = g.Visit(from, map.Find(@area))</c>.</summary>
+    internal Route Visit(Position from, Area area)
     {
+        if (from == null) throw new GolemDomainException("Golem.Visit: 'from' was not given");
         if (area == null) throw new GolemDomainException("Golem.Visit: 'area' was not given");
-        return Entrust(Centre(area), following: false, choosesOrder: false);
+        return Entrust(from, Centre(area), following: false, choosesOrder: false);
     }
 
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
-    internal Route Cover(Position stop)
+    internal Route Cover(Position from, Position stop)
     {
+        if (from == null) throw new GolemDomainException("Golem.Cover: 'from' was not given");
         if (stop == null) throw new GolemDomainException("Golem.Cover: 'stop' was not given");
-        return Entrust(stop, following: false, choosesOrder: true);
+        if (ReferenceEquals(from, stop)) throw new GolemDomainException("Golem.Cover: 'from' and 'stop' are the same position");
+        return Entrust(from, stop, following: false, choosesOrder: true);
     }
 
     /// <summary>The operator opens a route through areas whose order the golem may choose.</summary>
-    internal Route Cover(Area area)
+    internal Route Cover(Position from, Area area)
     {
+        if (from == null) throw new GolemDomainException("Golem.Cover: 'from' was not given");
         if (area == null) throw new GolemDomainException("Golem.Cover: 'area' was not given");
-        return Entrust(Centre(area), following: false, choosesOrder: true);
+        return Entrust(from, Centre(area), following: false, choosesOrder: true);
     }
 
     /// <summary>The golem follows its leader to a point a peer says it reached — a route of its own, handle minted here.
@@ -107,7 +116,7 @@ internal sealed class Golem
     internal Route Follow(Position at)
     {
         if (at == null) throw new GolemDomainException("Golem.Follow: 'at' was not given");
-        return Entrust(at, following: true, choosesOrder: false);
+        return Entrust(null, at, following: true, choosesOrder: false);   // no start known here: the route asks 'decide'
     }
 
     /// <summary>A route the golem already holds, by its handle — to act on it later: <c>route = g.Find(@id); route.Reach(point);</c>.</summary>
@@ -118,11 +127,10 @@ internal sealed class Golem
         throw new GolemDomainException($"unknown route {id}: consult Knows(id) first");
     }
 
-    // ---- routes: the way, previewed — reads that take the route and the body's pose as objects ----
+    // ---- routes: the way from a point, READ without deciding it (the lab's reading; the route decides its own) ----
 
-    /// <summary>The way the golem would walk from a point through a route's stops still ahead, as objects: the legs,
-    /// each knowing its kind (door, opening, around, aside, stop), its passage's areas and its point — what the host
-    /// reads to write the decision act by act. For a Cover route the stops come out in the order the golem chose.
+    /// <summary>The way the golem would walk from a point through a route's stops still ahead, as objects — what
+    /// <c>route.Decide(from)</c> would take. For a Cover route the stops come out in the order the golem would choose.
     /// Marks are skirted ('around' legs) or, where the body would not fit past them, avoided by another way.</summary>
     internal Trajectory Road(Route route, Position from)
     {
@@ -134,50 +142,16 @@ internal sealed class Golem
         return planner.Road(from, stops);
     }
 
-    /// <summary>The way out of a peer's way and on to the stops still ahead, as objects: the first leg is the
-    /// courtesy step — a body's width to ONE SIDE of where the golem faces, chosen so it moves away from the peer
-    /// and where its own body fits; both bodies step to their own right when they can, which is how two of them
-    /// pass instead of shove. The peer's position is what it told when it bumped (HearBump); without it, or with
-    /// nowhere to step, the way is the plain one from here.</summary>
-    internal Trajectory RoadPast(Route route, string who, Pose me)
-    {
-        if (route == null) throw new GolemDomainException("Golem.RoadPast: 'route' was not given");
-        if (me == null) throw new GolemDomainException("Golem.RoadPast: 'me' was not given");
-        var ahead = route.StopsAhead.ToList();
-        var planner = Planner();
-        var aside = StepOutOfTheWayOf(who, me);
-        if (aside == null) return planner.Road(me, ahead);
-        var legs = new List<Leg> { new(aside, Leg.Courtesy) };
-        legs.AddRange(planner.Road(aside, ahead).Legs());
-        return new Trajectory(legs);
-    }
-
     /// <summary>The courtesy step: two radii of the body to one side of where it faces.</summary>
-    internal const double CourtesyStep = 0.5;
+    internal const double CourtesyStep = Courtesy.Step;
 
-    // A body's width to one side of where the golem faces: its own right first (so two bodies facing each other
-    // separate), then its left. The step must fit the body and must not walk INTO the peer.
-    private Position StepOutOfTheWayOf(string who, Pose me)
+    /// <summary>Where the body steps to get out of the way from where it stands — a courtesy step to its right if it fits,
+    /// else to its left — <c>g.Aside(Pose(@x, @y, @theta))</c>; the pose itself when neither side fits (the host reads it
+    /// and moves nothing). What a follower does on arriving, and what a standing body does when something touches it.</summary>
+    internal Position Aside(Pose me)
     {
-        var peer = collisions.LastKnownPositionOf(who);
-        foreach (var turn in new[] { -Math.PI / 2, Math.PI / 2 })   // right, then left
-        {
-            var step = me.Along(me.Heading + turn, CourtesyStep);
-            if (!FitsAt(step)) continue;
-            if (peer != null && step.DistanceTo(peer) <= me.DistanceTo(peer)) continue;
-            return step;
-        }
-        return null;
-    }
-
-    /// <summary>The way a NEW errand would take, before it exists: an object that is told the stops one by one and
-    /// answers the legs — <c>preview = g.Preview(Position(@x, @y), @cover); preview.Then(map.Find(@area)); …
-    /// preview.Legs()</c> — for this body over this map and what it learned. What the operator's command reads to
-    /// write the errand and its whole way in one entry.</summary>
-    internal Preview Preview(Position from, bool choosesOrder)
-    {
-        if (from == null) throw new GolemDomainException("Golem.Preview: 'from' was not given");
-        return new Preview(layout, Planner(), from, choosesOrder);
+        if (me == null) throw new GolemDomainException("Golem.Aside: 'me' was not given");
+        return Courtesy.StepOutOfTheWayOf(layout, collisions, Radius(), null, me) ?? me;
     }
 
     /// <summary>Where the last pending route ends: the point a NEW errand's way should start from when the golem is
@@ -330,6 +304,13 @@ internal sealed class Golem
     /// <summary>The route the golem is on: the first pending one — <c>g.Next().Id</c>, <c>g.Next().NextLeg.At.X</c>, <c>g.Next().StopsLeft</c>.</summary>
     internal Route Next() => NextPending();
 
+    /// <summary>The route handed out last — the one an errand just opened, to tell it more stops (<c>g.Newest().Id</c>).</summary>
+    internal Route Newest()
+    {
+        if (routes.Count == 0) throw new GolemDomainException("no route yet: consult Routes().Count first");
+        return routes[^1];
+    }
+
     // ---- inside ----
 
     // The planner for this body: the layout says where the walls and doors stand, the collisions module what
@@ -338,9 +319,10 @@ internal sealed class Golem
 
     // A new route with this stop: the handle is the next one, minted here (a deterministic function of the routes the
     // golem holds, so the same on replay), and never reused — the idempotency keys of the host hang on it.
-    private Route Entrust(Position stop, bool following, bool choosesOrder)
+    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder)
     {
-        var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions);
+        var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions, Radius());
+        if (from != null) route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
         routes.Add(route);
         lastHandle = route.Id;
         return route;
