@@ -63,10 +63,11 @@ var peers = routes.Keys
 
 var speech = new GolemSpeech(performance, wire, feed, golem, tellDoneTo, peers);
 speech.DefineReactions();
-// The robot as the golem sees it: the OUTPUT TARGET of every print — parsed, switched on, sent to the body over the
-// websocket; the body reports back on the /robot/* endpoints. Registered as the actor's output target too.
+// The robot as the golem sees it: what the body reports comes to the Robot; every print goes out through its output
+// target, RobotToRos — parsed, switched on, sent to the body over the websocket as one of the robot's base actions.
+// Registered as the actor's output target too: a Reaction that emitted the same print would reach the body the same way.
 var robot = new Robot(performance, ros, feed, wire, golem, home, journalPath);
-performance.OutputTarget(robot, new JsonFormatter());
+performance.OutputTarget(robot.ToRos, new JsonFormatter());
 
 performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
 new JournalTap(performance, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands

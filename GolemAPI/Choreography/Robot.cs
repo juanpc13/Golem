@@ -7,24 +7,17 @@ using Puppeteer;
 
 namespace GolemAPI.Choreography;
 
-// THE ROBOT, AS THE GOLEM SEES IT: the output target of every print (Juan, 16-sep-2026: "el print retorna al controller,
-// pero ese mismo objeto analiza el JSON y tiene un switch con las acciones disponibles; dentro de cada case están los
-// llamados que viajan hasta el robot… el robot solo es el cuerpo, nosotros le decimos qué hacer, y cuando termina le
-// dice al actor por un endpoint que ya terminó, para pedir el siguiente print"). Every command the golem performs ends
-// with the same print (GolemController.NextOrder); the print comes back to whoever performed it and is handed here —
-// Obey — where it is parsed, switched on, and the SAME JSON goes on to the body over the websocket (rosbridge, topic
-// /golem/<body>/order) enriched with what the body needs to carry it out: the arrival tolerance and the body the golem
-// declared (speed, radius, retreat). The body does that one thing and reports it on the golem's endpoints
-// (/robot/turned, /robot/reached, /robot/touched, /robot/stuck); the endpoint writes the act, and its print lands here
-// again — until nothing is pending. It also implements IOutputSink, so it IS the actor's OutputTarget: a Reaction that
-// emitted the same print would reach the body the same way.
-// What stays here of the host's own: the clock (listening after a bump, the follower's linger), the wire, and nothing
-// of the plan — no cursor, no legs: the journal holds those.
-public sealed class Robot : IOutputSink
+// THE ROBOT, AS THE GOLEM SEES IT (Juan, 16-sep-2026: "el robot solo es el cuerpo; nosotros le decimos qué hacer, y cuando
+// termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print"). Its two faces:
+//   - ToRos, the OUTPUT TARGET (RobotToRos : IOutputSink): every print the golem's commands return goes there, is switched
+//     on, and travels to the body over the websocket as one of the robot's base actions.
+//   - this class: what the body REPORTS back through the golem's endpoints (/robot/arrived, /robot/bump, /robot/stuck) —
+//     the act is written, the touch protocol runs (the peers' window, Met, the way out of a peer's way), the follower's
+//     linger and courtesy step — plus the clock that asks the journal what it wants when no print brought it, and the
+//     operator's levers on the body (let go, reset). It holds no plan, no cursor, no legs: the journal holds those.
+// The Robot is all a controller needs: its Actor is the golem, its Pose the body's telemetry, its ToRos the output.
+public sealed class Robot
 {
-    private const double ArriveWithin = 0.25;    // a stop is "reached" within the body's radius
-    private const double LineUpWithin = 0.15;    // a door is lined up tighter (the crossing must be straight)
-    private const double LeaderStandoff = 1.0;   // the follower's last stop is met this short of the leader's spot
     private const int MaxYields = 4;             // times the golem steps out of a peer's way before giving the route up
     private static readonly TimeSpan Listen = TimeSpan.FromMilliseconds(2500);
     private static readonly TimeSpan Reconsider = TimeSpan.FromSeconds(12);
@@ -39,10 +32,7 @@ public sealed class Robot : IOutputSink
     private readonly string journalPath;
 
     private readonly object gate = new();
-    private Order carrying;             // the order the body is carrying out now; null while it stands
-    private int heardAtOrderStart;      // peers' bumps heard before the current order began are older news than a touch during it
     private int yields, yieldsFor;      // courtesy steps taken on the route underway
-    private DateTime lingerUntil = DateTime.MinValue;   // the follower's linger: no order goes out to the body before this
     private DateTime lastStandingTouch = DateTime.MinValue;
 
     public Robot(PerformanceV2 performance, Rosbridge ros, PanelFeed feed, HttpBroker wire,
@@ -56,6 +46,7 @@ public sealed class Robot : IOutputSink
         this.golem = golem;
         this.home = home;
         this.journalPath = journalPath;
+        ToRos = new RobotToRos(this, ros);
     }
 
     /// <summary>The golem itself — the actor every script is performed on (Juan, 16-sep-2026: "en los controllers se pasa el
@@ -63,143 +54,18 @@ public sealed class Robot : IOutputSink
     public ActorV2 Actor => golemActor;
     /// <summary>Where the body believes it stands (telemetry, never the journal's); null before the first word from it.</summary>
     public Pose Pose => ros.LatestPose;
-
-    /// <summary>The order the body is carrying out now — what a report from it must be about — or null while it stands.</summary>
-    public Order Carrying { get { lock (gate) return carrying; } }
-
-    // ==================================================================
-    // THE OUTPUT TARGET: a print arrives, is parsed, switched on, and travels to the body.
-    // ==================================================================
-
-    /// <summary>IOutputSink — a Reaction's emitted print lands here like a command's returned one.</summary>
-    public void Push(in PushDocument document) => Obey(document.Document);
-
-    /// <summary>The print a command returned: what the route asks now. Parsed, switched on, sent to the body.</summary>
-    public void Obey(string print) => Obey(Order.Parse(print));
-
-    public void Obey(Order order)
-    {
-        if (order == null) { Stand(); return; }   // nothing pending: the body stands
-        switch (order.What)
-        {
-            case "hold":
-                Stand();
-                Note($"route {order.Route}: paused by the operator — the body stands until resumed");
-                break;
-            case "decide":
-                Decide(order.Route, "another road");
-                break;
-            case "turn":
-            case "run":
-            case "back":
-                Send(order);
-                break;
-            default:
-                Note($"an order I do not know: '{order.What}'");
-                break;
-        }
-    }
-
-    // The order goes to the body as the SAME JSON the golem printed, plus what the body needs to carry it out. The
-    // same order twice (the endpoint's answer after the loop already asked the journal) is not sent again; a
-    // different one replaces whatever the body was doing. The follower's linger holds it back a while.
-    private void Send(Order order)
-    {
-        TimeSpan wait;
-        lock (gate)
-        {
-            if (carrying != null && carrying.SameAs(order)) return;
-            if (order.Route != yieldsFor) { yields = 0; yieldsFor = order.Route; }
-            carrying = order;
-            heardAtOrderStart = HeardBumpCount();
-            wait = lingerUntil - DateTime.UtcNow;
-        }
-        string what = order.What == "turn" ? $"turning to heading {order.Heading:0.00} for" : order.What == "back" ? "backing off to"
-            : order.Kind switch { "stop" => "heading to a stop", "via" => "heading to a point", "around" => "skirting to", "aside" => "stepping aside to", _ => $"heading to the passage {order.Name}" };
-        bool standoff = order.Following && order.IsLastStop;
-        if (standoff) what += $", stopping {LeaderStandoff:0.0} short of the leader's spot";
-        Note($"route {order.Route}: {what} ({order.X:0.0}, {order.Y:0.0}){(wait > TimeSpan.Zero ? $" — after lingering {wait.TotalSeconds:0} s" : "")}");
-        double within = standoff ? LeaderStandoff : ArriveWithin;
-        if (wait > TimeSpan.Zero)
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(wait);
-                lock (gate) { if (!ReferenceEquals(carrying, order)) return; }
-                await PublishAsync(order, within);
-            });
-        else _ = PublishAsync(order, within);
-    }
-
-    private Task PublishAsync(Order order, double within) => ros.PublishAsync(ros.OrderTopic, JsonSerializer.Serialize(new
-    {
-        order = order.What, route = order.Route, kind = order.Kind, name = order.Name,
-        x = order.X, y = order.Y, ax = order.AX, ay = order.AY, ex = order.EX, ey = order.EY,
-        hasHeading = order.HasHeading, heading = order.Heading, following = order.Following, stopsLeft = order.StopsLeft,
-        within,
-        body = new { speed = Speed(), radius = Radius(), retreat = Retreat() }
-    }));
-
-    // The body stands: whatever it was doing is dropped.
-    private void Stand(bool anchor = false)
-    {
-        lock (gate) carrying = null;
-        _ = ros.PublishAsync(ros.OrderTopic, anchor ? "{\"order\":\"stop\",\"anchor\":true}" : "{\"order\":\"stop\"}");
-    }
-
-    // A courtesy step — out of a peer's way, or off the leader's — is a run with no route: the body reports it reached and
-    // nothing is journaled (the golem chose the point: g.Aside).
-    private void StepAside(string why)
-    {
-        var pose = ros.LatestPose;
-        if (pose == null) return;
-        var (x, y) = Aside(pose);
-        if (Math.Abs(x - pose.X) < 1e-6 && Math.Abs(y - pose.Y) < 1e-6) return;
-        Note($"{why}: stepping to ({x:0.0}, {y:0.0})");
-        var step = new Order(0, "run", "aside", "aside", x, y, x, y, x, y, false, 0, false, 0);
-        lock (gate) carrying = step;
-        _ = PublishAsync(step, LineUpWithin);
-    }
-
-    // The way, decided by the route itself from where the body stands (the pose: the only thing the host adds). When
-    // no way fits the body, the route fails with the planner's reason.
-    private void Decide(int route, string verb)
-    {
-        var here = ros.LatestPose;
-        if (here == null) { Note($"route {route}: no pose yet to decide from — asking again shortly"); return; }
-        Note($"route {route}: {verb} — deciding the way from ({here.X:0.0}, {here.Y:0.0})");
-        try { Report(GolemController.Decided(golemActor, route, here.X, here.Y), $"route {route} decided its way from ({here.X:0.0}, {here.Y:0.0})"); }
-        catch (Exception ex) { Report(Safely(() => GolemController.Failed(golemActor, route, "no road: " + Reason(ex))), $"route {route} failed: no road"); }
-    }
-
-    // What a script answered: refused → said so (the domain's words); done → its print is the next order, obeyed.
-    private void Report(Answer answer, string done)
-    {
-        if (!answer.Ok)
-        {
-            Console.WriteLine($"[golem {golem}] refused: {answer.Refused}");
-            feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"refused — {answer.Refused}", DateTime.UtcNow));
-            return;
-        }
-        Console.WriteLine($"[golem {golem}] {done} (entry {performance.CurrentEntryId})");
-        Obey(answer.Order);
-    }
+    /// <summary>The output target: the print, switched on and sent to the body over ROS.</summary>
+    public RobotToRos ToRos { get; }
 
     // ==================================================================
     // What the body reports (the endpoints hand it here once the act is written).
     // ==================================================================
 
-    /// <summary>Whether a report is about the order the body was given (a stale one — superseded meanwhile — is not journaled).</summary>
-    public bool Expects(int route, string what)
-    {
-        lock (gate) return carrying != null && carrying.Route == route && carrying.What == what;
-    }
-
     /// <summary>The body did the one thing it was told — turned, or reached the point: the act was written; its print is
     /// the next order. A follower arriving at its last stop pulls over to its right and lingers, so the leader keeps its lead.</summary>
     public void Arrived(Answer answer)
     {
-        var was = Carrying;
-        lock (gate) carrying = null;
+        var was = ToRos.Done();
         if (was == null) return;
         if (was.Route == 0) { Note("courtesy step done"); return; }   // an aside: nothing journaled, nothing next
         Report(answer, was.What == "turn" ? $"route {was.Route} turned to heading {was.Heading:0.00}"
@@ -211,9 +77,9 @@ public sealed class Robot : IOutputSink
             if (was.Following)
             {
                 var linger = TimeSpan.FromSeconds(LingerAfterTold());
-                lock (gate) lingerUntil = DateTime.UtcNow + linger;
+                ToRos.Linger(linger);
                 Note($"lingering {linger.TotalSeconds:0} s at ({was.X:0.0}, {was.Y:0.0}) to keep the leader's lead");
-                if (Carrying == null) StepAside("pulling over to the right, off the leader's way");
+                if (ToRos.Carrying == null) StepAside("pulling over to the right, off the leader's way");
             }
         }
     }
@@ -221,7 +87,7 @@ public sealed class Robot : IOutputSink
     /// <summary>The body could not: stalled, timed out. The route fails in the body's words; the next route's order follows.</summary>
     public void Stuck(int route, string reason)
     {
-        lock (gate) carrying = null;
+        ToRos.Done();
         Report(Safely(() => GolemController.Failed(golemActor, route, reason)), $"route {route} failed: {reason}");
     }
 
@@ -232,8 +98,8 @@ public sealed class Robot : IOutputSink
     // its way (Juan, 8-sep: "the domain decides, the host follows"; 16-sep: "el que decide todo debe ser el dominio").
     public async Task BumpedAsync(int route, string with, double x, double y, double heading, double poseX, double poseY, double poseTheta)
     {
-        Order was; int since;
-        lock (gate) { was = carrying; since = heardAtOrderStart; }
+        var was = ToRos.Carrying;
+        int since = ToRos.HeardBefore;
         bool onMyWay = route > 0 && was != null && was.Route == route;
         if (!onMyWay)
         {
@@ -246,7 +112,7 @@ public sealed class Robot : IOutputSink
             StepAside("making room");
             return;
         }
-        lock (gate) carrying = null;
+        ToRos.Done();
         var hit = new Collision(with, x, y, heading);
         string where = $"({x:0.0}, {y:0.0})";
         if (Suspect(hit, since).Kind == "wall")
@@ -279,7 +145,8 @@ public sealed class Robot : IOutputSink
             Note($"route {route}: the domain suspects {suspicion.Who} — it bumped there too: a body, not a thing ({suspicion.Conclusion})");
             var met = Safely(() => GolemController.Met(golemActor, suspicion.Who, x, y));
             if (!met.Ok) Console.WriteLine($"[golem {golem}] refused: {met.Refused}");
-            int taken; lock (gate) taken = yields;
+            int taken;
+            lock (gate) { if (route != yieldsFor) { yields = 0; yieldsFor = route; } taken = yields; }
             if (taken < MaxYields)
             {
                 lock (gate) yields++;
@@ -320,6 +187,44 @@ public sealed class Robot : IOutputSink
     }
 
     // ==================================================================
+    // The domain's decisions the Robot asks for on the body's behalf.
+    // ==================================================================
+
+    // The way, decided by the route itself from where the body stands (the pose: the only thing the host adds). When
+    // no way fits the body, the route fails with the planner's reason.
+    internal void Decide(int route, string verb)
+    {
+        var here = ros.LatestPose;
+        if (here == null) { Note($"route {route}: no pose yet to decide from — asking again shortly"); return; }
+        Note($"route {route}: {verb} — deciding the way from ({here.X:0.0}, {here.Y:0.0})");
+        try { Report(GolemController.Decided(golemActor, route, here.X, here.Y), $"route {route} decided its way from ({here.X:0.0}, {here.Y:0.0})"); }
+        catch (Exception ex) { Report(Safely(() => GolemController.Failed(golemActor, route, "no road: " + Reason(ex))), $"route {route} failed: no road"); }
+    }
+
+    // The courtesy step is the golem's to choose (g.Aside); the body only walks it.
+    private void StepAside(string why)
+    {
+        var pose = ros.LatestPose;
+        if (pose == null) return;
+        var (x, y) = Aside(pose);
+        if (Math.Abs(x - pose.X) < 1e-6 && Math.Abs(y - pose.Y) < 1e-6) return;
+        ToRos.StepAside(x, y, why);
+    }
+
+    // What a script answered: refused → said so (the domain's words); done → its print is the next order, obeyed.
+    private void Report(Answer answer, string done)
+    {
+        if (!answer.Ok)
+        {
+            Console.WriteLine($"[golem {golem}] refused: {answer.Refused}");
+            feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"refused — {answer.Refused}", DateTime.UtcNow));
+            return;
+        }
+        Console.WriteLine($"[golem {golem}] {done} (entry {performance.CurrentEntryId})");
+        ToRos.Obey(answer.Order);
+    }
+
+    // ==================================================================
     // The clock: awake, and now and then — the journal is asked what it wants when nothing came through a print
     // (a told point taken up as a Follow changes the order without any script of mine printing it).
     // ==================================================================
@@ -330,17 +235,17 @@ public sealed class Robot : IOutputSink
         var patience = DateTime.UtcNow + TimeSpan.FromSeconds(15);
         while (ros.LatestPose == null && DateTime.UtcNow < patience && !ct.IsCancellationRequested) await Task.Delay(200, ct);
         var first = AskOrder();
-        if (first != null && (first.What == "turn" || first.What == "run")) Decide(first.Route, "awake with a plan underway");
-        else Obey(first);
+        if (first != null && (first.What == "turn" || first.What == "run" || first.What == "back")) Decide(first.Route, "awake with a plan underway");
+        else ToRos.Obey(first);
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(2000, ct);
             var now = AskOrder();
-            var mine = Carrying;
-            if (now == null) { if (mine != null && mine.Route != 0) Stand(); continue; }
+            var mine = ToRos.Carrying;
+            if (now == null) { if (mine != null && mine.Route != 0) ToRos.Stop(); continue; }
             if (mine != null && mine.SameAs(now)) continue;
             if (mine != null && mine.Route == 0 && now.What != "hold") continue;   // a courtesy step underway: the order waits for it
-            Obey(now);
+            ToRos.Obey(now);
         }
     }
 
@@ -352,7 +257,7 @@ public sealed class Robot : IOutputSink
     // is the golem's act, one command for every pending route.
     public async Task LetGoAsync()
     {
-        Stand(anchor: true);
+        ToRos.Stop(anchor: true);
         try { await ros.TeleportAsync(home.X, home.Y, 0.0, CancellationToken.None); }
         catch { /* the world reset is best-effort; the journaled fact is the point */ }
         Report(Safely(() => GolemController.LetGo(golemActor, "the operator let go of everything")), "let go of every pending route");
@@ -363,7 +268,7 @@ public sealed class Robot : IOutputSink
     public async Task PutBackHomeAsync(CancellationToken ct)
     {
         await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
-        Stand(anchor: true);
+        ToRos.Stop(anchor: true);
     }
 
     // The hard reset — a LAB lever, not a domain fact: stop the body, wipe THIS golem's journal and exit; Docker
@@ -375,7 +280,7 @@ public sealed class Robot : IOutputSink
         if (cascade)
             foreach (var peer in wire.Peers)
                 await wire.AskPeerAsync(peer, "reset-everything", "{\"cascade\": false}");
-        Stand();
+        ToRos.Stop();
         _ = Task.Run(async () =>
         {
             await Task.Delay(500);
@@ -403,7 +308,7 @@ public sealed class Robot : IOutputSink
         Note($"route {route}: the body believes it stands at ({believed.X:0.00}, {believed.Y:0.00}); the world says ({truth.X:0.00}, {truth.Y:0.00}) — {off:0.00} m apart");
     }
 
-    private void Note(string text)
+    internal void Note(string text)
     {
         Console.WriteLine($"[golem {golem}] {text}");
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", text, DateTime.UtcNow));
@@ -424,7 +329,9 @@ public sealed class Robot : IOutputSink
     }
 
     // ------------------------------------------------------------------
-    // Reads: typed Out parameters through the rent-lease (never parsing print), or the golem's objects walked.
+    // Reads: the golem's answers, from the print of a query (JSON) — never from a shared lease: the panel's polls and the
+    // body's reports reach the actor on different threads at once, and a rented Out parameter was found empty under that
+    // concurrency ("Unknown parameter v", 16-sep-2026 lab).
     // ------------------------------------------------------------------
 
     // What the route asks now — the same question every script ends with.
@@ -434,9 +341,6 @@ public sealed class Robot : IOutputSink
         catch (Exception e) { Console.WriteLine($"[golem {golem}] asking the order failed: {e.Message}"); return null; }
     }
 
-    // The golem's answers are read from the print of a query (JSON), never from a shared lease: the panel's polls and the
-    // body's reports reach the actor on different threads at once, and a rented Out parameter was found empty under
-    // that concurrency ("Unknown parameter v", 16-sep-2026 lab).
     private (string Kind, string Who, string Conclusion) Suspect(Collision hit, int since)
     {
         using var doc = JsonDocument.Parse(golemActor.Using(@"
@@ -460,12 +364,19 @@ public sealed class Robot : IOutputSink
         return (doc.RootElement.GetProperty("sx").GetDouble(), doc.RootElement.GetProperty("sy").GetDouble());
     }
 
+    /// <summary>The body the golem declared in its journal: what the robot needs to carry an order out.</summary>
+    internal (double Speed, double Radius, double Retreat) BodyDeclared()
+    {
+        using var doc = JsonDocument.Parse(golemActor.Using(@"
+            print body.Speed.InMetersPerSecond 'speed', body.Radius.InMeters 'radius', body.Retreat.InMeters 'retreat';
+        ").PerformQuery());
+        var e = doc.RootElement;
+        return (e.GetProperty("speed").GetDouble(), e.GetProperty("radius").GetDouble(), e.GetProperty("retreat").GetDouble());
+    }
+
+    internal int HeardBumpCount()        => Read("print collisions.HeardCount 'v';").GetInt32();
     private bool MayRetryLeg(int id)     => Read("print g.Find(@id).MayRetryLeg 'v';", id).GetBoolean();
     private int Grazes(int id)           => Read("print g.Find(@id).Grazes 'v';", id).GetInt32();
-    private int HeardBumpCount()         => Read("print collisions.HeardCount 'v';").GetInt32();
-    private double Speed()               => Read("print body.Speed.InMetersPerSecond 'v';").GetDouble();
-    private double Radius()              => Read("print body.Radius.InMeters 'v';").GetDouble();
-    private double Retreat()             => Read("print body.Retreat.InMeters 'v';").GetDouble();
     private double LingerAfterTold()     => Read("print body.LingerAfterTold.InSeconds 'v';").GetDouble();
 
     private JsonElement Read(string script, int? id = null)

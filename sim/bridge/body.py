@@ -3,14 +3,17 @@
 time from its golem and reports what came of it (Juan, 16-sep-2026: "el robot solo es el cuerpo; nosotros le decimos
 qué hacer, y cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print").
 
-Its whole vocabulary is four words (Juan: "mover / girar / choque / llegué"). Orders arrive on /golem/<body>/order
-(std_msgs/String, the JSON the golem's journal printed, plus what the body needs):
-  {"order": "turn", "route": 3, "heading": -1.57, "body": {"speed": 2.0, "radius": 0.25}, ...}     — turn in place
-  {"order": "run",  "route": 3, "x": .., "y": .., "ax": .., "ay": .., "ex": .., "ey": .., "within": 0.25, ...}  — move to a point
-  {"order": "back", "route": 3, "x": .., "y": .., "within": 0.15, ...}                             — move to a point IN REVERSE
-  {"order": "stop"}                       — stand (the operator held the route, or nothing is pending)
-  {"order": "stop", "anchor": true}       — stand, and take the world's word for where you are (after a teleport)
-A new order replaces whatever the body was doing. Reports go back to the golem's endpoints as JSON bodies:
+Its vocabulary is the robot's BASE ACTIONS (Juan: "avanzar / retroceder / girar a la derecha / girar a la izquierda /
+detener / continuar; el choque es lo que reporta"). Orders arrive on /golem/<body>/order (std_msgs/String: the JSON the
+golem's journal printed, plus the action and what the body needs), switched on "action":
+  {"action": "advance",   "route": 3, "x": .., "y": .., "ax": .., "ay": .., "ex": .., "ey": .., "within": 0.25, ...}  — move to a point
+  {"action": "back",      "route": 3, "x": .., "y": .., "within": 0.15, ...}                          — move to a point IN REVERSE
+  {"action": "turnLeft",  "route": 3, "heading": -1.57, ...}   — turn in place, counter-clockwise, until facing the heading
+  {"action": "turnRight", "route": 3, "heading": -1.57, ...}   — the same, clockwise
+  {"action": "stop"}                    — stand, remembering what it was doing (the operator held the route, or nothing is pending)
+  {"action": "stop", "anchor": true}    — stand, and take the world's word for where you are (after a teleport)
+  {"action": "continue"}                — take up what it was doing when it was stopped
+A new action replaces whatever the body was doing. Reports go back to the golem's endpoints as JSON bodies:
   POST /robot/arrived {"route"}                                                         — the turn made, the point reached
   POST /robot/bump    {"route", "with", "x", "y", "heading", "px", "py", "ptheta"}      — route 0 when touched while standing
   POST /robot/stuck   {"route", "reason"}
@@ -71,6 +74,7 @@ class Body(Node):
         self.calibrate = True
         self.contact = None          # (model, time, bearing) the last touch
         self.order = None            # the order being carried out (dict), None while standing
+        self.held = None             # the order it was carrying when told to stop: "continue" takes it up again
         self.phase = None            # run: "approach" | "exit"
         self.began = 0.0
         self.best = float("inf")
@@ -136,24 +140,32 @@ class Body(Node):
             self.get_logger().warning("an order I cannot read: %s" % m.data[:120])
             return
         with self.lock:
-            what = order.get("order")
-            if what == "stop":
+            action = order.get("action")
+            if action == "stop":
+                self.held = self.order
                 self.order = None
                 if order.get("anchor"):
                     self.calibrate = True
                 self.drive(0.0, 0.0)
                 return
-            if what not in ("turn", "run", "back"):
-                self.get_logger().warning("an order I do not know: %s" % what)
+            if action == "continue":
+                if self.held is None:
+                    return
+                order, self.held = self.held, None
+                action = order.get("action")
+                self.get_logger().info("route %s: continuing" % order.get("route"))
+            if action not in ("advance", "back", "turnLeft", "turnRight"):
+                self.get_logger().warning("an action I do not know: %s" % action)
                 return
             self.order = order
-            self.phase = "approach" if what == "run" and (order.get("ax") != order.get("ex") or order.get("ay") != order.get("ey")) else "exit"
+            self.held = None
+            self.phase = "approach" if action == "advance" and (order.get("ax") != order.get("ex") or order.get("ay") != order.get("ey")) else "exit"
             self.closest = float("inf")
             self.began = time.time()
             self.best = float("inf")
             self.improved = self.began
-            self.get_logger().info("route %s: %s %s" % (order.get("route"), what,
-                                   ("to heading %.2f" % order.get("heading", 0.0)) if what == "turn" else ("to (%.2f, %.2f)" % (order.get("x", 0.0), order.get("y", 0.0)))))
+            self.get_logger().info("route %s: %s %s" % (order.get("route"), action,
+                                   ("to heading %.2f" % order.get("heading", 0.0)) if action.startswith("turn") else ("to (%.2f, %.2f)" % (order.get("x", 0.0), order.get("y", 0.0)))))
 
     # ---- the servo's beat ----
     def tick(self):
@@ -188,7 +200,9 @@ class Body(Node):
             if self.pose is None:
                 return
             x, y, theta = self.pose
-            if order["order"] == "turn":
+            action = order["action"]
+            if action in ("turnLeft", "turnRight"):
+                # in place, the way the golem said (left: counter-clockwise), until facing the heading
                 deviation = normalize(order.get("heading", 0.0) - theta)
                 if abs(deviation) < FACING_WITHIN:
                     self.drive(0.0, 0.0)
@@ -198,15 +212,17 @@ class Body(Node):
                     self.drive(0.0, 0.0)
                     self.done(order, "stuck", {"route": order.get("route", 0), "reason": "turn timeout"})
                     return
-                angular = max(-1.5, min(1.5, 3.0 * deviation))
-                if abs(angular) < 0.3:
-                    angular = math.copysign(0.3, angular)
+                sign = 1.0 if action == "turnLeft" else -1.0
+                left = deviation if deviation >= 0 else deviation + 2 * math.pi   # the angle still to turn, going the way told
+                if action == "turnRight":
+                    left = 2 * math.pi - left if deviation > 0 else -deviation
+                angular = sign * max(0.3, min(1.5, 3.0 * left))
                 self.drive(0.0, angular)
                 return
-            if order["order"] == "back":
+            if action == "back":
                 self.reverse_to(order, now)
                 return
-            # a run: line up at the approach, then run to the exit (one leg, when the two coincide)
+            # an advance: line up at the approach, then run to the exit (one leg, when the two coincide)
             if self.phase == "approach":
                 tx, ty, within = order.get("ax", order["x"]), order.get("ay", order["y"]), LINE_UP_WITHIN
             else:

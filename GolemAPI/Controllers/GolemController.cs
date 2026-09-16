@@ -20,7 +20,7 @@ namespace GolemAPI.Controllers;
 public class GolemController : Controller
 {
     // The Robot is all a controller needs: the golem itself is its Actor (every script here is `robot.Actor.Using(…)`),
-    // the body's pose is its telemetry, and every print goes back into it — the output target.
+    // the body's pose is its telemetry, and every print goes to its output target (robot.ToRos) and on to the body.
     private readonly Robot robot;
 
     public GolemController(Robot robot)
@@ -303,7 +303,7 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var carrying = robot.Carrying;
+        var carrying = robot.ToRos.Carrying;
         if (carrying == null || carrying.Route != report.Route.Value) return Accepted("not the order the body was given");
         if (carrying.Route == 0) { robot.Arrived(default); return Accepted(); }
         Answer answer;
@@ -374,7 +374,7 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"reason\": \"stalled\"}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var carrying = robot.Carrying;
+        var carrying = robot.ToRos.Carrying;
         if (carrying == null || carrying.Route != report.Route.Value) return Accepted("not the order the body was given");
         robot.Stuck(report.Route.Value, report.Reason.Trim());
         return Accepted();
@@ -626,11 +626,11 @@ public class GolemController : Controller
         .PerformQuery();
 
     // The script's answer becomes the response: refused → 409 in the domain's words; done → the print handed to the
-    // Robot — the output target: it switches on it and the body gets its order — and the board back to the operator.
+    // output target (RobotToRos: it switches on it and the body gets its action) — and the board back to the operator.
     private IActionResult Answered(Answer answer)
     {
         if (!answer.Ok) return Conflict(answer.Refused);
-        robot.Obey(answer.Print);
+        robot.ToRos.Obey(answer.Print);
         return Content(Board(), "application/json");
     }
 

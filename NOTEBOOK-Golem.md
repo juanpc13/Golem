@@ -1719,3 +1719,27 @@ blue → living con la caja (route 12, tras la corrección): bumped (5.2, 5.9) (
 **Conclusión**: el cuerpo ya no decide nada — ni retrocede: para y avisa. La corrección es un acto del dominio (`route.Bump(touch, me)`) cuyo print es la primera orden nueva, `back`, y el rodeo son piernas de corrección en la misma lista que las del plan. El hallazgo colateral (las jambas) muestra por qué importaba: cada clasificación errada ahora inserta correcciones reales.
 
 **Pendiente**: (1) regla de paso en una puerta cuando dos cuerpos entran por lados opuestos; (2) el `within` de llegada y el `standoff` del seguidor siguen siendo del host (`Robot`): candidatos a decidirse en el dominio; (3) green ancla su odometría en el nodo y en la membrana por separado.
+
+## 2026-09-16 · La salida se llama `RobotToRos`: el `print` se vuelve una acción base del robot
+
+**Contexto** (Juan): "actualmente tengo `Robot : IOutputSink`, pero mejor separemos esa parte: una nueva clase que sirva de salida, `RobotToRos`, que herede de `IOutputSink`, que se ocupe del `Obey` y haga el `switch case` para enviar al robot; las acciones base son avanzar / retroceder / girar a la derecha / girar a la izquierda / detener / continuar / choque".
+
+**Ajuste al host** (`Choreography/RobotToRos.cs` nuevo, `Robot.cs`, `GolemController`, `Program`, `sim/bridge/body.py`): la salida y los reportes quedan en dos clases. `RobotToRos` es el `IOutputSink` del actor y el destino del print que devuelve cada comando; su `switch` traduce la palabra del journal a la acción del robot — `turn` → `turnLeft`/`turnRight` (el lado, del menor giro desde la pose del cuerpo; el rumbo sigue siendo del dominio), `run` → `advance`, `back` → `back`, `hold` → `stop` (recordando la acción), reanudación → `continue`, `decide` → de vuelta al golem (`robot.Decide`). El JSON que viaja es el del print más `action`, `within` y el cuerpo declarado. `Robot` se queda con lo que el cuerpo reporta y con el reloj y las palancas, y expone `Actor`, `Pose` y `ToRos`. `body.py` conmuta por `action`; el giro a la izquierda/derecha avanza en el sentido dicho hasta encarar el rumbo; `stop` guarda la acción y `continue` la retoma.
+
+**Ajuste al dominio**: ninguno (`Order` sigue diciendo `turn`/`run`/`back`/`hold`/`decide`; la traducción es del host, como el papel 08 pide: el dominio no anticipa el vocabulario del cuerpo).
+
+**Observación en vivo** (tres golems, cero reinicios; nodos del cuerpo relanzados con el vocabulario nuevo):
+```
+blue home → living (route 11): turnRight -2.00 · advance (5.19, 8.0) · turnLeft -2.00 · advance (4.53, 6.55) · turnLeft -1.56 · advance (4.58, 3.0)
+  /pause a mitad: la pose no cambió en 7 s; /resume: el clock preguntaba 'hold' cada 2 s y cada vez volvía a "retener" borrando lo
+  guardado → corregido (Hold solo si hay algo en curso); la segunda vez: "resumed — the body continues what it was doing" → continue.
+blue living → north con la caja (route 12): stop/continue en living/south · dos roces en las jambas de living/south, AHORA como
+  pared ("grazed wall_living_e_2 / _e_1 … backing off to try again", entradas 368-375: back, giro, otra vez) · pasó center~south ·
+  bumped into crate_center (5.2, 5.2) → back (4.8, 4.5) → al girar en el sitio junto a la caja volvió a tocarla (5.2, 5.4) → back →
+  al girar otra vez, tercer toque (5.2, 5.2) → back (4.5, 4.9) → turnLeft 1.59 · skirting (4.5, 6.1) · north~center · reached
+  the stop (5.5, 9.5) (entry 398). Dos marcas, una figura en línea.
+```
+
+**Conclusión**: la separación deja cada cara con su trabajo: `RobotToRos` traduce y envía, `Robot` recibe y pondera. El `continue` funciona y las jambas ya no siembran marcas. Lo que sale a la luz es físico: tras un `back` de 0.6 m, girar en el sitio pegado a una esquina de la caja vuelve a tocarla; cada toque es una corrección legítima del dominio, pero son tres donde bastaría una.
+
+**Pendiente**: (1) la corrección tras un choque podría retroceder más cuando el siguiente giro es amplio, o elegir el sentido de giro que se aleja de la marca — decisión del dominio (`Route.Correct`), no del servo; (2) regla de paso en una puerta; (3) `within` y `standoff` del seguidor siguen en el host.

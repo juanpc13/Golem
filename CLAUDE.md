@@ -136,17 +136,24 @@ whether it could or not, so the domain resolves what follows. Consequences:
   TARGET** (Juan, 16-sep, evening: "el print retorna al controller, pero ese mismo objeto analiza el JSON y tiene un
   switch con las acciones disponibles; dentro de cada case están los llamados que viajan hasta el robot… el robot solo
   es el cuerpo; cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print"):
-  `Choreography/Robot.cs` implements `IOutputSink` and is registered with `performance.OutputTarget(robot, JsonFormatter)`;
-  every command's returned print goes to `robot.Obey(print)`, which parses it and SWITCHES: `hold` → the body stands;
-  `decide` → `route.Decide(from)` from the pose (`Decided`; `DecidedPast` out of a peer's way) and the new print is
-  obeyed; `turn` / `run` → the SAME JSON travels to the body over the websocket (rosbridge, `std_msgs/String` on
-  `/golem/<body>/order`, plus `within` and the body the journal declared: speed, radius, retreat). The same order twice
-  is not resent; a different one replaces what the body was doing. **The body is a ROS node in the simulator**
+  `Choreography/RobotToRos.cs` implements `IOutputSink` and is registered with `performance.OutputTarget(robot.ToRos,
+  JsonFormatter)` (Juan, 16-sep: "una nueva clase que sirva de salida, RobotToRos, que herede de IOutputSink, que se
+  ocupe del obey y haga el switch case para enviar al robot"); every command's returned print goes to
+  `robot.ToRos.Obey(print)`, which parses it and SWITCHES: `hold` → `stop` (the body remembers what it was doing);
+  `decide` → `robot.Decide` writes `route.Decide(from)` from the pose and the new print comes back; `turn` → `turnLeft`
+  or `turnRight` to the domain's heading (which way round is read off the body's pose: the servo's business); `run` →
+  `advance`; `back` → `back`; the same order held and resumed → `continue`. **The robot's base actions are advance,
+  back, turnLeft, turnRight, stop, continue; the bump is what it reports.** The SAME JSON the journal printed travels
+  to the body over the websocket (rosbridge, `std_msgs/String` on `/golem/<body>/order`) with the action, `within` and
+  the body the journal declared (speed, radius, retreat). The same order twice is not resent; a different one
+  replaces what the body was doing. `Choreography/Robot.cs` keeps the other face: what the body reports (`Arrived`,
+  `BumpedAsync`, `Stuck`), the touch protocol, the follower's linger, the clock, the operator's levers. **The body is a ROS node in the simulator**
   (`sim/bridge/body.py`, one per body, launched by `kiosk.sh` from `GOLEMS`/`POSE_SOURCES`): it drives `cmd_vel`, watches
   its odometry (the truth, or its wheels' reckoning anchored once) and its contact sensor, does that ONE thing and
-  reports on the golem's endpoints. **The body's whole vocabulary is four words** (Juan, 16-sep: "la interfaz del
-  robot es extremadamente sencilla: mover / girar / choque / llegué"): it is told `turn`, `run` (move to a point) or
-  `back` (move to a point in reverse) — and `stop` — and it says `POST /robot/arrived` (`{route}`: the turn made, the
+  reports on the golem's endpoints. **The body's vocabulary is its base actions** (Juan, 16-sep: "la interfaz del
+  robot es extremadamente sencilla… avanzar / retroceder / girar a la derecha / girar a la izquierda / detener /
+  continuar / choque"): it is told `advance` (to a point), `back` (to a point, in reverse), `turnLeft` / `turnRight`
+  (to a heading), `stop`, `continue` — and it says `POST /robot/arrived` (`{route}`: the turn made, the
   point reached — the endpoint knows which from what the Robot handed it) or `POST /robot/bump` (`{route, with, x, y,
   heading, px, py, ptheta}`: what, where the touch landed on the plane heading into it, where it stood facing which way;
   route 0 while standing) — plus `/robot/stuck` when it could not. **The bumper is a switch**: the moment it fires the
