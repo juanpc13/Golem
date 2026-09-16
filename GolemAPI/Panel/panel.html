@@ -222,6 +222,27 @@ const toPy = (wy) => (1 - wy / WORLD) * map.height;
 const toWx = (px) => px / map.width * WORLD;
 const toWy = (py) => (1 - py / map.height) * WORLD;
 
+// A journaled statement, laid out to be read (Juan, 16-sep): one act per line, the braces opening and closing
+// their own lines, what is exposed beside the act on its own lines too. The text itself is untouched — this is
+// how the panel shows it, not how the journal holds it (the journal keeps the flat template).
+function pretty(s) {
+  let out = '', depth = 0, quoted = false, lineStart = true;
+  const nextNonSpace = (i) => { while (i < s.length && /\s/.test(s[i])) i++; return s[i]; };
+  const nl = () => { out = out.replace(/[ \t]+$/, '') + '\n' + '  '.repeat(depth); lineStart = true; };
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quoted) { out += c; if (c === "'") quoted = false; continue; }
+    if (c === "'") { quoted = true; out += c; lineStart = false; continue; }
+    if (c === '{') { if (!lineStart && !/\s$/.test(out)) out += ' '; out += '{'; depth++; nl(); continue; }
+    if (c === '}') { depth = Math.max(0, depth - 1); nl(); out += '}'; lineStart = false; if (nextNonSpace(i + 1) !== undefined) nl(); continue; }
+    if (c === ';') { out += ';'; const n = nextNonSpace(i + 1); if (n !== undefined && n !== '}') nl(); continue; }
+    if (lineStart && /\s/.test(c)) continue;
+    out += c; lineStart = false;
+  }
+  return out.replace(/\n\s*\n/g, '\n').trim();
+}
+const escapeHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 function row(e) {
   const journaled = e.Kind === 'command';
   const target = journaled ? feed : events;
@@ -234,9 +255,12 @@ function row(e) {
   if (journaled) {
     try { const doc = JSON.parse(e.Note); note = doc.kind + (doc.actionId ? ' ' + doc.actionId : ''); } catch {}
   }
+  // a runtime row has no statement: its text is the note, shown at full width instead of squeezed into the tag column
+  const body = journaled ? escapeHtml(pretty(script)) : escapeHtml(script || note || '');
+  const tag = journaled ? escapeHtml(note || '') : (script ? escapeHtml(note || '') : '');
   li.innerHTML = `<span class="entry">${journaled ? '#' + e.Entry : '·'}</span>` +
-                 `<span class="script">${script}</span>` +
-                 `<span class="note">${note}</span>`;
+                 `<span class="script">${body}</span>` +
+                 `<span class="note">${tag}</span>`;
   target.appendChild(li);
   target.scrollTop = target.scrollHeight;
   if (journaled) paintFact(e);

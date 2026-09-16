@@ -1485,3 +1485,64 @@ El bloque entre llaves también en la consulta: la variable `preview` muere con 
 **Verificación en vivo**: flota rehidratada sobre los journals existentes (`Position(x, y)` sigue siendo válido), blue → north llegó; cero reinicios, cero errores.
 
 **Conclusión**: la regla es de identidad de objetos y va donde el mismo objeto dos veces no puede significar nada; donde sí significa (llegar a donde ya se está) no va. La tercera coordenada entra sin costo hoy y evita reescribir la geometría el día que un cuerpo suba.
+
+---
+
+## 2026-09-14 · Retroceder más y rodear la figura: la caja del centro se pasa con dos choques, no con cinco
+
+**Contexto**: Juan, mirando el mapa del panel: "cuando choca debería poder retroceder un poco más y girar más a la derecha o izquierda para poder pasar el obstáculo que tiene enfrente, porque genera muy continuos los vértices de cada bump en el mapa, muy juntos". Los registros de la tarde lo confirmaban: marcas a 0.1–0.3 m unas de otras sobre la misma cara de la caja (5.16, 5.28, 5.46, 5.58, 5.83).
+
+**Diagnóstico**: dos causas. (1) El navegador retrocedía solo hasta soltar el contacto; el cuerpo quedaba pegado a su marca, y para que el planificador pudiera arrancar desde ahí existía la relajación del primer tramo ("puede rozar una marca a 0.2 m"): ese roce era el siguiente choque. (2) El planificador rodeaba cada MARCA (anillo a 0.68 m), no la COSA: una marca "sabe" 0.25 m a cada lado y la caja mide 0.7; el rodeo pasaba junto a la marca conocida y encontraba la caja 0.3 m más allá. Las colisiones ya derivaban la figura (marcas unidas a menos de 1 m), pero el planificador no la usaba.
+
+**Ajuste al dominio** (`Robots.Body`, `Touches.Thing`, `Touches.Collisions`, `Routes.RoutePlanner`, `Geometry.Rectangle`, `Geometry.Segment`):
+- `Body(radius, speed, linger, retreat)`: cuánto retrocede tras un toque es del cuerpo, no del host; `retreat = Meters(0.6)` (dos radios y una mano: fuera del margen que el planificador guarda alrededor de una marca).
+- `Thing.Extent(margin)`: la caja alrededor de todas las marcas de la cosa, crecida por `MarkReach + margin`; `Collisions.Figures(radius)` la infla por el radio del cuerpo — donde el centro del cuerpo no puede ir. `Collisions.Blocks(Position|Segment)` miran figuras (`Rectangle.Contains`, `Rectangle.IsCrossedBy(run)`, nuevo `Segment.Crosses`). Se probó crecer la figura además con la separación media entre marcas ("lo que la cosa mostró"): dos marcas a 0.6 m cerraban una puerta a 0.6 m del borde real — demasiado; se descartó: la caja ya toma el ancho entre las marcas extremas.
+- `RoutePlanner`: los rodeos son las esquinas de cada figura (+0.08), no ocho puntos por marca; `Sees` rechaza un tramo que entra en una figura; si el ARRANQUE está dentro de una figura, ese primer tramo se juzga marca por marca con las reglas viejas (la normal de la marca, salir por donde vino, nunca atravesar). La relajación "rozar a `radius - 0.05`" sobrevive solo ahí.
+- Tests: 57 verdes. `AMarkKnowsItsNormal_TheSideTheBodyCameFromIsFree` se reescribió como `AMarkIsAFigure_TheBodyKeepsABerthAroundIt_AndTheRetreatStandsClear`: 0.4 m detrás de la marca ya NO es libre (de ahí venía el siguiente choque), 0.85 m (toque + retirada) sí; con una segunda marca a 0.3 m, una sola figura. `ABodyStandingAmongMarks…` movió sus dos marcas a 1.2 m de la puerta: a 0.6 m el modelo de discos pasaba por 3 cm y el de caja no; el hueco real (0.6 m para un cuerpo de 0.5) no cumple los márgenes.
+
+**Ajuste al host** (`DiffDriveNavigator.BackOffAsync`): marcha atrás hasta soltar el contacto y luego hasta haber retrocedido `body.Retreat.InMeters` desde la pose del toque (6 s como máximo; para si toca otra cosa). `Program.cs` le pasa `flow.Retreat()`.
+
+**Observación en vivo** (journals anteriores en `journal-legacy-20260914-retreat/`; caja del centro puesta desde el kiosko):
+```
+pass 1  blue north → south:
+  touched crate_center at bearing -0° — the touch lands at (5.50, 5.87)
+  takes the road around@4.82,6.55 > around@4.82,5.19 > center~south@5.22,3 > stop@5.5,1.5
+  touched crate_center at bearing 74° — the touch lands at (5.15, 5.85)      ← la esquina NW: la figura de una marca (±0.6) era 0.08 corta
+  takes the road around@4.47,6.55 > around@4.47,5.17 > center~south@5.08,3 > stop@5.5,1.5
+  reached the stop (5.5, 1.5)                                                 → 2 choques, marcas (5.50, 5.87) (5.15, 5.85), una figura
+pass 2  blue south → north: 0 choques, pasó por el este de la figura conocida
+```
+Antes de hoy: 4–5 marcas seguidas para pasar la misma caja. Con la retirada, ningún choque volvió a caer a 0.1 m del anterior: el segundo cayó 0.35 m al lado, en la esquina que la primera figura no cubría, y la segunda figura ya tomó el ancho.
+
+**Tropiezos del laboratorio (infraestructura, anotados)**: (1) Gazebo dejó de atender servicios dentro del contenedor ("NodeShared::RecvSrvRequest() error sending response: Host unreachable"): el nodo de palancas decía "crate in" y el mundo no creaba nada; `ign model --list` respondía vacío. Se resolvió reiniciando el contenedor del simulador. (2) `ros2 topic pub` desde `docker exec` no llega al nodo de palancas (descubrimiento DDS de un proceso nuevo); el botón del kiosko por rosbridge sí. (3) Al reiniciar el simulador, el golem que estaba conduciendo murió con `WebSocketException ('Aborted')` sin atrapar en `DriveAsync` y Docker lo revivió (`RestartCount 1`, rehidratado en la entrada 11): la membrana debe sobrevivir a la pérdida del cable sin matar el proceso. Pendiente del host.
+
+**Conclusión**: el cuerpo declara su retirada y el planificador respeta la figura; la primera pasada cuesta dos choques porque la primera figura es la de una marca sola (0.6 m de holgura) y la caja la excede por 8 cm en la esquina. Si se quiere una sola, la figura de una marca sola podría presumir un poco más de ancho (0.35 en vez de 0.25 de alcance), a costa de rodeos más amplios alrededor de cosas pequeñas: decisión de Juan.
+
+---
+
+## 2026-09-16 · El panel muestra cada acto en su línea
+
+**Contexto**: Juan: "podrías al panel ajustarle los saltos de línea de los scripts del journal para que se vea mejor".
+
+**Ajuste al panel** (`panel.html`, solo presentación; el journal guarda la plantilla plana, `JournalPeek.OneLine` no cambia): una función `pretty` tiende cada sentencia en su propia línea — la llave abre y cierra su línea, dos espacios por nivel, lo expuesto junto al acto (`Expose 7 'rid';`) en líneas propias, los `tell` encadenados uno por línea, las comillas respetadas para no partir un literal. El texto se escapa antes de insertarlo (antes iba crudo al `innerHTML`). De paso, las filas del carril de eventos del host, que no tienen sentencia, muestran su nota a todo el ancho en vez de comprimida en la columna de la etiqueta. **Ajuste al dominio: ninguno.**
+
+**Verificación**: panel de blue tras un encargo al south —
+```
+#35  {
+       point = map.Find('south');
+       route = g.Visit(point);
+       via1 = Position(5.8459257087703,8);
+       route.Via(via1);
+       …
+       route.Stop(point);
+     }                                          action 7
+#36  {
+       route = g.Find(7);
+       point = Position(5.5,1.5);
+       route.Reach(point);
+     }
+     Expose 7 'rid';
+     Expose 5.5 'rx';
+     Expose 1.5 'ry';                            action 2
+```
+
