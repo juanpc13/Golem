@@ -55,9 +55,9 @@ public class GolemController : Controller
     // comes as a JSON body, typed and validated (Requests.cs) before a script runs.
     // ==================================================================
 
-    // Send the golem through stops in THIS order — {"stops": [{"area": "kitchen"}, {"x": 9.0, "y": 8.0}]}. The first
-    // stop opens the route from where the errand starts and the route decides its whole way inside; every further stop
-    // is told to it, one entry each, and it decides again through them all.
+    // Send the golem through points in THIS order — {"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]} (points only,
+    // never places: Juan, 16-sep-2026). The first point opens the route from where the errand starts and the route decides
+    // its whole way inside; every further point is told to it, one entry each, and it decides again through them all.
     [HttpPost("move")]
     public IActionResult MoveTo([FromBody] ErrandRequest request)
     {
@@ -71,39 +71,22 @@ public class GolemController : Controller
         Answer answer;
         try
         {
-            answer = first.IsPoint
-                ? Answer.Of(golemActor.Using(
-                    @"
-                        Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
-                    ",
-                    @"
-                        {
-                            from = Position(@fx, @fy);
-                            point = Position(@x, @y);
-                            route = g.Visit(from, point);
-                        }
-                    " + NextOrder)
-                    .WithParameters(p => {
-                        p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
-                        p["x", typeof(double)] = first.X.Value; p["y", typeof(double)] = first.Y.Value;
-                    })
-                    .PerformCheckThenCommand())
-                : Answer.Of(golemActor.Using(
-                    @"
-                        Check(map.Knows(@area)) Error 'unknown area';
-                    ",
-                    @"
-                        {
-                            from = Position(@fx, @fy);
-                            point = map.Find(@area);
-                            route = g.Visit(from, point);
-                        }
-                    " + NextOrder)
-                    .WithParameters(p => {
-                        p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
-                        p["area", typeof(string)] = first.Area.Trim();
-                    })
-                    .PerformCheckThenCommand());
+            answer = Answer.Of(golemActor.Using(
+                @"
+                    Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
+                ",
+                @"
+                    {
+                        from = Position(@fx, @fy);
+                        point = Position(@x, @y);
+                        route = g.Visit(from, point);
+                    }
+                " + NextOrder)
+                .WithParameters(p => {
+                    p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
+                    p["x", typeof(double)] = first.X.Value; p["y", typeof(double)] = first.Y.Value;
+                })
+                .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Conflict($"stop {first.Describe()}: " + Innermost(ex)); }   // no way fits the body, or the domain refused inside
         if (!answer.Ok) return Conflict($"stop {first.Describe()}: " + answer.Refused);
@@ -113,35 +96,20 @@ public class GolemController : Controller
         {
             try
             {
-                answer = stop.IsPoint
-                    ? Answer.Of(golemActor.Using(
-                        @"
-                            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                            Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
-                        ",
-                        @"
-                            {
-                                route = g.Find(@id);
-                                point = Position(@x, @y);
-                                route.Then(point);
-                            }
-                        " + NextOrder)
-                        .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = stop.X.Value; p["y", typeof(double)] = stop.Y.Value; })
-                        .PerformCheckThenCommand())
-                    : Answer.Of(golemActor.Using(
-                        @"
-                            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                            Check(map.Knows(@area)) Error 'unknown area';
-                        ",
-                        @"
-                            {
-                                route = g.Find(@id);
-                                point = map.Find(@area);
-                                route.Then(point);
-                            }
-                        " + NextOrder)
-                        .WithParameters(p => { p["id", typeof(int)] = id; p["area", typeof(string)] = stop.Area.Trim(); })
-                        .PerformCheckThenCommand());
+                answer = Answer.Of(golemActor.Using(
+                    @"
+                        Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
+                        Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
+                    ",
+                    @"
+                        {
+                            route = g.Find(@id);
+                            point = Position(@x, @y);
+                            route.Then(point);
+                        }
+                    " + NextOrder)
+                    .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = stop.X.Value; p["y", typeof(double)] = stop.Y.Value; })
+                    .PerformCheckThenCommand());
             }
             catch (Exception ex) { return Conflict($"stop {stop.Describe()}: " + Innermost(ex)); }
             if (!answer.Ok) return Conflict($"stop {stop.Describe()}: " + answer.Refused);
@@ -149,8 +117,8 @@ public class GolemController : Controller
         return Answered(answer);
     }
 
-    // Send the golem through several stops and let it choose the order that makes the way shortest: the same errand,
-    // opened with g.Cover — the route reorders the stops still ahead every time one is told to it.
+    // Send the golem through several points and let it choose the order that makes the way shortest: the same errand,
+    // opened with g.Cover — the route reorders the points still ahead every time one is told to it.
     [HttpPost("cover")]
     public IActionResult Cover([FromBody] ErrandRequest request)
     {
@@ -164,39 +132,22 @@ public class GolemController : Controller
         Answer answer;
         try
         {
-            answer = first.IsPoint
-                ? Answer.Of(golemActor.Using(
-                    @"
-                        Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
-                    ",
-                    @"
-                        {
-                            from = Position(@fx, @fy);
-                            point = Position(@x, @y);
-                            route = g.Cover(from, point);
-                        }
-                    " + NextOrder)
-                    .WithParameters(p => {
-                        p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
-                        p["x", typeof(double)] = first.X.Value; p["y", typeof(double)] = first.Y.Value;
-                    })
-                    .PerformCheckThenCommand())
-                : Answer.Of(golemActor.Using(
-                    @"
-                        Check(map.Knows(@area)) Error 'unknown area';
-                    ",
-                    @"
-                        {
-                            from = Position(@fx, @fy);
-                            point = map.Find(@area);
-                            route = g.Cover(from, point);
-                        }
-                    " + NextOrder)
-                    .WithParameters(p => {
-                        p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
-                        p["area", typeof(string)] = first.Area.Trim();
-                    })
-                    .PerformCheckThenCommand());
+            answer = Answer.Of(golemActor.Using(
+                @"
+                    Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
+                ",
+                @"
+                    {
+                        from = Position(@fx, @fy);
+                        point = Position(@x, @y);
+                        route = g.Cover(from, point);
+                    }
+                " + NextOrder)
+                .WithParameters(p => {
+                    p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
+                    p["x", typeof(double)] = first.X.Value; p["y", typeof(double)] = first.Y.Value;
+                })
+                .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Conflict($"stop {first.Describe()}: " + Innermost(ex)); }   // no way fits the body, or the domain refused inside
         if (!answer.Ok) return Conflict($"stop {first.Describe()}: " + answer.Refused);
@@ -206,35 +157,20 @@ public class GolemController : Controller
         {
             try
             {
-                answer = stop.IsPoint
-                    ? Answer.Of(golemActor.Using(
-                        @"
-                            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                            Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
-                        ",
-                        @"
-                            {
-                                route = g.Find(@id);
-                                point = Position(@x, @y);
-                                route.Then(point);
-                            }
-                        " + NextOrder)
-                        .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = stop.X.Value; p["y", typeof(double)] = stop.Y.Value; })
-                        .PerformCheckThenCommand())
-                    : Answer.Of(golemActor.Using(
-                        @"
-                            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                            Check(map.Knows(@area)) Error 'unknown area';
-                        ",
-                        @"
-                            {
-                                route = g.Find(@id);
-                                point = map.Find(@area);
-                                route.Then(point);
-                            }
-                        " + NextOrder)
-                        .WithParameters(p => { p["id", typeof(int)] = id; p["area", typeof(string)] = stop.Area.Trim(); })
-                        .PerformCheckThenCommand());
+                answer = Answer.Of(golemActor.Using(
+                    @"
+                        Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
+                        Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
+                    ",
+                    @"
+                        {
+                            route = g.Find(@id);
+                            point = Position(@x, @y);
+                            route.Then(point);
+                        }
+                    " + NextOrder)
+                    .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = stop.X.Value; p["y", typeof(double)] = stop.Y.Value; })
+                    .PerformCheckThenCommand());
             }
             catch (Exception ex) { return Conflict($"stop {stop.Describe()}: " + Innermost(ex)); }
             if (!answer.Ok) return Conflict($"stop {stop.Describe()}: " + answer.Refused);

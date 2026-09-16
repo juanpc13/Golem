@@ -6,34 +6,23 @@ namespace GolemAPI.Controllers;
 // 16-sep-2026: "la data debería llegar por JSON… y hay que validar que venga correcta"). Each request says what is
 // wrong with it in plain words; the endpoint answers 400 with that and performs nothing.
 
-/// <summary>One stop of an errand: a place by name — <c>{"area": "kitchen"}</c> — or a point — <c>{"x": 9.0, "y": 8.0}</c>. Never both, never neither.</summary>
-public sealed record StopRequest(string Area, double? X, double? Y)
+/// <summary>One stop of an errand: a point on the floor — <c>{"x": 9.0, "y": 8.0}</c> (Juan, 16-sep-2026: "solo serán puntos, ya no places").</summary>
+public sealed record StopRequest(double? X, double? Y)
 {
-    public bool IsPoint => X.HasValue || Y.HasValue;
-
     public IEnumerable<string> Problems(int position)
     {
-        bool named = !string.IsNullOrWhiteSpace(Area);
-        if (named && IsPoint) yield return $"stop {position}: give an area or a point, not both";
-        else if (!named && !IsPoint) yield return $"stop {position}: give an area ({{\"area\": \"kitchen\"}}) or a point ({{\"x\": 9.0, \"y\": 8.0}})";
-        else if (IsPoint)
-        {
-            if (!X.HasValue || !Y.HasValue) yield return $"stop {position}: a point needs both x and y";
-            else if (!double.IsFinite(X.Value) || !double.IsFinite(Y.Value)) yield return $"stop {position}: x and y must be finite numbers";
-        }
-        else if (Area.Trim().Length > 64) yield return $"stop {position}: an area's name is at most 64 characters";
+        if (!X.HasValue || !Y.HasValue) yield return $"stop {position}: a point needs both x and y";
+        else if (!double.IsFinite(X.Value) || !double.IsFinite(Y.Value)) yield return $"stop {position}: x and y must be finite numbers";
     }
 
-    public string Describe() => IsPoint
-        ? $"({(X ?? 0).ToString("0.##", CultureInfo.InvariantCulture)}, {(Y ?? 0).ToString("0.##", CultureInfo.InvariantCulture)})"
-        : $"'{Area?.Trim()}'";
+    public string Describe() => $"({(X ?? 0).ToString("0.##", CultureInfo.InvariantCulture)}, {(Y ?? 0).ToString("0.##", CultureInfo.InvariantCulture)})";
 }
 
-/// <summary>An errand: the stops, in order — <c>{"stops": [{"area": "kitchen"}, {"x": 9.0, "y": 8.0}]}</c>.</summary>
+/// <summary>An errand: the points to reach, in order — <c>{"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]}</c>.</summary>
 public sealed record ErrandRequest(List<StopRequest> Stops)
 {
     public const int MostStops = 12;
-    public const string Shape = "{\"stops\": [{\"area\": \"kitchen\"}, {\"x\": 9.0, \"y\": 8.0}]}";
+    public const string Shape = "{\"stops\": [{\"x\": 2.0, \"y\": 9.5}, {\"x\": 9.0, \"y\": 8.0}]}";
 
     public IEnumerable<string> Problems()
     {

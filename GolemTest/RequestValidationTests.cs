@@ -9,17 +9,16 @@ namespace GolemTest;
 public class RequestValidationTests
 {
     [TestMethod]
-    public void AnErrand_NeedsAtLeastOneStop_EachAnAreaOrAPoint_NeverBothNorNeither()
+    public void AnErrand_NeedsAtLeastOnePoint_EachWithBothCoordinates_Finite()
     {
         Assert.AreEqual("give at least one stop: " + ErrandRequest.Shape, new ErrandRequest(null).Problems().Single());
         Assert.AreEqual("give at least one stop: " + ErrandRequest.Shape, new ErrandRequest(new()).Problems().Single());
-        Assert.AreEqual(0, new ErrandRequest(new() { new StopRequest("kitchen", null, null), new StopRequest(null, 9.0, 8.0) }).Problems().Count(), "an area and a point: sound");
-        StringAssert.Contains(new ErrandRequest(new() { new StopRequest("kitchen", 1.0, null) }).Problems().Single(), "stop 1: give an area or a point, not both");
-        StringAssert.Contains(new ErrandRequest(new() { new StopRequest(null, null, null) }).Problems().Single(), "stop 1: give an area");
-        StringAssert.Contains(new ErrandRequest(new() { new StopRequest(null, 1.0, null) }).Problems().Single(), "stop 1: a point needs both x and y");
-        StringAssert.Contains(new ErrandRequest(new() { new StopRequest(null, double.NaN, 2.0) }).Problems().Single(), "stop 1: x and y must be finite numbers");
-        StringAssert.Contains(new ErrandRequest(new() { new StopRequest("kitchen", null, null), null }).Problems().Single(), "stop 2: is empty");
-        var tooMany = new ErrandRequest(Enumerable.Repeat(new StopRequest("kitchen", null, null), ErrandRequest.MostStops + 1).ToList());
+        Assert.AreEqual(0, new ErrandRequest(new() { new StopRequest(2.0, 9.5), new StopRequest(9.0, 8.0) }).Problems().Count(), "two points: sound");
+        StringAssert.Contains(new ErrandRequest(new() { new StopRequest(1.0, null) }).Problems().Single(), "stop 1: a point needs both x and y");
+        StringAssert.Contains(new ErrandRequest(new() { new StopRequest(null, null) }).Problems().Single(), "stop 1: a point needs both x and y");
+        StringAssert.Contains(new ErrandRequest(new() { new StopRequest(double.NaN, 2.0) }).Problems().Single(), "stop 1: x and y must be finite numbers");
+        StringAssert.Contains(new ErrandRequest(new() { new StopRequest(2.0, 9.5), null }).Problems().Single(), "stop 2: is empty");
+        var tooMany = new ErrandRequest(Enumerable.Repeat(new StopRequest(2.0, 9.5), ErrandRequest.MostStops + 1).ToList());
         StringAssert.Contains(tooMany.Problems().Single(), $"at most {ErrandRequest.MostStops} stops");
     }
 

@@ -304,13 +304,12 @@ function renderStops() {
 }
 function addStop(stop) { stops.push(stop); renderStops(); }
 
-// Visit walks the stops in the order given; Cover lets the golem choose the order. Every stop travels as JSON:
-// a place is {"area": "kitchen"}, a point {"x": 9, "y": 8} — the golem validates the body before any script runs.
+// Visit walks the stops in the order given; Cover lets the golem choose the order. Every stop travels as JSON, a
+// point {"x": 9, "y": 8} — points only, never places — and the golem validates the body before any script runs.
 async function post(path, body) {
   return fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 }
 function asStop(s) {
-  if (!s.includes(',')) return {area: s};
   const [x, y] = s.split(',');
   return {x: +x, y: +y};
 }
@@ -412,7 +411,7 @@ async function loadMap() {
     for (const p of plan.places) {
       const b = document.createElement('button');
       b.className = 'place'; b.textContent = '+ ' + p.name;
-      b.onclick = () => addStop(p.name);
+      b.onclick = () => addStop(`${+p.cx},${+p.cy}`);   // a place is its centre: the golem is sent to points only
       holder.appendChild(b);
     }
   } catch { /* the golem may still be waking up */ }

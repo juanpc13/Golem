@@ -86,15 +86,15 @@ Then open:
 A first tour, from a shell:
 
 ```bash
-curl -X POST localhost:8082/move -H "Content-Type: application/json" -d "{\"stops\": [{\"area\": \"kitchen\"}]}"
+curl -X POST localhost:8082/move -H "Content-Type: application/json" -d "{\"stops\": [{\"x\": 2.0, \"y\": 9.5}]}"
 ```
 
 Red plans its road, journals it, crosses two doors and reaches the kitchen; blue is told and follows.
 Send red on through several stops in one mission, in the order you give or in the order it finds shortest:
 
 ```bash
-curl -X POST localhost:8082/move  -H "Content-Type: application/json" -d "{\"stops\": [{\"area\": \"storage\"}, {\"x\": 9.0, \"y\": 1.5}]}"
-curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"stops\": [{\"area\": \"garage\"}, {\"area\": \"kitchen\"}, {\"area\": \"storage\"}]}"
+curl -X POST localhost:8082/move  -H "Content-Type: application/json" -d "{\"stops\": [{\"x\": 9.0, \"y\": 9.5}, {\"x\": 9.0, \"y\": 1.5}]}"
+curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"stops\": [{\"x\": 9.0, \"y\": 1.5}, {\"x\": 2.0, \"y\": 9.5}, {\"x\": 9.0, \"y\": 9.5}]}"
 ```
 
 Its shortest road from the kitchen to the garage cuts through the center hall, where a crate the map never
@@ -153,7 +153,7 @@ Endpoints, per golem:
 
 | Endpoint | What it does |
 |---|---|
-| `POST /move` `{"stops": [{"area": "kitchen"}, {"x": 9.0, "y": 8.0}]}` | Send the golem through stops in that order — a place by name or a point (400 when the body is malformed, 409 when the golem refuses: unknown area, a point off the map, no way that fits) |
+| `POST /move` `{"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]}` | Send the golem through points in that order — points only, never places (400 when the body is malformed, 409 when the golem refuses: a point off the map, no way that fits) |
 | `POST /cover` `{"stops": [...]}` | Send it through several stops in the order it finds shortest; same body |
 | `POST /pause` · `POST /resume` · `POST /forget` `{"x": 5.2, "y": 5.8}` | Hold the route underway and let it go on; forget the obstacle standing at a point (told to the peers) |
 | `GET /state` · `GET /progress` · `GET /map` | The mission board; road left and ETA from where the body stands; the map as the golem knows it — one query that walks the golem's `Place` objects and prints their properties (`foreach (places in g.Places()) { print places.Name 'name', places.Center.X 'cx'; foreach (doors in places.Doors()) { print doors.To 'to', doors.At.X 'x'; } }`), rendered by the engine as `{places: [{name, x, y, w, h, cx, cy, doors: [...], opens: [...], marks: [...]}]}` |
