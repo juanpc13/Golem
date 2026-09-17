@@ -48,6 +48,11 @@ internal sealed class Leg
     /// Zero when the way gave none (HasHeading false).</summary>
     internal double Heading { get; }
 
+    /// <summary>Where this leg takes the body and facing which way when it gets there: its point as a POSE (Juan, 17-sep-2026:
+    /// "la posición exacta sería X, Y, Z, dirección y sentido; eso es lo que el dominio debería imprimir al robot en cada
+    /// NextLeg"). The heading is the way's (see HasHeading); zero until the way gives it.</summary>
+    internal Pose Target => new(At.X, At.Y, Heading);
+
     internal Leg(Position at, string name) : this(at, name, at, at) { }
 
     internal Leg(Position at, string name, Position approach, Position exit) : this(at, name, approach, exit, false, 0.0) { }

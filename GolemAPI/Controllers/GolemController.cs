@@ -168,7 +168,7 @@ public class GolemController : Controller
             print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
                 print g.Underway().Id 'nextId',
-                      g.Underway().NextLeg.At.X 'nextX', g.Underway().NextLeg.At.Y 'nextY',
+                      g.Underway().NextLeg.Target.X 'nextX', g.Underway().NextLeg.Target.Y 'nextY',
                       g.Underway().StopsLeft 'stopsLeft', g.Underway().Paused 'paused';
             }
         ")

@@ -27,7 +27,7 @@ public sealed class CommandPrintLabTests
             + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n").PerformCommand();
         const string next = @"
             if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }
-            if (g.HasPendingMission() && g.Underway().IsWalkable) { print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.At.X 'x', g.Underway().NextLeg.At.Y 'y', g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Heading 'heading'; }";
+            if (g.HasPendingMission() && g.Underway().IsWalkable) { print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Target.X 'x', g.Underway().NextLeg.Target.Y 'y', g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Target.Heading 'heading'; }";
         var findings = new List<string>();
         string r1 = perf.Actor.Using("{ from = Position(@fx, @fy); point = Position(@x, @y); route = g.Visit(from, point); }\n" + next)
             .WithParameters(p => { p["fx", typeof(double)] = 2.0; p["fy", typeof(double)] = 9.5; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 1.5; }).PerformCommand();

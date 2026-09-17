@@ -219,7 +219,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(1, Int("g.PendingRoutes().Count"));
         Assert.IsTrue(Bool("g.Find(1).IsPending()"));
         StringAssert.EndsWith(Text("g.Find(1).AsPlan()"), "living@2,1.5", "the way, decided inside, ends at the point");
-        Assert.AreEqual(0.75, Double("g.Underway().NextLeg.At.X"), "the first thing is the first leg of the way: the door out of the kitchen");
+        Assert.AreEqual(0.75, Double("g.Underway().NextLeg.Target.X"), "the first thing is the first leg of the way: the door out of the kitchen");
         Assert.IsFalse(Bool("g.Find(1).Following"), "the operator ordered it");
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
     }
@@ -314,7 +314,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(3, Int("g.Find(1).LegsLeft"), "two doors and the stop: the whole plan, in one entry");
         Assert.AreEqual("kitchen/west", Text("g.Find(1).NextLeg.Name"));
         Assert.IsFalse(Bool("g.Find(1).NextLeg.IsStop"));
-        Assert.AreEqual(0.75, Double("g.Underway().NextLeg.At.X"), 0.001, "the body heads to the first door, not to the stop");
+        Assert.AreEqual(0.75, Double("g.Underway().NextLeg.Target.X"), 0.001, "the body heads to the first door, not to the stop");
 
         // one point at a time (16-sep): the body reports each point of the way it reaches and the route hands out the
         // next; a point that is not on the way ahead is refused; a stop reached implies the legs before it were walked
@@ -326,7 +326,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(2, Int("g.Find(1).LegsLeft"));
         Assert.AreEqual("west/living", Text("g.Find(1).NextLeg.Name"), "the route hands out the next point");
         Assert.IsTrue(Bool("g.Find(1).NextLeg.HasHeading"), "and the heading to walk it with, from the previous point");
-        Assert.AreEqual(-1.5708, Double("g.Find(1).NextLeg.Heading"), 0.001, "straight south down the west corridor");
+        Assert.AreEqual(-1.5708, Double("g.Find(1).NextLeg.Target.Heading"), 0.001, "straight south down the west corridor");
         Assert.IsFalse(Bool("g.Find(1).IsLegAhead(Position(0.75, 8.0))"), "a point reached is behind");
 
         Reach(1, 2.0, 1.5);                                                    // the stop, skipping the second door: it implies the door was walked
@@ -434,7 +434,7 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("g.Held"), "let go on");
         Assert.IsFalse(Bool("g.Find(1).Paused"));
         Assert.AreEqual("turn", Text("g.Find(1).Order"), "from where it was held, the next leg asks its turn again");
-        Assert.AreEqual(3.1416, Double("g.Find(1).NextLeg.Heading"), 0.001, "the heading to the stop (2.0, 9.5) from (2.6, 9.5): due west");
+        Assert.AreEqual(3.1416, Double("g.Find(1).NextLeg.Target.Heading"), 0.001, "the heading to the stop (2.0, 9.5) from (2.6, 9.5): due west");
         Refuses("{ route = g.Resume(Pose(2.6, 9.5, 1.5708)); }", "is not paused");
 
         Reach(1, 2.0, 9.5);
@@ -795,7 +795,7 @@ public class MissionAcceptanceTests
         Refuses("{ route = g.Find(1); route.Reach(Position(3.0, 10.5)); }", "next stop is (2, 9.5)");
         Reach(1, 2.0, 9.5);
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "one stop reached, one to go");
-        Assert.AreEqual(3.0, Double("g.Underway().NextLeg.At.X"), 0.001);
+        Assert.AreEqual(3.0, Double("g.Underway().NextLeg.Target.X"), 0.001);
 
         Reach(1, 3.0, 10.5);
         Assert.AreEqual("completed", Text("g.Find(1).Status"));

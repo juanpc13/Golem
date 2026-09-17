@@ -75,10 +75,10 @@ public sealed class Robot
         if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }
         if (g.HasPendingMission() && g.Underway().IsWalkable) {
             print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Name 'name',
-                  g.Underway().NextLeg.At.X 'x', g.Underway().NextLeg.At.Y 'y',
+                  g.Underway().NextLeg.Target.X 'x', g.Underway().NextLeg.Target.Y 'y',
                   g.Underway().NextLeg.Approach.X 'ax', g.Underway().NextLeg.Approach.Y 'ay',
                   g.Underway().NextLeg.Exit.X 'ex', g.Underway().NextLeg.Exit.Y 'ey',
-                  g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Heading 'heading',
+                  g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Target.Heading 'heading',
                   g.Underway().Following 'following', g.Underway().StopsLeft 'stopsLeft';
         }
     ";
@@ -148,10 +148,10 @@ public sealed class Robot
                         print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                                   route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                                   route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
@@ -189,10 +189,10 @@ public sealed class Robot
                         print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                                   route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                                   route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
@@ -228,10 +228,10 @@ public sealed class Robot
                             print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                             if (route.IsWalkable) {
                                 print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                      route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                                       route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                                       route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                      route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                      route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                                       route.Following 'following', route.StopsLeft 'stopsLeft';
                             }
                         }
@@ -286,10 +286,10 @@ public sealed class Robot
                 print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                           route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                           route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
@@ -344,10 +344,10 @@ public sealed class Robot
                         print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                                   route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                                   route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
@@ -367,10 +367,10 @@ public sealed class Robot
                         print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                                   route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                                   route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
@@ -391,10 +391,10 @@ public sealed class Robot
                         print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                                   route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                                   route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
@@ -547,10 +547,10 @@ public sealed class Robot
                 print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                           route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                           route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
@@ -592,10 +592,10 @@ public sealed class Robot
                 print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                           route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                           route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
@@ -630,10 +630,10 @@ public sealed class Robot
                 print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                           route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                           route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
@@ -654,10 +654,10 @@ public sealed class Robot
                 print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                           route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                           route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
@@ -677,10 +677,10 @@ public sealed class Robot
                 print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
                           route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
                           route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
@@ -698,10 +698,10 @@ public sealed class Robot
             if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }
             if (g.HasPendingMission() && g.Underway().IsWalkable) {
                 print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Name 'name',
-                      g.Underway().NextLeg.At.X 'x', g.Underway().NextLeg.At.Y 'y',
+                      g.Underway().NextLeg.Target.X 'x', g.Underway().NextLeg.Target.Y 'y',
                       g.Underway().NextLeg.Approach.X 'ax', g.Underway().NextLeg.Approach.Y 'ay',
                       g.Underway().NextLeg.Exit.X 'ex', g.Underway().NextLeg.Exit.Y 'ey',
-                      g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Heading 'heading',
+                      g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Target.Heading 'heading',
                       g.Underway().Following 'following', g.Underway().StopsLeft 'stopsLeft';
             }
         ")
