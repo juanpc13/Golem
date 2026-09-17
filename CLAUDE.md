@@ -119,7 +119,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   `{ route = g.Find(@id); from = Position(@x, @y); route.Decide(from); }` — the pose is the only thing the host adds.
   The way decided inside is deterministic on replay (the planner reads the layout and the collisions module, both
   journaled state; paper 05 holds while the planner's code holds — a spike's trade, accepted 16-sep).
-  **The body does ONE thing at a time; the journal says what, and every script lives in the Robot's action methods**
+  **The body does ONE thing at a time; the journal says what, and every script lives in the GolemEmbodiment's action methods**
   (Juan, 16-sep-2026: "un comando ejecutado produce un print del siguiente punto que debe alcanzar y una vez alcanzado
   pide el siguiente… una cosa a la vez, no una cola de acciones acumuladas"; then: "uno esperaría que todo esté
   ordenado en el `GolemController`… ahí se ve el script entero relacionado a la acción, con los `print` del punto al
@@ -127,7 +127,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   tiene los scripts, los valida una segunda vez, corre los scripts y hace los prints, y esos prints terminan llamando
   al Push de RobotToRos automáticamente al terminar el script"). The host holds no plan and no cursor. EVERY journal
   script — the errand with its way, a point reached, a bump, a graze, a hold, a resume, a way decided again, an ending,
-  the uptake of a tell — is an action method or const of `Choreography/Robot.cs` (`Move`, `Cover`, `Pause`, `Resume`,
+  the uptake of a tell — is an action method or const of `Choreography/GolemEmbodiment.cs` (`Move`, `Cover`, `Pause`, `Resume`,
   `Forget`, `Arrived`, `Stuck`, `BumpedAsync` and the touch protocol's `Bumped`, `Grazed`, `Met`, `Decided`,
   `DecidedPast`, `Failed`, `LetGo`; `Uptake*`); the controller only validates the JSON and calls it. Every one that
   changes what the body must do ENDS WITH ITS PRINT INSIDE THE BRACES, asked of the route the act was on (Juan, 17-sep:
@@ -135,7 +135,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   route.IsPending() 'pending'; if (route.IsWalkable) { print route.NextLeg.Kind 'kind', … route.StopsLeft 'stopsLeft'; }`
   — `route.Order` is `hold` | `decide` | `back` | `turn` | `run`, or how the route ended (`completed`, `failed`,
   `abandoned`) once it is no longer pending. That print is what the command RETURNS to the caller. What the engine
-  PUSHES to the body is the reaction's emit, `Robot.NextOrder` — the same fields asked of `g.Underway()`, the route underway
+  PUSHES to the body is the reaction's emit, `GolemEmbodiment.NextOrder` — the same fields asked of `g.Underway()`, the route underway
   (a reaction sees no local variable), starting with `g.HasPendingMission() 'pending'` (always something, so it pushes
   even when nothing is pending and the body must stop):
   and, when walkable, the leg (`kind name x y ax ay ex ey hasHeading heading following stopsLeft`); the order is
@@ -147,10 +147,10 @@ whether it could or not, so the domain resolves what follows. Consequences:
   TARGET** (Juan, 16-sep, evening: "el print retorna al controller, pero ese mismo objeto analiza el JSON y tiene un
   switch con las acciones disponibles; dentro de cada case están los llamados que viajan hasta el robot… el robot solo
   es el cuerpo; cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print"):
-  `Choreography/RobotToRos.cs` implements `IOutputSink` and is registered with `performance.OutputTarget(robot.ToRos,
+  `Choreography/RobotMechanics.cs` implements `IOutputSink` and is registered with `performance.OutputTarget(golemEmbodiment.Mechanics,
   JsonFormatter)` (Juan, 16-sep: "una nueva clase que sirva de salida, RobotToRos, que herede de IOutputSink, que se
   ocupe del obey y haga el switch case para enviar al robot"). **Nobody dispatches the print: the engine pushes it.** A
-  command's print is PULL (it returns to the caller); only a Reaction's emit is PUSHED — so `RobotToRos.DefineReactions`
+  command's print is PULL (it returns to the caller); only a Reaction's emit is PUSHED — so `RobotMechanics.DefineReactions`
   declares ONE reaction per act shape, `next-order-find` on `[_:Golem].Find($id)` (every act on a route in hand writes
   `route = g.Find(@id)` first), `next-order-visit` / `-cover` on `Visit(_, _)` / `Cover(_, _)`, `next-order-follow` on
   `Follow(_)`, each `.Program.Emit(Robot.NextOrder)`; when the act lands the engine calls `Push`, which parses the
@@ -164,7 +164,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   back, turnLeft, turnRight, stop, continue; the bump is what it reports.** The SAME JSON the journal printed travels
   to the body over the websocket (rosbridge, `std_msgs/String` on `/golem/<body>/order`) with the action, `within` and
   the body the journal declared (speed, radius, retreat). The same order twice is not resent; a different one
-  replaces what the body was doing. `Choreography/Robot.cs` keeps the other face: the action methods with the scripts, what the body reports (`Arrived`,
+  replaces what the body was doing. `Choreography/GolemEmbodiment.cs` keeps the other face: the action methods with the scripts, what the body reports (`Arrived`,
   `BumpedAsync`, `Stuck`), the touch protocol, the follower's linger, the clock (a push is ephemeral: the journal is
   still asked every 2 s and obeyed only when it differs from what the body carries), the operator's levers. **The body is a ROS node in the simulator**
   (`sim/bridge/body.py`, one per body, launched by `kiosk.sh` from `GOLEMS`/`POSE_SOURCES`): it drives `cmd_vel`, watches
@@ -173,17 +173,17 @@ whether it could or not, so the domain resolves what follows. Consequences:
   robot es extremadamente sencilla… avanzar / retroceder / girar a la derecha / girar a la izquierda / detener /
   continuar / choque"): it is told `advance` (to a point), `back` (to a point, in reverse), `turnLeft` / `turnRight`
   (to a heading), `stop`, `continue` — and it says `POST /robot/arrived` (`{route}`: the turn made, the
-  point reached — the endpoint knows which from what the Robot handed it) or `POST /robot/bump` (`{route, with, x, y,
+  point reached — the endpoint knows which from what the GolemEmbodiment handed it) or `POST /robot/bump` (`{route, with, x, y,
   heading, px, py, ptheta}`: what, where the touch landed on the plane heading into it, where it stood facing which way;
   route 0 while standing) — plus `/robot/stuck` when it could not. **The bumper is a switch**: the moment it fires the
   motors stop and the bump is reported; the body backs off NOTHING on its own — what follows is the domain's
   (`route.Bump(touch, me)` inserts the retreat and the way around; the print is `back`) and comes as the next order.
   One bump per contact: while the bumper stays pressed against the same thing it is not a new bump. Each report is a
   validated JSON body whose endpoint writes the act whole (`route.Turn()`, `route.Reach(point)`) and hands the answer
-  back to the Robot: its print is the next order — "gira, luego ros le dice ya giré, se escribe que giró y esa escritura
-  imprime lo siguiente". The touch protocol lives in the Robot (`BumpedAsync`: `Suspect` → `Grazed` or `Bumped`, whose
+  back to the GolemEmbodiment: its print is the next order — "gira, luego ros le dice ya giré, se escribe que giró y esa escritura
+  imprime lo siguiente". The touch protocol lives in the GolemEmbodiment (`BumpedAsync`: `Suspect` → `Grazed` or `Bumped`, whose
   print — `back` — goes to the body AT ONCE; then the peers' window, `Met`, `DecidedPast`), performed with the
-  controller's scripts. When nothing comes through a print (a told point taken up as a `Follow`, a boot) the Robot's
+  controller's scripts. When nothing comes through a print (a told point taken up as a `Follow`, a boot) the GolemEmbodiment's
   clock ASKS the same print as a query every 2 s (`AskOrder`) and obeys it if it differs from what the body carries. Every point of
   the way is journaled (the 10-sep "walk in silence" is superseded by the 16-sep dialogue). The host keeps only the
   clock (listening after a bump, the follower's linger), the wire, and the body's servo (turning to the heading,
@@ -293,12 +293,16 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - `GolemAPI/` — the generic golem program (ASP.NET controllers). One image, N
   golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech). Since 16-sep-2026 EVERY
-  journal script lives in `Choreography/Robot.cs` as an action method (the operator's verbs, the robot's reports, the
+  journal script lives in `Choreography/GolemEmbodiment.cs` as an action method (the operator's verbs, the robot's reports, the
   touch protocol's scripts, the tell uptakes — each ending in `NextOrder`); `Controllers/GolemController.cs` validates
-  the JSON and calls the Robot; `Choreography/RobotToRos.cs` is the actor's OUTPUT TARGET (the next-order reactions it
+  the JSON and calls the GolemEmbodiment; `Choreography/RobotMechanics.cs` is the actor's OUTPUT TARGET (the next-order reactions it
   defines push the print; it switches and sends the body its action over rosbridge); `GolemSpeech` the tell reactions and
-  uptakes — no mission loop, no legs in memory, no navigator: the body's servo is the ROS node `sim/bridge/body.py`. The controllers receive the `Robot` singleton alone and perform every
-  script on `robot.Actor.Using(…)` (Juan, 16-sep); the Robot reads the golem's answers from a query's print, never from a
+  uptakes — no mission loop, no legs in memory, no navigator: the body's servo is the ROS node `sim/bridge/body.py`. **The names (Juan, 17-sep-2026)**: `GolemEmbodiment` is the golem given a body — "el
+  conjunto del robot", mind and flesh together (was `Robot`, 16→17-sep); `RobotMechanics` is how the golem's order becomes
+  the robot's movement — "robot + mecánicas", the way OUT only (was `RobotToRos`); `Membrane/Rosbridge` stays a class apart:
+  it is the WIRE (websocket, topics, the telemetry it parses) and knows nothing of orders, so a real robot would change
+  the wire and keep the mechanics. The controllers receive the `Robot` singleton alone and perform every
+  script on `golemEmbodiment.Actor.Using(…)` (Juan, 16-sep); the GolemEmbodiment reads the golem's answers from a query's print, never from a
   rented Out lease (found empty under the panel's concurrent polls). **What the operator sends arrives as a
   JSON body, typed and validated before any script runs** (Juan, 16-sep: "debería ser por JSON… y validar que venga
   correcta"): `Controllers/Requests.cs` — `ErrandRequest` (`{"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]}` — points only, never places: Juan, 16-sep),

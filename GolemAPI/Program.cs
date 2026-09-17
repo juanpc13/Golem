@@ -17,7 +17,8 @@ System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureIn
 //   Membrane       — rosbridge websocket (telemetry, drive, teleport) + HttpBroker (tell wire).
 //   Panel          — the page, the SSE feed, and the tap that shows the journal record by record.
 //   Controllers    — every journal script (GolemController: the operator's verbs, the robot's reports), the operator's (OperatorController).
-//   Choreography   — the Robot (the output target: the print switched on and sent to the body), the speech (reactions and uptakes).
+//   Choreography   — the GolemEmbodiment (the golem given a body: every script, the body's reports, the clock), its RobotMechanics
+//                    (the output target: the print switched on and sent to the body), the speech (reactions and uptakes).
 // The body itself is a ROS node in the simulator (sim/bridge/body.py): it takes one order at a time and reports back.
 // The journal is the only truth; if this process dies, it rehydrates and resumes.
 
@@ -63,11 +64,11 @@ var peers = routes.Keys
 
 var speech = new GolemSpeech(performance, wire, feed, golem, tellDoneTo, peers);
 speech.DefineReactions();
-// The robot as the golem sees it: what the body reports comes to the Robot; every print goes out through its output
-// target, RobotToRos — parsed, switched on, sent to the body over the websocket as one of the robot's base actions.
-// Registered as the actor's output target too: a Reaction that emitted the same print would reach the body the same way.
-var robot = new Robot(performance, ros, feed, wire, golem, home, journalPath);
-robot.ToRos.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print to the body
+// The golem's embodiment: the golem given a body. What the body reports comes to it; every print goes out through the
+// robot's mechanics, the actor's output target — parsed, switched on, sent to the body over the websocket as one of the robot's
+// base actions.
+var golemEmbodiment = new GolemEmbodiment(performance, ros, feed, wire, golem, home, journalPath);
+golemEmbodiment.Mechanics.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print to the body
 
 performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
 new JournalTap(performance, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands
@@ -80,7 +81,7 @@ builder.WebHost.UseUrls($"http://*:{panelPort}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddControllers();
 builder.Services.AddSingleton<PerformanceV2>(performance);
-builder.Services.AddSingleton(robot);
+builder.Services.AddSingleton(golemEmbodiment);
 builder.Services.AddSingleton(feed);
 builder.Services.AddSingleton(wire);
 builder.Services.AddSingleton(ros);
@@ -108,11 +109,11 @@ feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
     $"membrane connected to {rosbridgeUrl} — driving body '{body}', pose from {(poseSource == PoseSource.Wheels ? "the wheels (dead reckoning: the world's truth is shown to you, never to the golem)" : "the world's truth")}", DateTime.UtcNow));
 // The output target is armed only now — after hydration (what the reactions replay while hydrating is history) and
 // with the membrane up (an order pushed before the body listens would be lost).
-performance.OutputTarget(robot.ToRos, new JsonFormatter());
+performance.OutputTarget(golemEmbodiment.Mechanics, new JsonFormatter());
 if (performance.BornThisBoot)
 {
     await Task.Delay(500, ct); // let the advertise settle before the first publish
-    await robot.PutBackHomeAsync(ct);
+    await golemEmbodiment.PutBackHomeAsync(ct);
     feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
         $"reborn — body '{body}' put back on its mark at ({home.X}, {home.Y})", DateTime.UtcNow));
 }
@@ -120,7 +121,7 @@ if (performance.BornThisBoot)
 // --- The clock, until shutdown: the journal asked now and then what it wants, when no print brought it. ---
 try
 {
-    await robot.RunAsync(ct);
+    await golemEmbodiment.RunAsync(ct);
 }
 catch (OperationCanceledException) { }
 

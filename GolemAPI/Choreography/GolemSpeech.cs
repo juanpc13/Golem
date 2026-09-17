@@ -117,15 +117,15 @@ public sealed class GolemSpeech
         toldListener = performance
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
-                .Command(Robot.UptakePointVisited)
+                .Command(GolemEmbodiment.UptakePointVisited)
             .Told("BumpedAt").With<double>("x").With<double>("y").With<double>("heading").With<string>("who").With<double>("px").With<double>("py")
-                .Command(Robot.UptakeBumpedAt)
+                .Command(GolemEmbodiment.UptakeBumpedAt)
             .Told("TouchedAt").With<double>("x").With<double>("y").With<string>("who").With<double>("px").With<double>("py")
-                .Command(Robot.UptakeTouchedAt)
+                .Command(GolemEmbodiment.UptakeTouchedAt)
             .Told("MetPeer").With<double>("x").With<double>("y")
-                .Command(Robot.UptakeMetPeer)
+                .Command(GolemEmbodiment.UptakeMetPeer)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
-                .Command(Robot.UptakeObstacleGone)
+                .Command(GolemEmbodiment.UptakeObstacleGone)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
         Console.WriteLine($"[golem {golem}] listening for tells on topic 'tell-{golem}'");

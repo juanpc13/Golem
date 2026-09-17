@@ -5,23 +5,28 @@ using Puppeteer;
 
 namespace GolemAPI.Choreography;
 
-// THE OUTPUT TARGET: the golem's print, on its way to the robot over ROS (Juan, 16-sep-2026: "una nueva clase que sirva de
-// salida, RobotToRos, que herede de IOutputSink, que se ocupe del obey y haga el switch case para enviar al robot").
-// Every command the golem performs ends with the same print (GolemController.NextOrder); the print comes back to
-// whoever performed it and is handed here — Obey — or pushed here by the engine when a Reaction emits it (Push). It is
-// parsed and SWITCHED on, and the robot gets one of its BASE ACTIONS over the websocket (rosbridge, std_msgs/String on
-// /golem/<body>/order): ADVANCE to a point, BACK to a point in reverse, TURN LEFT or TURN RIGHT to a heading, STOP,
-// CONTINUE what it was doing before a stop — the print's own JSON rides along, plus what the body needs (the arrival
-// tolerance, the body the journal declared). The robot answers with its reports (arrived, bump, stuck): those reach
-// the Robot through the golem's endpoints. The domain says WHAT (the heading, the point); this class says it in the
-// robot's words (which way round to turn is read off the body's pose: the servo's business, not the journal's).
-public sealed class RobotToRos : IOutputSink
+// THE ROBOT'S MECHANICS — the actor's OUTPUT TARGET: how the golem's order becomes the robot's movement (Juan,
+// 17-sep-2026: "algo como robot + mecánicas"; the class was `RobotToRos` on 16-sep: "una nueva clase que sirva de
+// salida, que herede de IOutputSink, que se ocupe del obey y haga el switch case para enviar al robot"). Only the way
+// OUT lives here — golem to body; what comes back (the pose, the contacts, the reports) enters through the membrane and
+// the golem's endpoints. Every command the golem performs ends with the same print (GolemEmbodiment.NextOrder); the
+// print comes back to whoever performed it and is handed here — Obey — or pushed here by the engine when a Reaction
+// emits it (Push). It is parsed and SWITCHED on, and the robot gets one of its BASE ACTIONS over the websocket
+// (rosbridge, std_msgs/String on /golem/<body>/order): ADVANCE to a point, BACK to a point in reverse, TURN LEFT or
+// TURN RIGHT to a heading, STOP, CONTINUE what it was doing before a stop — the print's own JSON rides along, plus what
+// the body needs (the arrival tolerance, the body the journal declared). The robot answers with its reports (arrived,
+// bump, stuck): those reach the GolemEmbodiment through the golem's endpoints. The domain says WHAT (the heading, the
+// point); this class says it in the robot's words (which way round to turn is read off the body's pose: the servo's
+// business). NOT the membrane: Rosbridge is the wire (the websocket, the topics, the telemetry it parses) and knows
+// nothing of orders; the mechanics know the order — what the body carries, what it held, the linger — and nothing of
+// topics beyond the one they publish on. A real robot would change the wire and keep the mechanics.
+public sealed class RobotMechanics : IOutputSink
 {
     private const double ArriveWithin = 0.25;    // a stop is "reached" within the body's radius
     private const double LineUpWithin = 0.15;    // a door is lined up tighter (the crossing must be straight); a retreat ends as tight
     private const double LeaderStandoff = 1.0;   // the follower's last stop is met this short of the leader's spot
 
-    private readonly Robot robot;
+    private readonly GolemEmbodiment golemEmbodiment;
     private readonly Rosbridge ros;
     private readonly object gate = new();
     private Order carrying;         // the order the body is carrying out now; null while it stands
@@ -29,9 +34,9 @@ public sealed class RobotToRos : IOutputSink
     private int heardBefore;        // peers' bumps heard before the current order began are older news than a touch during it
     private DateTime lingerUntil = DateTime.MinValue;   // the follower's linger: no order goes out to the body before this
 
-    public RobotToRos(Robot robot, Rosbridge ros)
+    public RobotMechanics(GolemEmbodiment golemEmbodiment, Rosbridge ros)
     {
-        this.robot = robot;
+        this.golemEmbodiment = golemEmbodiment;
         this.ros = ros;
     }
 
@@ -68,7 +73,7 @@ public sealed class RobotToRos : IOutputSink
                 .Cue().Company().WithSharedHydration()
                 .Seek("Act").One()
                     .OnMatch(pattern)
-                .Program.Emit(Robot.NextOrder);
+                .Program.Emit(GolemEmbodiment.NextOrder);
     }
 
     /// <summary>IOutputSink — the print a next-order reaction emitted, pushed by the engine when the act landed. (The speech
@@ -76,7 +81,7 @@ public sealed class RobotToRos : IOutputSink
     public void Push(in PushDocument document)
     {
         if (!document.ReactionName.StartsWith("next-order", StringComparison.Ordinal)) return;
-        Console.WriteLine($"[output] {document.ReactionName} pushed: {document.Document.ReplaceLineEndings(" ")}");
+        Console.WriteLine($"[mechanics] {document.ReactionName} pushed: {document.Document.ReplaceLineEndings(" ")}");
         Obey(document.Document);
     }
 
@@ -91,10 +96,10 @@ public sealed class RobotToRos : IOutputSink
             case "hold":
                 if (Carrying == null) break;   // already standing: the clock asked again while held
                 Hold();
-                robot.Note($"route {order.Route}: paused by the operator — the body stands until resumed");
+                golemEmbodiment.Note($"route {order.Route}: paused by the operator — the body stands until resumed");
                 break;
             case "decide":
-                robot.Decide(order.Route, "another road");   // the domain's, not the robot's: the new print comes back here
+                golemEmbodiment.Decide(order.Route, "another road");   // the domain's, not the robot's: the new print comes back here
                 break;
             case "turn":
                 Turn(order);
@@ -106,7 +111,7 @@ public sealed class RobotToRos : IOutputSink
                 Back(order);
                 break;
             default:
-                robot.Note($"an order I do not know: '{order.What}'");
+                golemEmbodiment.Note($"an order I do not know: '{order.What}'");
                 break;
         }
     }
@@ -118,7 +123,7 @@ public sealed class RobotToRos : IOutputSink
     private void Turn(Order order)
     {
         if (Resumes(order)) return;
-        var pose = robot.Pose;
+        var pose = golemEmbodiment.Pose;
         double deviation = pose == null ? 0 : Normalize(order.Heading - pose.Theta);
         string action = deviation >= 0 ? "turnLeft" : "turnRight";
         Send(action, order, LineUpWithin, $"{(deviation >= 0 ? "turning left" : "turning right")} to heading {order.Heading:0.00} for ({order.X:0.0}, {order.Y:0.0})");
@@ -163,7 +168,7 @@ public sealed class RobotToRos : IOutputSink
             carrying = order;
             held = null;
         }
-        robot.Note($"route {order.Route}: resumed — the body continues what it was doing");
+        golemEmbodiment.Note($"route {order.Route}: resumed — the body continues what it was doing");
         _ = ros.PublishAsync(ros.OrderTopic, "{\"action\":\"continue\"}");
         return true;
     }
@@ -181,7 +186,7 @@ public sealed class RobotToRos : IOutputSink
     public void StepAside(double x, double y, string why)
     {
         var step = new Order(0, "run", "aside", "aside", x, y, x, y, x, y, false, 0, false, 0);
-        robot.Note($"{why}: stepping to ({x:0.0}, {y:0.0})");
+        golemEmbodiment.Note($"{why}: stepping to ({x:0.0}, {y:0.0})");
         lock (gate) { carrying = step; held = null; }
         _ = PublishAsync("advance", step, LineUpWithin);
     }
@@ -209,10 +214,10 @@ public sealed class RobotToRos : IOutputSink
             if (carrying != null && carrying.SameAs(order)) return;
             carrying = order;
             held = null;
-            heardBefore = robot.HeardBumpCount();
+            heardBefore = golemEmbodiment.HeardBumpCount();
             wait = lingerUntil - DateTime.UtcNow;
         }
-        robot.Note($"route {order.Route}: {note}{(wait > TimeSpan.Zero ? $" — after lingering {wait.TotalSeconds:0} s" : "")}");
+        golemEmbodiment.Note($"route {order.Route}: {note}{(wait > TimeSpan.Zero ? $" — after lingering {wait.TotalSeconds:0} s" : "")}");
         if (wait > TimeSpan.Zero)
             _ = Task.Run(async () =>
             {
@@ -225,7 +230,7 @@ public sealed class RobotToRos : IOutputSink
 
     private Task PublishAsync(string action, Order order, double within)
     {
-        var (speed, radius, retreat) = robot.BodyDeclared();
+        var (speed, radius, retreat) = golemEmbodiment.BodyDeclared();
         return ros.PublishAsync(ros.OrderTopic, JsonSerializer.Serialize(new
         {
             action,

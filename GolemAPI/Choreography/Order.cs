@@ -9,7 +9,7 @@ namespace GolemAPI.Choreography;
 // that print to whoever performed it, at write time. Four orders exist, one thing each: TURN in place to the next leg's
 // heading, RUN to the next leg's point (kind door/opening/via/stop, its approach and exit), HOLD (the operator paused the
 // route), or DECIDE (the route has no way, or a bump interrupted it: the route decides it again from where the body
-// stands — `route.Decide(from)`). Nothing pending → no order. The Robot parses it and sends the same JSON on to the body.
+// stands — `route.Decide(from)`). Nothing pending → no order. The GolemEmbodiment parses it and sends the same JSON on to the body.
 public sealed record Order(int Route, string What, string Kind, string Name, double X, double Y, double AX, double AY, double EX, double EY,
                            bool HasHeading, double Heading, bool Following, int StopsLeft)
 {

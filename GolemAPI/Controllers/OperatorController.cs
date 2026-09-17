@@ -14,15 +14,15 @@ namespace GolemAPI.Controllers;
 public class OperatorController : Controller
 {
     private readonly PerformanceV2 performance;
-    private readonly Robot robot;   // the golem's actor is its Actor: the lab console performs on robot.Actor
+    private readonly GolemEmbodiment golemEmbodiment;   // the golem's actor is its Actor: the lab console performs on golemEmbodiment.Actor
     private readonly PanelFeed feed;
     private readonly Rosbridge ros;
     private readonly GolemIdentity identity;
 
-    public OperatorController(PerformanceV2 performance, Robot robot, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
+    public OperatorController(PerformanceV2 performance, GolemEmbodiment golemEmbodiment, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
     {
         this.performance = performance;
-        this.robot = robot;
+        this.golemEmbodiment = golemEmbodiment;
         this.feed = feed;
         this.ros = ros;
         this.identity = identity;
@@ -70,7 +70,7 @@ public class OperatorController : Controller
             script = "{ print " + script.TrimEnd(';') + " 'value'; }";
         try
         {
-            return Content(robot.Actor.Using(script).PerformQuery(), "application/json");
+            return Content(golemEmbodiment.Actor.Using(script).PerformQuery(), "application/json");
         }
         catch (Exception ex)
         {
@@ -81,7 +81,7 @@ public class OperatorController : Controller
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
     {
-        await robot.LetGoAsync();
+        await golemEmbodiment.LetGoAsync();
         return Accepted();
     }
 
@@ -93,7 +93,7 @@ public class OperatorController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ResetRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        await robot.ResetEverythingAsync(request.Cascade.Value);
+        await golemEmbodiment.ResetEverythingAsync(request.Cascade.Value);
         return Accepted();
     }
 

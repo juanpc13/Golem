@@ -6,25 +6,29 @@ using Puppeteer;
 
 namespace GolemAPI.Choreography;
 
-// THE ROBOT, AS THE GOLEM SEES IT (Juan, 16/17-sep-2026: "el robot solo es el cuerpo; nosotros le decimos qué hacer, y
-// cuando termina le dice al actor por un endpoint que ya terminó… en la clase Robot estarán los métodos-acción: el
-// controller recibe y valida los parámetros y llama a robot; el método en el robot tiene los scripts, los valida una
-// segunda vez, corre los scripts y hace los respectivos prints, y esos prints terminan llamando al Push de RobotToRos
-// automáticamente al terminar el script, sin necesidad de que nosotros lo disparemos").
+// THE GOLEM'S EMBODIMENT: the golem given a body — the whole robot as the host sees it, mind and flesh together
+// (Juan, 17-sep-2026: "algo más relacionado al robot en general, el embody o el conjunto del robot"; the class was
+// `Robot` from 16-sep to 17-sep). The mind is the actor (every script and query goes to it); the flesh is the body's
+// pose and what the body reports; between them, RobotMechanics — the output target, how an order becomes movement.
+// Juan, 16/17-sep: "el robot solo es el cuerpo; nosotros le decimos qué hacer, y cuando termina le dice al actor por un
+// endpoint que ya terminó… ahí estarán los métodos-acción: el controller recibe y valida los parámetros y llama; el
+// método tiene los scripts, los valida una segunda vez, corre los scripts y hace los respectivos prints, y esos prints
+// terminan llamando al Push automáticamente al terminar el script, sin necesidad de que nosotros lo disparemos".
 //
 // EVERY SCRIPT THE GOLEM'S JOURNAL RECEIVES LIVES HERE, as an action method: the operator's (Move, Cover, Pause, Resume,
 // Forget), the body's reports (Arrived, Bumped, Stuck) and what the touch protocol concludes (Grazed, Met, Decided,
 // DecidedPast, Failed, LetGo). Each is one act in the golem's words — a braced block, values as @params, the object found
 // or built and handed to the act, a Check that refuses in the domain's voice — and ENDS WITH THE SAME PRINT, written in
 // full inside every script (Juan, 17-sep: "deja escrito el script completo, con sus prints"; NextOrder below is the same
-// text, kept for the reactions' emit and the clock's query): what the route asks now. That print is PUSHED to the output target by the engine itself: RobotToRos defines one
-// Reaction per act shape (Find($id), Visit(_, _), Cover(_, _), Follow(_)) that emits NextOrder when the act lands, so the
-// body gets its next action without anybody dispatching it (lab-push-real.txt, 17-sep-2026). The command's returned
-// print is kept only to answer the caller (a refusal, in the domain's words).
+// text, kept for the reactions' emit and the clock's query): what the route asks now. That print is PUSHED to the output
+// target by the engine itself: RobotMechanics defines one Reaction per act shape (Find($id), Visit(_, _), Cover(_, _),
+// Follow(_), Pause(_), Resume(_)) that emits NextOrder when the act lands, so the body gets its next action without
+// anybody dispatching it (lab-push-real.txt, 17-sep-2026). The command's returned print is kept only to answer the caller
+// (a refusal, in the domain's words).
 // Its other face is what the body REPORTS: the act is written, the touch protocol runs (the peers' window, Met, the way
 // out of a peer's way), the follower's linger and courtesy step — plus the clock that asks the journal what it wants when
 // no push brought it, and the operator's levers on the body (let go, reset). No plan, no cursor, no legs: the journal's.
-public sealed class Robot
+public sealed class GolemEmbodiment
 {
     private const int MaxYields = 4;             // times the golem steps out of a peer's way before giving the route up
     private static readonly TimeSpan Listen = TimeSpan.FromMilliseconds(2500);
@@ -43,7 +47,7 @@ public sealed class Robot
     private int yields, yieldsFor;      // courtesy steps taken on the route underway
     private DateTime lastStandingTouch = DateTime.MinValue;
 
-    public Robot(PerformanceV2 performance, Rosbridge ros, PanelFeed feed, HttpBroker wire,
+    public GolemEmbodiment(PerformanceV2 performance, Rosbridge ros, PanelFeed feed, HttpBroker wire,
                  string golem, (double X, double Y) home, string journalPath)
     {
         this.performance = performance;
@@ -54,15 +58,15 @@ public sealed class Robot
         this.golem = golem;
         this.home = home;
         this.journalPath = journalPath;
-        ToRos = new RobotToRos(this, ros);
+        Mechanics = new RobotMechanics(this, ros);
     }
 
     /// <summary>The golem itself — the actor every script is performed on.</summary>
     public ActorV2 Actor => golemActor;
     /// <summary>Where the body believes it stands (telemetry, never the journal's); null before the first word from it.</summary>
     public Pose Pose => ros.LatestPose;
-    /// <summary>The output target: the print the reactions emit, switched on and sent to the body over ROS.</summary>
-    public RobotToRos ToRos { get; }
+    /// <summary>The robot's mechanics — the output target: the print the reactions emit, switched on and sent to the body over ROS.</summary>
+    public RobotMechanics Mechanics { get; }
 
     // ==================================================================
     // What the route asks now — the print every act ends with, and what the next-order reactions emit. It ALWAYS says
@@ -327,9 +331,9 @@ public sealed class Robot
     /// pulls over to its right and lingers, so the leader keeps its lead. Null: not the order the body was given.</summary>
     public Answer? Arrived(int route)
     {
-        var was = ToRos.Carrying;
+        var was = Mechanics.Carrying;
         if (was == null || was.Route != route) return null;
-        ToRos.Done();
+        Mechanics.Done();
         if (was.Route == 0) { Note("courtesy step done"); return default(Answer); }
         Answer answer;
         if (was.What == "turn")
@@ -410,9 +414,9 @@ public sealed class Robot
             if (was.Following)
             {
                 var linger = TimeSpan.FromSeconds(LingerAfterTold());
-                ToRos.Linger(linger);
+                Mechanics.Linger(linger);
                 Note($"lingering {linger.TotalSeconds:0} s at ({was.X:0.0}, {was.Y:0.0}) to keep the leader's lead");
-                if (ToRos.Carrying == null) StepAside("pulling over to the right, off the leader's way");
+                if (Mechanics.Carrying == null) StepAside("pulling over to the right, off the leader's way");
             }
         }
         return answer;
@@ -422,9 +426,9 @@ public sealed class Robot
     /// Null: not the order the body was given.</summary>
     public Answer? Stuck(int route, string reason)
     {
-        var was = ToRos.Carrying;
+        var was = Mechanics.Carrying;
         if (was == null || was.Route != route) return null;
-        ToRos.Done();
+        Mechanics.Done();
         var answer = Safely(() => Failed(route, reason));
         Report(answer, $"route {route} failed: {reason}");
         return answer;
@@ -437,8 +441,8 @@ public sealed class Robot
     /// way out of its way (Juan, 8-sep: "the domain decides, the host follows"; 16-sep: "el que decide todo debe ser el dominio").</summary>
     public async Task BumpedAsync(int route, string with, double x, double y, double heading, double poseX, double poseY, double poseTheta)
     {
-        var was = ToRos.Carrying;
-        int since = ToRos.HeardBefore;
+        var was = Mechanics.Carrying;
+        int since = Mechanics.HeardBefore;
         bool onMyWay = route > 0 && was != null && was.Route == route;
         if (!onMyWay)
         {
@@ -451,7 +455,7 @@ public sealed class Robot
             StepAside("making room");
             return;
         }
-        ToRos.Done();
+        Mechanics.Done();
         var hit = new Collision(with, x, y, heading);
         string where = $"({x:0.0}, {y:0.0})";
         if (Suspect(hit, since).Kind == "wall")
@@ -526,7 +530,7 @@ public sealed class Robot
     }
 
     // ==================================================================
-    // THE TOUCH PROTOCOL'S SCRIPTS and the domain's decisions the Robot asks for on the body's behalf. Each ends in
+    // THE TOUCH PROTOCOL'S SCRIPTS and the domain's decisions the GolemEmbodiment asks for on the body's behalf. Each ends in
     // NextOrder; the reaction on g.Find(@id) pushes it.
     // ==================================================================
 
@@ -726,7 +730,7 @@ public sealed class Robot
         if (pose == null) return;
         var (x, y) = Aside(pose);
         if (Math.Abs(x - pose.X) < 1e-6 && Math.Abs(y - pose.Y) < 1e-6) return;
-        ToRos.StepAside(x, y, why);
+        Mechanics.StepAside(x, y, why);
     }
 
     // What a script answered, for the record: refused → said so (the domain's words). The next order is NOT dispatched
@@ -754,16 +758,16 @@ public sealed class Robot
         while (ros.LatestPose == null && DateTime.UtcNow < patience && !ct.IsCancellationRequested) await Task.Delay(200, ct);
         var first = AskOrder();
         if (first != null && (first.What == "turn" || first.What == "run" || first.What == "back")) Decide(first.Route, "awake with a plan underway");
-        else ToRos.Obey(first);
+        else Mechanics.Obey(first);
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(2000, ct);
             var now = AskOrder();
-            var mine = ToRos.Carrying;
-            if (now == null) { if (mine != null && mine.Route != 0) ToRos.Stop(); continue; }
+            var mine = Mechanics.Carrying;
+            if (now == null) { if (mine != null && mine.Route != 0) Mechanics.Stop(); continue; }
             if (mine != null && mine.SameAs(now)) continue;
             if (mine != null && mine.Route == 0 && now.What != "hold") continue;   // a courtesy step underway: the order waits for it
-            ToRos.Obey(now);
+            Mechanics.Obey(now);
         }
     }
 
@@ -775,7 +779,7 @@ public sealed class Robot
     // is the golem's act, one command for every pending route.
     public async Task LetGoAsync()
     {
-        ToRos.Stop(anchor: true);
+        Mechanics.Stop(anchor: true);
         try { await ros.TeleportAsync(home.X, home.Y, 0.0, CancellationToken.None); }
         catch { /* the world reset is best-effort; the journaled fact is the point */ }
         Report(Safely(() => LetGo("the operator let go of everything")), "let go of every pending route");
@@ -786,7 +790,7 @@ public sealed class Robot
     public async Task PutBackHomeAsync(CancellationToken ct)
     {
         await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
-        ToRos.Stop(anchor: true);
+        Mechanics.Stop(anchor: true);
     }
 
     // The hard reset — a LAB lever, not a domain fact: stop the body, wipe THIS golem's journal and exit; Docker
@@ -798,7 +802,7 @@ public sealed class Robot
         if (cascade)
             foreach (var peer in wire.Peers)
                 await wire.AskPeerAsync(peer, "reset-everything", "{\"cascade\": false}");
-        ToRos.Stop();
+        Mechanics.Stop();
         _ = Task.Run(async () =>
         {
             await Task.Delay(500);

@@ -4,17 +4,17 @@ using Microsoft.AspNetCore.Mvc;
 namespace GolemAPI.Controllers;
 
 // THE GOLEM'S ENDPOINTS: the operator's verbs and the body's reports come in as JSON bodies, typed and VALIDATED here
-// (Requests.cs), and go to the Robot's action methods — where the scripts live, validate again in the domain's voice
+// (Requests.cs), and go to the GolemEmbodiment's action methods — where the scripts live, validate again in the domain's voice
 // and run (Juan, 17-sep-2026: "el controller recibe y valida los parámetros y llama a robot"). Nothing here dispatches
-// the next order: every act's print is pushed to the output target (RobotToRos) by the engine's own reaction on the
+// the next order: every act's print is pushed to the output target (RobotMechanics) by the engine's own reaction on the
 // act. A refusal comes back in the domain's words (409); the reads the panel needs are queries on the golem's actor.
 public class GolemController : Controller
 {
-    private readonly Robot robot;
+    private readonly GolemEmbodiment golemEmbodiment;
 
-    public GolemController(Robot robot)
+    public GolemController(GolemEmbodiment golemEmbodiment)
     {
-        this.robot = robot;
+        this.golemEmbodiment = golemEmbodiment;
     }
 
     // ==================================================================
@@ -28,7 +28,7 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ErrandRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        return Answered(robot.Move(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
+        return Answered(golemEmbodiment.Move(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
     // Send the golem through several points and let it choose the order that makes the way shortest.
@@ -38,15 +38,15 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ErrandRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        return Answered(robot.Cover(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
+        return Answered(golemEmbodiment.Cover(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
     // The operator holds the route underway, or lets it go on.
     [HttpPost("pause")]
-    public IActionResult Pause() => Answered(robot.Pause());
+    public IActionResult Pause() => Answered(golemEmbodiment.Pause());
 
     [HttpPost("resume")]
-    public IActionResult Resume() => Answered(robot.Resume());
+    public IActionResult Resume() => Answered(golemEmbodiment.Resume());
 
     // Somebody took an obstacle away: the golem forgets it, with every mark that outlined it, and tells the peers.
     [HttpPost("forget")]
@@ -55,7 +55,7 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PointRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        return Answered(robot.Forget(request.X.Value, request.Y.Value));
+        return Answered(golemEmbodiment.Forget(request.X.Value, request.Y.Value));
     }
 
     // ==================================================================
@@ -69,7 +69,7 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = robot.Arrived(report.Route.Value);
+        var answer = golemEmbodiment.Arrived(report.Route.Value);
         if (answer == null) return Accepted("not the order the body was given");
         return answer.Value.Ok ? Accepted() : Conflict(answer.Value.Refused);
     }
@@ -81,7 +81,7 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"with\": \"crate_center\", \"x\": 5.2, \"y\": 5.8, \"heading\": -1.57, \"px\": 5.2, \"py\": 6.05, \"ptheta\": -1.57}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        _ = robot.BumpedAsync(report.Route.Value, report.With.Trim(), report.X.Value, report.Y.Value, report.Heading.Value, report.Px.Value, report.Py.Value, report.Ptheta.Value);
+        _ = golemEmbodiment.BumpedAsync(report.Route.Value, report.With.Trim(), report.X.Value, report.Y.Value, report.Heading.Value, report.Px.Value, report.Py.Value, report.Ptheta.Value);
         return Accepted();
     }
 
@@ -92,7 +92,7 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"reason\": \"stalled\"}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = robot.Stuck(report.Route.Value, report.Reason.Trim());
+        var answer = golemEmbodiment.Stuck(report.Route.Value, report.Reason.Trim());
         if (answer == null) return Accepted("not the order the body was given");
         return answer.Value.Ok ? Accepted() : Conflict(answer.Value.Refused);
     }
@@ -104,7 +104,7 @@ public class GolemController : Controller
     // The map as it is laid out: zones, doors and open sides — read from the map module itself.
     [HttpGet("map")]
     public IActionResult Map() =>
-        Content(robot.Actor.Using(@"
+        Content(golemEmbodiment.Actor.Using(@"
             print map.Name 'map';
             foreach (places in map.Zones) {
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h',
@@ -122,7 +122,7 @@ public class GolemController : Controller
     // The obstacles the golem hypothesizes: one row per obstacle and, under it, one per vertex — the touches that outlined it.
     [HttpGet("obstacles")]
     public IActionResult Obstacles() =>
-        Content(robot.Actor.Using(@"
+        Content(golemEmbodiment.Actor.Using(@"
             print collisions.All().Count 'total', collisions.Things().Count 'things',
                   collisions.EncounterCount 'met', collisions.MarkCount 'marks';
             foreach (obstacles in collisions.All()) {
@@ -143,9 +143,9 @@ public class GolemController : Controller
     [HttpGet("progress")]
     public IActionResult Progress()
     {
-        var pose = robot.Pose;
+        var pose = golemEmbodiment.Pose;
         if (pose == null) return StatusCode(503, "no telemetry from the body yet");
-        return Content(robot.Actor.Using(@"
+        return Content(golemEmbodiment.Actor.Using(@"
             print g.HasPendingMission() 'hasNext', g.PendingRoutes().Count 'pendingMissions',
                   body.Speed.InMetersPerSecond 'speed', body.LingerAfterTold.InSeconds 'lingerAfterTold';
             if (g.HasPendingMission()) {
@@ -164,7 +164,7 @@ public class GolemController : Controller
 
     // One query, one document: the board the panel paints from.
     private string Board() =>
-        robot.Actor.Using(@"
+        golemEmbodiment.Actor.Using(@"
             print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
                 print g.Underway().Id 'nextId',
