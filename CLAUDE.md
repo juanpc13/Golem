@@ -119,14 +119,20 @@ whether it could or not, so the domain resolves what follows. Consequences:
   `{ route = g.Find(@id); from = Position(@x, @y); route.Decide(from); }` — the pose is the only thing the host adds.
   The way decided inside is deterministic on replay (the planner reads the layout and the collisions module, both
   journaled state; paper 05 holds while the planner's code holds — a spike's trade, accepted 16-sep).
-  **The body does ONE thing at a time; the journal says what, and the whole script lives in the controller**
+  **The body does ONE thing at a time; the journal says what, and every script lives in the Robot's action methods**
   (Juan, 16-sep-2026: "un comando ejecutado produce un print del siguiente punto que debe alcanzar y una vez alcanzado
   pide el siguiente… una cosa a la vez, no una cola de acciones acumuladas"; then: "uno esperaría que todo esté
   ordenado en el `GolemController`… ahí se ve el script entero relacionado a la acción, con los `print` del punto al
-  que deberá moverse"). The host holds no plan and no cursor. EVERY journal script — the errand with its way, a point
-  reached, a bump, a graze, a hold, a resume, a way decided again, an ending, the uptake of a tell — is a method or
-  const of `Controllers/GolemController.cs`, and every one that changes what the body must do ENDS with the same
-  `print` (`GolemController.NextOrder`): `g.Next().Id 'route', g.Next().Order 'order'` (`hold` | `decide` | `leg`)
+  que deberá moverse"; 17-sep: "el controller recibe y valida los parámetros y llama a robot; el método en el robot
+  tiene los scripts, los valida una segunda vez, corre los scripts y hace los prints, y esos prints terminan llamando
+  al Push de RobotToRos automáticamente al terminar el script"). The host holds no plan and no cursor. EVERY journal
+  script — the errand with its way, a point reached, a bump, a graze, a hold, a resume, a way decided again, an ending,
+  the uptake of a tell — is an action method or const of `Choreography/Robot.cs` (`Move`, `Cover`, `Pause`, `Resume`,
+  `Forget`, `Arrived`, `Stuck`, `BumpedAsync` and the touch protocol's `Bumped`, `Grazed`, `Met`, `Decided`,
+  `DecidedPast`, `Failed`, `LetGo`; `Uptake*`); the controller only validates the JSON and calls it. Every one that
+  changes what the body must do ENDS with the same `print` (`Robot.NextOrder`): `g.HasPendingMission() 'pending'`
+  (always something, so the engine pushes even when nothing is pending and the body must stop), then
+  `g.Next().Id 'route', g.Next().Order 'order'` (`hold` | `decide` | `back` | `turn` | `run`)
   and, when walkable, the leg (`kind name x y ax ay ex ey hasHeading heading following stopsLeft`); the order is
   `turn` (turn in place to the leg's heading — every leg has one now, the first from where the errand started), `run`
   (run to the leg's point), `hold` or `decide`. A command's print
@@ -138,16 +144,24 @@ whether it could or not, so the domain resolves what follows. Consequences:
   es el cuerpo; cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print"):
   `Choreography/RobotToRos.cs` implements `IOutputSink` and is registered with `performance.OutputTarget(robot.ToRos,
   JsonFormatter)` (Juan, 16-sep: "una nueva clase que sirva de salida, RobotToRos, que herede de IOutputSink, que se
-  ocupe del obey y haga el switch case para enviar al robot"); every command's returned print goes to
-  `robot.ToRos.Obey(print)`, which parses it and SWITCHES: `hold` → `stop` (the body remembers what it was doing);
+  ocupe del obey y haga el switch case para enviar al robot"). **Nobody dispatches the print: the engine pushes it.** A
+  command's print is PULL (it returns to the caller); only a Reaction's emit is PUSHED — so `RobotToRos.DefineReactions`
+  declares ONE reaction per act shape, `next-order-find` on `[_:Golem].Find($id)` (every act on a route in hand writes
+  `route = g.Find(@id)` first), `next-order-visit` / `-cover` on `Visit(_, _)` / `Cover(_, _)`, `next-order-follow` on
+  `Follow(_)`, each `.Program.Emit(Robot.NextOrder)`; when the act lands the engine calls `Push`, which parses the
+  document and SWITCHES (17-sep lab, `lab-push-real.txt`: every act pushed exactly once with the speech reactions around;
+  the morning's flakiness came from MANY reactions on the same act shape — one per shape, no more). The sink is armed
+  after `performance.Start()` and the membrane (a replayed or early push would be lost or stale); the returned print is
+  kept only to answer the caller (a refusal, 409). `Push` ignores anything not named `next-order*` and switches: `hold` → `stop` (the body remembers what it was doing);
   `decide` → `robot.Decide` writes `route.Decide(from)` from the pose and the new print comes back; `turn` → `turnLeft`
   or `turnRight` to the domain's heading (which way round is read off the body's pose: the servo's business); `run` →
   `advance`; `back` → `back`; the same order held and resumed → `continue`. **The robot's base actions are advance,
   back, turnLeft, turnRight, stop, continue; the bump is what it reports.** The SAME JSON the journal printed travels
   to the body over the websocket (rosbridge, `std_msgs/String` on `/golem/<body>/order`) with the action, `within` and
   the body the journal declared (speed, radius, retreat). The same order twice is not resent; a different one
-  replaces what the body was doing. `Choreography/Robot.cs` keeps the other face: what the body reports (`Arrived`,
-  `BumpedAsync`, `Stuck`), the touch protocol, the follower's linger, the clock, the operator's levers. **The body is a ROS node in the simulator**
+  replaces what the body was doing. `Choreography/Robot.cs` keeps the other face: the action methods with the scripts, what the body reports (`Arrived`,
+  `BumpedAsync`, `Stuck`), the touch protocol, the follower's linger, the clock (a push is ephemeral: the journal is
+  still asked every 2 s and obeyed only when it differs from what the body carries), the operator's levers. **The body is a ROS node in the simulator**
   (`sim/bridge/body.py`, one per body, launched by `kiosk.sh` from `GOLEMS`/`POSE_SOURCES`): it drives `cmd_vel`, watches
   its odometry (the truth, or its wheels' reckoning anchored once) and its contact sensor, does that ONE thing and
   reports on the golem's endpoints. **The body's vocabulary is its base actions** (Juan, 16-sep: "la interfaz del
@@ -274,11 +288,11 @@ whether it could or not, so the domain resolves what follows. Consequences:
 - `GolemAPI/` — the generic golem program (ASP.NET controllers). One image, N
   golems via environment: `GOLEM` (identity, names the journal), `BODY` (the model
   it drives), `HOME_AT` (its mark), `TELL_ROUTES`/`TELL_DONE_TO` (speech). Since 16-sep-2026 EVERY
-  journal script lives in `Controllers/GolemController.cs` (the operator's verbs, the robot's reports, the touch
-  protocol's scripts, the tell uptakes — each ending in `NextOrder`); `Choreography/` holds the `Robot` (the actor's
-  OUTPUT TARGET: the print switched on and sent to the body over rosbridge; the touch protocol's clock; the reports'
-  bookkeeping) and `GolemSpeech` (the tell reactions and uptakes) — no mission loop, no legs in memory, no navigator:
-  the body's servo is the ROS node `sim/bridge/body.py`. The controllers receive the `Robot` singleton alone and perform every
+  journal script lives in `Choreography/Robot.cs` as an action method (the operator's verbs, the robot's reports, the
+  touch protocol's scripts, the tell uptakes — each ending in `NextOrder`); `Controllers/GolemController.cs` validates
+  the JSON and calls the Robot; `Choreography/RobotToRos.cs` is the actor's OUTPUT TARGET (the next-order reactions it
+  defines push the print; it switches and sends the body its action over rosbridge); `GolemSpeech` the tell reactions and
+  uptakes — no mission loop, no legs in memory, no navigator: the body's servo is the ROS node `sim/bridge/body.py`. The controllers receive the `Robot` singleton alone and perform every
   script on `robot.Actor.Using(…)` (Juan, 16-sep); the Robot reads the golem's answers from a query's print, never from a
   rented Out lease (found empty under the panel's concurrent polls). **What the operator sends arrives as a
   JSON body, typed and validated before any script runs** (Juan, 16-sep: "debería ser por JSON… y validar que venga

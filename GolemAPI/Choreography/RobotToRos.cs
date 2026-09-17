@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Choreography.Theater;
 using GolemAPI.Membrane;
 using Puppeteer;
 
@@ -43,8 +44,39 @@ public sealed class RobotToRos : IOutputSink
     // The output target: a print arrives, is parsed, switched on, and travels to the robot as one of its actions.
     // ==================================================================
 
-    /// <summary>IOutputSink — a Reaction's emitted print lands here like a command's returned one.</summary>
-    public void Push(in PushDocument document) => Obey(document.Document);
+    // ==================================================================
+    // How the prints reach this target WITHOUT anybody dispatching them (Juan, 17-sep-2026: "esos print terminarán llamando
+    // a Push automáticamente al terminar el script"): a command's print is PULL — it returns to the caller — and only a
+    // Reaction's emit is PUSHED. So one Reaction per act shape watches the journal and emits NextOrder when the act lands:
+    // Find($id) — every act on a route in hand (Then, Turn, Reach, Bump, Graze, Decide, DecidePast, Pause, Resume, Fail,
+    // Abandon) writes `route = g.Find(@id)` first; Visit(_, _) and Cover(_, _) — the errand; Follow(_) — a told point.
+    // Defined BEFORE performance.Start(); the lab (lab-push-real.txt) saw each act push exactly once with the speech
+    // reactions around. Many reactions on the SAME act shape fired unreliably (lab-patterns.txt): one per shape, no more.
+    // ==================================================================
+    public void DefineReactions(PerformanceV2 performance)
+    {
+        foreach (var (name, pattern) in new[]
+        {
+            ("next-order-find",   "[_:Golem].Find($id)"),
+            ("next-order-visit",  "[_:Golem].Visit(_, _)"),
+            ("next-order-cover",  "[_:Golem].Cover(_, _)"),
+            ("next-order-follow", "[_:Golem].Follow(_)"),
+        })
+            performance.Actor.Reactions.DefineReaction(name)
+                .Cue().Company().WithSharedHydration()
+                .Seek("Act").One()
+                    .OnMatch(pattern)
+                .Program.Emit(Robot.NextOrder);
+    }
+
+    /// <summary>IOutputSink — the print a next-order reaction emitted, pushed by the engine when the act landed. (The speech
+    /// reactions push nothing: they tell; anything else that reaches the sink is not an order.)</summary>
+    public void Push(in PushDocument document)
+    {
+        if (!document.ReactionName.StartsWith("next-order", StringComparison.Ordinal)) return;
+        Console.WriteLine($"[output] {document.ReactionName} pushed: {document.Document.ReplaceLineEndings(" ")}");
+        Obey(document.Document);
+    }
 
     /// <summary>The print a command returned: what the route asks now. Parsed, switched on, sent to the robot.</summary>
     public void Obey(string print) => Obey(Order.Parse(print));

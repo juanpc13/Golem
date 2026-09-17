@@ -51,6 +51,8 @@ public sealed record Order(int Route, string What, string Kind, string Name, dou
 public readonly record struct Answer(Order Order, string Refused, string Print)
 {
     public bool Ok => Refused == "";
+    /// <summary>A refusal the host itself gives, in plain words, before or instead of a script.</summary>
+    public static Answer Refusal(string why) => new(null, why, "");
     public static Answer Of(string performed)
     {
         // a refused Check comes back as {"EWI":[{"Error":"…"}]}; anything else is the print (or nothing)

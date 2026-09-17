@@ -1743,3 +1743,34 @@ blue living → north con la caja (route 12): stop/continue en living/south · d
 **Conclusión**: la separación deja cada cara con su trabajo: `RobotToRos` traduce y envía, `Robot` recibe y pondera. El `continue` funciona y las jambas ya no siembran marcas. Lo que sale a la luz es físico: tras un `back` de 0.6 m, girar en el sitio pegado a una esquina de la caja vuelve a tocarla; cada toque es una corrección legítima del dominio, pero son tres donde bastaría una.
 
 **Pendiente**: (1) la corrección tras un choque podría retroceder más cuando el siguiente giro es amplio, o elegir el sentido de giro que se aleja de la marca — decisión del dominio (`Route.Correct`), no del servo; (2) regla de paso en una puerta; (3) `within` y `standoff` del seguidor siguen en el host.
+
+## 2026-09-17 · Los scripts viven en el `Robot` y el `Push` lo dispara el motor: una reacción por forma de acto
+
+**Contexto** (Juan): "los scripts vuelven a la clase `Robot`, ahí estarán los métodos-acción; el controller recibe y valida los parámetros y llama a robot; el método en el robot tiene los scripts, los valida una segunda vez, corre los scripts y hace los respectivos prints, y esos prints terminan llamando al `Push` de `RobotToRos` automáticamente al terminar el script, sin necesidad de que nosotros lo disparemos".
+
+**Laboratorio** (`GolemTest/OrderPushLabTests.cs`): el print de un comando es PULL (vuelve a quien lo ejecuta); solo el emit de una Reaction se EMPUJA al `OutputTarget`. Pregunta: ¿qué reacción dispara fiel en cada acto tal como el host lo escribe?
+```
+lab-push.txt — una sola reacción por actor, los once actos del host, pushes por acto:
+  [_:Golem].Find($id)      7 pushes: then, turn, reach, pause, resume, bump, decide (todo acto que empieza por route = g.Find(@id)); visit/visit-b 0
+  [_:Golem].Visit(_, _)    2: visit, visit-b            [_:Route].Then(_) 1: then          [_:Route].Turn() 1: turn
+  [_:Route].Reach(_)       1: reach                      [_:Route].Bump(_, _) 1: bump       [_:Route].Decide(_) 1: decide
+  [_:Route].Pause()        1: pause                      [_:Route].Abandon($why) 0 (ni solo)   [_:Golem].PendingRoutes() 0 (un foreach no casa)
+  abandon/letgo: 0 pushes también con Find — el print quedaba VACÍO (nada pendiente) y un emit vacío no se empuja
+lab-push-real.txt — un actor con las reacciones de habla (expose) + next-order-find/visit/cover/follow, print que siempre dice algo:
+  visit 1 (visit) · then 1 (find) · turn 1 · reach 1 · bump 2 (find + echo-bumped) · pause 1 · resume 1 · follow 1 (follow) · fail 1
+  · decide 1 · cover 1 (cover) · reach-stop 2 (find + echo-reached): cada acto, exactamente una orden empujada.
+```
+*Conclusión del laboratorio*: la inconsistencia de la mañana (`lab-patterns.txt`) venía de definir MUCHAS reacciones sobre la misma forma de acto en un actor; una por forma dispara fiel. El emit debe imprimir siempre algo (`pending`) o el motor no empuja cuando la ruta terminó y el cuerpo debe pararse.
+
+**Ajuste al host** (`Robot.cs`, `RobotToRos.cs`, `GolemController.cs`, `Program.cs`, `GolemSpeech.cs`): los scripts son métodos-acción del `Robot` (operador: `Move`, `Cover`, `Pause`, `Resume`, `Forget`; cuerpo: `Arrived`, `Stuck`, `BumpedAsync`; protocolo: `Bumped`, `Grazed`, `Met`, `Decided`, `DecidedPast`, `Failed`, `LetGo`; `Uptake*`), cada uno con su `Check` y terminando en `Robot.NextOrder`. `RobotToRos.DefineReactions(performance)` declara `next-order-find|visit|cover|follow` con `.Program.Emit(Robot.NextOrder)` antes de `Start`; `Push` filtra por nombre y hace el `switch`; el sink se registra tras `Start` y la membrana. El controller valida el JSON y llama al `Robot`; ni él ni el `Robot` despachan la orden. `Answer.Refusal` para los rechazos del propio host. El reloj de 2 s queda de red de seguridad.
+
+**Observación en vivo** (tres golems, cero reinicios; journals conservados — las reacciones nuevas se arman con el sink apagado, así la puesta al día no empuja historia):
+```
+blue north → living con la caja (route 13), todo por empuje: turning right -1.51 · turned (407) · advancing north~center · passed (409)
+  · turning right -1.71 · turned (410) · advancing center~south · /pause → "the body stands" · /resume → "continues what it was doing"
+  · bumped into crate_center (5.2, 5.9) · the way corrected, backing off first (416) · backing off to (5.3, 6.7) · backed off (420)
+  · turning right -2.93 · skirting to (4.5, 6.5) · passed (422) · … · reached the stop (2.0, 1.5) (429)
+red → garage (route 2) y blue la siguió (route 14, PointVisited → Follow → next-order-follow empujó 'decide' → Decided → turn…)
+```
+
+**Ajuste al dominio**: ninguno. **Pendiente**: (1) `Abandon($why)` no casa como patrón — el let-go detiene el cuerpo por la palanca; si algún día un `Abandon` cambiara la orden sin palanca, haría falta otra forma; (2) los pendientes anteriores (giro tras el retroceso, regla de paso en puertas, `within`/`standoff` del seguidor).

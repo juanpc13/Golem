@@ -67,7 +67,7 @@ speech.DefineReactions();
 // target, RobotToRos — parsed, switched on, sent to the body over the websocket as one of the robot's base actions.
 // Registered as the actor's output target too: a Reaction that emitted the same print would reach the body the same way.
 var robot = new Robot(performance, ros, feed, wire, golem, home, journalPath);
-performance.OutputTarget(robot.ToRos, new JsonFormatter());
+robot.ToRos.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print to the body
 
 performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
 new JournalTap(performance, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands
@@ -106,6 +106,9 @@ await ros.ConnectAsync(ct);
 await ros.BindAsync(ct);
 feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
     $"membrane connected to {rosbridgeUrl} — driving body '{body}', pose from {(poseSource == PoseSource.Wheels ? "the wheels (dead reckoning: the world's truth is shown to you, never to the golem)" : "the world's truth")}", DateTime.UtcNow));
+// The output target is armed only now — after hydration (what the reactions replay while hydrating is history) and
+// with the membrane up (an order pushed before the body listens would be lost).
+performance.OutputTarget(robot.ToRos, new JsonFormatter());
 if (performance.BornThisBoot)
 {
     await Task.Delay(500, ct); // let the advertise settle before the first publish

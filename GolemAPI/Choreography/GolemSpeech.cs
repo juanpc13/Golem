@@ -1,7 +1,6 @@
 using Choreography.Theater;
 using Choreography.Told;
 using Choreography.Transport.Brokered;
-using GolemAPI.Controllers;
 using GolemAPI.Membrane;
 using GolemAPI.Panel;
 using Puppeteer;
@@ -118,15 +117,15 @@ public sealed class GolemSpeech
         toldListener = performance
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
-                .Command(GolemController.UptakePointVisited)
+                .Command(Robot.UptakePointVisited)
             .Told("BumpedAt").With<double>("x").With<double>("y").With<double>("heading").With<string>("who").With<double>("px").With<double>("py")
-                .Command(GolemController.UptakeBumpedAt)
+                .Command(Robot.UptakeBumpedAt)
             .Told("TouchedAt").With<double>("x").With<double>("y").With<string>("who").With<double>("px").With<double>("py")
-                .Command(GolemController.UptakeTouchedAt)
+                .Command(Robot.UptakeTouchedAt)
             .Told("MetPeer").With<double>("x").With<double>("y")
-                .Command(GolemController.UptakeMetPeer)
+                .Command(Robot.UptakeMetPeer)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
-                .Command(GolemController.UptakeObstacleGone)
+                .Command(Robot.UptakeObstacleGone)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
         Console.WriteLine($"[golem {golem}] listening for tells on topic 'tell-{golem}'");
