@@ -333,7 +333,7 @@ internal sealed class Route
     // the route asks 'decide' once it is done (the way is exhausted without completing).
     private void Correct(Pose me, bool replan)
     {
-        var back = me.Along(me.Heading + Math.PI, retreat);
+        var back = RetreatFrom(me);
         var legs = new List<Leg> { new(back, Leg.Retreat) };
         if (replan)
         {
@@ -352,6 +352,26 @@ internal sealed class Route
         int patience = grazesOnLeg;
         Take(new Trajectory(legs), me);
         if (!replan) grazesOnLeg = patience;   // the same leg, tried again: the patience spent on it stays spent
+    }
+
+    /// <summary>How far the retreat may grow, in retreats, when the body's own retreat leaves it no room to turn.</summary>
+    internal const double RetreatAtMost = 3;
+
+    // Where the body backs off to: straight back along the reverse of its heading, the body's own retreat at least, and
+    // FURTHER — up to RetreatAtMost retreats, a half radius at a time — until it stands with room to turn in place there:
+    // clear of the walls, and clear of every figure by a whole extra radius, so the shell sweeping round touches nothing
+    // (Juan, 17-sep-2026: "retroceder más y girar alejándose de la marca, para rodearla si aún cabe su cuerpo o ir por
+    // otra ruta si ya no cabe" — the 16-sep run touched the crate's corner again while turning after a plain retreat). Where
+    // nothing behind is clear, the plain retreat: the road from there will say whether a way fits.
+    private Position RetreatFrom(Pose me)
+    {
+        for (double d = retreat; d <= retreat * RetreatAtMost + 1e-9; d += radius / 2)
+        {
+            var back = me.Along(me.Heading + Math.PI, d);
+            if (!layout.HasRoom(back, radius)) break;                   // a wall behind: no further
+            if (!collisions.Blocks(back, radius * 2)) return back;      // room to turn: an extra radius clear of every figure
+        }
+        return me.Along(me.Heading + Math.PI, retreat);
     }
 
     // ---- the hold (Juan, 14-sep-2026: "pausa/continuar el trayecto actual en ejecución") ----

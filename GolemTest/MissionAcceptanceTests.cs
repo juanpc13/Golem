@@ -408,6 +408,22 @@ public class MissionAcceptanceTests
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
     }
 
+    [TestMethod]
+    public void AfterABump_TheRetreatLeavesRoomToTurn_AndTheRoadGoesAroundIfTheBodyFits()
+    {
+        // north → south through the center hall; the body meets the crate's north face head-on, halfway down
+        Visit(1, 5.5, 1.5, 5.5, 9.5);
+        Bump(1, 5.5, 5.85, South);
+        Assert.AreEqual("back", Text("g.Find(1).Order"), "the first correction: back off");
+        double backY = Double("g.Find(1).NextLeg.Target.Y");
+        Assert.IsTrue(backY >= 5.85 + 0.25 + 0.6 - 1e-6, "at least the body's retreat behind where it stood: " + backY);
+        Assert.IsTrue(Bool("g.FitsAt(Position(5.5, " + backY.ToString(System.Globalization.CultureInfo.InvariantCulture) + "))"), "and standing clear there");
+        string plan = Text("g.Find(1).AsPlan()");
+        StringAssert.StartsWith(plan, "back@", plan);
+        StringAssert.Contains(plan, "around@", "the body fits past the crate in the 3 m hall: it goes around, not another way — " + plan);
+        StringAssert.EndsWith(plan, "> south@5.5,1.5");
+    }
+
     // ---- the hold: Pause, Resume ----
 
     [TestMethod]
