@@ -71,15 +71,15 @@ public sealed class Robot
     // point, how it is walked (approach, exit) and the heading the way gives it. Nothing pending: no route, no order.
     // ==================================================================
     public const string NextOrder = @"
-        print g.HasPendingMission() 'pending';
-        if (g.HasPendingMission()) { print g.Next().Id 'route', g.Next().Order 'order'; }
-        if (g.HasPendingMission() && g.Next().IsWalkable) {
-            print g.Next().NextLeg.Kind 'kind', g.Next().NextLeg.Name 'name',
-                  g.Next().NextLeg.At.X 'x', g.Next().NextLeg.At.Y 'y',
-                  g.Next().NextLeg.Approach.X 'ax', g.Next().NextLeg.Approach.Y 'ay',
-                  g.Next().NextLeg.Exit.X 'ex', g.Next().NextLeg.Exit.Y 'ey',
-                  g.Next().NextLeg.HasHeading 'hasHeading', g.Next().NextLeg.Heading 'heading',
-                  g.Next().Following 'following', g.Next().StopsLeft 'stopsLeft';
+        print g.HasPendingMission() 'pending', g.Held 'held';
+        if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }
+        if (g.HasPendingMission() && g.Underway().IsWalkable) {
+            print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Name 'name',
+                  g.Underway().NextLeg.At.X 'x', g.Underway().NextLeg.At.Y 'y',
+                  g.Underway().NextLeg.Approach.X 'ax', g.Underway().NextLeg.Approach.Y 'ay',
+                  g.Underway().NextLeg.Exit.X 'ex', g.Underway().NextLeg.Exit.Y 'ey',
+                  g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Heading 'heading',
+                  g.Underway().Following 'following', g.Underway().StopsLeft 'stopsLeft';
         }
     ";
 
@@ -245,62 +245,57 @@ public sealed class Robot
         return answer;
     }
 
-    /// <summary>The operator holds the route underway: the body stops where it stands; plan and cursor keep.</summary>
+    /// <summary>The operator holds the GOLEM where its body stands (Juan, 17-sep: "pausamos el cerebro, no la ruta"): the
+    /// pose is kept, the route underway is held with it and handed back; the body stops. Plan and cursor keep.</summary>
     public Answer Pause()
     {
-        int? id = RouteUnderway();
-        if (id == null) return Answer.Refusal("nothing underway: no pending route");
+        var pose = ros.LatestPose;
+        if (pose == null) return Answer.Refusal("no telemetry from the body yet: the hold needs where it stands");
         return Answer.Of(golemActor.Using(
             @"
-                Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                Check(!g.Find(@id).Paused) Error 'the route is already paused';
+                Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
+                Check(!g.Held) Error 'the golem is already paused';
             ",
             @"
                 {
-                    route = g.Find(@id);
-                    route.Pause();
-                    print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                    if (route.IsWalkable) {
-                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                              route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
-                              route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                              route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                              route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
-                              route.Following 'following', route.StopsLeft 'stopsLeft';
-                    }
+                    me = Pose(@x, @y, @theta);
+                    route = g.Pause(me);
+                    print route.Id 'route', route.Order 'order', route.IsPending() 'pending',
+                          g.HeldAt.X 'heldX', g.HeldAt.Y 'heldY';
                 }
             ")
-            .WithParameters(p => { p["id", typeof(int)] = id.Value; })
+            .WithParameters(p => { p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; p["theta", typeof(double)] = pose.Theta; })
             .PerformCheckThenCommand());
     }
 
-    /// <summary>The operator lets the route go on: the body takes up the thing it was doing, from where it stands.</summary>
+    /// <summary>The operator lets the golem go on: the route underway takes up its next leg from where the body stands now
+    /// (it may have been pushed while standing) — the route gives that leg its heading again from there.</summary>
     public Answer Resume()
     {
-        int? id = RouteUnderway();
-        if (id == null) return Answer.Refusal("nothing underway: no pending route");
+        var pose = ros.LatestPose;
+        if (pose == null) return Answer.Refusal("no telemetry from the body yet: the resume needs where it stands");
         return Answer.Of(golemActor.Using(
-            @"
-                Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                Check(g.Find(@id).Paused) Error 'the route is not paused';
-            ",
-            @"
-                {
-                    route = g.Find(@id);
-                    route.Resume();
-                    print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                    if (route.IsWalkable) {
-                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                              route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
-                              route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                              route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                              route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
-                              route.Following 'following', route.StopsLeft 'stopsLeft';
-                    }
+        @"
+            Check(g.Held) Error 'the golem is not paused';
+            Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
+        ",
+        @"
+            {
+                me = Pose(@x, @y, @theta);
+                route = g.Resume(me);
+                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                if (route.IsWalkable) {
+                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
-            ")
-            .WithParameters(p => { p["id", typeof(int)] = id.Value; })
-            .PerformCheckThenCommand());
+            }
+        ")
+        .WithParameters(p => { p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; p["theta", typeof(double)] = pose.Theta; })
+        .PerformCheckThenCommand());
     }
 
     /// <summary>Somebody took it away: the golem forgets the obstacle standing there, with every mark that outlined it. The
@@ -700,14 +695,14 @@ public sealed class Robot
                 route.Abandon(@reason);
             }
             print g.HasPendingMission() 'pending';
-            if (g.HasPendingMission()) { print g.Next().Id 'route', g.Next().Order 'order'; }
-            if (g.HasPendingMission() && g.Next().IsWalkable) {
-                print g.Next().NextLeg.Kind 'kind', g.Next().NextLeg.Name 'name',
-                      g.Next().NextLeg.At.X 'x', g.Next().NextLeg.At.Y 'y',
-                      g.Next().NextLeg.Approach.X 'ax', g.Next().NextLeg.Approach.Y 'ay',
-                      g.Next().NextLeg.Exit.X 'ex', g.Next().NextLeg.Exit.Y 'ey',
-                      g.Next().NextLeg.HasHeading 'hasHeading', g.Next().NextLeg.Heading 'heading',
-                      g.Next().Following 'following', g.Next().StopsLeft 'stopsLeft';
+            if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }
+            if (g.HasPendingMission() && g.Underway().IsWalkable) {
+                print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Name 'name',
+                      g.Underway().NextLeg.At.X 'x', g.Underway().NextLeg.At.Y 'y',
+                      g.Underway().NextLeg.Approach.X 'ax', g.Underway().NextLeg.Approach.Y 'ay',
+                      g.Underway().NextLeg.Exit.X 'ex', g.Underway().NextLeg.Exit.Y 'ey',
+                      g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Heading 'heading',
+                      g.Underway().Following 'following', g.Underway().StopsLeft 'stopsLeft';
             }
         ")
         .WithParameters(p => { p["reason", typeof(string)] = reason; })
@@ -873,16 +868,6 @@ public sealed class Robot
 
     // The handle of the route just opened, to tell it the rest.
     private int Newest() => Read("print g.Newest().Id 'v';").GetInt32();
-
-    // The route the golem is on, if any.
-    private int? RouteUnderway()
-    {
-        using var doc = JsonDocument.Parse(golemActor.Using(@"
-            print g.HasPendingMission() 'busy';
-            if (g.HasPendingMission()) { print g.Next().Id 'id'; }
-        ").PerformQuery());
-        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetInt32() : null;
-    }
 
     // What the route asks now — the same question every script ends with.
     private Order AskOrder()

@@ -31,6 +31,7 @@ public sealed record Order(int Route, string What, string Kind, string Name, dou
             var e = doc.RootElement;
             if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("route", out var route) || !e.TryGetProperty("order", out var what)) return null;
             string w = what.GetString() ?? "";
+            if (e.TryGetProperty("held", out var held) && held.ValueKind == JsonValueKind.True) w = "hold";   // the golem is held: whatever the route says, the body stands
             double D(string n, double d = 0) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : d;
             bool B(string n) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.True;
             string S(string n) => e.TryGetProperty(n, out var v) ? v.GetString() ?? "" : "";

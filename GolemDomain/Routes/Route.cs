@@ -14,7 +14,7 @@ namespace GolemDomain.Routes;
 /// planner's answer, held here, never written point by point), the cursor, the touches on the way, the hold, and how it
 /// ended. The golem hands it out (<c>route = g.Visit(from, point)</c>, <c>g.Cover</c>, <c>g.Follow</c>) or finds it
 /// again (<c>route = g.Find(@id)</c>); every act on it is its own: <c>route.Then(point); route.Turn(); route.Reach(point);
-/// route.Decide(from); route.DecidePast(who, me); route.Bump(touch); route.Graze(at); route.Pause(); route.Resume();
+/// route.Decide(from); route.DecidePast(who, me); route.Bump(touch, me); route.Graze(at, me); route.Pause(me); route.Resume(me);
 /// route.Fail(why); route.Abandon(why); route.Announce();</c>. What it asks of the body NOW is <see cref="Order"/>:
 /// one thing at a time — turn to the next leg's heading, run to its point, hold, or decide the way again.
 /// </summary>
@@ -37,6 +37,9 @@ internal sealed class Route
     /// <summary>Whether the operator holds the route: the body stands where it is until it is resumed. The plan, the
     /// cursor and the stops ahead are untouched — a pause is a hold, not an interruption.</summary>
     internal bool Paused { get; private set; }
+    /// <summary>Where the body stood, facing which way, when the operator held the route (Juan, 17-sep-2026: "guardar la
+    /// posición actual… y cuando le den resume, desde su posición hacia la siguiente que tenía en ruta"). Null until held.</summary>
+    internal Pose HeldAt { get; private set; }
 
     private RouteStatus status = RouteStatus.Pending;
     private Trajectory way = new(Array.Empty<Leg>());   // the plan: passages to cross, points to pass, stops to reach, in order
@@ -353,22 +356,33 @@ internal sealed class Route
 
     // ---- the hold (Juan, 14-sep-2026: "pausa/continuar el trayecto actual en ejecución") ----
 
-    /// <summary>The operator holds the route: the body stops where it stands and waits. Only a pending route can be
-    /// held, and only once.</summary>
-    internal Route Pause()
+    /// <summary>The operator holds the route: the body stops where it stands — the pose the golem believes, kept — and
+    /// waits. Only a pending route can be held, and only once.</summary>
+    internal Route Pause(Pose me)
     {
+        if (me == null) throw new GolemDomainException($"route {Id}'s pause needs where the body stands");
         MustBePending();
         if (Paused) throw new GolemDomainException($"route {Id} is already paused");
         Paused = true;
+        HeldAt = me;
         return this;
     }
 
-    /// <summary>The operator lets the route go on: the body takes up the leg it was on, from where it stands.</summary>
-    internal Route Resume()
+    /// <summary>The operator lets the route go on: the body takes up the next leg from where it stands NOW (it may have
+    /// been pushed while standing) — that leg's heading is given again from there, and the turn is asked again.</summary>
+    internal Route Resume(Pose me)
     {
+        if (me == null) throw new GolemDomainException($"route {Id}'s resume needs where the body stands");
         MustBePending();
         if (!Paused) throw new GolemDomainException($"route {Id} is not paused");
         Paused = false;
+        if (IsRouted && nextLeg < way.Count)
+        {
+            var legs = way.Legs().ToList();
+            legs[nextLeg] = legs[nextLeg].WalkedFrom(me);
+            way = new Trajectory(legs);
+            turned = false;
+        }
         return this;
     }
 

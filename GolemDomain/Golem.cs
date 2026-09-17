@@ -25,6 +25,7 @@ internal sealed class Golem
     private readonly MapLayout layout;
     private readonly Collisions collisions;
     private int idleBumps;       // times something touched the body while it stood without a mission
+    private Pose held;           // where the body stood when the operator held the golem; null while it is free to move
     private int lastHandle;      // a handle names one route forever — even after letting go (idempotency keys hang on it)
 
     internal Golem(Body body, MapLayout map, Collisions collisions)
@@ -301,8 +302,43 @@ internal sealed class Golem
 
     // ---- reads (guarded: consult HasPendingMission() first) ----
 
-    /// <summary>The route the golem is on: the first pending one — <c>g.Next().Id</c>, <c>g.Next().NextLeg.At.X</c>, <c>g.Next().StopsLeft</c>.</summary>
-    internal Route Next() => NextPending();
+    /// <summary>The route UNDERWAY — the one the golem is on, the first pending: <c>route = g.Underway();</c>, <c>g.Underway().Order</c>,
+    /// <c>g.Underway().NextLeg.At.X</c> (Juan, 17-sep-2026: a name that says it, not "Next").</summary>
+    internal Route Underway() => NextPending();
+
+    // ---- the hold: the operator holds the GOLEM, not an errand (Juan, 17-sep-2026: "¿por qué pausamos la ruta y no el
+    //      cerebro?") — the body stands whatever route is underway, and stays standing if that route ends meanwhile ----
+
+    /// <summary>Whether the operator holds the golem: the body stands where it is until it is resumed.</summary>
+    internal bool Held => held != null;
+    /// <summary>Where the body stood, facing which way, when the golem was held. Null while it is free to move.</summary>
+    internal Pose HeldAt => held;
+
+    /// <summary>The operator holds the golem where its body stands — <c>route = g.Pause(Pose(@x, @y, @theta));</c>: the
+    /// route underway is held too (it keeps where it was interrupted) and handed back, to be asked what it says now.
+    /// Refused when nothing is underway or the golem is already held.</summary>
+    internal Route Pause(Pose me)
+    {
+        if (me == null) throw new GolemDomainException("Golem.Pause: 'me' was not given");
+        if (Held) throw new GolemDomainException("the golem is already paused");
+        var route = Underway();
+        route.Pause(me);
+        held = me;
+        return route;
+    }
+
+    /// <summary>The operator lets the golem go on — <c>route = g.Resume(Pose(@x, @y, @theta));</c>, where the body stands
+    /// now: the route underway takes up its next leg from there (its heading given again) and is handed back. Refused
+    /// when not held.</summary>
+    internal Route Resume(Pose me)
+    {
+        if (me == null) throw new GolemDomainException("Golem.Resume: 'me' was not given");
+        if (!Held) throw new GolemDomainException("the golem is not paused");
+        held = null;
+        var route = Underway();
+        if (route.Paused) route.Resume(me);
+        return route;
+    }
 
     /// <summary>The route handed out last — the one an errand just opened, to tell it more stops (<c>g.Newest().Id</c>).</summary>
     internal Route Newest()

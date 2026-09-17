@@ -149,7 +149,7 @@ public class GolemController : Controller
             print g.HasPendingMission() 'hasNext', g.PendingRoutes().Count 'pendingMissions',
                   body.Speed.InMetersPerSecond 'speed', body.LingerAfterTold.InSeconds 'lingerAfterTold';
             if (g.HasPendingMission()) {
-                print g.Next().Id 'mission', g.Next().StopsLeft 'stopsLeft',
+                print g.Underway().Id 'mission', g.Underway().StopsLeft 'stopsLeft',
                       g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
                 if (map.IsOnMap(Position(@x, @y))) {
                     print g.DistanceLeft(Position(@x, @y)) 'distanceLeft',
@@ -167,9 +167,9 @@ public class GolemController : Controller
         robot.Actor.Using(@"
             print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
             if (g.HasPendingMission()) {
-                print g.Next().Id 'nextId',
-                      g.Next().NextLeg.At.X 'nextX', g.Next().NextLeg.At.Y 'nextY',
-                      g.Next().StopsLeft 'stopsLeft', g.Next().Paused 'paused';
+                print g.Underway().Id 'nextId',
+                      g.Underway().NextLeg.At.X 'nextX', g.Underway().NextLeg.At.Y 'nextY',
+                      g.Underway().StopsLeft 'stopsLeft', g.Underway().Paused 'paused';
             }
         ")
         .PerformQuery();

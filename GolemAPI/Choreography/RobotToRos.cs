@@ -49,7 +49,7 @@ public sealed class RobotToRos : IOutputSink
     // a Push automáticamente al terminar el script"): a command's print is PULL — it returns to the caller — and only a
     // Reaction's emit is PUSHED. So one Reaction per act shape watches the journal and emits NextOrder when the act lands:
     // Find($id) — every act on a route in hand (Then, Turn, Reach, Bump, Graze, Decide, DecidePast, Pause, Resume, Fail,
-    // Abandon) writes `route = g.Find(@id)` first; Visit(_, _) and Cover(_, _) — the errand; Follow(_) — a told point.
+    // Abandon) writes `route = g.Find(@id)` first; Visit(_, _) and Cover(_, _) — the errand; Follow(_) — a told point; Pause(_) and Resume() — the operator's hold on the golem itself.
     // Defined BEFORE performance.Start(); the lab (lab-push-real.txt) saw each act push exactly once with the speech
     // reactions around. Many reactions on the SAME act shape fired unreliably (lab-patterns.txt): one per shape, no more.
     // ==================================================================
@@ -61,6 +61,8 @@ public sealed class RobotToRos : IOutputSink
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
             ("next-order-follow", "[_:Golem].Follow(_)"),
+            ("next-order-pause",  "[_:Golem].Pause(_)"),
+            ("next-order-resume", "[_:Golem].Resume(_)"),   // a zero-argument pattern on the golem did not fire (17-sep lab): the pose rides along, and it is true
         })
             performance.Actor.Reactions.DefineReaction(name)
                 .Cue().Company().WithSharedHydration()

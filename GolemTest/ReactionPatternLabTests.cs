@@ -45,9 +45,9 @@ public sealed class ReactionPatternLabTests
             ("D2-visit-capture",  "[_:Golem].Visit($p)"),
             ("E-decide-wild",     "[_:Route].Decide(_)"),
             ("E2-turn-parens",    "[_:Route].Turn()"),
-            ("F-pause-parens",    "[_:Route].Pause()"),
+            ("F-pause-parens",    "[_:Golem].Pause(_)"),
             ("F2-pause-bare",     "[_:Route].Pause"),
-            ("F3-resume-parens",  "[_:Route].Resume()"),
+            ("F3-resume-parens",  "[_:Golem].Resume(_)"),
             ("I-reach-typed",     "[_:Route].Reach(_:Position)"),
             ("J-bump-wild",       "[_:Route].Bump(_)"),
             ("K-fail-capture",    "[_:Route].Fail($why)"),
@@ -84,9 +84,9 @@ public sealed class ReactionPatternLabTests
             .WithParameters(p => { p["id", typeof(int)] = 1; p["vx", typeof(double)] = 2.0; p["vy", typeof(double)] = 1.5; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); route.Turn(); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
-        perf.Actor.Using("{ route = g.Find(@id); route.Pause(); }")
+        perf.Actor.Using("{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
-        perf.Actor.Using("{ route = g.Find(@id); route.Resume(); }")
+        perf.Actor.Using("{ route = g.Resume(Pose(2.0, 9.5, 0.0)); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }).PerformCommand();

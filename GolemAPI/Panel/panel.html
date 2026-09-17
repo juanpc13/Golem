@@ -166,7 +166,7 @@
     <div class="card ops" style="margin-bottom:20px">
       <div class="row">
         <input id="q" type="text" style="flex:1; width:auto" spellcheck="false"
-               placeholder="g.PendingRoutes().Count  —  or a full block: { print g.Next().Id 'id'; }">
+               placeholder="g.PendingRoutes().Count  —  or a full block: { print g.Underway().Id 'id'; }">
         <button id="run">Query</button>
       </div>
       <div class="row" id="presets">
@@ -190,7 +190,7 @@
         <button data-q="collisions.MarkCount">collisions.MarkCount</button>
         <button data-q="body.Radius.InMeters">body.Radius.InMeters</button>
         <button data-q="g.FitsAt(Position(10.25, 5.5))">FitsAt(Position(10.25, 5.5))</button>
-        <button data-q="{ if (g.HasPendingMission()) { print g.Next().Id 'id', g.Next().NextLeg.Name 'heading', g.Next().NextLeg.IsStop 'aStop', g.Next().LegsLeft 'legsLeft', g.Next().StopsLeft 'stopsLeft'; } }">Next leg</button>
+        <button data-q="{ if (g.HasPendingMission()) { print g.Underway().Id 'id', g.Underway().NextLeg.Name 'heading', g.Underway().NextLeg.IsStop 'aStop', g.Underway().LegsLeft 'legsLeft', g.Underway().StopsLeft 'stopsLeft'; } }">Next leg</button>
       </div>
       <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
       <details class="hint"><summary>Why a query must stay read-only</summary><p>Queries read the golem's in-memory state and never touch the journal.

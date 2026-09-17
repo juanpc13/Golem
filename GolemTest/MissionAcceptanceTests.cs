@@ -219,7 +219,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(1, Int("g.PendingRoutes().Count"));
         Assert.IsTrue(Bool("g.Find(1).IsPending()"));
         StringAssert.EndsWith(Text("g.Find(1).AsPlan()"), "living@2,1.5", "the way, decided inside, ends at the point");
-        Assert.AreEqual(0.75, Double("g.Next().NextLeg.At.X"), "the first thing is the first leg of the way: the door out of the kitchen");
+        Assert.AreEqual(0.75, Double("g.Underway().NextLeg.At.X"), "the first thing is the first leg of the way: the door out of the kitchen");
         Assert.IsFalse(Bool("g.Find(1).Following"), "the operator ordered it");
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
     }
@@ -314,7 +314,7 @@ public class MissionAcceptanceTests
         Assert.AreEqual(3, Int("g.Find(1).LegsLeft"), "two doors and the stop: the whole plan, in one entry");
         Assert.AreEqual("kitchen/west", Text("g.Find(1).NextLeg.Name"));
         Assert.IsFalse(Bool("g.Find(1).NextLeg.IsStop"));
-        Assert.AreEqual(0.75, Double("g.Next().NextLeg.At.X"), 0.001, "the body heads to the first door, not to the stop");
+        Assert.AreEqual(0.75, Double("g.Underway().NextLeg.At.X"), 0.001, "the body heads to the first door, not to the stop");
 
         // one point at a time (16-sep): the body reports each point of the way it reaches and the route hands out the
         // next; a point that is not on the way ahead is refused; a stop reached implies the legs before it were walked
@@ -417,19 +417,28 @@ public class MissionAcceptanceTests
         Decide(1, 2.0, 9.5);
         Assert.IsFalse(Bool("g.Find(1).Paused"));
 
-        perf.Actor.Using("{ route = g.Find(@id); route.Pause(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
+        // held where the body stands (the pose the golem believes), facing north; the next leg is the stop itself, west of there
+        perf.Actor.Using("{ me = Pose(@x, @y, @theta); route = g.Pause(me); }")
+            .WithParameters(p => { p["x", typeof(double)] = 2.6; p["y", typeof(double)] = 9.5; p["theta", typeof(double)] = 1.5708; }).PerformCommand();
         Assert.IsTrue(Bool("g.Find(1).Paused"), "held");
+        Assert.AreEqual("hold", Text("g.Find(1).Order"));
+        Assert.IsTrue(Bool("g.Held"), "the GOLEM is held, not just an errand");
+        Assert.AreEqual(2.6, Double("g.HeldAt.X"), 1e-9, "where it was held is kept, by the golem…");
+        Assert.AreEqual(2.6, Double("g.Find(1).HeldAt.X"), 1e-9, "…and by the route it interrupted");
         Assert.IsTrue(Bool("g.Find(1).IsPending()"), "a hold is not an ending");
         Assert.IsTrue(Bool("g.Find(1).IsRouted"), "the plan keeps");
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"), "and so do the stops ahead");
-        Refuses("{ route = g.Find(1); route.Pause(); }", "already paused");
+        Refuses("{ route = g.Pause(Pose(2.6, 9.5, 0.0)); }", "already paused");
 
-        perf.Actor.Using("{ route = g.Find(@id); route.Resume(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
-        Assert.IsFalse(Bool("g.Find(1).Paused"), "let go on");
-        Refuses("{ route = g.Find(1); route.Resume(); }", "is not paused");
+        perf.Actor.Using("{ route = g.Resume(Pose(2.6, 9.5, 1.5708)); }").PerformCommand();
+        Assert.IsFalse(Bool("g.Held"), "let go on");
+        Assert.IsFalse(Bool("g.Find(1).Paused"));
+        Assert.AreEqual("turn", Text("g.Find(1).Order"), "from where it was held, the next leg asks its turn again");
+        Assert.AreEqual(3.1416, Double("g.Find(1).NextLeg.Heading"), 0.001, "the heading to the stop (2.0, 9.5) from (2.6, 9.5): due west");
+        Refuses("{ route = g.Resume(Pose(2.6, 9.5, 1.5708)); }", "is not paused");
 
         Reach(1, 2.0, 9.5);
-        Refuses("{ route = g.Find(1); route.Pause(); }", "already completed");
+        Refuses("{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }", "no pending mission");
     }
 
     // ---- the ending: Fail, Abandon, Announce ----
@@ -786,7 +795,7 @@ public class MissionAcceptanceTests
         Refuses("{ route = g.Find(1); route.Reach(Position(3.0, 10.5)); }", "next stop is (2, 9.5)");
         Reach(1, 2.0, 9.5);
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "one stop reached, one to go");
-        Assert.AreEqual(3.0, Double("g.Next().NextLeg.At.X"), 0.001);
+        Assert.AreEqual(3.0, Double("g.Underway().NextLeg.At.X"), 0.001);
 
         Reach(1, 3.0, 10.5);
         Assert.AreEqual("completed", Text("g.Find(1).Status"));

@@ -1774,3 +1774,21 @@ red → garage (route 2) y blue la siguió (route 14, PointVisited → Follow �
 ```
 
 **Ajuste al dominio**: ninguno. **Pendiente**: (1) `Abandon($why)` no casa como patrón — el let-go detiene el cuerpo por la palanca; si algún día un `Abandon` cambiara la orden sin palanca, haría falta otra forma; (2) los pendientes anteriores (giro tras el retroceso, regla de paso en puertas, `within`/`standoff` del seguidor).
+
+## 2026-09-17 · La pausa guarda dónde estaba el cuerpo, y la reanudación vuelve a apuntar desde ahí
+
+**Contexto** (Juan): "los scripts de pausa deberían guardar la posición actual… quizá preguntarle cuál es la posición que él piensa que lleva, persistirla, y cuando le den resume, desde su posición donde se había quedado hacia la siguiente que tenía en ruta, que creo que coincide con `route.NextLeg`; y `RouteUnderway()` lo preguntan por query: ¿eso no lo tenemos ya disponible en el script?"
+
+**Ajuste al dominio** (`Routes.Route`): `Pause(Pose me)` guarda `HeldAt`; `Resume()` rehace el rumbo de la pierna siguiente desde `HeldAt` y pone `turned = false`. La prueba `APausedMission_KeepsItsPlanAndItsPlace_UntilResumed` lo fija: retenida en (2.6, 9.5) mirando al norte con la parada en (2.0, 9.5), tras `Resume` la orden es `turn` y el rumbo 3.14 (oeste).
+
+**Ajuste al host** (`Robot.Pause/Resume`): `{ route = g.Next(); me = Pose(@x, @y, @theta); route.Pause(me); print … route.HeldAt.X 'heldX', route.HeldAt.Y 'heldY'; }` y `{ route = g.Next(); route.Resume(); print … }`; se va la consulta `RouteUnderway()`. Los laboratorios pasan la pose como literal (son laboratorios).
+
+**Observación en vivo** (journals archivados en `journal-legacy-20260917-pausa/`; blue home → living con la caja en el centro):
+```
+turning left to heading -1.71 for (4.8, 3.0) · /pause → paused=true, "the body stands until resumed" · segundo /pause → 409 "already paused"
+/resume → turning left to heading -1.72 for (4.8, 3.0)   ← el rumbo recalculado desde HeldAt (antes -1.71)
+bumped crate_center (5.3, 5.8) · back · skirting (4.6, 6.5) · center~south · living/south · reached the stop (2.0, 1.5) (entry 28)
+```
+Un incidente ajeno: la shell de Windows quedó sin recursos para hacer `fork` a mitad de la prueba y hubo que reanudar en un segundo comando; nada del golem.
+
+**Segunda vuelta (Juan, misma tarde): "¿por qué `route.Pause(me)` y no `g.Pause(me)`? ¿por qué pausamos la ruta y no al cerebro?"** Tenía razón: la retención es del robot entero. Si solo se retiene la ruta y esa ruta termina o la abandona un tell más nuevo, la siguiente arrancaría con el robot supuestamente parado. *Ajuste al dominio* (`Golem`, `Route`): `route = g.Pause(me)` retiene al golem (`g.Held`, `g.HeldAt`), retiene la ruta en curso (que conserva su `HeldAt`) y la devuelve; `route = g.Resume(me)` la suelta re-orientando la pierna siguiente desde donde el cuerpo está AHORA (pudo ser empujado parado). *Host*: `NextOrder` imprime `g.Held` y una orden con el golem retenido es `hold` diga lo que diga la ruta; reacciones `next-order-pause` (`[_:Golem].Pause(_)`) y `next-order-resume`. *Hallazgo*: `[_:Golem].Resume()` sin argumentos NO disparó en vivo (la reanudación llegó por el reloj de 2 s); con la pose, `[_:Golem].Resume(_)` disparó: `[output] next-order-resume pushed: {"pending":true,"held":false,"route":1,"order":"turn",…}`. Los patrones que casan fiel llevan un argumento o un `$param`. Journals archivados en `journal-legacy-20260917-pausa2/` y `-pausa3/`. Pendiente: la nota "paused by the operator" salió dos veces en una pausa (cosmético: revisar quién vuelve a obedecer `hold`).

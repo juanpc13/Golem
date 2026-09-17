@@ -28,7 +28,7 @@ public sealed class OrderPushLabTests
     }
 
     private const string NextOrder = @"
-        if (g.HasPendingMission()) { print g.Next().Id 'route', g.Next().Order 'order'; }";
+        if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }";
 
     [TestInitialize]
     public void PinTheCulture()
@@ -50,7 +50,7 @@ public sealed class OrderPushLabTests
             ("reach",          "[_:Route].Reach(_)"),
             ("bump-2",         "[_:Route].Bump(_, _)"),
             ("decide",         "[_:Route].Decide(_)"),
-            ("pause",          "[_:Route].Pause()"),
+            ("pause",          "[_:Golem].Pause(_)"),
             ("abandon-why",    "[_:Route].Abandon($why)"),
             ("pending-routes", "[_:Golem].PendingRoutes()"),
         };
@@ -85,8 +85,8 @@ public sealed class OrderPushLabTests
                 ("turn",    "{ route = g.Find(@id); route.Turn(); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
                 ("reach",   "{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }\n" + NextOrder,
                             p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }),
-                ("pause",   "{ route = g.Find(@id); route.Pause(); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
-                ("resume",  "{ route = g.Find(@id); route.Resume(); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
+                ("pause",   "{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
+                ("resume",  "{ route = g.Resume(Pose(2.0, 9.5, 0.0)); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
                 ("bump",    "{ route = g.Find(@id); touch = Pose(@x, @y, @h); me = Pose(@px, @py, @h); route.Bump(touch, me); }\n" + NextOrder,
                             p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 5.0; p["h", typeof(double)] = -1.57; p["px", typeof(double)] = 0.75; p["py", typeof(double)] = 5.25; }),
                 ("decide",  "{ route = g.Find(@id); from = Position(@x, @y); route.Decide(from); }\n" + NextOrder,
@@ -126,7 +126,7 @@ public sealed class OrderPushLabTests
     {
         const string always = @"
             print g.HasPendingMission() 'pending';
-            if (g.HasPendingMission()) { print g.Next().Id 'route', g.Next().Order 'order'; }";
+            if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }";
         var sink = new Sink();
         var perf = new PerformanceV2("push-lab-real-" + Guid.NewGuid().ToString("N"), DomainLibrary.Assembly);
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, "push-lab-real");
@@ -155,8 +155,8 @@ public sealed class OrderPushLabTests
                         p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }),
             ("bump",    "{ route = g.Find(@id); touch = Pose(@x, @y, @h); me = Pose(@px, @py, @h); route.Bump(touch, me); }\nexpose @x x, @y y, @h heading, @name who, @px px, @py py;\n" + always,
                         p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 5.0; p["h", typeof(double)] = -1.57; p["px", typeof(double)] = 0.75; p["py", typeof(double)] = 5.25; p["name", typeof(string)] = "lab"; }),
-            ("pause",   "{ route = g.Find(@id); route.Pause(); }\n" + always, p => { p["id", typeof(int)] = 1; }),
-            ("resume",  "{ route = g.Find(@id); route.Resume(); }\n" + always, p => { p["id", typeof(int)] = 1; }),
+            ("pause",   "{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }\n" + always, p => { p["id", typeof(int)] = 1; }),
+            ("resume",  "{ route = g.Resume(Pose(2.0, 9.5, 0.0)); }\n" + always, p => { p["id", typeof(int)] = 1; }),
             ("follow",  "{ point = Position(@x, @y); g.Follow(point); }", p => { p["x", typeof(double)] = 5.5; p["y", typeof(double)] = 9.5; }),
             ("fail",    "{ route = g.Find(@id); route.Fail(@why); }\n" + always, p => { p["id", typeof(int)] = 1; p["why", typeof(string)] = "the lab says so"; }),
             ("decide2", "{ route = g.Find(@id); from = Position(@x, @y); route.Decide(from); }\n" + always,
