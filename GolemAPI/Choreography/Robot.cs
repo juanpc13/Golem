@@ -15,8 +15,9 @@ namespace GolemAPI.Choreography;
 // EVERY SCRIPT THE GOLEM'S JOURNAL RECEIVES LIVES HERE, as an action method: the operator's (Move, Cover, Pause, Resume,
 // Forget), the body's reports (Arrived, Bumped, Stuck) and what the touch protocol concludes (Grazed, Met, Decided,
 // DecidedPast, Failed, LetGo). Each is one act in the golem's words — a braced block, values as @params, the object found
-// or built and handed to the act, a Check that refuses in the domain's voice — and ENDS WITH THE SAME PRINT (NextOrder):
-// what the route asks now. That print is PUSHED to the output target by the engine itself: RobotToRos defines one
+// or built and handed to the act, a Check that refuses in the domain's voice — and ENDS WITH THE SAME PRINT, written in
+// full inside every script (Juan, 17-sep: "deja escrito el script completo, con sus prints"; NextOrder below is the same
+// text, kept for the reactions' emit and the clock's query): what the route asks now. That print is PUSHED to the output target by the engine itself: RobotToRos defines one
 // Reaction per act shape (Find($id), Visit(_, _), Cover(_, _), Follow(_)) that emits NextOrder when the act lands, so the
 // body gets its next action without anybody dispatching it (lab-push-real.txt, 17-sep-2026). The command's returned
 // print is kept only to answer the caller (a refusal, in the domain's words).
@@ -144,8 +145,17 @@ public sealed class Robot
                         from = Position(@fx, @fy);
                         point = Position(@x, @y);
                         route = g.Visit(from, point);
+                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
                     }
-                " + NextOrder)
+                ")
                 .WithParameters(p => {
                     p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
                     p["x", typeof(double)] = first.X; p["y", typeof(double)] = first.Y;
@@ -176,8 +186,17 @@ public sealed class Robot
                         from = Position(@fx, @fy);
                         point = Position(@x, @y);
                         route = g.Cover(from, point);
+                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
                     }
-                " + NextOrder)
+                ")
                 .WithParameters(p => {
                     p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
                     p["x", typeof(double)] = first.X; p["y", typeof(double)] = first.Y;
@@ -206,8 +225,17 @@ public sealed class Robot
                             route = g.Find(@id);
                             point = Position(@x, @y);
                             route.Then(point);
+                            print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                            if (route.IsWalkable) {
+                                print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                      route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                                      route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                                      route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
                         }
-                    " + NextOrder)
+                    ")
                     .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = point.X; p["y", typeof(double)] = point.Y; })
                     .PerformCheckThenCommand());
             }
@@ -231,8 +259,17 @@ public sealed class Robot
                 {
                     route = g.Find(@id);
                     route.Pause();
+                    print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                    if (route.IsWalkable) {
+                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                              route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                              route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                              route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
                 }
-            " + NextOrder)
+            ")
             .WithParameters(p => { p["id", typeof(int)] = id.Value; })
             .PerformCheckThenCommand());
     }
@@ -251,8 +288,17 @@ public sealed class Robot
                 {
                     route = g.Find(@id);
                     route.Resume();
+                    print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                    if (route.IsWalkable) {
+                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                              route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                              route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                              route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
                 }
-            " + NextOrder)
+            ")
             .WithParameters(p => { p["id", typeof(int)] = id.Value; })
             .PerformCheckThenCommand());
     }
@@ -300,8 +346,17 @@ public sealed class Robot
                     {
                         route = g.Find(@id);
                         route.Turn();
+                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
                     }
-                " + NextOrder)
+                ")
                 .WithParameters(p => { p["id", typeof(int)] = was.Route; })
                 .PerformCheckThenCommand());
         else if (was.Kind == "stop")
@@ -314,9 +369,18 @@ public sealed class Robot
                         route = g.Find(@id);
                         point = Position(@x, @y);
                         route.Reach(point);
+                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
                     }
                     expose @id rid, @x rx, @y ry;
-                " + NextOrder)
+                ")
                 .WithParameters(p => { p["id", typeof(int)] = was.Route; p["x", typeof(double)] = was.X; p["y", typeof(double)] = was.Y; })
                 .PerformCheckThenCommand());
         else
@@ -329,8 +393,17 @@ public sealed class Robot
                         route = g.Find(@id);
                         point = Position(@x, @y);
                         route.Reach(point);
+                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
                     }
-                " + NextOrder)
+                ")
                 .WithParameters(p => { p["id", typeof(int)] = was.Route; p["x", typeof(double)] = was.X; p["y", typeof(double)] = was.Y; })
                 .PerformCheckThenCommand());
         Report(answer, was.What == "turn" ? $"route {was.Route} turned to heading {was.Heading:0.00}"
@@ -476,9 +549,18 @@ public sealed class Robot
                 touch = Pose(@x, @y, @heading);
                 me = Pose(@px, @py, @ptheta);
                 route.Bump(touch, me);
+                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                if (route.IsWalkable) {
+                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                }
             }
             expose @x x, @y y, @heading heading, @name who, @px px, @py py;
-        " + NextOrder)
+        ")
         .WithParameters(p => {
             p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["heading", typeof(double)] = heading;
             p["name", typeof(string)] = golem; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY; p["ptheta", typeof(double)] = poseTheta;
@@ -512,8 +594,17 @@ public sealed class Robot
                 at = Position(@x, @y);
                 me = Pose(@px, @py, @ptheta);
                 route.Graze(at, me);
+                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                if (route.IsWalkable) {
+                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                }
             }
-        " + NextOrder)
+        ")
         .WithParameters(p => { p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY; p["ptheta", typeof(double)] = poseTheta; })
         .PerformCheckThenCommand());
 
@@ -541,8 +632,17 @@ public sealed class Robot
                 route = g.Find(@id);
                 from = Position(@x, @y);
                 route.Decide(from);
+                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                if (route.IsWalkable) {
+                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                }
             }
-        " + NextOrder)
+        ")
         .WithParameters(p => { p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; })
         .PerformCheckThenCommand());
 
@@ -556,8 +656,17 @@ public sealed class Robot
                 route = g.Find(@id);
                 me = Pose(@x, @y, @heading);
                 route.DecidePast(@who, me);
+                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                if (route.IsWalkable) {
+                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                }
             }
-        " + NextOrder)
+        ")
         .WithParameters(p => { p["id", typeof(int)] = route; p["who", typeof(string)] = who; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["heading", typeof(double)] = heading; })
         .PerformCheckThenCommand());
 
@@ -570,8 +679,17 @@ public sealed class Robot
             {
                 route = g.Find(@id);
                 route.Fail(@reason);
+                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                if (route.IsWalkable) {
+                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                          route.NextLeg.At.X 'x', route.NextLeg.At.Y 'y',
+                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
+                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
+                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Heading 'heading',
+                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                }
             }
-        " + NextOrder)
+        ")
         .WithParameters(p => { p["id", typeof(int)] = route; p["reason", typeof(string)] = reason; })
         .PerformCheckThenCommand());
 
@@ -581,7 +699,17 @@ public sealed class Robot
             foreach (route in g.PendingRoutes()) {
                 route.Abandon(@reason);
             }
-        " + NextOrder)
+            print g.HasPendingMission() 'pending';
+            if (g.HasPendingMission()) { print g.Next().Id 'route', g.Next().Order 'order'; }
+            if (g.HasPendingMission() && g.Next().IsWalkable) {
+                print g.Next().NextLeg.Kind 'kind', g.Next().NextLeg.Name 'name',
+                      g.Next().NextLeg.At.X 'x', g.Next().NextLeg.At.Y 'y',
+                      g.Next().NextLeg.Approach.X 'ax', g.Next().NextLeg.Approach.Y 'ay',
+                      g.Next().NextLeg.Exit.X 'ex', g.Next().NextLeg.Exit.Y 'ey',
+                      g.Next().NextLeg.HasHeading 'hasHeading', g.Next().NextLeg.Heading 'heading',
+                      g.Next().Following 'following', g.Next().StopsLeft 'stopsLeft';
+            }
+        ")
         .WithParameters(p => { p["reason", typeof(string)] = reason; })
         .PerformCommand());
 

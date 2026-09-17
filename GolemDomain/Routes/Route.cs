@@ -167,12 +167,14 @@ internal sealed class Route
     }
 
     internal bool IsRouted => !way.IsEmpty;
-    /// <summary>What the route asks of the body NOW, one thing at a time: 'hold' (the operator paused it), 'decide' (it
+    /// <summary>What the route asks of the body NOW, one thing at a time — or, once it is no longer pending, how it ended
+    /// (completed, failed, abandoned): 'hold' (the operator paused it), 'decide' (it
     /// has no way yet, or its corrections ran out without a way: the way must be decided again from where the body
     /// stands), 'back' (reverse to the correction point a touch inserted), 'turn' (turn in place to the next leg's
     /// heading) or 'run' (run to the next leg's point). The golem prints it after every act that changes it; the body
     /// does that one thing and reports it.</summary>
-    internal string Order => Paused ? "hold"
+    internal string Order => !IsPending() ? Status
+        : Paused ? "hold"
         : (!IsRouted || nextLeg >= way.Count) ? "decide"
         : NextLeg.IsReverse ? "back"
         : BumpedSinceRoute ? "decide"

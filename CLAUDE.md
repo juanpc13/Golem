@@ -130,9 +130,14 @@ whether it could or not, so the domain resolves what follows. Consequences:
   the uptake of a tell — is an action method or const of `Choreography/Robot.cs` (`Move`, `Cover`, `Pause`, `Resume`,
   `Forget`, `Arrived`, `Stuck`, `BumpedAsync` and the touch protocol's `Bumped`, `Grazed`, `Met`, `Decided`,
   `DecidedPast`, `Failed`, `LetGo`; `Uptake*`); the controller only validates the JSON and calls it. Every one that
-  changes what the body must do ENDS with the same `print` (`Robot.NextOrder`): `g.HasPendingMission() 'pending'`
-  (always something, so the engine pushes even when nothing is pending and the body must stop), then
-  `g.Next().Id 'route', g.Next().Order 'order'` (`hold` | `decide` | `back` | `turn` | `run`)
+  changes what the body must do ENDS WITH ITS PRINT INSIDE THE BRACES, asked of the route the act was on (Juan, 17-sep:
+  "que lo que está afuera también esté dentro y le preguntes cosas al route"): `print route.Id 'route', route.Order 'order',
+  route.IsPending() 'pending'; if (route.IsWalkable) { print route.NextLeg.Kind 'kind', … route.StopsLeft 'stopsLeft'; }`
+  — `route.Order` is `hold` | `decide` | `back` | `turn` | `run`, or how the route ended (`completed`, `failed`,
+  `abandoned`) once it is no longer pending. That print is what the command RETURNS to the caller. What the engine
+  PUSHES to the body is the reaction's emit, `Robot.NextOrder` — the same fields asked of `g.Next()`, the route underway
+  (a reaction sees no local variable), starting with `g.HasPendingMission() 'pending'` (always something, so it pushes
+  even when nothing is pending and the body must stop):
   and, when walkable, the leg (`kind name x y ax ay ex ey hasHeading heading following stopsLeft`); the order is
   `turn` (turn in place to the leg's heading — every leg has one now, the first from where the errand started), `run`
   (run to the leg's point), `hold` or `decide`. A command's print
