@@ -44,11 +44,11 @@ public sealed class ReactionPatternLabTests
             ("D-visit-wild",      "[_:Golem].Visit(_)"),
             ("D2-visit-capture",  "[_:Golem].Visit($p)"),
             ("E-decide-wild",     "[_:Route].Decide(_)"),
-            ("E2-turn-parens",    "[_:Route].Turn()"),
+            ("E2-turn-parens",    "[_:Route].Turn(_)"),
             ("F-pause-parens",    "[_:Golem].Pause(_)"),
             ("F2-pause-bare",     "[_:Route].Pause"),
             ("F3-resume-parens",  "[_:Golem].Resume(_)"),
-            ("I-reach-typed",     "[_:Route].Reach(_:Position)"),
+            ("I-reach-typed",     "[_:Route].Reach(_:Pose)"),
             ("J-bump-wild",       "[_:Route].Bump(_)"),
             ("K-fail-capture",    "[_:Route].Fail($why)"),
             ("L-then-wild",       "[_:Route].Then(_)"),
@@ -82,14 +82,16 @@ public sealed class ReactionPatternLabTests
             .WithParameters(p => { p["fx", typeof(double)] = 2.0; p["fy", typeof(double)] = 1.5; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; p["x2", typeof(double)] = 9.0; p["y2", typeof(double)] = 1.5; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); from = Position(@vx, @vy); route.Decide(from); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["vx", typeof(double)] = 2.0; p["vy", typeof(double)] = 1.5; }).PerformCommand();
-        perf.Actor.Using("{ route = g.Find(@id); route.Turn(); }")
-            .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
+        perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Turn(me); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 1.5; p["t", typeof(double)] = 2.3; }).PerformCommand();
         perf.Actor.Using("{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
         perf.Actor.Using("{ route = g.Resume(Pose(2.0, 9.5, 0.0)); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
-        perf.Actor.Using("{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }")
-            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }).PerformCommand();
+        perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Turn(me); }")   // resumed: the turn is asked again
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; p["t", typeof(double)] = -2.0; }).PerformCommand();
+        perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Reach(me); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 1.2; p["y", typeof(double)] = 8.6; p["t", typeof(double)] = -2.0; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); touch = Pose(@x, @y, @h); me = Pose(@px, @py, @h); route.Bump(touch, me); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 3.0; p["y", typeof(double)] = 9.5; p["h", typeof(double)] = 3.14; p["px", typeof(double)] = 3.25; p["py", typeof(double)] = 9.5; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); route.Fail(@why); }")

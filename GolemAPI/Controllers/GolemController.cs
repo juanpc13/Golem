@@ -74,15 +74,17 @@ public class GolemController : Controller
         return answer.Value.Ok ? Accepted() : Conflict(answer.Value.Refused);
     }
 
-    // The body bumped into something: its motors stopped at once. What it was and what follows is the domain's.
+    // The body bumped: its motors stopped at once. It says where it stood and where on its shell it was pressed; where the
+    // touch landed, what it was and what follows are the domain's — the route the body carried is not consulted: the golem
+    // finds its route underway (g.Bump).
     [HttpPost("robot/bump")]
     public IActionResult RobotBump([FromBody] BumpReport report)
     {
-        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"with\": \"crate_center\", \"x\": 5.2, \"y\": 5.8, \"heading\": -1.57, \"px\": 5.2, \"py\": 6.05, \"ptheta\": -1.57}");
+        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + BumpReport.Shape);
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        _ = golemEmbodiment.BumpedAsync(report.Route.Value, report.With.Trim(), report.X.Value, report.Y.Value, report.Heading.Value, report.Px.Value, report.Py.Value, report.Ptheta.Value);
-        return Accepted();
+        var answer = golemEmbodiment.Bumped(report.BodyX.Value, report.BodyY.Value, report.BodyHeading.Value, report.Bearing.Value);
+        return answer.Ok ? Accepted() : Conflict(answer.Refused);
     }
 
     // The body could not: stalled, timed out.
@@ -158,7 +160,10 @@ public class GolemController : Controller
                 }
             }
         ")
-        .WithParameters(p => { p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; })
+        .WithParameters(p => {
+            p["x", typeof(double)] = pose.X;
+            p["y", typeof(double)] = pose.Y;
+        })
         .PerformQuery(), "application/json");
     }
 

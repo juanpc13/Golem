@@ -85,19 +85,21 @@ public sealed record ArrivedReport(int? Route)
     }
 }
 
-/// <summary>The body bumped into something: its motors stopped at once. What the world calls it, where the touch landed on
-/// the plane and heading into it, and where the body stood facing which way —
-/// <c>{"route": 3, "with": "crate_center", "x": 5.2, "y": 5.8, "heading": -1.57, "px": 5.2, "py": 6.05, "ptheta": -1.57}</c>; route 0 while standing.</summary>
-public sealed record BumpReport(int? Route, string With, double? X, double? Y, double? Heading, double? Px, double? Py, double? Ptheta)
+/// <summary>The body bumped — <c>{"bodyX": 5.5, "bodyY": 6.1, "bodyHeading": -1.57, "bearing": 0.0, "route": 3, "with": "crate_center"}</c>:
+/// where the body stood, facing which way, and where on its shell it was pressed (radians from the direction it faces; 0 the
+/// nose, +π/2 the left flank). That is all a bumper knows; where the touch landed on the plane is the domain's to reckon from
+/// the body it declared (Juan, 18-sep-2026). `route` and `with` may come but are not read: the golem finds its route
+/// underway, and what was touched is the domain's to conclude (for now every touch is a bump).</summary>
+public sealed record BumpReport(double? BodyX, double? BodyY, double? BodyHeading, double? Bearing, int? Route, string With)
 {
+    public const string Shape = "{\"bodyX\": 5.5, \"bodyY\": 6.1, \"bodyHeading\": -1.57, \"bearing\": 0.0}";
+
     public IEnumerable<string> Problems()
     {
-        if (!Route.HasValue || Route.Value < 0) yield return "give the route (0 when standing)";
-        if (string.IsNullOrWhiteSpace(With)) yield return "give what was touched, as the world names it";
-        if (!X.HasValue || !Y.HasValue || !Heading.HasValue) yield return "give the touch: x, y and heading";
-        else if (!double.IsFinite(X.Value) || !double.IsFinite(Y.Value) || !double.IsFinite(Heading.Value)) yield return "x, y and heading must be finite numbers";
-        if (!Px.HasValue || !Py.HasValue || !Ptheta.HasValue) yield return "give where the body stood: px, py and ptheta";
-        else if (!double.IsFinite(Px.Value) || !double.IsFinite(Py.Value) || !double.IsFinite(Ptheta.Value)) yield return "px, py and ptheta must be finite numbers";
+        if (!BodyX.HasValue || !BodyY.HasValue || !BodyHeading.HasValue) yield return "give where the body stood: bodyX, bodyY and bodyHeading";
+        else if (!double.IsFinite(BodyX.Value) || !double.IsFinite(BodyY.Value) || !double.IsFinite(BodyHeading.Value)) yield return "bodyX, bodyY and bodyHeading must be numbers";
+        if (!Bearing.HasValue) yield return "give where on the shell it was pressed: bearing, radians from the direction it faces";
+        else if (!double.IsFinite(Bearing.Value)) yield return "bearing must be a number";
     }
 }
 

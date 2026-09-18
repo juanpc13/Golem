@@ -4,24 +4,28 @@ using System.Text.Json;
 namespace GolemAPI.Choreography;
 
 // What the golem tells its body to do NOW — one thing at a time (Juan, 16-sep-2026: "un comando ejecutado produce un
-// print del siguiente punto que debe alcanzar y una vez alcanzado pide el siguiente"). Every script that changes it
-// (GolemController: the errand, a point reached, a bump, a hold…) ends with the same print, and the command RETURNS
-// that print to whoever performed it, at write time. Four orders exist, one thing each: TURN in place to the next leg's
-// heading, RUN to the next leg's point (kind door/opening/via/stop, its approach and exit), HOLD (the operator paused the
-// route), or DECIDE (the route has no way, or a bump interrupted it: the route decides it again from where the body
-// stands — `route.Decide(from)`). Nothing pending → no order. The GolemEmbodiment parses it and sends the same JSON on to the body.
-public sealed record Order(int Route, string What, string Kind, string Name, double X, double Y, double AX, double AY, double EX, double EY,
-                           bool HasHeading, double Heading, bool Following, int StopsLeft)
+// print del siguiente punto que debe alcanzar y una vez alcanzado pide el siguiente"), IN THE ROBOT'S OWN WORDS (Juan,
+// 17-sep-2026: "al robot se le dice muy sencillamente lo que debe moverse hacia adelante, qué tanto debe rotar"). Every
+// script that changes it (the errand, a turn made, a point reached, a bump, a hold…) ends with the same print, and the
+// command RETURNS that print to whoever performed it, at write time. The ACTION is one of the robot's base actions —
+// advance, back, turnLeft, turnRight, stop — with its AMOUNT (metres, or radians); or `decide`, the one order that is no
+// action of the robot: the route has no way, or its corrections ran out, and decides it again from where the body stands
+// (`route.Decide(from)`). Nothing pending → no order. The rest (kind, name, the point headed to, following, stopsLeft) is
+// what the panel and the log show; the body needs only the action and the amount.
+public sealed record Order(int Route, string Action, double Amount, string Kind, string Name, double X, double Y, double Heading,
+                           bool Following, int StopsLeft)
 {
-    public bool IsCrossedStraight => AX != EX || AY != EY;
     public bool IsLastStop => Kind == "stop" && StopsLeft <= 1;
+    public bool IsTurn => Action == "turnLeft" || Action == "turnRight";
+    public bool IsMove => Action == "advance" || Action == "back";
 
-    /// <summary>The same order as another: the same route asked to do the same thing at the same point.</summary>
+    /// <summary>The same order as another: the same route asked for the same action, by the same amount, toward the same point.</summary>
     public bool SameAs(Order other) =>
-        other != null && Route == other.Route && What == other.What && Kind == other.Kind && X == other.X && Y == other.Y && Heading == other.Heading;
+        other != null && Route == other.Route && Action == other.Action && Kind == other.Kind && X == other.X && Y == other.Y
+        && Math.Abs(Amount - other.Amount) < 1e-6;
 
-    // The labels the golem prints (GolemController.NextOrder): route, order (hold | decide | turn | run) and, for a leg,
-    // kind name x y ax ay ex ey hasHeading heading following stopsLeft.
+    // The labels the golem prints (GolemEmbodiment.NextOrder): route, action, amount and, for a leg, kind name x y heading
+    // following stopsLeft. `held` true — the golem is held — reads as `stop` whatever the route says.
     public static Order Parse(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
@@ -29,22 +33,20 @@ public sealed record Order(int Route, string What, string Kind, string Name, dou
         {
             using var doc = JsonDocument.Parse(json);
             var e = doc.RootElement;
-            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("route", out var route) || !e.TryGetProperty("order", out var what)) return null;
-            string w = what.GetString() ?? "";
-            if (e.TryGetProperty("held", out var held) && held.ValueKind == JsonValueKind.True) w = "hold";   // the golem is held: whatever the route says, the body stands
+            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("route", out var route) || !e.TryGetProperty("action", out var action)) return null;
+            string a = action.GetString() ?? "";
+            if (e.TryGetProperty("held", out var held) && held.ValueKind == JsonValueKind.True) a = "stop";
             double D(string n, double d = 0) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : d;
             bool B(string n) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.True;
             string S(string n) => e.TryGetProperty(n, out var v) ? v.GetString() ?? "" : "";
-            double x = D("x"), y = D("y");
-            return new Order(route.GetInt32(), w, S("kind"), S("name"), x, y, D("ax", x), D("ay", y), D("ex", x), D("ey", y),
-                             B("hasHeading"), D("heading"), B("following"), (int)D("stopsLeft"));
+            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft"));
         }
         catch (JsonException) { return null; }
     }
 
-    public string Describe() => What == "turn" ? $"turn to {Heading:0.00}" : What != "run" ? What
-        : $"{(Kind == "door" || Kind == "opening" ? Name : Kind)}@{X.ToString("0.##", CultureInfo.InvariantCulture)},{Y.ToString("0.##", CultureInfo.InvariantCulture)}"
-          + (HasHeading ? $" heading {Heading:0.00}" : "");
+    public string Describe() => IsTurn ? $"{Action} {Amount.ToString("0.00", CultureInfo.InvariantCulture)} rad"
+        : IsMove ? $"{Action} {Amount.ToString("0.00", CultureInfo.InvariantCulture)} m to {(Kind == "door" || Kind == "opening" ? Name : Kind)}@{X.ToString("0.##", CultureInfo.InvariantCulture)},{Y.ToString("0.##", CultureInfo.InvariantCulture)}"
+        : Action;
 }
 
 // What a script answered: the print it returned (the order the golem hands out — null when nothing is pending), or the

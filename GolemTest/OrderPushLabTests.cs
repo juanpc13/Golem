@@ -28,7 +28,7 @@ public sealed class OrderPushLabTests
     }
 
     private const string NextOrder = @"
-        if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }";
+        if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'action', g.Underway().Amount 'amount'; }";
 
     [TestInitialize]
     public void PinTheCulture()
@@ -46,7 +46,7 @@ public sealed class OrderPushLabTests
             ("find-id",        "[_:Golem].Find($id)"),
             ("visit-2",        "[_:Golem].Visit(_, _)"),
             ("then",           "[_:Route].Then(_)"),
-            ("turn",           "[_:Route].Turn()"),
+            ("turn",           "[_:Route].Turn(_)"),
             ("reach",          "[_:Route].Reach(_)"),
             ("bump-2",         "[_:Route].Bump(_, _)"),
             ("decide",         "[_:Route].Decide(_)"),
@@ -82,9 +82,10 @@ public sealed class OrderPushLabTests
                             p => { p["fx", typeof(double)] = 2.0; p["fy", typeof(double)] = 1.5; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; }),
                 ("then",    "{ route = g.Find(@id); point = Position(@x, @y); route.Then(point); }\n" + NextOrder,
                             p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 9.0; p["y", typeof(double)] = 1.5; }),
-                ("turn",    "{ route = g.Find(@id); route.Turn(); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
-                ("reach",   "{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }\n" + NextOrder,
-                            p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }),
+                ("turn",    "{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Turn(me); }\n" + NextOrder,
+                            p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 1.5; p["t", typeof(double)] = 2.3; }),
+                ("reach",   "{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Reach(me); }\n" + NextOrder,
+                            p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 1.2; p["y", typeof(double)] = 2.6; p["t", typeof(double)] = 2.3; }),
                 ("pause",   "{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
                 ("resume",  "{ route = g.Resume(Pose(2.0, 9.5, 0.0)); }\n" + NextOrder, p => { p["id", typeof(int)] = 1; }),
                 ("bump",    "{ route = g.Find(@id); touch = Pose(@x, @y, @h); me = Pose(@px, @py, @h); route.Bump(touch, me); }\n" + NextOrder,
@@ -126,7 +127,7 @@ public sealed class OrderPushLabTests
     {
         const string always = @"
             print g.HasPendingMission() 'pending';
-            if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }";
+            if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'action', g.Underway().Amount 'amount'; }";
         var sink = new Sink();
         var perf = new PerformanceV2("push-lab-real-" + Guid.NewGuid().ToString("N"), DomainLibrary.Assembly);
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, "push-lab-real");
@@ -150,9 +151,10 @@ public sealed class OrderPushLabTests
                         p => { p["fx", typeof(double)] = 2.0; p["fy", typeof(double)] = 1.5; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; }),
             ("then",    "{ route = g.Find(@id); point = Position(@x, @y); route.Then(point); }\n" + always,
                         p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 9.0; p["y", typeof(double)] = 1.5; }),
-            ("turn",    "{ route = g.Find(@id); route.Turn(); }\n" + always, p => { p["id", typeof(int)] = 1; }),
-            ("reach",   "{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }\n" + always,
-                        p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }),
+            ("turn",    "{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Turn(me); }\n" + always,
+                        p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 1.5; p["t", typeof(double)] = 2.3; }),
+            ("reach",   "{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Reach(me); }\n" + always,
+                        p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 1.2; p["y", typeof(double)] = 2.6; p["t", typeof(double)] = 2.3; }),
             ("bump",    "{ route = g.Find(@id); touch = Pose(@x, @y, @h); me = Pose(@px, @py, @h); route.Bump(touch, me); }\nexpose @x x, @y y, @h heading, @name who, @px px, @py py;\n" + always,
                         p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 5.0; p["h", typeof(double)] = -1.57; p["px", typeof(double)] = 0.75; p["py", typeof(double)] = 5.25; p["name", typeof(string)] = "lab"; }),
             ("pause",   "{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }\n" + always, p => { p["id", typeof(int)] = 1; }),
@@ -163,8 +165,10 @@ public sealed class OrderPushLabTests
                         p => { p["id", typeof(int)] = 2; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; }),
             ("cover",   "{ from = Position(@fx, @fy); point = Position(@x, @y); route = g.Cover(from, point); }\n" + always,
                         p => { p["fx", typeof(double)] = 2.0; p["fy", typeof(double)] = 9.5; p["x", typeof(double)] = 9.0; p["y", typeof(double)] = 9.5; }),
-            ("reach-stop", "{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }\nexpose @id rid, @x rx, @y ry;\n" + always,
-                        p => { p["id", typeof(int)] = 2; p["x", typeof(double)] = 5.5; p["y", typeof(double)] = 9.5; }),
+            ("turn2",   "{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Turn(me); }\n" + always,
+                        p => { p["id", typeof(int)] = 2; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; p["t", typeof(double)] = 0.0; }),
+            ("reach-stop", "{ route = g.Find(@id); me = Pose(@px, @py, @t); route.Reach(me); }\nexpose @id rid, @x rx, @y ry;\n" + always,
+                        p => { p["id", typeof(int)] = 2; p["x", typeof(double)] = 9.0; p["y", typeof(double)] = 9.5; p["px", typeof(double)] = 4.6; p["py", typeof(double)] = 9.5; p["t", typeof(double)] = 0.0; }),
         };
         var findings = new List<string>();
         foreach (var (act, script, bind) in acts)
@@ -182,5 +186,51 @@ public sealed class OrderPushLabTests
         File.WriteAllLines(Path.Combine(AppContext.BaseDirectory, "lab-push-real.txt"), findings);
         perf.Dispose();
         Assert.IsTrue(findings.Count > 0);
+    }
+
+    // 18-sep-2026 (Juan: "no entiendo por qué nos pasan el id de la ruta; ¿no sería la ruta en curso la que terminamos
+    // encontrando?"). The id enters the reports' scripts only because the next-order reaction is defined on Find($id).
+    // Does a reaction on the ZERO-ARGUMENT Underway() fire when an act is performed on `route = g.Underway()`? On 17-sep
+    // `[_:Golem].Resume()` did not fire while `Resume(_)` did. Findings go to lab-underway.txt.
+    [TestMethod]
+    public void DoesAReactionOnTheZeroArgumentUnderway_PushTheNextOrder()
+    {
+        var findings = new List<string>();
+        foreach (var (name, pattern) in new[] { ("underway-parens", "[_:Golem].Underway()"), ("underway-bare", "[_:Golem].Underway"), ("arrive-on-route", "[_:Route].Arrive(_)") })
+        {
+            var sink = new Sink();
+            var perf = new PerformanceV2("underway-lab-" + Guid.NewGuid().ToString("N"), DomainLibrary.Assembly);
+            perf.ConfigureStorage(DatabaseType.IN_MEMORY, "underway-lab-" + name);
+            perf.OutputTarget(sink, new JsonFormatter());
+            try
+            {
+                perf.Actor.Reactions.DefineReaction("next-order")
+                    .Cue().Company().WithSharedHydration()
+                    .Seek("Act").One()
+                        .OnMatch(pattern)
+                    .Program.Emit(NextOrder);
+            }
+            catch (Exception e) { findings.Add($"{name} ({pattern}): DEFINITION REFUSED -> {e.Message}"); perf.Dispose(); continue; }
+            perf.Start();
+            perf.Actor.Using(
+                "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); retreat = Meters(0.6); body = Body(radius, speed, linger, retreat); } "
+                + Catalog.Warehouse().AsRelease()
+                + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); } ")
+            .PerformCommand();
+            perf.Actor.Using("{ from = Pose(@fx, @fy, @ft); point = Position(@x, @y); route = g.Visit(from, point); }")
+                .WithParameters(p => { p["fx", typeof(double)] = 2.0; p["fy", typeof(double)] = 1.5; p["ft", typeof(double)] = 0.0; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; }).PerformCommand();
+            Thread.Sleep(1500);
+            int before; lock (sink.Pushed) before = sink.Pushed.Count;
+            string heading = perf.Actor.Using("print g.Underway().Target.Heading 'v';").PerformQuery();
+            double h = double.Parse(System.Text.Json.JsonDocument.Parse(heading).RootElement.GetProperty("v").GetRawText(), CultureInfo.InvariantCulture);
+            perf.Actor.Using("{ route = g.Underway(); me = Pose(@x, @y, @t); route.Arrive(me); }")
+                .WithParameters(p => { p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 1.5; p["t", typeof(double)] = h; }).PerformCommand();
+            Thread.Sleep(2500);
+            int after; lock (sink.Pushed) after = sink.Pushed.Count;
+            findings.Add($"{name} ({pattern}): pushes on the errand = {before}, on the arrive via g.Underway() = {after - before}");
+            perf.Dispose();
+        }
+        File.WriteAllLines(Path.Combine(AppContext.BaseDirectory, "lab-underway.txt"), findings);
+        Assert.IsTrue(findings.Count == 3);
     }
 }

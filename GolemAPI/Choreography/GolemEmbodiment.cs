@@ -25,15 +25,21 @@ namespace GolemAPI.Choreography;
 // Follow(_), Pause(_), Resume(_)) that emits NextOrder when the act lands, so the body gets its next action without
 // anybody dispatching it (lab-push-real.txt, 17-sep-2026). The command's returned print is kept only to answer the caller
 // (a refusal, in the domain's words).
-// Its other face is what the body REPORTS: the act is written, the touch protocol runs (the peers' window, Met, the way
-// out of a peer's way), the follower's linger and courtesy step — plus the clock that asks the journal what it wants when
-// no push brought it, and the operator's levers on the body (let go, reset). No plan, no cursor, no legs: the journal's.
+// Its other face is what the body REPORTS — arrived, bumped, stuck — each ONE act too (17-sep-2026, Juan: "no siguen el
+// patrón de script… manejan lógica del dominio y concurrencia, cosa que no debe ser"): the host adds the pose and relays
+// the order's own words, and the DOMAIN concludes inside what the report meant (which act the arrival was, what the touch
+// was, what follows). No windows, no waits, no counters here: a peer's word that lands later is concluded where it lands.
+// What stays the host's is the clock (asking the journal when no push brought it, the follower's linger), the wire, and
+// the operator's levers on the body (let go, reset). No plan, no cursor, no legs: the journal's.
+//
+// EVERY ACTION HERE IS THE SAME SHAPE (Juan, 18-sep-2026: "el método debería llamar a un script de golemActor.Using, registrar
+// el acto en la global g y hacer un print con el nuevo lugar al que debe ir; ese print termina en RobotMechanics porque es el
+// OutputTarget: Push > Dispatch > switch > ros > robot"): the parameters validated by the controller, ONE script — a Check in
+// the domain's voice, a braced block that finds or builds the objects and performs the act on `g`, the print of what the
+// route asks now — performed on golemActor.Using(…), its answer returned to the caller (a refusal, a 409). No helper
+// wraps the call, no lambda: what the script needs is right there.
 public sealed class GolemEmbodiment
 {
-    private const int MaxYields = 4;             // times the golem steps out of a peer's way before giving the route up
-    private static readonly TimeSpan Listen = TimeSpan.FromMilliseconds(2500);
-    private static readonly TimeSpan Reconsider = TimeSpan.FromSeconds(12);
-
     private readonly PerformanceV2 performance;   // the journal's entry id and the shutdown
     private readonly ActorV2 golemActor;          // the golem itself: every script and query goes to it
     private readonly Rosbridge ros;
@@ -42,10 +48,6 @@ public sealed class GolemEmbodiment
     private readonly string golem;
     private readonly (double X, double Y) home;
     private readonly string journalPath;
-
-    private readonly object gate = new();
-    private int yields, yieldsFor;      // courtesy steps taken on the route underway
-    private DateTime lastStandingTouch = DateTime.MinValue;
 
     public GolemEmbodiment(PerformanceV2 performance, Rosbridge ros, PanelFeed feed, HttpBroker wire,
                  string golem, (double X, double Y) home, string journalPath)
@@ -69,20 +71,18 @@ public sealed class GolemEmbodiment
     public RobotMechanics Mechanics { get; }
 
     // ==================================================================
-    // What the route asks now — the print every act ends with, and what the next-order reactions emit. It ALWAYS says
-    // something (`pending`), so the engine pushes it even when nothing is pending and the body must stop. `hold`: the
-    // operator paused it. `decide`: it has no way, or its corrections ran out. `back` / `turn` / `run`: the next leg — its
-    // point, how it is walked (approach, exit) and the heading the way gives it. Nothing pending: no route, no order.
+    // What the route asks now, IN THE ROBOT'S WORDS — the print every act ends with, and what the next-order reactions
+    // emit. It ALWAYS says something (`pending`), so the engine pushes it even when nothing is pending and the body must
+    // stop. `action`: advance | back | turnLeft | turnRight | stop, or decide (the way must be decided again); `amount`:
+    // the metres or radians (Juan, 17-sep-2026: "qué tanto debe moverse hacia adelante, qué tanto debe rotar"); then the
+    // point the body heads to, for the panel and the log. Nothing pending: no route, no order.
     // ==================================================================
     public const string NextOrder = @"
         print g.HasPendingMission() 'pending', g.Held 'held';
-        if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }
+        if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'action', g.Underway().Amount 'amount'; }
         if (g.HasPendingMission() && g.Underway().IsWalkable) {
             print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Name 'name',
-                  g.Underway().NextLeg.Target.X 'x', g.Underway().NextLeg.Target.Y 'y',
-                  g.Underway().NextLeg.Approach.X 'ax', g.Underway().NextLeg.Approach.Y 'ay',
-                  g.Underway().NextLeg.Exit.X 'ex', g.Underway().NextLeg.Exit.Y 'ey',
-                  g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Target.Heading 'heading',
+                  g.Underway().Target.X 'x', g.Underway().Target.Y 'y', g.Underway().Target.Heading 'heading',
                   g.Underway().Following 'following', g.Underway().StopsLeft 'stopsLeft';
         }
     ";
@@ -99,22 +99,8 @@ public sealed class GolemEmbodiment
         ";
     public const string UptakeBumpedAt = @"
         {
-            touch = Pose(@x, @y, @heading);
-            peer = Position(@px, @py);
-            g.HearBump(@who, touch, peer);
-        }
-        ";
-    public const string UptakeTouchedAt = @"
-        {
-            at = Position(@x, @y);
-            peer = Position(@px, @py);
-            g.HearTouch(@who, at, peer);
-        }
-        ";
-    public const string UptakeMetPeer = @"
-        {
-            at = Position(@x, @y);
-            g.LearnMet(at);
+            peer = Pose(@bodyX, @bodyY, @bodyHeading);
+            g.HearBump(@who, peer, @bearing);
         }
         ";
     public const string UptakeObstacleGone = @"
@@ -146,23 +132,23 @@ public sealed class GolemEmbodiment
                 ",
                 @"
                     {
-                        from = Position(@fx, @fy);
+                        from = Pose(@fx, @fy, @ftheta);
                         point = Position(@x, @y);
                         route = g.Visit(from, point);
-                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
                 ")
                 .WithParameters(p => {
-                    p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
-                    p["x", typeof(double)] = first.X; p["y", typeof(double)] = first.Y;
+                    p["fx", typeof(double)] = start.Value.X;
+                    p["fy", typeof(double)] = start.Value.Y;
+                    p["ftheta", typeof(double)] = start.Value.Theta;
+                    p["x", typeof(double)] = first.X;
+                    p["y", typeof(double)] = first.Y;
                 })
                 .PerformCheckThenCommand());
         }
@@ -187,23 +173,23 @@ public sealed class GolemEmbodiment
                 ",
                 @"
                     {
-                        from = Position(@fx, @fy);
+                        from = Pose(@fx, @fy, @ftheta);
                         point = Position(@x, @y);
                         route = g.Cover(from, point);
-                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
                 ")
                 .WithParameters(p => {
-                    p["fx", typeof(double)] = start.Value.X; p["fy", typeof(double)] = start.Value.Y;
-                    p["x", typeof(double)] = first.X; p["y", typeof(double)] = first.Y;
+                    p["fx", typeof(double)] = start.Value.X;
+                    p["fy", typeof(double)] = start.Value.Y;
+                    p["ftheta", typeof(double)] = start.Value.Theta;
+                    p["x", typeof(double)] = first.X;
+                    p["y", typeof(double)] = first.Y;
                 })
                 .PerformCheckThenCommand());
         }
@@ -229,18 +215,19 @@ public sealed class GolemEmbodiment
                             route = g.Find(@id);
                             point = Position(@x, @y);
                             route.Then(point);
-                            print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                            print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
                             if (route.IsWalkable) {
                                 print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                                      route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                                      route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                      route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                                       route.Following 'following', route.StopsLeft 'stopsLeft';
                             }
                         }
                     ")
-                    .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = point.X; p["y", typeof(double)] = point.Y; })
+                    .WithParameters(p => {
+                        p["id", typeof(int)] = id;
+                        p["x", typeof(double)] = point.X;
+                        p["y", typeof(double)] = point.Y;
+                    })
                     .PerformCheckThenCommand());
             }
             catch (Exception ex) { return Answer.Refusal($"stop ({point.X:0.##}, {point.Y:0.##}): " + Reason(ex)); }
@@ -264,11 +251,15 @@ public sealed class GolemEmbodiment
                 {
                     me = Pose(@x, @y, @theta);
                     route = g.Pause(me);
-                    print route.Id 'route', route.Order 'order', route.IsPending() 'pending',
+                    print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending',
                           g.HeldAt.X 'heldX', g.HeldAt.Y 'heldY';
                 }
             ")
-            .WithParameters(p => { p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; p["theta", typeof(double)] = pose.Theta; })
+            .WithParameters(p => {
+                p["x", typeof(double)] = pose.X;
+                p["y", typeof(double)] = pose.Y;
+                p["theta", typeof(double)] = pose.Theta;
+            })
             .PerformCheckThenCommand());
     }
 
@@ -287,18 +278,19 @@ public sealed class GolemEmbodiment
             {
                 me = Pose(@x, @y, @theta);
                 route = g.Resume(me);
-                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
+                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
         ")
-        .WithParameters(p => { p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; p["theta", typeof(double)] = pose.Theta; })
+        .WithParameters(p => {
+            p["x", typeof(double)] = pose.X;
+            p["y", typeof(double)] = pose.Y;
+            p["theta", typeof(double)] = pose.Theta;
+        })
         .PerformCheckThenCommand());
     }
 
@@ -316,108 +308,73 @@ public sealed class GolemEmbodiment
             }
             expose @x gx, @y gy;
         ")
-        .WithParameters(p => { p["x", typeof(double)] = x; p["y", typeof(double)] = y; })
+        .WithParameters(p => {
+            p["x", typeof(double)] = x;
+            p["y", typeof(double)] = y;
+        })
         .PerformCheckThenCommand());
 
     // ==================================================================
-    // THE BODY'S REPORTS (sim/bridge/body.py posts them; the controller validated the JSON). A report about an order the
-    // body was not given (superseded meanwhile) is acknowledged and not journaled.
+    // THE BODY'S REPORTS (sim/bridge/body.py posts them; the controller validated the JSON). Each is ONE act, the role's,
+    // with the pose the body reports; the domain concludes inside. A report about an order the body was not given
+    // (superseded meanwhile) is acknowledged and not journaled.
     // ==================================================================
 
-    /// <summary>The body did the one thing it was told: a turn made (route.Turn) or a point reached (route.Reach). A stop
-    /// reached is counted (the last one completes the route) and told to the follower — the point rides beside the act as
-    /// an expose: the reaction that tells captures no object; a door, an opening, a point to pass just moves the route past
-    /// it. A courtesy step (route 0) is the golem's own business: nothing to journal. A follower arriving at its last stop
-    /// pulls over to its right and lingers, so the leader keeps its lead. Null: not the order the body was given.</summary>
+    /// <summary>The body did the one thing it was told and reports it: `route.Arrive(me)` on the ROUTE UNDERWAY — the golem
+    /// knows which it is; no id enters the act (Juan, 18-sep-2026: "¿no sería la ruta en curso la que terminamos encontrando?";
+    /// lab-underway.txt: a reaction on `[_:Golem].Underway()` pushes the print) — with where the body stands now and, relayed as
+    /// the domain printed them, the route's id, the point the order named and whether it was a stop, for the EXPOSE alone: the
+    /// reaction that tells the follower needs the route it announces for and fires on a stop alone (the literal `true`). The
+    /// `route` the body echoes is the host's token to tell a stale report from the order carried. A follower on its last stop
+    /// lingers before anything else, so the leader keeps its lead: the clock is the host's. Null: not the order the body was given.</summary>
     public Answer? Arrived(int route)
     {
         var was = Mechanics.Carrying;
         if (was == null || was.Route != route) return null;
         Mechanics.Done();
-        if (was.Route == 0) { Note("courtesy step done"); return default(Answer); }
+        var here = ros.LatestPose ?? new Pose(was.X, was.Y, was.Heading);
+        bool stop = was.IsMove && was.Kind == "stop";
         Answer answer;
-        if (was.What == "turn")
-            answer = Answer.Of(golemActor.Using(
-                @"
-                    Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
-                ",
-                @"
-                    {
-                        route = g.Find(@id);
-                        route.Turn();
-                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
-                    }
-                ")
-                .WithParameters(p => { p["id", typeof(int)] = was.Route; })
-                .PerformCheckThenCommand());
-        else if (was.Kind == "stop")
-            answer = Answer.Of(golemActor.Using(
-                @"
-                    Check(g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).IsStopAhead(Position(@x, @y))) Error 'that is not a stop ahead';
-                ",
-                @"
-                    {
-                        route = g.Find(@id);
-                        point = Position(@x, @y);
-                        route.Reach(point);
-                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
-                    }
-                    expose @id rid, @x rx, @y ry;
-                ")
-                .WithParameters(p => { p["id", typeof(int)] = was.Route; p["x", typeof(double)] = was.X; p["y", typeof(double)] = was.Y; })
-                .PerformCheckThenCommand());
-        else
-            answer = Answer.Of(golemActor.Using(
-                @"
-                    Check(g.Knows(@id) && g.Find(@id).IsPending() && g.Find(@id).IsLegAhead(Position(@x, @y))) Error 'that is not a point ahead';
-                ",
-                @"
-                    {
-                        route = g.Find(@id);
-                        point = Position(@x, @y);
-                        route.Reach(point);
-                        print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                                  route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                                  route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                                  route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
-                    }
-                ")
-                .WithParameters(p => { p["id", typeof(int)] = was.Route; p["x", typeof(double)] = was.X; p["y", typeof(double)] = was.Y; })
-                .PerformCheckThenCommand());
-        Report(answer, was.What == "turn" ? $"route {was.Route} turned to heading {was.Heading:0.00}"
-            : was.What == "back" ? $"route {was.Route} backed off to ({was.X:0.0}, {was.Y:0.0})"
-            : $"route {was.Route} {(was.Kind == "stop" ? "reached the stop" : "passed the point")} ({was.X:0.0}, {was.Y:0.0})");
-        if (answer.Ok && was.IsLastStop)
+        try
         {
-            ReportLocalization(was.Route);
-            if (was.Following)
-            {
-                var linger = TimeSpan.FromSeconds(LingerAfterTold());
-                Mechanics.Linger(linger);
-                Note($"lingering {linger.TotalSeconds:0} s at ({was.X:0.0}, {was.Y:0.0}) to keep the leader's lead");
-                if (Mechanics.Carrying == null) StepAside("pulling over to the right, off the leader's way");
-            }
+            answer = Answer.Of(golemActor.Using(
+                @"
+                    Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
+                ",
+                @"
+                    {
+                        route = g.Underway();
+                        me = Pose(@px, @py, @ptheta);
+                        route.Arrive(me);
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    }
+                    expose @id rid, @x rx, @y ry, @stop reached;
+                ")
+                .WithParameters(p => {
+                    p["id", typeof(int)] = was.Route;
+                    p["x", typeof(double)] = was.X;
+                    p["y", typeof(double)] = was.Y;
+                    p["stop", typeof(bool)] = stop;
+                    p["px", typeof(double)] = here.X;
+                    p["py", typeof(double)] = here.Y;
+                    p["ptheta", typeof(double)] = here.Theta;
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(Reason(ex)); }
+        Report(answer, $"route {was.Route}: {was.Describe()} done, standing at ({here.X:0.0}, {here.Y:0.0}) facing {here.Theta:0.00}");
+        if (!answer.Ok || !stop) return answer;
+        ReportLocalization(was.Route);
+        if (was.Following && was.IsLastStop)
+        {
+            var linger = TimeSpan.FromSeconds(LingerAfterTold());
+            Mechanics.Linger(linger);
+            Note($"lingering {linger.TotalSeconds:0} s at ({was.X:0.0}, {was.Y:0.0}) to keep the leader's lead");
         }
         return answer;
     }
@@ -429,267 +386,102 @@ public sealed class GolemEmbodiment
         var was = Mechanics.Carrying;
         if (was == null || was.Route != route) return null;
         Mechanics.Done();
-        var answer = Safely(() => Failed(route, reason));
+        var answer = Failed(reason);
         Report(answer, $"route {route} failed: {reason}");
         return answer;
     }
 
-    /// <summary>The body bumped into something — on its way (route > 0) or standing (route 0) — and its motors stopped at
-    /// once. The DOMAIN says what it suspects (a wall it knows, a peer that spoke, a thing) and what follows: the route
-    /// corrects its way inside (back off, then the road around) and its print — 'back' — is pushed to the body AT ONCE;
-    /// the peers get their window meanwhile, and if one of them was there the conclusion is Met and the route decides its
-    /// way out of its way (Juan, 8-sep: "the domain decides, the host follows"; 16-sep: "el que decide todo debe ser el dominio").</summary>
-    public async Task BumpedAsync(int route, string with, double x, double y, double heading, double poseX, double poseY, double poseTheta)
+    /// <summary>The body bumped and its motors stopped at once. It says what a bumper can say: where it stood, facing which way,
+    /// and where on its shell it was pressed (the bearing). ONE script: `route = g.Bump(me, @bearing)` — the golem reckons the
+    /// touch on the plane from the body it declared, finds its route underway, the route concludes inside what the touch was
+    /// (a wall it knows: a graze; anything else: a thing, marked — FOR NOW EVERY TOUCH IS A BUMP, Juan 18-sep-2026) and corrects
+    /// its way, and the print is what it asks now: the retreat. The peers are told by the reaction on the expose, in the same
+    /// words. Nothing underway (the body was standing): the domain refuses, and that refusal is the answer.</summary>
+    public Answer Bumped(double bodyX, double bodyY, double bodyHeading, double bearing)
     {
-        var was = Mechanics.Carrying;
-        int since = Mechanics.HeardBefore;
-        bool onMyWay = route > 0 && was != null && was.Route == route;
-        if (!onMyWay)
-        {
-            // standing (idle, held, lingering) or on a courtesy step: a body did it — told, no mark — and room is made
-            if (DateTime.UtcNow - lastStandingTouch < TimeSpan.FromSeconds(1)) return;
-            lastStandingTouch = DateTime.UtcNow;
-            Note($"touched while standing at ({x:0.0}, {y:0.0}) — telling the peers");
-            var told = Safely(() => TouchedStanding(x, y, heading, poseX, poseY));
-            if (!told.Ok) Console.WriteLine($"[golem {golem}] refused: {told.Refused}");
-            StepAside("making room");
-            return;
-        }
-        Mechanics.Done();
-        var hit = new Collision(with, x, y, heading);
-        string where = $"({x:0.0}, {y:0.0})";
-        if (Suspect(hit, since).Kind == "wall")
-        {
-            // A wall I know: my own execution error. The route backs off and tries the same legs again while the golem's
-            // patience lasts; spent, the route ends. Neither is the host's call.
-            Note($"route {route}: grazed {with} at {where}, a wall I know — telling the golem");
-            var grazed = Safely(() => Grazed(route, x, y, poseX, poseY, poseTheta));
-            if (!grazed.Ok) { Report(grazed, ""); return; }
-            if (MayRetryLeg(route)) { Report(grazed, $"route {route} grazed a wall it knows at {where}: backing off to try again"); return; }
-            Report(Safely(() => Failed(route, $"still grazing {with} at {where} after {Grazes(route)} grazes: patience spent")), $"route {route} failed: patience spent");
-            return;
-        }
-
-        // Something the map does not hold: the bump is journaled and told, the route corrected inside, and the body
-        // told to back off at once (the reaction pushes the print). Then the peers' window: was it a body?
-        Note($"route {route}: bumped into {with} at {where} heading {heading:0.00} — nothing on my map there; the route corrects its way; telling the peers and listening");
-        var bumped = Safely(() => Bumped(route, x, y, heading, poseX, poseY, poseTheta));
-        if (!bumped.Ok) { Report(bumped, ""); return; }
-        Report(bumped, $"route {route} bumped into something at {where}: the way corrected, backing off first");
-        var until = DateTime.UtcNow + Listen;
-        var suspicion = Suspect(hit, since);
-        while (suspicion.Kind != "peer" && DateTime.UtcNow < until)
-        {
-            await Task.Delay(250);
-            suspicion = Suspect(hit, since);
-        }
-        if (suspicion.Kind == "peer")
-        {
-            Note($"route {route}: the domain suspects {suspicion.Who} — it bumped there too: a body, not a thing ({suspicion.Conclusion})");
-            var met = Safely(() => Met(suspicion.Who, x, y));
-            if (!met.Ok) Console.WriteLine($"[golem {golem}] refused: {met.Refused}");
-            int taken;
-            lock (gate) { if (route != yieldsFor) { yields = 0; yieldsFor = route; } taken = yields; }
-            if (taken < MaxYields)
-            {
-                lock (gate) yields++;
-                var mine = ros.LatestPose;
-                if (mine == null) { Decide(route, "met a peer, no pose"); return; }
-                Note($"route {route}: met {suspicion.Who} at {where} — the route decides its way out of its way");
-                try { Report(DecidedPast(route, suspicion.Who, mine.X, mine.Y, mine.Theta), $"route {route} decided its way past {suspicion.Who}"); }
-                catch (Exception ex) { Report(Safely(() => Failed(route, "no road: " + Reason(ex))), $"route {route} failed: no road"); }
-                return;
-            }
-            Report(Safely(() => Failed(route, $"blocked by {suspicion.Who} at {where} after meeting it {MaxYields} times")), $"route {route} failed: blocked");
-            return;
-        }
-        Note($"route {route}: nobody else bumped there and then — the mark the bump presumed at {where} stands; reconsidering for {Reconsider.TotalSeconds:0}s");
-        _ = ReconsiderAsync(route, hit, since);
-    }
-
-    // A peer may speak after the window: its own row goes through its journal, its reaction and the wire before it
-    // reaches mine. The host keeps asking the domain for a while; if it then suspects a peer, the conclusion is the
-    // same Met — the mark comes back, here and in every peer that learned it (10-sep lab: the ghost mark).
-    private async Task ReconsiderAsync(int route, Collision hit, int since)
-    {
+        Answer answer;
         try
         {
-            var until = DateTime.UtcNow + Reconsider;
-            while (DateTime.UtcNow < until)
-            {
-                await Task.Delay(500);
-                var suspicion = Suspect(hit, since);
-                if (suspicion.Kind != "peer") continue;
-                Note($"route {route}: {suspicion.Who} spoke after the window — it was there too: the mark the bump presumed at ({hit.X:0.0}, {hit.Y:0.0}) is taken back");
-                var met = Safely(() => Met(suspicion.Who, hit.X, hit.Y));
-                if (!met.Ok) Console.WriteLine($"[golem {golem}] refused: {met.Refused}");
-                return;
-            }
+            answer = Answer.Of(golemActor.Using(
+                @"
+                    Check(g.HasPendingMission()) Error 'nothing underway: a touch while the body stands is not written';
+                ",
+                @"
+                    {
+                        me = Pose(@bodyX, @bodyY, @bodyHeading);
+                        route = g.Bump(me, @bearing);
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    }
+                    expose @bodyX bodyX, @bodyY bodyY, @bodyHeading bodyHeading, @bearing bearing, @name who;
+                ")
+                .WithParameters(p => {
+                    p["bodyX", typeof(double)] = bodyX;
+                    p["bodyY", typeof(double)] = bodyY;
+                    p["bodyHeading", typeof(double)] = bodyHeading;
+                    p["bearing", typeof(double)] = bearing;
+                    p["name", typeof(string)] = golem;
+                })
+                .PerformCheckThenCommand());
         }
-        catch (Exception e) { Console.WriteLine($"[golem {golem}] reconsidering a mark failed: {e.Message}"); }
+        catch (Exception ex) { return Answer.Refusal(Reason(ex)); }
+        Report(answer, "the touch is written; the route concluded and corrected its way inside");
+        return answer;
     }
 
     // ==================================================================
-    // THE TOUCH PROTOCOL'S SCRIPTS and the domain's decisions the GolemEmbodiment asks for on the body's behalf. Each ends in
-    // NextOrder; the reaction on g.Find(@id) pushes it.
+    // THE DOMAIN'S DECISIONS THE EMBODIMENT ASKS FOR ON THE BODY'S BEHALF — each ONE act ending in the print; the reaction
+    // on g.Find(@id) pushes it.
     // ==================================================================
-
-    // The body bumped into something the map does not hold, on its way: the golem presumes a thing — a mark — and the
-    // route corrects its way inside (back off, then the road around; its print is 'back'). Told to every peer with the
-    // golem's name and the pose of the touch (the expose: what a reaction can capture), so a peer that bumped there and
-    // then knows it met a body.
-    private Answer Bumped(int route, double x, double y, double heading, double poseX, double poseY, double poseTheta) => Answer.Of(golemActor.Using(
-        @"
-            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
-        ",
-        @"
-            {
-                route = g.Find(@id);
-                touch = Pose(@x, @y, @heading);
-                me = Pose(@px, @py, @ptheta);
-                route.Bump(touch, me);
-                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                if (route.IsWalkable) {
-                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
-                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                }
-            }
-            expose @x x, @y y, @heading heading, @name who, @px px, @py py;
-        ")
-        .WithParameters(p => {
-            p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["heading", typeof(double)] = heading;
-            p["name", typeof(string)] = golem; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY; p["ptheta", typeof(double)] = poseTheta;
-        })
-        .PerformCheckThenCommand());
-
-    // Something touched the body while it stood: a body did it (things do not move). Told, no mark, no order changes.
-    private Answer TouchedStanding(double x, double y, double heading, double poseX, double poseY) => Answer.Of(golemActor.Using(
-        @"
-            {
-                touch = Pose(@x, @y, @heading);
-                g.Bump(touch);
-            }
-            expose @x tx, @y ty, @me twho, @px tpx, @py tpy;
-        ")
-        .WithParameters(p => {
-            p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["heading", typeof(double)] = heading;
-            p["me", typeof(string)] = golem; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY;
-        })
-        .PerformCommand());
-
-    // The body grazed a wall the map KNOWS: its own execution error, counted against the route's patience on the leg; the
-    // route backs off first and tries the same legs again (its print is 'back').
-    private Answer Grazed(int route, double x, double y, double poseX, double poseY, double poseTheta) => Answer.Of(golemActor.Using(
-        @"
-            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
-        ",
-        @"
-            {
-                route = g.Find(@id);
-                at = Position(@x, @y);
-                me = Pose(@px, @py, @ptheta);
-                route.Graze(at, me);
-                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                if (route.IsWalkable) {
-                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
-                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                }
-            }
-        ")
-        .WithParameters(p => { p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["px", typeof(double)] = poseX; p["py", typeof(double)] = poseY; p["ptheta", typeof(double)] = poseTheta; })
-        .PerformCheckThenCommand());
-
-    // The golem concluded its touch was a peer: it met that body there. The mark its bump presumed comes back, here
-    // and — told — in every peer that learned it. History among the obstacles, never geometry.
-    private Answer Met(string who, double x, double y) => Answer.Of(golemActor.Using(
-        @"
-            {
-                at = Position(@x, @y);
-                g.Met(@who, at);
-            }
-            expose @x ex, @y ey;
-        ")
-        .WithParameters(p => { p["who", typeof(string)] = who; p["x", typeof(double)] = x; p["y", typeof(double)] = y; })
-        .PerformCommand());
 
     // The way decided again on a route in hand — awake with a plan underway, or stranded after a bump with no road from
     // the retreat — from where the body stands (its pose is telemetry: the only thing the host adds).
-    private Answer Decided(int route, double x, double y) => Answer.Of(golemActor.Using(
+    private Answer Decided(double x, double y, double theta) => Answer.Of(golemActor.Using(
         @"
-            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
+            Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
         ",
         @"
             {
-                route = g.Find(@id);
-                from = Position(@x, @y);
+                route = g.Underway();
+                from = Pose(@x, @y, @theta);
                 route.Decide(from);
-                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
+                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
         ")
-        .WithParameters(p => { p["id", typeof(int)] = route; p["x", typeof(double)] = x; p["y", typeof(double)] = y; })
-        .PerformCheckThenCommand());
-
-    // The way decided out of a peer's way: the route's first leg is the courtesy step it chooses, then the road on.
-    private Answer DecidedPast(int route, string who, double x, double y, double heading) => Answer.Of(golemActor.Using(
-        @"
-            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
-        ",
-        @"
-            {
-                route = g.Find(@id);
-                me = Pose(@x, @y, @heading);
-                route.DecidePast(@who, me);
-                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
-                if (route.IsWalkable) {
-                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
-                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                }
-            }
-        ")
-        .WithParameters(p => { p["id", typeof(int)] = route; p["who", typeof(string)] = who; p["x", typeof(double)] = x; p["y", typeof(double)] = y; p["heading", typeof(double)] = heading; })
+        .WithParameters(p => {
+            p["x", typeof(double)] = x;
+            p["y", typeof(double)] = y;
+            p["theta", typeof(double)] = theta;
+        })
         .PerformCheckThenCommand());
 
     // The world said no — a collision, a stall, no way — in the body's words; the route ends, the next one's order follows.
-    private Answer Failed(int route, string reason) => Answer.Of(golemActor.Using(
+    private Answer Failed(string reason) => Answer.Of(golemActor.Using(
         @"
-            Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'route is not pending';
+            Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
         ",
         @"
             {
-                route = g.Find(@id);
+                route = g.Underway();
                 route.Fail(@reason);
-                print route.Id 'route', route.Order 'order', route.IsPending() 'pending';
+                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.NextLeg.Target.X 'x', route.NextLeg.Target.Y 'y',
-                          route.NextLeg.Approach.X 'ax', route.NextLeg.Approach.Y 'ay',
-                          route.NextLeg.Exit.X 'ex', route.NextLeg.Exit.Y 'ey',
-                          route.NextLeg.HasHeading 'hasHeading', route.NextLeg.Target.Heading 'heading',
+                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                           route.Following 'following', route.StopsLeft 'stopsLeft';
                 }
             }
         ")
-        .WithParameters(p => { p["id", typeof(int)] = route; p["reason", typeof(string)] = reason; })
+        .WithParameters(p => { p["reason", typeof(string)] = reason; })
         .PerformCheckThenCommand());
 
     // The operator lets go of everything: every pending route abandoned with the reason, in ONE command. No reaction
@@ -699,13 +491,10 @@ public sealed class GolemEmbodiment
                 route.Abandon(@reason);
             }
             print g.HasPendingMission() 'pending';
-            if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'order'; }
+            if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'action', g.Underway().Amount 'amount'; }
             if (g.HasPendingMission() && g.Underway().IsWalkable) {
                 print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Name 'name',
-                      g.Underway().NextLeg.Target.X 'x', g.Underway().NextLeg.Target.Y 'y',
-                      g.Underway().NextLeg.Approach.X 'ax', g.Underway().NextLeg.Approach.Y 'ay',
-                      g.Underway().NextLeg.Exit.X 'ex', g.Underway().NextLeg.Exit.Y 'ey',
-                      g.Underway().NextLeg.HasHeading 'hasHeading', g.Underway().NextLeg.Target.Heading 'heading',
+                      g.Underway().Target.X 'x', g.Underway().Target.Y 'y', g.Underway().Target.Heading 'heading',
                       g.Underway().Following 'following', g.Underway().StopsLeft 'stopsLeft';
             }
         ")
@@ -714,23 +503,13 @@ public sealed class GolemEmbodiment
 
     // The way, decided by the route itself from where the body stands. When no way fits the body, the route fails with
     // the planner's reason. Asked by the output target when a print says 'decide'.
-    internal void Decide(int route, string verb)
+    internal void Decide(string verb)
     {
         var here = ros.LatestPose;
-        if (here == null) { Note($"route {route}: no pose yet to decide from — asking again shortly"); return; }
-        Note($"route {route}: {verb} — deciding the way from ({here.X:0.0}, {here.Y:0.0})");
-        try { Report(Decided(route, here.X, here.Y), $"route {route} decided its way from ({here.X:0.0}, {here.Y:0.0})"); }
-        catch (Exception ex) { Report(Safely(() => Failed(route, "no road: " + Reason(ex))), $"route {route} failed: no road"); }
-    }
-
-    // The courtesy step is the golem's to choose (g.Aside); the body only walks it.
-    private void StepAside(string why)
-    {
-        var pose = ros.LatestPose;
-        if (pose == null) return;
-        var (x, y) = Aside(pose);
-        if (Math.Abs(x - pose.X) < 1e-6 && Math.Abs(y - pose.Y) < 1e-6) return;
-        Mechanics.StepAside(x, y, why);
+        if (here == null) { Note("no pose yet to decide the way from — asking again shortly"); return; }
+        Note($"{verb} — the route underway decides its way from ({here.X:0.0}, {here.Y:0.0})");
+        try { Report(Decided(here.X, here.Y, here.Theta), $"the route underway decided its way from ({here.X:0.0}, {here.Y:0.0})"); }
+        catch (Exception ex) { Report(Failed("no road: " + Reason(ex)), "the route underway failed: no road"); }
     }
 
     // What a script answered, for the record: refused → said so (the domain's words). The next order is NOT dispatched
@@ -757,17 +536,16 @@ public sealed class GolemEmbodiment
         var patience = DateTime.UtcNow + TimeSpan.FromSeconds(15);
         while (ros.LatestPose == null && DateTime.UtcNow < patience && !ct.IsCancellationRequested) await Task.Delay(200, ct);
         var first = AskOrder();
-        if (first != null && (first.What == "turn" || first.What == "run" || first.What == "back")) Decide(first.Route, "awake with a plan underway");
-        else Mechanics.Obey(first);
+        if (first != null && (first.IsTurn || first.IsMove)) Decide("awake with a plan underway");
+        else Mechanics.Dispatch(first);
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(2000, ct);
             var now = AskOrder();
             var mine = Mechanics.Carrying;
-            if (now == null) { if (mine != null && mine.Route != 0) Mechanics.Stop(); continue; }
+            if (now == null) { if (mine != null) Mechanics.Stop(); continue; }
             if (mine != null && mine.SameAs(now)) continue;
-            if (mine != null && mine.Route == 0 && now.What != "hold") continue;   // a courtesy step underway: the order waits for it
-            Mechanics.Obey(now);
+            Mechanics.Dispatch(now);
         }
     }
 
@@ -779,10 +557,10 @@ public sealed class GolemEmbodiment
     // is the golem's act, one command for every pending route.
     public async Task LetGoAsync()
     {
-        Mechanics.Stop(anchor: true);
+        Mechanics.StopOnMark();
         try { await ros.TeleportAsync(home.X, home.Y, 0.0, CancellationToken.None); }
         catch { /* the world reset is best-effort; the journaled fact is the point */ }
-        Report(Safely(() => LetGo("the operator let go of everything")), "let go of every pending route");
+        Report(LetGo("the operator let go of everything"), "let go of every pending route");
         Note("letting go of every pending route");
     }
 
@@ -790,7 +568,7 @@ public sealed class GolemEmbodiment
     public async Task PutBackHomeAsync(CancellationToken ct)
     {
         await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
-        Mechanics.Stop(anchor: true);
+        Mechanics.StopOnMark();
     }
 
     // The hard reset — a LAB lever, not a domain fact: stop the body, wipe THIS golem's journal and exit; Docker
@@ -837,12 +615,6 @@ public sealed class GolemEmbodiment
     }
 
     // A script that faults (the domain refused inside the command, not in its Check) answers as a refusal, in its words.
-    private static Answer Safely(Func<Answer> perform)
-    {
-        try { return perform(); }
-        catch (Exception ex) { return Answer.Refusal(Reason(ex)); }
-    }
-
     private static string Reason(Exception ex)
     {
         var inner = ex;
@@ -858,16 +630,16 @@ public sealed class GolemEmbodiment
 
     // Where an errand starts: where the body stands — or, when the golem is busy, where its last pending route ends
     // (it will stand there when the new errand comes up). Null with no telemetry yet.
-    private (double X, double Y)? WhereTheErrandStarts()
+    private (double X, double Y, double Theta)? WhereTheErrandStarts()
     {
         using var busy = JsonDocument.Parse(golemActor.Using(@"
             print g.HasPendingMission() 'busy';
-            if (g.HasPendingMission()) { print g.PlannedEnd().X 'x', g.PlannedEnd().Y 'y'; }
+            if (g.HasPendingMission()) { print g.PlannedEnd().X 'x', g.PlannedEnd().Y 'y', g.PlannedEnd().Heading 'theta'; }
         ").PerformQuery());
         if (busy.RootElement.GetProperty("busy").GetBoolean())
-            return (busy.RootElement.GetProperty("x").GetDouble(), busy.RootElement.GetProperty("y").GetDouble());
+            return (busy.RootElement.GetProperty("x").GetDouble(), busy.RootElement.GetProperty("y").GetDouble(), busy.RootElement.GetProperty("theta").GetDouble());
         var pose = ros.LatestPose;
-        return pose == null ? null : (pose.X, pose.Y);
+        return pose == null ? null : (pose.X, pose.Y, pose.Theta);
     }
 
     // The handle of the route just opened, to tell it the rest.
@@ -880,29 +652,6 @@ public sealed class GolemEmbodiment
         catch (Exception e) { Console.WriteLine($"[golem {golem}] asking the order failed: {e.Message}"); return null; }
     }
 
-    private (string Kind, string Who, string Conclusion) Suspect(Collision hit, int since)
-    {
-        using var doc = JsonDocument.Parse(golemActor.Using(@"
-            print g.Suspect(Pose(@x, @y, @heading), @since).Kind 'kind',
-                  g.Suspect(Pose(@x, @y, @heading), @since).Who 'who',
-                  g.Suspect(Pose(@x, @y, @heading), @since).Conclusion 'verb';
-        ")
-        .WithParameters(p => { p["x", typeof(double)] = hit.X; p["y", typeof(double)] = hit.Y; p["heading", typeof(double)] = hit.Heading; p["since", typeof(int)] = since; })
-        .PerformQuery());
-        var e = doc.RootElement;
-        return (e.GetProperty("kind").GetString() ?? "", e.GetProperty("who").GetString() ?? "", e.GetProperty("verb").GetString() ?? "");
-    }
-
-    private (double X, double Y) Aside(Pose pose)
-    {
-        using var doc = JsonDocument.Parse(golemActor.Using(@"
-            print g.Aside(Pose(@x, @y, @theta)).X 'sx', g.Aside(Pose(@x, @y, @theta)).Y 'sy';
-        ")
-        .WithParameters(p => { p["x", typeof(double)] = pose.X; p["y", typeof(double)] = pose.Y; p["theta", typeof(double)] = pose.Theta; })
-        .PerformQuery());
-        return (doc.RootElement.GetProperty("sx").GetDouble(), doc.RootElement.GetProperty("sy").GetDouble());
-    }
-
     /// <summary>The body the golem declared in its journal: what the robot needs to carry an order out.</summary>
     internal (double Speed, double Radius, double Retreat) BodyDeclared()
     {
@@ -913,9 +662,6 @@ public sealed class GolemEmbodiment
         return (e.GetProperty("speed").GetDouble(), e.GetProperty("radius").GetDouble(), e.GetProperty("retreat").GetDouble());
     }
 
-    internal int HeardBumpCount()        => Read("print collisions.HeardCount 'v';").GetInt32();
-    private bool MayRetryLeg(int id)     => Read("print g.Find(@id).MayRetryLeg 'v';", id).GetBoolean();
-    private int Grazes(int id)           => Read("print g.Find(@id).Grazes 'v';", id).GetInt32();
     private double LingerAfterTold()     => Read("print body.LingerAfterTold.InSeconds 'v';").GetDouble();
 
     private JsonElement Read(string script, int? id = null)
@@ -927,5 +673,3 @@ public sealed class GolemEmbodiment
     }
 }
 
-/// <summary>What the body touched, where on the plane, heading into it — as the body reported it.</summary>
-public sealed record Collision(string With, double X, double Y, double Heading);

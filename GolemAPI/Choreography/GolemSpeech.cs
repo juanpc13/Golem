@@ -48,36 +48,14 @@ public sealed class GolemSpeech
             // ME, not a thing. One tell per peer in one entry (several statements: no single-tell elision), one once-id
             // per addressee.
             string bumped = string.Join("\n", peers.Select(p => $@"
-                tell BumpedAt with @x, @y, @heading, @who, @px, @py
+                tell BumpedAt with @bodyX, @bodyY, @bodyHeading, @bearing, @who
                     to {p}
-                    once 'bump-' + @who + '-' + @x + ',' + @y + '-{p}';"));
+                    once 'bump-' + @who + '-' + @bodyX + ',' + @bodyY + ',' + @bearing + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-bumped")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Bumped").One()
-                    .OnMatch("expose $x x, $y y, $heading heading, $who who, $px px, $py py;")
+                    .OnMatch("expose $bodyX bodyX, $bodyY bodyY, $bodyHeading bodyHeading, $bearing bearing, $who who;")
                 .Causation.Continue(bumped);
-
-            // A standing body touched: a body did it (things do not move). Told so the mover knows it met one; no mark.
-            string touched = string.Join("\n", peers.Select(p => $@"
-                tell TouchedAt with @x, @y, @who, @px, @py
-                    to {p}
-                    once 'touch-' + @who + '-' + @x + ',' + @y + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-touched")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Touched").One()
-                    .OnMatch("expose $x tx, $y ty, $who twho, $px tpx, $py tpy;")
-                .Causation.Continue(touched);
-
-            // It was a body: the mark the bump presumed is taken back, here and in every peer that learned it.
-            string met = string.Join("\n", peers.Select(p => $@"
-                tell MetPeer with @x, @y
-                    to {p}
-                    once 'met-{golem}-' + @x + ',' + @y + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-met")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Met").One()
-                    .OnMatch("expose $x ex, $y ey;")
-                .Causation.Continue(met);
 
             // Somebody took a thing away: the fleet must forget it together, or one golem would keep skirting what
             // another can already drive through.
@@ -99,7 +77,7 @@ public sealed class GolemSpeech
         golemActor.Reactions.DefineReaction("echo-reached")
             .Cue().Company().WithSharedHydration()
             .Seek("Reached").One()
-                .OnMatch("expose $missionId rid, $x rx, $y ry;")
+                .OnMatch("expose $missionId rid, $x rx, $y ry, true reached;")   // the literal: the arrival was a STOP (17-sep-2026: one Arrive act, the reaction picks the stop)
             .Causation.Continue($@"
                 {{
                     route = g.Find(@missionId);
@@ -118,12 +96,8 @@ public sealed class GolemSpeech
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakePointVisited)
-            .Told("BumpedAt").With<double>("x").With<double>("y").With<double>("heading").With<string>("who").With<double>("px").With<double>("py")
+            .Told("BumpedAt").With<double>("bodyX").With<double>("bodyY").With<double>("bodyHeading").With<double>("bearing").With<string>("who")
                 .Command(GolemEmbodiment.UptakeBumpedAt)
-            .Told("TouchedAt").With<double>("x").With<double>("y").With<string>("who").With<double>("px").With<double>("py")
-                .Command(GolemEmbodiment.UptakeTouchedAt)
-            .Told("MetPeer").With<double>("x").With<double>("y")
-                .Command(GolemEmbodiment.UptakeMetPeer)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
             .Start();

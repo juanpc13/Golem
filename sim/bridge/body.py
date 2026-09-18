@@ -3,25 +3,27 @@
 time from its golem and reports what came of it (Juan, 16-sep-2026: "el robot solo es el cuerpo; nosotros le decimos
 qué hacer, y cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print").
 
-Its vocabulary is the robot's BASE ACTIONS (Juan: "avanzar / retroceder / girar a la derecha / girar a la izquierda /
-detener / continuar; el choque es lo que reporta"). Orders arrive on /golem/<body>/order (std_msgs/String: the JSON the
-golem's journal printed, plus the action and what the body needs), switched on "action":
-  {"action": "advance",   "route": 3, "x": .., "y": .., "ax": .., "ay": .., "ex": .., "ey": .., "within": 0.25, ...}  — move to a point
-  {"action": "back",      "route": 3, "x": .., "y": .., "within": 0.15, ...}                          — move to a point IN REVERSE
-  {"action": "turnLeft",  "route": 3, "heading": -1.57, ...}   — turn in place, counter-clockwise, until facing the heading
-  {"action": "turnRight", "route": 3, "heading": -1.57, ...}   — the same, clockwise
-  {"action": "stop"}                    — stand, remembering what it was doing (the operator held the route, or nothing is pending)
+Its vocabulary is the robot's BASE ACTIONS, each with an AMOUNT (Juan, 17-sep-2026: "al robot se le dice muy
+sencillamente lo que debe moverse hacia adelante, qué tanto debe rotar"). Orders arrive on /golem/<body>/order
+(std_msgs/String: the JSON the golem's journal printed, plus the body it declared), switched on "action":
+  {"action": "advance",   "amount": 2.35, "route": 3, ...}   — move forward that many metres
+  {"action": "back",      "amount": 0.60, "route": 3, ...}   — move that many metres IN REVERSE
+  {"action": "turnLeft",  "amount": 1.57, "route": 3, ...}   — turn in place, counter-clockwise, that many radians
+  {"action": "turnRight", "amount": 0.80, "route": 3, ...}   — the same, clockwise
+  {"action": "stop"}                    — stand, remembering what it was doing and how much was left (the operator held the golem, or nothing is pending)
   {"action": "stop", "anchor": true}    — stand, and take the world's word for where you are (after a teleport)
-  {"action": "continue"}                — take up what it was doing when it was stopped
-A new action replaces whatever the body was doing. Reports go back to the golem's endpoints as JSON bodies:
-  POST /robot/arrived {"route"}                                                         — the turn made, the point reached
-  POST /robot/bump    {"route", "with", "x", "y", "heading", "px", "py", "ptheta"}      — route 0 when touched while standing
+  {"action": "continue"}                — take up what was left of what it was doing when it was stopped
+A new action replaces whatever the body was doing. The amounts are measured on the body's own odometry — how far it
+travelled since the order began, how much it turned — never against a point on the plane: the golem decides the points,
+the body only moves. Reports go back to the golem's endpoints as JSON bodies:
+  POST /robot/arrived {"route"}                                                         — the amount done
+  POST /robot/bump    {"bodyX", "bodyY", "bodyHeading", "bearing", "route", "with"}   — where it stood and where on its shell it was pressed
   POST /robot/stuck   {"route", "reason"}
 The body drives /model/<body>/cmd_vel and watches its odometry — the world's truth, or its own wheels' reckoning
 anchored once to the truth (a real robot's lot) — and its contact sensor, its bumper. THE BUMPER IS A SWITCH: the moment
-it fires the motors stop and the bump is reported — where the touch landed on the plane (one radius from the body's
-centre, in the direction the shell was pressed) and where the body stood, facing which way. What to do about it (back
-off, go around) is the golem's to say: it comes as the next order. The body decides nothing.
+it fires the motors stop and the bump is reported — where the body stood, facing which way, and where on its shell it was
+pressed. Where that lands on the plane, what it was and what to do about it (back off, go around) are the golem's to say:
+it comes as the next order. The body decides nothing.
 
 Usage: body.py <body> <golem-url> [world|wheels]
 """
@@ -40,13 +42,12 @@ from ros_gz_interfaces.msg import Contacts
 from std_msgs.msg import String
 
 TICK = 0.05                 # s, the servo's beat
-RUN_TIMEOUT = 90.0          # s, a run that takes longer is stuck
+MOVE_TIMEOUT = 90.0         # s, a move that takes longer is stuck
 TURN_TIMEOUT = 15.0         # s
-STALL_AFTER = 3.0           # s without the distance improving = stuck
-PROGRESS = 0.05             # m, an improvement smaller than this is noise
-LINE_UP_WITHIN = 0.15       # m, a door's approach is lined up tighter than a stop
-FACING_WITHIN = 0.05        # rad, close enough to call a turn made (~3 deg)
-BACK_OFF_SPEED = 0.4        # m/s, in reverse, after a touch
+STALL_AFTER = 3.0           # s without the amount progressing = stuck
+PROGRESS = 0.02             # m or rad, progress smaller than this is noise
+DONE_WITHIN = 0.02          # m or rad, what is left of the amount when the action counts as done
+BACK_OFF_SPEED = 0.4        # m/s, in reverse
 STANDING_TOUCH_EVERY = 1.0  # s, a standing body reports a touch at most this often
 
 
@@ -74,12 +75,13 @@ class Body(Node):
         self.calibrate = True
         self.contact = None          # (model, time, bearing) the last touch
         self.order = None            # the order being carried out (dict), None while standing
-        self.held = None             # the order it was carrying when told to stop: "continue" takes it up again
-        self.phase = None            # run: "approach" | "exit"
+        self.held = None             # what was left of the order it was carrying when told to stop: "continue" takes it up
+        self.start = None            # the pose when the order began: the amount is measured from it
+        self.turned = 0.0            # rad turned since the order began
+        self.prev_theta = 0.0
         self.began = 0.0
-        self.best = float("inf")
+        self.best = 0.0              # the most of the amount done so far (stall detection)
         self.improved = 0.0
-        self.closest = float("inf")  # a reverse move: the nearest it got to the point (moving away again = arrived)
         self.last_standing_touch = 0.0
         self.pressed = None          # the model the bumper is still pressed against since it was reported: not a new bump until released
         self.released_since = None   # when the bumper last went quiet (no contact message for a moment)
@@ -142,7 +144,10 @@ class Body(Node):
         with self.lock:
             action = order.get("action")
             if action == "stop":
-                self.held = self.order
+                if self.order is not None:
+                    left = dict(self.order)
+                    left["amount"] = max(0.0, float(self.order.get("amount", 0.0)) - self.done_so_far())
+                    self.held = left
                 self.order = None
                 if order.get("anchor"):
                     self.calibrate = True
@@ -153,19 +158,32 @@ class Body(Node):
                     return
                 order, self.held = self.held, None
                 action = order.get("action")
-                self.get_logger().info("route %s: continuing" % order.get("route"))
+                self.get_logger().info("route %s: continuing — %s %.2f left" % (order.get("route"), action, float(order.get("amount", 0.0))))
             if action not in ("advance", "back", "turnLeft", "turnRight"):
                 self.get_logger().warning("an action I do not know: %s" % action)
                 return
             self.order = order
             self.held = None
-            self.phase = "approach" if action == "advance" and (order.get("ax") != order.get("ex") or order.get("ay") != order.get("ey")) else "exit"
-            self.closest = float("inf")
-            self.began = time.time()
-            self.best = float("inf")
-            self.improved = self.began
-            self.get_logger().info("route %s: %s %s" % (order.get("route"), action,
-                                   ("to heading %.2f" % order.get("heading", 0.0)) if action.startswith("turn") else ("to (%.2f, %.2f)" % (order.get("x", 0.0), order.get("y", 0.0)))))
+            self.begin()
+            self.get_logger().info("route %s: %s %.2f %s" % (order.get("route"), action, float(order.get("amount", 0.0)),
+                                   "rad" if action.startswith("turn") else "m"))
+
+    # The amount is measured from the pose the order began at; a body that has said nothing yet begins when it does.
+    def begin(self):
+        self.start = self.pose
+        self.turned = 0.0
+        self.prev_theta = self.pose[2] if self.pose is not None else 0.0
+        self.began = time.time()
+        self.best = 0.0
+        self.improved = self.began
+
+    # How much of the current order is done: metres travelled from where it began, or radians turned.
+    def done_so_far(self):
+        if self.order is None or self.start is None or self.pose is None:
+            return 0.0
+        if self.order["action"] in ("turnLeft", "turnRight"):
+            return self.turned
+        return math.hypot(self.pose[0] - self.start[0], self.pose[1] - self.start[1])
 
     # ---- the servo's beat ----
     def tick(self):
@@ -199,90 +217,63 @@ class Body(Node):
                 return
             if self.pose is None:
                 return
+            if self.start is None:
+                self.begin()                  # the first pose since the order came: the amount is measured from here
             x, y, theta = self.pose
             action = order["action"]
+            amount = float(order.get("amount", 0.0))
+            route = order.get("route", 0)
             if action in ("turnLeft", "turnRight"):
-                # in place, the way the golem said (left: counter-clockwise), until facing the heading
-                deviation = normalize(order.get("heading", 0.0) - theta)
-                if abs(deviation) < FACING_WITHIN:
+                # in place, the way the golem said (left: counter-clockwise), until the radians told are turned
+                self.turned += abs(normalize(theta - self.prev_theta))
+                self.prev_theta = theta
+                left = amount - self.turned
+                if left <= DONE_WITHIN:
                     self.drive(0.0, 0.0)
-                    self.done(order, "arrived", {"route": order.get("route", 0)})
+                    self.done(order, "arrived", {"route": route})
                     return
                 if now - self.began > TURN_TIMEOUT:
                     self.drive(0.0, 0.0)
-                    self.done(order, "stuck", {"route": order.get("route", 0), "reason": "turn timeout"})
+                    self.done(order, "stuck", {"route": route, "reason": "turn timeout"})
                     return
                 sign = 1.0 if action == "turnLeft" else -1.0
-                left = deviation if deviation >= 0 else deviation + 2 * math.pi   # the angle still to turn, going the way told
-                if action == "turnRight":
-                    left = 2 * math.pi - left if deviation > 0 else -deviation
-                angular = sign * max(0.3, min(1.5, 3.0 * left))
-                self.drive(0.0, angular)
+                self.drive(0.0, sign * max(0.25, min(1.5, 3.0 * left)))
                 return
-            if action == "back":
-                self.reverse_to(order, now)
-                return
-            # an advance: line up at the approach, then run to the exit (one leg, when the two coincide)
-            if self.phase == "approach":
-                tx, ty, within = order.get("ax", order["x"]), order.get("ay", order["y"]), LINE_UP_WITHIN
-            else:
-                tx, ty, within = order.get("ex", order["x"]), order.get("ey", order["y"]), order.get("within", 0.25)
-            dx, dy = tx - x, ty - y
-            distance = math.hypot(dx, dy)
-            if distance < within:
-                if self.phase == "approach":
-                    self.phase = "exit"
-                    self.best = float("inf")
-                    self.improved = now
-                    return
+            # a move, forward or in reverse: straight, holding the heading it began with, until the metres told are travelled
+            travelled = math.hypot(x - self.start[0], y - self.start[1])
+            left = amount - travelled
+            if left <= DONE_WITHIN:
                 self.drive(0.0, 0.0)
-                self.done(order, "arrived", {"route": order.get("route", 0)})
+                self.done(order, "arrived", {"route": route})
                 return
-            if distance < self.best - PROGRESS:
-                self.best = distance
+            if travelled > self.best + PROGRESS:
+                self.best = travelled
                 self.improved = now
             elif now - self.improved > STALL_AFTER:
                 self.drive(0.0, 0.0)
-                self.done(order, "stuck", {"route": order.get("route", 0), "reason": "stalled: no progress for 3 s"})
+                self.done(order, "stuck", {"route": route, "reason": "stalled: no progress for 3 s"})
                 return
-            if now - self.began > RUN_TIMEOUT:
+            if now - self.began > MOVE_TIMEOUT:
                 self.drive(0.0, 0.0)
-                self.done(order, "stuck", {"route": order.get("route", 0), "reason": "timeout"})
+                self.done(order, "stuck", {"route": route, "reason": "timeout"})
                 return
-            # turn toward the target first (in place: doors are narrow and runs through them must be straight);
-            # move once aligned, slower the further off — and slower the closer to the arrival circle
+            angular = max(-1.0, min(1.0, 2.0 * normalize(self.start[2] - theta)))   # hold the heading the move began with
+            if action == "back":
+                self.drive(-min(BACK_OFF_SPEED, 1.0 * left + 0.1), angular)
+                return
             cruise = order.get("body", {}).get("speed", 1.0)
-            heading = math.atan2(dy, dx)
-            deviation = normalize(heading - theta)
-            angular = max(-3.0, min(3.0, 3.0 * deviation))
-            linear = min(cruise, 1.5 * (distance - within) + 0.15) * math.cos(deviation) if abs(deviation) < 0.35 else 0.0
-            self.drive(linear, angular)
+            self.drive(min(cruise, 1.5 * left + 0.15), angular)
 
-    # A move in reverse, straight back to the point the golem chose (its own retreat behind where it stood): the body
-    # reverses, gently, until it is within reach of the point or starts moving away from it.
-    def reverse_to(self, order, now):
-        x, y, theta = self.pose
-        tx, ty, within = order["x"], order["y"], order.get("within", LINE_UP_WITHIN)
-        distance = math.hypot(tx - x, ty - y)
-        if distance < within or distance > self.closest + PROGRESS or now - self.began > 8.0:
-            self.drive(0.0, 0.0)
-            self.done(order, "arrived", {"route": order.get("route", 0)})
-            return
-        self.closest = min(self.closest, distance)
-        self.drive(-min(BACK_OFF_SPEED, 1.0 * distance + 0.1), 0.0)
-
-    # Where the touch landed on the plane, as the body reckons it: one radius from the centre of the body it believes,
-    # in the direction the shell was pressed. The heading points into what was touched. And where the body stands,
-    # facing which way — the golem's route backs it off from there.
+    # What a bumper knows, and no more: where the body stands, facing which way, and where on its shell it was pressed —
+    # the bearing, radians from the direction it faces (0 the nose, +pi/2 the left flank). Where the touch landed on the
+    # plane is the golem's to reckon from the body it declared (18-sep-2026). The route and the world's name for what was
+    # touched ride along for the log; the golem does not read them.
     def report_bump(self, route, touch, order):
         pose = self.pose
         if pose is None:
             return
-        radius = (order or {}).get("body", {}).get("radius", 0.25)
-        heading = normalize(pose[2] + touch[2])
-        self.post("bump", {"route": route, "with": touch[0],
-                           "x": pose[0] + radius * math.cos(heading), "y": pose[1] + radius * math.sin(heading),
-                           "heading": heading, "px": pose[0], "py": pose[1], "ptheta": pose[2]})
+        self.post("bump", {"bodyX": pose[0], "bodyY": pose[1], "bodyHeading": pose[2], "bearing": touch[2],
+                           "route": route, "with": touch[0]})
 
     def done(self, order, what, report):
         self.order = None

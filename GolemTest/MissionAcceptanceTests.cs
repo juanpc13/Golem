@@ -316,25 +316,23 @@ public class MissionAcceptanceTests
         Assert.IsFalse(Bool("g.Find(1).NextLeg.IsStop"));
         Assert.AreEqual(0.75, Double("g.Underway().NextLeg.Target.X"), 0.001, "the body heads to the first door, not to the stop");
 
-        // one point at a time (16-sep): the body reports each point of the way it reaches and the route hands out the
-        // next; a point that is not on the way ahead is refused; a stop reached implies the legs before it were walked
-        Refuses("{ route = g.Find(1); route.Reach(Position(2.0, 2.0)); }", "next point is (0.75, 8)");
-        Assert.IsTrue(Bool("g.Find(1).IsLegAhead(Position(0.75, 8.0))"), "the first door is ahead");
+        // one thing at a time (16-sep; 17-sep in the robot's words): the route asks a turn first — a move now is refused —
+        // then the body reports each thing done, where it stands, and the route hands out the next
+        Refuses("{ route = g.Find(1); route.Reach(Pose(2.0, 2.0, 0.0)); }", "asked no move now");
         Assert.IsTrue(Bool("g.Find(1).IsStopAhead(Position(2.0, 1.5))"));
         Assert.IsFalse(Bool("g.Find(1).IsStopAhead(Position(0.75, 3.0))"), "a door is not a stop");
-        Reach(1, 0.75, 8.0);                                                   // the first door, reported
+        Reach(1, 0.75, 8.0);                                                   // the first door: lined up, crossed, reported
         Assert.AreEqual(2, Int("g.Find(1).LegsLeft"));
         Assert.AreEqual("west/living", Text("g.Find(1).NextLeg.Name"), "the route hands out the next point");
         Assert.IsTrue(Bool("g.Find(1).NextLeg.HasHeading"), "and the heading to walk it with, from the previous point");
         Assert.AreEqual(-1.5708, Double("g.Find(1).NextLeg.Target.Heading"), 0.001, "straight south down the west corridor");
-        Assert.IsFalse(Bool("g.Find(1).IsLegAhead(Position(0.75, 8.0))"), "a point reached is behind");
 
-        Reach(1, 2.0, 1.5);                                                    // the stop, skipping the second door: it implies the door was walked
-        Assert.AreEqual(0, Int("g.Find(1).LegsLeft"), "the second door was walked: reaching the stop says so");
+        Reach(1, 2.0, 1.5);                                                    // the stop: the second door walked on the way
+        Assert.AreEqual(0, Int("g.Find(1).LegsLeft"), "every leg walked: reaching the stop was the last");
         Assert.AreEqual("completed", Text("g.Find(1).Status"), "reaching the last stop completes the mission");
         Assert.IsFalse(Bool("g.Find(1).IsPending()"));
         Assert.AreEqual(0, Int("g.PendingRoutes().Count"));
-        Refuses("{ route = g.Find(1); route.Reach(Position(2.0, 1.5)); }", "already completed");
+        Refuses("{ route = g.Find(1); route.Reach(Pose(2.0, 1.5, 0.0)); }", "already completed");
     }
 
     [TestMethod]
@@ -398,14 +396,38 @@ public class MissionAcceptanceTests
         Assert.AreEqual("west/living", Text("g.Find(1).NextLeg.Name"), "the first thing is the door out of the living room");
         Assert.AreEqual("door", Text("g.Find(1).NextLeg.Kind"));
         Assert.IsTrue(Bool("g.Find(1).NextLeg.HasHeading"), "the first leg has its heading too: the start is written");
-        Assert.AreEqual("turn", Text("g.Find(1).Order"), "one thing at a time: turn first");
-        perf.Actor.Using("{ route = g.Find(@id); route.Turn(); }").WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
-        Assert.AreEqual("run", Text("g.Find(1).Order"), "turned: now run to the door");
-        Refuses("{ route = g.Find(1); route.Turn(); }", "asked no turn now");
-        perf.Actor.Using("{ route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }")
-            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 0.75; p["y", typeof(double)] = 3.0; }).PerformCommand();
-        Assert.AreEqual("turn", Text("g.Find(1).Order"), "the next leg asks its turn again");
+        // the robot's words (17-sep-2026): an action and an amount, measured from where the body stands and faces
+        string first = Text("g.Find(1).Order");
+        StringAssert.StartsWith(first, "turn", "one thing at a time: turn first, to face the door's approach");
+        Assert.IsTrue(Double("g.Find(1).Amount") > 0.1, "how much to turn, in radians: " + Double("g.Find(1).Amount"));
+        double toApproach = Math.Sqrt(Math.Pow(Double("g.Find(1).Target.X") - 2.0, 2) + Math.Pow(Double("g.Find(1).Target.Y") - 1.5, 2));
+        Step(1, first);
+        Assert.AreEqual("advance", Text("g.Find(1).Order"), "turned: now advance to line up in front of the door");
+        Assert.AreEqual(toApproach, Double("g.Find(1).Amount"), 0.001, "how far, in metres, from where the body stands");
+        Refuses("{ route = g.Find(1); route.Turn(Pose(2.0, 1.5, 0.0)); }", "asked no turn now");
+        Step(1, "advance");
+        Assert.AreEqual("west/living", Text("g.Find(1).NextLeg.Name"), "lined up in front of the door: the door is still the leg");
+        if (Text("g.Find(1).Order").StartsWith("turn")) Step(1, Text("g.Find(1).Order"));
+        Assert.AreEqual("advance", Text("g.Find(1).Order"), "straight through the door to its exit");
+        Step(1, "advance");
+        Assert.AreEqual("kitchen/west", Text("g.Find(1).NextLeg.Name"), "the door is behind: the next leg");
+        Assert.AreEqual("advance", Text("g.Find(1).Order"), "out of the door the body already faces north up the corridor: no turn to make, an advance");
+        Assert.IsTrue(Double("g.Find(1).Amount") > 3.0, "the corridor's length to the next door's approach: " + Double("g.Find(1).Amount"));
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
+    }
+
+    [TestMethod]
+    public void ADoor_FollowedByAnOpening_IsStillCrossedStraight()
+    {
+        // kitchen (3, 9.5) -> door kitchen/north at (4, 9.5) -> the opening north~center, whose crossing point sits ON the
+        // north hall's boundary -> south. 17-sep-2026 live: the door got no approach and no exit (neither side "held" the
+        // opening's point), the body turned in the doorway and grazed the jamb. The next leg's passage tells the side.
+        Visit(1, 5.5, 1.5, 3.0, 9.5);
+        Assert.AreEqual("kitchen/north", Text("g.Find(1).NextLeg.Name"));
+        StringAssert.StartsWith(Text("g.Find(1).AsPlan()"), "kitchen/north@4,9.5 > north~center@", "the door is followed by the opening: " + Text("g.Find(1).AsPlan()"));
+        Assert.AreEqual(3.4, Double("g.Find(1).NextLeg.Approach.X"), 0.001, "lined up inside the kitchen, off the wall");
+        Assert.AreEqual(4.6, Double("g.Find(1).NextLeg.Exit.X"), 0.001, "out into the north hall, off the wall: the turn toward the opening is made there, not in the doorway");
+        Assert.AreEqual(3.4, Double("g.Find(1).Target.X"), 0.001, "the first thing headed to is the approach");
     }
 
     [TestMethod]
@@ -437,7 +459,7 @@ public class MissionAcceptanceTests
         perf.Actor.Using("{ me = Pose(@x, @y, @theta); route = g.Pause(me); }")
             .WithParameters(p => { p["x", typeof(double)] = 2.6; p["y", typeof(double)] = 9.5; p["theta", typeof(double)] = 1.5708; }).PerformCommand();
         Assert.IsTrue(Bool("g.Find(1).Paused"), "held");
-        Assert.AreEqual("hold", Text("g.Find(1).Order"));
+        Assert.AreEqual("stop", Text("g.Find(1).Order"), "held: the body stops");
         Assert.IsTrue(Bool("g.Held"), "the GOLEM is held, not just an errand");
         Assert.AreEqual(2.6, Double("g.HeldAt.X"), 1e-9, "where it was held is kept, by the golem…");
         Assert.AreEqual(2.6, Double("g.Find(1).HeldAt.X"), 1e-9, "…and by the route it interrupted");
@@ -449,7 +471,8 @@ public class MissionAcceptanceTests
         perf.Actor.Using("{ route = g.Resume(Pose(2.6, 9.5, 1.5708)); }").PerformCommand();
         Assert.IsFalse(Bool("g.Held"), "let go on");
         Assert.IsFalse(Bool("g.Find(1).Paused"));
-        Assert.AreEqual("turn", Text("g.Find(1).Order"), "from where it was held, the next leg asks its turn again");
+        Assert.AreEqual("turnLeft", Text("g.Find(1).Order"), "from where it was held, facing north, the stop lies due west: a quarter turn to the left");
+        Assert.AreEqual(1.5708, Double("g.Find(1).Amount"), 0.001, "how much: a quarter turn, in radians");
         Assert.AreEqual(3.1416, Double("g.Find(1).NextLeg.Target.Heading"), 0.001, "the heading to the stop (2.0, 9.5) from (2.6, 9.5): due west");
         Refuses("{ route = g.Resume(Pose(2.6, 9.5, 1.5708)); }", "is not paused");
 
@@ -636,7 +659,7 @@ public class MissionAcceptanceTests
     {
         Visit(1, 9.0, 1.5);
         Decide(1, 9.0, 9.5);
-        Assert.AreEqual(1, Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))"), "blue says it bumped in the kitchen's doorway, standing just past it");
+        Assert.AreEqual(1, Int("g.HearBump('blue', Pose(5.1, 9.5, 3.1416), 0.0)"), "blue says it bumped in the kitchen's doorway, standing just past it facing west: its touch reckoned at (4.85, 9.5)");
         int heard = Int("collisions.HeardCount");
 
         Bump(1, 4.7, 9.5, East);                    // my own touch, right there
@@ -651,9 +674,7 @@ public class MissionAcceptanceTests
 
         Assert.AreEqual(1, Int("g.Bump(Pose(4.9, 9.5, 0.0))"), "a body standing idle that gets touched bumps too, without a mission");
         Assert.AreEqual(2, Int("g.Bump(Pose(4.9, 9.5, 0.0))"));
-        Refuses("g.HearBump('', Pose(1.0, 1.0, 0.0), Position(1.0, 1.0));", "needs to say who");
-        Assert.AreEqual(2, Int("g.HearTouch('red', Position(4.9, 9.5), Position(5.1, 9.5))"), "a standing peer touched: heard (the second bump heard)…");
-        Assert.AreEqual(0, Int("collisions.MarkCount"), "…and no mark: what touches a standing body is a body");
+        Refuses("g.HearBump('', Pose(1.0, 1.0, 0.0), 0.0);", "needs to say who");
     }
 
     [TestMethod]
@@ -782,8 +803,8 @@ public class MissionAcceptanceTests
         Decide(1, 2.0, 9.5);    // kitchen/west > west/living > living
         Assert.AreEqual(3, Int("g.Find(1).LegsLeft"));
 
-        Refuses("{ route = g.Find(1); route.Reach(Position(3.0, 3.0)); }", "next point is (0.75, 8)");   // not a point of the way
-        Reach(1, 2.0, 1.5);                                            // the stop: the two doors were walked
+        Refuses("{ route = g.Find(1); route.Reach(Pose(3.0, 3.0, 0.0)); }", "asked no move now");   // the route asks a turn first
+        Reach(1, 2.0, 1.5);                                            // the stop: the two doors walked on the way
         Assert.AreEqual("completed", Text("g.Find(1).Status"));
         Assert.AreEqual(0, Int("g.Find(1).LegsLeft"));
     }
@@ -803,12 +824,13 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
-    public void SeveralStopsWithoutARoad_AreReachedInOrder()
+    public void SeveralStopsInOneRoom_AreReachedInOrder()
     {
-        Visit(1, new[] { "2,9.5", "3,10.5" });     // two points of the kitchen
+        Visit(1, new[] { "2,9.5", "3,10.5" });     // two points of the kitchen, from the first of them
         Assert.AreEqual(2, Int("g.Find(1).StopsLeft"));
 
-        Refuses("{ route = g.Find(1); route.Reach(Position(3.0, 10.5)); }", "next stop is (2, 9.5)");
+        Assert.AreEqual("advance", Text("g.Find(1).Order"), "standing on the first stop already: an advance of nothing");
+        Assert.AreEqual(0.0, Double("g.Find(1).Amount"), 1e-6);
         Reach(1, 2.0, 9.5);
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "one stop reached, one to go");
         Assert.AreEqual(3.0, Double("g.Underway().NextLeg.Target.X"), 0.001);
@@ -838,6 +860,7 @@ public class MissionAcceptanceTests
         Graze(1, 0.05, 8.4);
         Graze(1, 0.05, 8.6);
         Assert.IsFalse(Bool("g.Find(1).MayRetryLeg"), "patience spent: the mission ends");
+        Assert.AreEqual("failed", Text("g.Find(1).Status"), "by itself: the route ends its own errand (17-sep-2026), no host decides that");
     }
 
     [TestMethod]
@@ -846,7 +869,7 @@ public class MissionAcceptanceTests
         // red drives east across the kitchen toward the north hall; blue tells it bumped in the doorway and
         // stands just past it. Knowing where blue is, red's road starts by stepping out of the way.
         Visit(1, "north");
-        Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
+        Int("g.HearBump('blue', Pose(5.1, 9.5, 3.1416), 0.0)");
         Bump(1, 4.7, 9.5, East);                      // my own touch, right there: presumed a thing…
         Met("blue", 4.7, 9.5);                        // …until the domain names blue: both marks go, the way is clear to step aside
 
@@ -873,7 +896,7 @@ public class MissionAcceptanceTests
     public void WithNowhereToStepAside_TheRoadIsThePlainOne()
     {
         Visit(1, "north");
-        Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
+        Int("g.HearBump('blue', Pose(5.1, 9.5, 3.1416), 0.0)");
         // hemmed in against the kitchen's north wall: neither side leaves room for the body
         perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @heading); route.DecidePast(@who, me); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["who", typeof(string)] = "blue"; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 10.9; p["heading", typeof(double)] = 1.5708; })
@@ -969,33 +992,97 @@ public class MissionAcceptanceTests
         Assert.AreEqual(1, Int("collisions.MarkCount"));
     }
 
-    // ---- the second touch protocol: the domain suspects, the golem concludes ----
+    // ---- the touch protocol, the domain's own (17-sep-2026): one act, route.Touched(touch, me), and the route concludes ----
 
     [TestMethod]
-    public void WhatWasTouched_IsSuspectedByTheDomain_WallPeerOrThing()
+    public void ATouchOnAWallItKnows_IsAGraze_ConcludedInside()
     {
-        // the domain reasons over its own facts: the map, and what the peers said since the leg began
-        string json = perf.Actor.Using(@"
-            print g.Suspect(Pose(0.05, 5.5, 3.1416), 0).Kind 'wall', g.Suspect(Pose(0.05, 5.5, 3.1416), 0).Conclusion 'wallVerb';
-            print g.Suspect(Pose(10.25, 5.9, -1.5708), 0).Kind 'thing', g.Suspect(Pose(10.25, 5.9, -1.5708), 0).Conclusion 'thingVerb', g.Suspect(Pose(10.25, 5.9, -1.5708), 0).Who 'nobody';
-        ").PerformQuery();
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        Assert.AreEqual("wall", doc.RootElement.GetProperty("wall").GetString(), "the corridor's outer wall");
-        Assert.AreEqual("Graze", doc.RootElement.GetProperty("wallVerb").GetString(), "a wall I know: I grazed it");
-        Assert.AreEqual("thing", doc.RootElement.GetProperty("thing").GetString(), "nothing on the map, nobody heard");
-        Assert.AreEqual("Bump", doc.RootElement.GetProperty("thingVerb").GetString(), "nothing more to write: the bump's mark stands");
-        Assert.AreEqual("", doc.RootElement.GetProperty("nobody").GetString());
+        Visit(1, 2.0, 1.5);
+        Decide(1, 2.0, 9.5);   // kitchen/west > west/living > living
+        Touched(1, 0.05, 8.5, West);   // the west corridor's outer wall
+        Assert.AreEqual(1, Int("g.Find(1).Grazes"), "a wall I know: my own error, a graze");
+        Assert.AreEqual(0, Int("g.Find(1).Bumps"));
+        Assert.AreEqual(0, Int("collisions.MarkCount"), "no mark: the wall was known");
+        Assert.AreEqual("back", Text("g.Find(1).Order"), "back off, then the same legs again");
+    }
 
-        Int("g.HearBump('blue', Pose(4.6, 9.5, 0.0), Position(5.1, 9.5))");
-        string peer = perf.Actor.Using(@"
-            print g.Suspect(Pose(4.7, 9.5, 0.0), 0).Kind 'kind', g.Suspect(Pose(4.7, 9.5, 0.0), 0).Who 'who', g.Suspect(Pose(4.7, 9.5, 0.0), 0).Conclusion 'verb';
-            print g.Suspect(Pose(4.7, 9.5, 0.0), 1).Kind 'later';
-        ").PerformQuery();
-        using var doc2 = System.Text.Json.JsonDocument.Parse(peer);
-        Assert.AreEqual("peer", doc2.RootElement.GetProperty("kind").GetString(), "blue bumped within a meeting's reach: it was blue");
-        Assert.AreEqual("blue", doc2.RootElement.GetProperty("who").GetString());
-        Assert.AreEqual("Met", doc2.RootElement.GetProperty("verb").GetString());
-        Assert.AreEqual("thing", doc2.RootElement.GetProperty("later").GetString(), "heard before the leg began: old news, not this touch");
+    [TestMethod]
+    public void ATouchOnNothingCharted_IsABump_ConcludedInside()
+    {
+        Visit(1, 9.0, 1.5);
+        Decide(1, 9.0, 9.5);   // down the east corridor
+        Touched(1, 10.25, 5.85, South);
+        Assert.AreEqual(1, Int("g.Find(1).Bumps"), "nothing on the map there, nobody heard: a thing");
+        Assert.AreEqual(1, Int("collisions.MarkCount"), "presumed and marked at once");
+        Assert.AreEqual("back", Text("g.Find(1).Order"), "the retreat first, then the road around");
+    }
+
+    [TestMethod]
+    public void APeersGrazeOnAWallWeBothKnow_TeachesNothing()
+    {
+        Int("g.HearBump('red', Pose(1.22, 2.72, 0.79), 0.0)");   // the living room's north wall, as red grazed it live (17-sep)
+        Assert.AreEqual(1, Int("collisions.HeardCount"), "heard, so I know where red stood");
+        Assert.AreEqual(0, Int("collisions.MarkCount"), "but no mark: a wall on the map is nothing learned");
+    }
+
+    [TestMethod]
+    public void TheSameWordHeardTwice_IsHeardOnce()
+    {
+        Visit(1, "north");
+        Bump(1, 4.7, 9.5, East);
+        Int("g.HearBump('blue', Pose(5.1, 9.5, 3.1416), 0.0)");   // blue's touch, learned as a mark (for now every touch is a thing)
+        Assert.AreEqual(2, Int("collisions.MarkCount"));
+        Int("g.HearBump('blue', Pose(5.1, 9.5, 3.1416), 0.0)");   // the wire says it again (17-sep live: both journals heard the doorway bump twice)
+        Assert.AreEqual(1, Int("collisions.HeardCount"), "heard once");
+        Assert.AreEqual(2, Int("collisions.MarkCount"), "and nothing more is learned from the repeat");
+    }
+
+    [TestMethod]
+    public void TheBump_IsTheGolems_ItFindsItsRouteUnderway_AndTheRouteCorrectsInside()
+    {
+        Refuses("{ route = g.Bump(Pose(10.25, 6.1, -1.5708), 0.0); }", "nothing underway");
+        Visit(1, 9.0, 1.5);
+        Decide(1, 9.0, 9.5);   // down the east corridor
+        // the body stood at (10.25, 6.1) facing south and was pressed on the nose: the golem reckons the touch one radius ahead
+        perf.Actor.Using("{ me = Pose(@px, @py, @h); route = g.Bump(me, @bearing); }")
+            .WithParameters(p => { p["px", typeof(double)] = 10.25; p["py", typeof(double)] = 6.1; p["h", typeof(double)] = South; p["bearing", typeof(double)] = 0.0; })
+            .PerformCommand();
+        Assert.AreEqual(1, Int("g.Find(1).Bumps"), "the golem handed the touch to its route underway");
+        Assert.AreEqual(1, Int("collisions.MarkCount"));
+        Assert.IsTrue(Bool("collisions.KnowsAt(Position(10.25, 5.85))"), "the mark where the touch landed: the body's radius ahead of where it stood");
+        Assert.IsFalse(Bool("g.FitsAt(Position(10.25, 5.6))"), "the thing reaches beyond the mark, into the corridor");
+        Assert.AreEqual("back", Text("g.Find(1).Order"), "and the route corrected its way inside: the retreat first");
+    }
+
+    [TestMethod]
+    public void TheBodysReport_IsOneAct_AndTheRouteKnowsWhetherItAskedATurnOrAMove()
+    {
+        Visit(1, 2.0, 1.5);   // from the kitchen's centre, facing east (heading 0)
+        StringAssert.StartsWith(Text("g.Find(1).Order"), "turn");
+        double heading = Double("g.Find(1).Target.Heading");
+        perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @theta); route.Arrive(me); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; p["theta", typeof(double)] = heading; }).PerformCommand();
+        Assert.AreEqual("advance", Text("g.Find(1).Order"), "the arrival was the turn: now the move");
+        double tx = Double("g.Find(1).Target.X"), ty = Double("g.Find(1).Target.Y");
+        perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @theta); route.Arrive(me); }")
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = tx; p["y", typeof(double)] = ty; p["theta", typeof(double)] = heading; }).PerformCommand();
+        Assert.AreEqual(tx, Double("g.Find(1).Standing.X"), 1e-9, "the arrival was the move: the body stands where it went");
+
+        Follow(5.5, 9.5);   // a told point: no start known, the route asks 'decide' — nothing of the motors
+        Refuses("{ route = g.Find(2); route.Arrive(Pose(5.0, 9.5, 0.0)); }", "asked nothing of the body's motors");
+    }
+
+    [TestMethod]
+    public void AFollowerOnItsLastStop_PullsOver_BeforeTheRouteCompletes()
+    {
+        Follow(5.5, 9.5);                       // the leader's spot, in the north hall
+        Decide(1, 5.5, 8.5);                    // from just south of it, facing east (heading 0)
+        Reach(1, 5.5, 9.5);                     // the stop reached…
+        Assert.AreEqual("pending", Text("g.Find(1).Status"), "…is not the end for a follower");
+        Assert.AreEqual(0, Int("g.Find(1).StopsLeft"));
+        Assert.AreEqual("aside", Text("g.Find(1).NextLeg.Name"), "it pulls over first, off the leader's way — a leg of its own: " + Text("g.Find(1).AsPlan()"));
+        while (Bool("g.Find(1).IsPending()")) Step(1, Text("g.Find(1).Order"));
+        Assert.AreEqual("completed", Text("g.Find(1).Status"), "walked aside: done");
     }
 
     [TestMethod]
@@ -1012,10 +1099,8 @@ public class MissionAcceptanceTests
         Graze(1, 0.05, 8.6);
         Assert.IsFalse(Bool("g.Find(1).MayRetryLeg"), "three grazes on one leg: patience spent, the mission is given up");
         Assert.AreEqual(0, Int("collisions.MarkCount"), "a graze leaves no mark: the wall was known");
-
-        Reach(1, 2.0, 1.5);
+        Assert.AreEqual("failed", Text("g.Find(1).Status"), "the route gave itself up: the third graze ended it inside");
         Assert.AreEqual(3, Int("g.Find(1).Grazes"), "the mission remembers every graze");
-        Assert.AreEqual("completed", Text("g.Find(1).Status"), "the golem chose to go on and got there");
         Refuses("{ route = g.Find(2); route.Graze(Position(1.0, 1.0), Pose(1.0, 1.0, 0.0)); }", "unknown route");
     }
 
@@ -1083,6 +1168,21 @@ public class MissionAcceptanceTests
     private void Bump(int id, double x, double y, double heading) =>
         perf.Actor.Using(@"
             { route = g.Find(@id); touch = Pose(@x, @y, @heading); me = Pose(@px, @py, @heading); route.Bump(touch, me); }
+        ")
+        .WithParameters(p => {
+            p["id",      typeof(int)]    = id;
+            p["x",       typeof(double)] = x;
+            p["y",       typeof(double)] = y;
+            p["heading", typeof(double)] = heading;
+            p["px",      typeof(double)] = x - 0.25 * Math.Cos(heading);
+            p["py",      typeof(double)] = y - 0.25 * Math.Sin(heading);
+        })
+        .PerformCommand();
+
+    // The touch as the robot's report writes it: ONE act, and the route concludes what it was (the body one radius behind the touch).
+    private void Touched(int id, double x, double y, double heading) =>
+        perf.Actor.Using(@"
+            { route = g.Find(@id); touch = Pose(@x, @y, @heading); me = Pose(@px, @py, @heading); route.Touched(touch, me); }
         ")
         .WithParameters(p => {
             p["id",      typeof(int)]    = id;
@@ -1210,16 +1310,39 @@ public class MissionAcceptanceTests
         })
         .PerformCommand();
 
-    private void Reach(int id, double x, double y) =>
-        perf.Actor.Using(@"
-            { route = g.Find(@id); point = Position(@x, @y); route.Reach(point); }
-        ")
-        .WithParameters(p => {
-            p["id", typeof(int)]    = id;
-            p["x",  typeof(double)] = x;
-            p["y",  typeof(double)] = y;
-        })
-        .PerformCommand();
+    // The body walks the way until the leg at (x, y) — a stop, a door, a point — is behind it: one act per thing the route
+    // asks (a turn, an advance, a retreat), each bringing the pose the body stands at afterwards, as the robot reports it
+    // (17-sep-2026: the route speaks the robot's words — action and amount — and the acts of the cursor bring the pose).
+    private void Reach(int id, double x, double y)
+    {
+        Assert.IsTrue(Bool($"g.Find({id}).IsRouted"), $"route {id} walks only once its way is decided");
+        for (int step = 0; step < 80; step++)
+        {
+            if (!Bool($"g.Find({id}).IsPending()")) Assert.Fail($"route {id} ended before reaching ({x}, {y})");
+            bool atIt = Math.Abs(Double($"g.Find({id}).NextLeg.At.X") - x) < 1e-6 && Math.Abs(Double($"g.Find({id}).NextLeg.At.Y") - y) < 1e-6;
+            Step(id, Text($"g.Find({id}).Order"));
+            if (!atIt) continue;
+            if (!Bool($"g.Find({id}).IsPending()")) return;
+            if (Math.Abs(Double($"g.Find({id}).NextLeg.At.X") - x) > 1e-6 || Math.Abs(Double($"g.Find({id}).NextLeg.At.Y") - y) > 1e-6) return;
+        }
+        Assert.Fail($"route {id}: too many steps without reaching ({x}, {y})");
+    }
+
+    // One thing the route asks, done: a turn made (the body stands where it stood, facing the target's heading) or a move
+    // made (the body stands at the target, facing that heading) — the act the robot's report writes.
+    private void Step(int id, string order)
+    {
+        double tx = Double($"g.Find({id}).Target.X"), ty = Double($"g.Find({id}).Target.Y"), th = Double($"g.Find({id}).Target.Heading");
+        if (order == "turnLeft" || order == "turnRight")
+            perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @theta); route.Turn(me); }")
+                .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = Double($"g.Find({id}).Standing.X"); p["y", typeof(double)] = Double($"g.Find({id}).Standing.Y"); p["theta", typeof(double)] = th; })
+                .PerformCommand();
+        else if (order == "advance" || order == "back")
+            perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @theta); route.Reach(me); }")
+                .WithParameters(p => { p["id", typeof(int)] = id; p["x", typeof(double)] = tx; p["y", typeof(double)] = ty; p["theta", typeof(double)] = th; })
+                .PerformCommand();
+        else Assert.Fail($"route {id} asks '{order}': nothing for the body to do");
+    }
 
     private void Abandon(int id, string reason) =>
         perf.Actor.Using(@"
