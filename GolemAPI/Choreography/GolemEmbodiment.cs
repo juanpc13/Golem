@@ -295,8 +295,8 @@ public sealed class GolemEmbodiment
     }
 
     /// <summary>Somebody took it away: the golem forgets the obstacle standing there, with every mark that outlined it. The
-    /// reaction tells the peers (the point rides beside the act as an expose: a reaction captures no object), who forget it
-    /// too. No order changes: the way stands.</summary>
+    /// reaction tells the peers — it captures the point from the `Position(@x, @y)` built beside the act, no expose — who
+    /// forget it too. No order changes: the way stands.</summary>
     public Answer Forget(double x, double y) => Answer.Of(golemActor.Using(
         @"
             Check(collisions.KnowsAt(Position(@x, @y))) Error 'the golem holds no obstacle there';
@@ -306,7 +306,6 @@ public sealed class GolemEmbodiment
                 at = Position(@x, @y);
                 g.Forget(at);
             }
-            expose @x gx, @y gy;
         ")
         .WithParameters(p => {
             p["x", typeof(double)] = x;
@@ -322,11 +321,12 @@ public sealed class GolemEmbodiment
 
     /// <summary>The body did the one thing it was told and reports it: `route.Arrive(me)` on the ROUTE UNDERWAY — the golem
     /// knows which it is; no id enters the act (Juan, 18-sep-2026: "¿no sería la ruta en curso la que terminamos encontrando?";
-    /// lab-underway.txt: a reaction on `[_:Golem].Underway()` pushes the print) — with where the body stands now and, relayed as
-    /// the domain printed them, the route's id, the point the order named and whether it was a stop, for the EXPOSE alone: the
-    /// reaction that tells the follower needs the route it announces for and fires on a stop alone (the literal `true`). The
-    /// `route` the body echoes is the host's token to tell a stale report from the order carried. A follower on its last stop
-    /// lingers before anything else, so the leader keeps its lead: the clock is the host's. Null: not the order the body was given.</summary>
+    /// lab-underway.txt: a reaction on `[_:Golem].Underway()` pushes the print) — with where the body stands now. The EXPOSE
+    /// carries only what the act does not say (18-sep-2026, ajuste 42): the route's id and whether the order done was a stop, so
+    /// the reaction that tells the follower fires on a stop alone (the literal `true`) and announces for the right route; the
+    /// pose it tells is captured from the `Pose(@…)` beside the act. The `route` the body echoes is the host's token to tell a
+    /// stale report from the order carried. A follower on its last stop lingers before anything else, so the leader keeps its
+    /// lead: the clock is the host's. Null: not the order the body was given.</summary>
     public Answer? Arrived(int route)
     {
         var was = Mechanics.Carrying;
@@ -353,12 +353,10 @@ public sealed class GolemEmbodiment
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
-                    expose @id rid, @x rx, @y ry, @stop reached;
+                    expose @id rid, @stop reached;
                 ")
                 .WithParameters(p => {
                     p["id", typeof(int)] = was.Route;
-                    p["x", typeof(double)] = was.X;
-                    p["y", typeof(double)] = was.Y;
                     p["stop", typeof(bool)] = stop;
                     p["px", typeof(double)] = here.X;
                     p["py", typeof(double)] = here.Y;
@@ -395,8 +393,10 @@ public sealed class GolemEmbodiment
     /// and where on its shell it was pressed (the bearing). ONE script: `route = g.Bump(me, @bearing)` — the golem reckons the
     /// touch on the plane from the body it declared, finds its route underway, the route concludes inside what the touch was
     /// (a wall it knows: a graze; anything else: a thing, marked — FOR NOW EVERY TOUCH IS A BUMP, Juan 18-sep-2026) and corrects
-    /// its way, and the print is what it asks now: the retreat. The peers are told by the reaction on the expose, in the same
-    /// words. Nothing underway (the body was standing): the domain refuses, and that refusal is the answer.</summary>
+    /// its way, and the print is what it asks now: the retreat. The peers are told by the reaction that captures the pose from
+    /// the `Pose(@…)` beside the act and the bearing from the act itself; only the golem's NAME is exposed — the journal's
+    /// identity, in no act (18-sep-2026, ajuste 42). Nothing underway (the body was standing): the domain refuses, and that
+    /// refusal is the answer.</summary>
     public Answer Bumped(double bodyX, double bodyY, double bodyHeading, double bearing)
     {
         Answer answer;
@@ -417,7 +417,7 @@ public sealed class GolemEmbodiment
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
                     }
-                    expose @bodyX bodyX, @bodyY bodyY, @bodyHeading bodyHeading, @bearing bearing, @name who;
+                    expose @name who;
                 ")
                 .WithParameters(p => {
                     p["bodyX", typeof(double)] = bodyX;

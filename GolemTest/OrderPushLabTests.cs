@@ -134,9 +134,9 @@ public sealed class OrderPushLabTests
         perf.OutputTarget(sink, new JsonFormatter());
         // the speech, as GolemSpeech defines it (no peers to tell here: the reactions match and print instead)
         perf.Actor.Reactions.DefineReaction("echo-bumped").Cue().Company().WithSharedHydration().Seek("Bumped").One()
-            .OnMatch("expose $x x, $y y, $heading heading, $who who, $px px, $py py;").Program.Emit("print @x 'bumpedAt';");
+            .OnMatch("Pose($bx, $by, $bh) [_:Golem].Bump(_, $bearing) expose $who who;").Program.Emit("print @bx 'bumpedAt';");
         perf.Actor.Reactions.DefineReaction("echo-reached").Cue().Company().WithSharedHydration().Seek("Reached").One()
-            .OnMatch("expose $missionId rid, $x rx, $y ry;").Program.Emit("print @x 'reachedAt';");
+            .OnMatch("Pose($x, $y, _) [_:Route].Arrive(_) expose $missionId rid, true reached;").Program.Emit("print @x 'reachedAt';");
         foreach (var (name, pattern) in new[] { ("next-order-find", "[_:Golem].Find($id)"), ("next-order-visit", "[_:Golem].Visit(_, _)"), ("next-order-cover", "[_:Golem].Cover(_, _)"), ("next-order-follow", "[_:Golem].Follow(_)") })
             perf.Actor.Reactions.DefineReaction(name).Cue().Company().WithSharedHydration().Seek("Act").One().OnMatch(pattern).Program.Emit(always);
         perf.Start();

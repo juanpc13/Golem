@@ -9,8 +9,10 @@ namespace GolemAPI.Choreography;
 
 // What the golem SAYS to its peers and what it takes up from them. Speech is a Reaction, never a command (paper 04):
 // a tell asserts a lived fact, past tense, when the act that made it lands in the journal. A reaction captures no
-// object, so the acts that must be told expose their values beside them (the labels below) and the reaction matches
-// those. The uptakes bind the peers' tells to the scripts GolemController declares.
+// object variable, but it captures the @params of the act — and of the object built beside it: a constructor pattern
+// next to the act casts the `Pose(@…)` of the same entry (18-sep-2026, lab-nested.txt) — so the acts expose ONLY what
+// they do not contain (the golem's name; whether the arrival was a stop). The uptakes bind the peers' tells to the
+// scripts GolemEmbodiment declares.
 public sealed class GolemSpeech
 {
     private readonly PerformanceV2 performance;
@@ -44,9 +46,10 @@ public sealed class GolemSpeech
 
         if (peers.Count > 0)
         {
-            // The touch itself, with my name and the pose of the touch: a peer that bumped there and then knows it met
-            // ME, not a thing. One tell per peer in one entry (several statements: no single-tell elision), one once-id
-            // per addressee.
+            // The touch itself, in the body's words — where it stood, facing which way, where on its shell — and my name:
+            // the pose is captured from the `me = Pose(…)` built beside the act, the bearing from the act's own argument,
+            // and only the name is exposed (the journal's identity, in no act). One tell per peer in one entry (several
+            // statements: no single-tell elision), one once-id per addressee.
             string bumped = string.Join("\n", peers.Select(p => $@"
                 tell BumpedAt with @bodyX, @bodyY, @bodyHeading, @bearing, @who
                     to {p}
@@ -54,7 +57,7 @@ public sealed class GolemSpeech
             golemActor.Reactions.DefineReaction("echo-bumped")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Bumped").One()
-                    .OnMatch("expose $bodyX bodyX, $bodyY bodyY, $bodyHeading bodyHeading, $bearing bearing, $who who;")
+                    .OnMatch("Pose($bodyX, $bodyY, $bodyHeading) [_:Golem].Bump(_, $bearing) expose $who who;")
                 .Causation.Continue(bumped);
 
             // Somebody took a thing away: the fleet must forget it together, or one golem would keep skirting what
@@ -66,18 +69,21 @@ public sealed class GolemSpeech
             golemActor.Reactions.DefineReaction("echo-forgotten")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Forgotten").One()
-                    .OnMatch("expose $x gx, $y gy;")
+                    .OnMatch("Position($x, $y) [_:Golem].Forget(_)")   // the point built beside the act: no expose at all
                 .Causation.Continue(forgotten);
         }
 
         if (tellDoneTo == null) return;
-        // Every stop the body reaches is told to the peer that follows, whatever route it belongs to. Two statements
-        // on purpose (engine 2.0.1-beta.10017): a single-tell entry is elided with its ack, and an elided tail gets
-        // its ids reused at the next boot; announcing the stop first keeps the entry out of elision.
+        // Every stop the body reaches is told to the peer that follows, whatever route it belongs to: the pose the body
+        // STANDS at (captured from the `me = Pose(…)` beside the act — a tell asserts a lived fact), on the literal `true
+        // reached` alone (whether the arrival was a stop is the domain's conclusion inside Arrive: frozen on the entry as an
+        // expose, with the route's id). Two statements on purpose (engine 2.0.1-beta.10017): a single-tell entry is elided
+        // with its ack, and an elided tail gets its ids reused at the next boot; announcing the stop first keeps the entry
+        // out of elision.
         golemActor.Reactions.DefineReaction("echo-reached")
             .Cue().Company().WithSharedHydration()
             .Seek("Reached").One()
-                .OnMatch("expose $missionId rid, $x rx, $y ry, true reached;")   // the literal: the arrival was a STOP (17-sep-2026: one Arrive act, the reaction picks the stop)
+                .OnMatch("Pose($x, $y, _) [_:Route].Arrive(_) expose $missionId rid, true reached;")
             .Causation.Continue($@"
                 {{
                     route = g.Find(@missionId);

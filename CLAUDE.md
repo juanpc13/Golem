@@ -194,8 +194,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   validated JSON body whose endpoint writes the act whole (`route.Turn(me)`, `route.Reach(me)`, the pose from telemetry) and hands the answer
   back to the GolemEmbodiment: its print is the next order — "gira, luego ros le dice ya giré, se escribe que giró y esa escritura
   imprime lo siguiente". Each report is ONE act on `route = g.Underway()`, its script inline in the embodiment — `Arrived`
-  (`route.Arrive(me)`; the expose carries the route's id, the point and `@stop` for the tell alone, and `echo-reached` matches
-  the literal `true reached` so the follower is told on a stop alone), `Bumped` (`route = g.Bump(me, @bearing)`: `bodyX bodyY bodyHeading bearing`, nothing else read) — the host
+  (`route.Arrive(me)`; `echo-reached` captures the pose from the `Pose(@…)` built beside the act — `Pose($x, $y, _) [_:Route].Arrive(_)` — and the expose carries only what the act does not say, the route's id and `@stop`, firing on the literal `true reached` so the follower is told on a stop alone; 18-sep ajuste 42), `Bumped` (`route = g.Bump(me, @bearing)`: `bodyX bodyY bodyHeading bearing`, nothing else read) — the host
   relays the body's words, nothing more; the `route` the body echoes is the host's token for a stale ARRIVAL alone. When nothing comes through a print (a told point taken up as a `Follow`, a boot) the GolemEmbodiment's
   clock ASKS the same print as a query every 2 s (`AskOrder`) and obeys it if it differs from what the body carries. Every point of
   the way is journaled (the 10-sep "walk in silence" is superseded by the 16-sep dialogue). The host keeps only the
@@ -207,20 +206,22 @@ whether it could or not, so the domain resolves what follows. Consequences:
   The braces matter: an assignment at the top level of a command becomes a global of the actor (Fase 0,
   P2a); inside `{ }` the name dies with the block (P2b). Never a literal value in a template: every value
   is an `@param` (program–value separability, paper 02).
-  **The touches take their objects too, and what is told rides beside them as `expose`** (Juan, 10-sep:
-  "el g.Bump aún no maneja posición… hay que corregirlo, y el g.Mark también"): `{ touch = Pose(@x, @y,
-  @heading); route = g.Find(@id); route.Bump(touch); } expose @x x, @y y, @heading heading, @me who, @px px, @py py;` — the
-  reaction that tells the peers captures the `expose` labels, because the matcher captures literals, `@params`
-  and `expose` labels only, never an object variable (Fase 0, P3). Same for the idle `Bump(touch)` (`tx, ty,
-  twho, tpx, tpy` → `TouchedAt`), `Met` (`ex, ey` → `MetPeer`), `Reach` (`rid, rx, ry`) and `Forget` (`gx, gy`);
-  `HearBump`, `LearnForget` need no expose (nothing captures them). Labels are
-  distinct per act so no two reactions match one shape. **An `expose` exists ONLY where a Reaction must capture a
-  VALUE to tell it** (Juan, 16-sep: "estos tengo entendido que no aportan nada de valor"; lab `lab-patterns.txt`): a
-  reaction can match the act itself — `[_:Route].Reach(_)`, `Stop(_)`, `Via(_)`, `Bump(_)`, `Pause()`, `Resume()`,
-  `[_:Golem].Visit(_)`, `[_:Golem].Find($id)`, `[_:Route].Fail($why)` all define and fire on a braced command — so an
-  expose used as a mere trigger adds nothing and was removed (`vid vx vy`, `order`, `held`, `resumed`, `ended`,
-  `letgo` are gone; `Passed` carries none). What stays is what a tell needs: `rid rx ry` (`echo-reached` →
-  `PointVisited`, on the literal `true reached`), the touch's (`bodyX bodyY bodyHeading bearing who`), `gx gy`. Lab caveat: firing of act-pattern reactions was
+  **The touches take their objects too, and a reaction captures what a tell needs FROM THE ACT ITSELF** (Juan, 10-sep:
+  "el g.Bump aún no maneja posición… hay que corregirlo"; 18-sep-2026, ajuste 42, lab `lab-nested.txt`): the matcher captures
+  literals, `@params` in argument positions and `expose` labels — never a local variable (`Bump($me, _)` stays silent) — and a
+  CONSTRUCTOR PATTERN BESIDE THE ACT casts the object built the line before: `Pose($bodyX, $bodyY, $bodyHeading)
+  [_:Golem].Bump(_, $bearing)` fires once on `{ me = Pose(@bodyX, @bodyY, @bodyHeading); route = g.Bump(me, @bearing); }` with
+  the four values captured. A constructor nested INSIDE an argument (`Bump(Pose($x, $y, $h), _)`) does not parse; a bare
+  `Pose($…)` alone fires on every entry that builds a pose, so it always stands beside its act. **An `expose` exists ONLY for a
+  value the act does not contain**: `Bumped` exposes `@name who` alone (the journal's identity, no domain state; the engine's
+  `Told` mapping hands the hearer no sender), `Arrived` exposes `@id rid, @stop reached` (whether the arrival was a STOP is
+  concluded inside `Arrive(me)`, and a reaction predicate never reads live state — it is frozen on the entry; the pose told is
+  the body's, captured beside the act), `Forget` exposes nothing (`Position($x, $y) [_:Golem].Forget(_)`); `HearBump`,
+  `LearnForget` need no expose (nothing captures them). Earlier (Juan, 16-sep: "estos tengo entendido que no aportan nada de
+  valor"; lab `lab-patterns.txt`): a reaction can match the act itself — `[_:Route].Reach(_)`, `Stop(_)`, `Via(_)`, `Bump(_)`,
+  `Pause()`, `Resume()`, `[_:Golem].Visit(_)`, `[_:Golem].Find($id)`, `[_:Route].Fail($why)` all define and fire on a braced
+  command — so an expose used as a mere trigger adds nothing and was removed (`vid vx vy`, `order`, `held`, `resumed`, `ended`,
+  `letgo` are gone; `Passed` carries none). Lab caveat: firing of act-pattern reactions was
   inconsistent across identical runs (`Stop`, `Resume`, `Then`, `Visit` fired, `Reach`, `Via`, `Pause`, `Bump`, `Fail`
   stayed silent in one run) — one more reason the next order is the command's own print, never a reaction's push.
   **A touch on a jamb is a wall** (16-sep lab): `MapLayout.DoorGap` — within it of a door's point there is no wall — is
