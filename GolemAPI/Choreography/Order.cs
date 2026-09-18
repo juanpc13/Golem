@@ -8,9 +8,8 @@ namespace GolemAPI.Choreography;
 // 17-sep-2026: "al robot se le dice muy sencillamente lo que debe moverse hacia adelante, qué tanto debe rotar"). Every
 // script that changes it (the errand, a turn made, a point reached, a bump, a hold…) ends with the same print, and the
 // command RETURNS that print to whoever performed it, at write time. The ACTION is one of the robot's base actions —
-// advance, back, turnLeft, turnRight, stop — with its AMOUNT (metres, or radians); or `decide`, the one order that is no
-// action of the robot: the route has no way, or its corrections ran out, and decides it again from where the body stands
-// (`route.Decide(from)`). Nothing pending → no order. The rest (kind, name, the point headed to, following, stopsLeft) is
+// advance, back, turnLeft, turnRight, stop — with its AMOUNT (metres, or radians). Never `decide` since 18-sep-2026: a route
+// is born with its way and decides it again by itself. Nothing pending → no order. The rest (kind, name, the point headed to, following, stopsLeft) is
 // what the panel and the log show; the body needs only the action and the amount.
 public sealed record Order(int Route, string Action, double Amount, string Kind, string Name, double X, double Y, double Heading,
                            bool Following, int StopsLeft)

@@ -1037,6 +1037,95 @@ public class MissionAcceptanceTests
         Assert.AreEqual(2, Int("collisions.MarkCount"), "and nothing more is learned from the repeat");
     }
 
+    // ---- where the golem knows its body stands (18-sep-2026, ajuste 41: a told point is planned on arrival; no 'decide') ----
+
+    [TestMethod]
+    public void TheGolem_LearnsWhereItsBodyStands_FromEveryActThatBringsThePose()
+    {
+        Assert.IsFalse(Bool("g.KnowsWhereItStands"), "born, it knows nothing of where its body is");
+        Visit(1, 2.0, 1.5);                                   // the errand opens from the kitchen's centre: where the body stands
+        Assert.IsTrue(Bool("g.KnowsWhereItStands"));
+        Assert.AreEqual(2.0, Double("g.Standing.X"), 1e-9);
+        Assert.AreEqual(9.5, Double("g.Standing.Y"), 1e-9);
+        Step(1, Text("g.Find(1).Order"));                     // the body did the first thing asked...
+        Step(1, Text("g.Find(1).Order"));                     // ...and the next: it reported where it stood each time
+        Assert.AreEqual(Double("g.Find(1).Standing.X"), Double("g.Standing.X"), 1e-9, "the route told its golem where the body stood");
+        Assert.AreEqual(Double("g.Find(1).Standing.Y"), Double("g.Standing.Y"), 1e-9);
+        Assert.AreEqual(Double("g.Find(1).Standing.Heading"), Double("g.Standing.Heading"), 1e-9);
+    }
+
+    [TestMethod]
+    public void AToldPoint_IsPlannedAtOnce_FromWhereTheGolemKnowsItsBodyStands()
+    {
+        Wake(2.0, 9.5, East);                                 // the body woke in the kitchen, facing east
+        Follow(5.5, 9.5);                                     // the leader says it reached the north hall
+        Assert.IsTrue(Bool("g.Find(1).IsRouted"), "planned on arrival: " + Text("g.Find(1).AsPlan()"));
+        StringAssert.EndsWith(Text("g.Find(1).AsPlan()"), "north@5.5,9.5", "from the kitchen, through its door, to the told point");
+        Assert.AreEqual("advance", Text("g.Find(1).Order"), "facing east already, the first order is to the motors — never 'decide'");
+        Assert.IsTrue(Double("g.Find(1).Amount") > 0.0);
+    }
+
+    [TestMethod]
+    public void AToldPoint_WhileBusy_IsPlannedFromWhereTheWayUnderwayEnds()
+    {
+        Visit(1, 2.0, 1.5);                                   // to the living room, from the kitchen
+        Follow(9.0, 1.5);                                     // the leader is in the garage
+        Assert.IsTrue(Bool("g.Find(2).IsRouted"));
+        StringAssert.Contains(Text("g.Find(2).AsPlan()"), "@4,1.5", "from where route 1 ends — the living room — through its door to the south: " + Text("g.Find(2).AsPlan()"));
+        StringAssert.EndsWith(Text("g.Find(2).AsPlan()"), "garage@9,1.5");
+    }
+
+    [TestMethod]
+    public void AToldPoint_BeforeAnyActBroughtThePose_IsRefused()
+    {
+        Refuses("{ point = Position(5.5, 9.5); g.Follow(point); }", "does not know where its body stands");
+        Assert.AreEqual(0, Int("g.Routes().Count"), "nothing minted");
+    }
+
+    [TestMethod]
+    public void Awake_TheGolemKeepsWhereItsBodyStands_AndAPlanUnderway_IsDecidedAgainFromThere()
+    {
+        Visit(1, 9.0, 9.5);                                   // to the storage, from the kitchen: east through the north hall
+        StringAssert.StartsWith(Text("g.Find(1).AsPlan()"), "kitchen/");
+        Wake(2.0, 1.5, North);                                // reborn: the body was carried to the living room meanwhile
+        Assert.AreEqual(2.0, Double("g.Standing.X"), 1e-9);
+        Assert.AreEqual(1.5, Double("g.Standing.Y"), 1e-9);
+        StringAssert.StartsWith(Text("g.Find(1).AsPlan()"), "living/", "the way underway was decided again from the living room, inside: " + Text("g.Find(1).AsPlan()"));
+        StringAssert.StartsWith(Text("g.Find(1).Order"), "turn", "facing north, the way east asks a turn first");
+    }
+
+    [TestMethod]
+    public void Awake_WithNothingUnderway_OnlyKeepsWhereItStands()
+    {
+        Wake(5.5, 5.5, East);
+        Assert.IsTrue(Bool("g.KnowsWhereItStands"));
+        Assert.AreEqual(East, Double("g.Standing.Heading"), 1e-9);
+        Assert.IsFalse(Bool("g.HasPendingMission()"));
+        Assert.AreEqual(0, Int("g.Routes().Count"));
+    }
+
+    [TestMethod]
+    public void Awake_WhileHeld_TheWayUnderwayStaysAsItWas()
+    {
+        Visit(1, 9.0, 9.5);
+        string plan = Text("g.Find(1).AsPlan()");
+        perf.Actor.Using("{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }").PerformCommand();
+        Wake(2.0, 1.5, North);
+        Assert.AreEqual(plan, Text("g.Find(1).AsPlan()"), "held: the body stands where it is, nothing is decided again");
+        Assert.AreEqual("stop", Text("g.Find(1).Order"));
+        Assert.AreEqual(1.5, Double("g.Standing.Y"), 1e-9, "but the golem knows where its body stands now");
+    }
+
+    [TestMethod]
+    public void TheFollowerStandoff_IsTwoBodiesAndAClearance_NotALooseNumber()
+    {
+        Wake(4.5, 9.5, East);                                 // in the north hall, facing east
+        Follow(6.6, 9.5);                                     // the leader's spot, 2.1 m ahead in the same hall
+        Assert.AreEqual(2 * 0.25 + 0.5, Double("g.Find(1).FollowerStandoff"), 1e-9, "two radii of the declared body and the clearance");
+        Assert.AreEqual("advance", Text("g.Find(1).Order"));
+        Assert.AreEqual(2.1 - 1.0, Double("g.Find(1).Amount"), 1e-6, "the advance to the leader's spot stops a standoff short");
+    }
+
     [TestMethod]
     public void TheBump_IsTheGolems_ItFindsItsRouteUnderway_AndTheRouteCorrectsInside()
     {
@@ -1068,15 +1157,16 @@ public class MissionAcceptanceTests
             .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = tx; p["y", typeof(double)] = ty; p["theta", typeof(double)] = heading; }).PerformCommand();
         Assert.AreEqual(tx, Double("g.Find(1).Standing.X"), 1e-9, "the arrival was the move: the body stands where it went");
 
-        Follow(5.5, 9.5);   // a told point: no start known, the route asks 'decide' — nothing of the motors
-        Refuses("{ route = g.Find(2); route.Arrive(Pose(5.0, 9.5, 0.0)); }", "asked nothing of the body's motors");
+        Follow(5.5, 9.5);   // a told point while busy: planned at once from where route 1 ends (18-sep-2026) — never 'decide'
+        Assert.IsTrue(Bool("g.Find(2).IsRouted"), "the told point was planned on arrival");
+        CollectionAssert.Contains(new[] { "advance", "turnLeft", "turnRight" }, Text("g.Find(2).Order"), "its first order is one of the robot's motors");
     }
 
     [TestMethod]
     public void AFollowerOnItsLastStop_PullsOver_BeforeTheRouteCompletes()
     {
-        Follow(5.5, 9.5);                       // the leader's spot, in the north hall
-        Decide(1, 5.5, 8.5);                    // from just south of it, facing east (heading 0)
+        Wake(5.5, 8.5, East);                   // the body stands just south of the north hall's centre, facing east
+        Follow(5.5, 9.5);                       // the leader's spot, in the north hall: planned from there at once
         Reach(1, 5.5, 9.5);                     // the stop reached…
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "…is not the end for a follower");
         Assert.AreEqual(0, Int("g.Find(1).StopsLeft"));
@@ -1299,6 +1389,18 @@ public class MissionAcceptanceTests
             && double.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out _)
             && double.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out _);
     }
+
+    // The golem wakes where its body stands — the first act of every boot (18-sep-2026).
+    private void Wake(double x, double y, double theta) =>
+        perf.Actor.Using(@"
+            { me = Pose(@x, @y, @theta); g.Wake(me); }
+        ")
+        .WithParameters(p => {
+            p["x", typeof(double)] = x;
+            p["y", typeof(double)] = y;
+            p["theta", typeof(double)] = theta;
+        })
+        .PerformCommand();
 
     private void Follow(double x, double y) =>
         perf.Actor.Using(@"

@@ -18,8 +18,9 @@ namespace GolemDomain.Routes;
 /// route.Fail(why); route.Abandon(why); route.Announce();</c>. What it asks of the body NOW is <see cref="Order"/>, IN THE
 /// ROBOT'S OWN WORDS (Juan, 17-sep-2026: "al robot se le dice muy sencillamente lo que debe moverse hacia adelante, qué
 /// tanto debe rotar"): one base action at a time — <c>advance</c>, <c>back</c>, <c>turnLeft</c>, <c>turnRight</c>, <c>stop</c> —
-/// with its <see cref="Amount"/> (metres, or radians), or <c>decide</c> when the way must be decided again. The route
-/// remembers where the body STANDS and faces (every act of the cursor brings the pose), so the amounts start from where
+/// with its <see cref="Amount"/> (metres, or radians). Never 'decide' (18-sep-2026): a route is born with its way and decides
+/// it again BY ITSELF when it must (stranded after a retreat, awake with a plan underway). The route remembers where the
+/// body STANDS and faces (every act of the cursor brings the pose, and tells its golem), so the amounts start from where
 /// the body really is, not from where it should be.
 /// </summary>
 internal sealed class Route
@@ -29,6 +30,7 @@ internal sealed class Route
     private readonly Collisions collisions;    // what a bump on the way teaches, and what the planner skirts
     private readonly double radius;            // the body the way is planned for
     private readonly double retreat;           // how far it backs off after a touch, before anything else
+    private readonly Action<Pose> stood;       // what the route tells its golem when the body reported where it stood (a turn, a move)
     private readonly List<Position> stops = new();
     /// <summary>Where to go, in the order given.</summary>
     internal IReadOnlyList<Position> Stops => stops;
@@ -64,20 +66,26 @@ internal sealed class Route
     internal const int PatienceWithThings = 6;
     /// <summary>A turn smaller than this (radians) is not asked: the body already faces its point closely enough.</summary>
     internal const double TurnTolerance = 0.05;
-    /// <summary>How short of a leader's spot a follower stops on its last stop, in metres (the leader may still be there).</summary>
-    internal const double FollowerStandoff = 1.0;
+    /// <summary>The clearance a follower keeps beyond the two bodies on its last stop, in metres.</summary>
+    internal const double FollowerClearance = 0.5;
+    /// <summary>How short of a leader's spot a follower stops on its last stop: the two bodies and a clearance (the leader may
+    /// still be there). The fleet shares one body, so the leader's radius is this body's (18-sep-2026: the tell carries no
+    /// radius yet — a heterogeneous fleet would need it).</summary>
+    internal double FollowerStandoff => 2 * radius + FollowerClearance;
 
-    internal Route(int id, Position stop, bool following, bool choosesOrder, MapLayout layout, Collisions collisions, double radius, double retreat)
+    internal Route(int id, Position stop, bool following, bool choosesOrder, MapLayout layout, Collisions collisions, double radius, double retreat, Action<Pose> stood)
     {
         if (stop == null) throw new GolemDomainException("Route.Route: 'stop' was not given");
         if (layout == null) throw new GolemDomainException($"route {id} is decided on a layout");
         if (collisions == null) throw new GolemDomainException($"route {id} needs the collisions module, even empty");
+        if (stood == null) throw new GolemDomainException("Route.Route: 'stood' was not given");
         if (radius < 0) throw new GolemDomainException($"route {id} is planned for a body: its radius cannot be negative");
         if (retreat < 0) throw new GolemDomainException($"route {id} is planned for a body: its retreat cannot be negative");
         this.layout = layout;
         this.collisions = collisions;
         this.radius = radius;
         this.retreat = retreat;
+        this.stood = stood;
         Id = id;
         Following = following;
         ChoosesOrder = choosesOrder;
@@ -120,15 +128,27 @@ internal sealed class Route
 
     // ---- the way: decided inside, from a point, through the stops ahead ----
 
-    /// <summary>The way decided from a point — where the errand starts, or where the body stands after a bump, or at
-    /// wake with a plan underway: the shortest road through the stops ahead (in the order given, or the one the golem
-    /// chooses), doors crossed straight, openings named, marks skirted. What was left of the old way is replaced; the
-    /// body turns and runs from here. Refused when no way fits the body.</summary>
+    /// <summary>The way decided from a point — where the errand starts (the golem writes it when it hands the route out),
+    /// or wherever the lab puts the body: the shortest road through the stops ahead (in the order given, or the one the
+    /// golem chooses), doors crossed straight, openings named, marks skirted. What was left of the old way is replaced; the
+    /// body turns and runs from here. Refused when no way fits the body. Repertoire since 18-sep-2026: the host writes no
+    /// 'decide' — the route decides again by itself (<see cref="Awake"/>, PlanAgainFrom).</summary>
     internal Route Decide(Position from)
     {
         if (from == null) throw new GolemDomainException("Route.Decide: 'from' was not given");
         MustBePending();
         Plan(from);
+        return this;
+    }
+
+    /// <summary>The golem woke with this route underway and its body wherever it was carried meanwhile: the way is decided
+    /// again from where the body stands, by the route itself; no way from there, the route fails by itself (the golem's
+    /// <c>Wake(me)</c>, 18-sep-2026).</summary>
+    internal Route Awake(Pose me)
+    {
+        if (me == null) throw new GolemDomainException("Route.Awake: 'me' was not given");
+        MustBePending();
+        PlanAgainFrom(me);
         return this;
     }
 
@@ -189,18 +209,23 @@ internal sealed class Route
 
     internal bool IsRouted => !way.IsEmpty;
     /// <summary>What the route asks of the body NOW, in the robot's own words, one base action at a time — or, once it is
-    /// no longer pending, how it ended (completed, failed, abandoned): 'stop' (the operator holds the golem), 'decide' (it
-    /// has no way yet, or its corrections ran out without a way: the way must be decided again from where the body
-    /// stands — the one order that is no action of the robot), 'back' (reverse, the correction a touch inserted),
-    /// 'turnLeft' / 'turnRight' (turn in place, the shorter way round, to face the point it heads to) or 'advance' (move
-    /// forward to that point). How much is <see cref="Amount"/>. The golem prints both after every act that changes them;
-    /// the body does that one thing and reports it.</summary>
-    internal string Order => !IsPending() ? Status
-        : Paused ? "stop"
-        : (!IsRouted || nextLeg >= way.Count) ? "decide"
-        : NextLeg.IsReverse ? "back"
-        : (!turned && Math.Abs(TurnAhead) > TurnTolerance) ? (TurnAhead > 0 ? "turnLeft" : "turnRight")
-        : "advance";
+    /// no longer pending, how it ended (completed, failed, abandoned): 'stop' (the operator holds the golem), 'back'
+    /// (reverse, the correction a touch inserted), 'turnLeft' / 'turnRight' (turn in place, the shorter way round, to face
+    /// the point it heads to) or 'advance' (move forward to that point). How much is <see cref="Amount"/>. The golem prints
+    /// both after every act that changes them; the body does that one thing and reports it. Never 'decide' (18-sep-2026): a
+    /// pending route always has a way ahead — born with it, decided again by itself — or its invariant is broken.</summary>
+    internal string Order
+    {
+        get
+        {
+            if (!IsPending()) return Status;
+            if (Paused) return "stop";
+            if (!IsRouted || nextLeg >= way.Count) throw new GolemDomainException($"route {Id} is pending with no way ahead: a route is born with its way and decides it again by itself");
+            if (NextLeg.IsReverse) return "back";
+            if (!turned && Math.Abs(TurnAhead) > TurnTolerance) return TurnAhead > 0 ? "turnLeft" : "turnRight";
+            return "advance";
+        }
+    }
     /// <summary>How much of the order: metres to advance or back, radians to turn (always positive: the order says which
     /// way), zero when nothing is asked of the body's motors. A follower's last stop is met a standoff short of the
     /// leader's spot.</summary>
@@ -242,7 +267,7 @@ internal sealed class Route
     // The turn, signed, from where the body faces to where it must face (positive: to the left, counter-clockwise).
     private double TurnAhead => standing == null ? 0.0 : Normalize(Target.Heading - standing.Heading);
     /// <summary>Whether the body may act on the next leg now — back, turn or advance: a leg ahead, not held.</summary>
-    internal bool IsWalkable => IsPending() && IsRouted && nextLeg < way.Count && !Paused && Order != "decide";
+    internal bool IsWalkable => IsPending() && IsRouted && nextLeg < way.Count && !Paused;
     internal int LegsLeft => way.Count - nextLeg;
     /// <summary>The legs not yet known to be walked: the plan ahead, from the first one on.</summary>
     internal IReadOnlyList<Leg> LegsAhead => way.Legs().Skip(nextLeg).ToList();
@@ -296,6 +321,7 @@ internal sealed class Route
         MustBePending();
         if (Order != "turnLeft" && Order != "turnRight") throw new GolemDomainException($"route {Id} asked no turn now: it asks '{Order}'");
         standing = me;
+        stood(me);
         turned = true;
         return this;
     }
@@ -311,6 +337,7 @@ internal sealed class Route
         if (Order != "advance" && Order != "back") throw new GolemDomainException($"route {Id} asked no move now: it asks '{Order}'");
         var leg = NextLeg;
         standing = me;
+        stood(me);
         turned = false;
         if (!leg.IsReverse && !linedUp && !Same(leg.Approach, leg.Exit)) { linedUp = true; return this; }   // lined up in front of the door: now through it
         linedUp = false;
@@ -326,9 +353,9 @@ internal sealed class Route
         return this;
     }
 
-    // Stranded — the touch left only the retreat, no road fit from the point it was decided at — the route decides its way
-    // again from where the body actually stands once it backed off (18-sep-2026: the domain, not a 'decide' round trip through
-    // the host). No road from here either: the route ends.
+    // Stranded — the touch left only the retreat, no road fit from the point it was decided at — or awake with the body
+    // carried elsewhere: the route decides its way again from where the body actually stands (18-sep-2026: the domain, not a
+    // 'decide' round trip through the host). No road from here: the route ends.
     private void PlanAgainFrom(Pose me)
     {
         try { Plan(me); }
@@ -374,7 +401,8 @@ internal sealed class Route
     /// ITS WAY INSIDE (Juan, 16-sep-2026: "cuando choca queriendo llegar de A a B mete entre A y B otros puntos: ir para
     /// atrás un poco y pasar al lado… posiciones de corrección"): first a leg to back off — in reverse, the body's own
     /// retreat behind where it stood — then the planner's road from there through the stops ahead, skirting the figure
-    /// the mark now outlines. When no way fits from there, the retreat alone stays and the route asks 'decide' after it.</summary>
+    /// the mark now outlines. When no way fits from there, the retreat alone stays and, once the body reached it, the route
+    /// decides its way again from there by itself (PlanAgainFrom).</summary>
     internal Route Bump(Pose touch, Pose me)
     {
         MustBePending();
@@ -408,7 +436,7 @@ internal sealed class Route
     // The corrections a touch inserts ahead of what was left: back off first (a leg walked in reverse, the body's retreat
     // behind where it stood), then — replanning — the road from there through the stops ahead, or — not replanning — the
     // legs that were left, walked again from the retreat point. If no road fits from there, the retreat alone stays and
-    // the route asks 'decide' once it is done (the way is exhausted without completing).
+    // the route decides again from it once reached (Reach → PlanAgainFrom).
     private void Correct(Pose me, bool replan)
     {
         var back = RetreatFrom(me);

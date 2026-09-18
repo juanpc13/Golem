@@ -26,6 +26,7 @@ internal sealed class Golem
     private readonly Collisions collisions;
     private int idleBumps;       // times something touched the body while it stood without a mission
     private Pose held;           // where the body stood when the operator held the golem; null while it is free to move
+    private Pose standing;       // where the body last stood, facing which way, as the acts brought it; null until the first act with a pose
     private int lastHandle;      // a handle names one route forever — even after letting go (idempotency keys hang on it)
 
     internal Golem(Body body, MapLayout map, Collisions collisions)
@@ -111,14 +112,39 @@ internal sealed class Golem
         return Entrust(from, Centre(area), following: false, choosesOrder: true);
     }
 
-    /// <summary>The golem follows its leader to a point a peer says it reached — a route of its own, handle minted here.
-    /// (Leader–follower formation by told waypoints, not by sensing the leader: the follower knows where the leader
-    /// WAS, which is why a newer told point supersedes an older one and the host keeps a standoff on arrival.)</summary>
+    /// <summary>The golem follows its leader to a point a peer says it reached — a route of its own, handle minted here,
+    /// its way DECIDED AT ONCE from where the golem knows its body stands (Juan, 18-sep-2026: "ese mismo comando crea la
+    /// route para llegar al punto… veo innecesario el decide"): where its last pending route ends when it is busy, else
+    /// where its body last stood (<see cref="Standing"/>). Refused before any act brought the body's pose. (Leader–follower
+    /// formation by told waypoints, not by sensing the leader: the follower knows where the leader WAS, which is why a newer
+    /// told point supersedes an older one and its last stop is met a standoff short.)</summary>
     internal Route Follow(Position at)
     {
         if (at == null) throw new GolemDomainException("Golem.Follow: 'at' was not given");
-        return Entrust(null, at, following: true, choosesOrder: false);   // no start known here: the route asks 'decide'
+        var from = Whereabouts();
+        if (from == null) throw new GolemDomainException("the golem does not know where its body stands yet: no act brought its pose");
+        return Entrust(from, at, following: true, choosesOrder: false);
     }
+
+    /// <summary>The golem wakes where its body stands — <c>g.Wake(Pose(@x, @y, @theta))</c>, the first act of every boot once
+    /// the body said where it is: it keeps the pose (a told point can be planned from there at once) and, with a plan underway
+    /// and the golem not held, the route decides its way again from there INSIDE — the body may have been carried anywhere
+    /// while the golem was down (18-sep-2026: the domain's, not a 'decide' round trip through the host). Returns whether a
+    /// plan underway was decided again.</summary>
+    internal bool Wake(Pose me)
+    {
+        if (me == null) throw new GolemDomainException("Golem.Wake: 'me' was not given");
+        standing = me;
+        if (!HasPendingMission() || Held) return false;
+        Underway().Awake(me);
+        return true;
+    }
+
+    /// <summary>Where the body last stood, facing which way, as the acts brought it — the errand opened while free, a turn or
+    /// a move reported, a touch, a hold, a resume, the waking. Null before any act brought a pose: consult KnowsWhereItStands.</summary>
+    internal Pose Standing => standing;
+    /// <summary>Whether any act has brought the golem where its body stands.</summary>
+    internal bool KnowsWhereItStands => standing != null;
 
     /// <summary>A route the golem already holds, by its handle — to act on it later: <c>route = g.Find(@id); route.Reach(point);</c>.</summary>
     internal Route Find(int id)
@@ -187,6 +213,7 @@ internal sealed class Golem
         if (!HasPendingMission()) throw new GolemDomainException("nothing underway: a touch while the body stands is not written");
         var route = Underway();
         route.Touched(TouchOn(me, bearing), me);
+        standing = me;
         return route;
     }
 
@@ -333,6 +360,7 @@ internal sealed class Golem
         var route = Underway();
         route.Pause(me);
         held = me;
+        standing = me;
         return route;
     }
 
@@ -344,6 +372,7 @@ internal sealed class Golem
         if (me == null) throw new GolemDomainException("Golem.Resume: 'me' was not given");
         if (!Held) throw new GolemDomainException("the golem is not paused");
         held = null;
+        standing = me;
         var route = Underway();
         if (route.Paused) route.Resume(me);
         return route;
@@ -362,16 +391,25 @@ internal sealed class Golem
     // nobody charted, and between the two it finds the shortest road.
     private RoutePlanner Planner() => new(layout, collisions, Radius());
 
-    // A new route with this stop: the handle is the next one, minted here (a deterministic function of the routes the
-    // golem holds, so the same on replay), and never reused — the idempotency keys of the host hang on it.
+    // A new route with this stop, its way decided from `from` at once: the handle is the next one, minted here (a
+    // deterministic function of the routes the golem holds, so the same on replay), and never reused — the idempotency
+    // keys of the host hang on it. Opened while the golem is free, `from` is where its body stands: kept.
     private Route Entrust(Position from, Position stop, bool following, bool choosesOrder)
     {
-        var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions, Radius(), body.Retreat.InMeters);
-        if (from != null) route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
+        var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions, Radius(), body.Retreat.InMeters, Stood);
+        route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
+        if (!HasPendingMission()) standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
         routes.Add(route);
         lastHandle = route.Id;
         return route;
     }
+
+    // Where the body stands now — to plan a told point from: where the last pending route ends when the golem is busy,
+    // else where its body last stood; null before any act brought a pose.
+    private Pose Whereabouts() => HasPendingMission() ? PlannedEnd() : standing;
+
+    // What a route tells its golem when the body reported a turn or a move: where it stood then.
+    private void Stood(Pose me) => standing = me;
 
     private Position Centre(Area area)
     {

@@ -16,8 +16,8 @@ namespace GolemAPI.Choreography;
 // terminan llamando al Push automáticamente al terminar el script, sin necesidad de que nosotros lo disparemos".
 //
 // EVERY SCRIPT THE GOLEM'S JOURNAL RECEIVES LIVES HERE, as an action method: the operator's (Move, Cover, Pause, Resume,
-// Forget), the body's reports (Arrived, Bumped, Stuck) and what the touch protocol concludes (Grazed, Met, Decided,
-// DecidedPast, Failed, LetGo). Each is one act in the golem's words — a braced block, values as @params, the object found
+// Forget), the body's reports (Arrived, Bumped, Stuck), the waking (Wake: the golem wakes where its body stands — the first
+// act of every boot, 18-sep-2026) and the endings (Failed, LetGo). Each is one act in the golem's words — a braced block, values as @params, the object found
 // or built and handed to the act, a Check that refuses in the domain's voice — and ENDS WITH THE SAME PRINT, written in
 // full inside every script (Juan, 17-sep: "deja escrito el script completo, con sus prints"; NextOrder below is the same
 // text, kept for the reactions' emit and the clock's query): what the route asks now. That print is PUSHED to the output
@@ -73,7 +73,7 @@ public sealed class GolemEmbodiment
     // ==================================================================
     // What the route asks now, IN THE ROBOT'S WORDS — the print every act ends with, and what the next-order reactions
     // emit. It ALWAYS says something (`pending`), so the engine pushes it even when nothing is pending and the body must
-    // stop. `action`: advance | back | turnLeft | turnRight | stop, or decide (the way must be decided again); `amount`:
+    // stop. `action`: advance | back | turnLeft | turnRight | stop (never 'decide' since 18-sep-2026: the route decides inside); `amount`:
     // the metres or radians (Juan, 17-sep-2026: "qué tanto debe moverse hacia adelante, qué tanto debe rotar"); then the
     // point the body heads to, for the panel and the log. Nothing pending: no route, no order.
     // ==================================================================
@@ -434,35 +434,39 @@ public sealed class GolemEmbodiment
     }
 
     // ==================================================================
-    // THE DOMAIN'S DECISIONS THE EMBODIMENT ASKS FOR ON THE BODY'S BEHALF — each ONE act ending in the print; the reaction
-    // on g.Find(@id) pushes it.
+    // THE WAKING: the golem wakes where its body stands — ONE act, the first of every boot, once the membrane brought the pose
+    // (Juan, 18-sep-2026: "veo innecesario el decide"). The golem keeps the pose, so a told point taken up by a reaction — which
+    // has no telemetry — is planned from there at once; with a plan underway the route decides it again from there INSIDE
+    // (the body may have been carried anywhere while the golem was down). The reaction on g.Wake(_) pushes the print.
     // ==================================================================
-
-    // The way decided again on a route in hand — awake with a plan underway, or stranded after a bump with no road from
-    // the retreat — from where the body stands (its pose is telemetry: the only thing the host adds).
-    private Answer Decided(double x, double y, double theta) => Answer.Of(golemActor.Using(
-        @"
-            Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
-        ",
-        @"
-            {
-                route = g.Underway();
-                from = Pose(@x, @y, @theta);
-                route.Decide(from);
-                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
-                if (route.IsWalkable) {
-                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                          route.Following 'following', route.StopsLeft 'stopsLeft';
+    public Answer Wake()
+    {
+        var pose = ros.LatestPose;
+        if (pose == null) return Answer.Refusal("no telemetry from the body yet: the golem wakes where its body stands");
+        return Answer.Of(golemActor.Using(@"
+                {
+                    me = Pose(@x, @y, @theta);
+                    g.Wake(me);
+                    print g.HasPendingMission() 'pending', g.Held 'held';
+                    if (g.HasPendingMission()) { print g.Underway().Id 'route', g.Underway().Order 'action', g.Underway().Amount 'amount'; }
+                    if (g.HasPendingMission() && g.Underway().IsWalkable) {
+                        print g.Underway().NextLeg.Kind 'kind', g.Underway().NextLeg.Name 'name',
+                              g.Underway().Target.X 'x', g.Underway().Target.Y 'y', g.Underway().Target.Heading 'heading',
+                              g.Underway().Following 'following', g.Underway().StopsLeft 'stopsLeft';
+                    }
                 }
-            }
-        ")
-        .WithParameters(p => {
-            p["x", typeof(double)] = x;
-            p["y", typeof(double)] = y;
-            p["theta", typeof(double)] = theta;
-        })
-        .PerformCheckThenCommand());
+            ")
+            .WithParameters(p => {
+                p["x", typeof(double)] = pose.X;
+                p["y", typeof(double)] = pose.Y;
+                p["theta", typeof(double)] = pose.Theta;
+            })
+            .PerformCommand());
+    }
+
+    // ==================================================================
+    // THE ENDINGS THE EMBODIMENT WRITES ON THE BODY'S BEHALF — each ONE act ending in the print; the reaction on the act pushes it.
+    // ==================================================================
 
     // The world said no — a collision, a stall, no way — in the body's words; the route ends, the next one's order follows.
     private Answer Failed(string reason) => Answer.Of(golemActor.Using(
@@ -501,17 +505,6 @@ public sealed class GolemEmbodiment
         .WithParameters(p => { p["reason", typeof(string)] = reason; })
         .PerformCommand());
 
-    // The way, decided by the route itself from where the body stands. When no way fits the body, the route fails with
-    // the planner's reason. Asked by the output target when a print says 'decide'.
-    internal void Decide(string verb)
-    {
-        var here = ros.LatestPose;
-        if (here == null) { Note("no pose yet to decide the way from — asking again shortly"); return; }
-        Note($"{verb} — the route underway decides its way from ({here.X:0.0}, {here.Y:0.0})");
-        try { Report(Decided(here.X, here.Y, here.Theta), $"the route underway decided its way from ({here.X:0.0}, {here.Y:0.0})"); }
-        catch (Exception ex) { Report(Failed("no road: " + Reason(ex)), "the route underway failed: no road"); }
-    }
-
     // What a script answered, for the record: refused → said so (the domain's words). The next order is NOT dispatched
     // here: the reaction on the act pushes it to the output target.
     private void Report(Answer answer, string done)
@@ -531,13 +524,19 @@ public sealed class GolemEmbodiment
     // ==================================================================
     public async Task RunAsync(CancellationToken ct)
     {
-        // Awake with a way underway: it was decided from wherever the body stood then, and the body may be anywhere
-        // now — decide it again from here before anything else (once the body has said where it is).
+        // Awake: once the body has said where it is, the golem wakes there — ONE act (g.Wake(me)); with a plan underway the
+        // route decides it again from there inside. No pose in time: the golem starts without it, and the first act that
+        // brings a pose situates it (a told point cannot be planned until then).
         var patience = DateTime.UtcNow + TimeSpan.FromSeconds(15);
         while (ros.LatestPose == null && DateTime.UtcNow < patience && !ct.IsCancellationRequested) await Task.Delay(200, ct);
-        var first = AskOrder();
-        if (first != null && (first.IsTurn || first.IsMove)) Decide("awake with a plan underway");
-        else Mechanics.Dispatch(first);
+        var here = ros.LatestPose;
+        if (here == null) Note("no pose from the body yet: the golem starts without waking where it stands");
+        else
+        {
+            try { Report(Wake(), $"awake where the body stands ({here.X:0.0}, {here.Y:0.0}) facing {here.Theta:0.00}"); }
+            catch (Exception ex) { Note($"waking refused: {Reason(ex)}"); }
+        }
+        Mechanics.Dispatch(AskOrder());
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(2000, ct);

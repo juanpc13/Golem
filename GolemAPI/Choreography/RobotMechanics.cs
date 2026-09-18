@@ -16,9 +16,10 @@ namespace GolemAPI.Choreography;
 // an AMOUNT (metres, or radians), both the domain's to say; so the dispatch does no arithmetic — it switches on the
 // action and sends the body that one base action with its amount over the websocket (rosbridge, std_msgs/String on
 // /golem/<body>/order), the print's own JSON riding along with the body the journal declared. `continue` is the sixth
-// action: the same order the body was holding when told to stop comes back. `decide` is the one order that is no action
-// of the robot: it goes back to the golem, which decides its way again, and the new print comes back here. The robot
-// answers with its reports (arrived, bump, stuck): those reach the GolemEmbodiment through the golem's endpoints. Every
+// action: the same order the body was holding when told to stop comes back. No 'decide' reaches the dispatch since
+// 18-sep-2026: a route is born with its way and decides it again by itself; what the golem writes at boot is g.Wake(me), the
+// pose the membrane brought. The robot answers with its reports (arrived, bump, stuck): those reach the GolemEmbodiment
+// through the golem's endpoints. Every
 // move has a route, so nothing here does arithmetic on the body's pose.
 // NOT the membrane: Rosbridge is the wire (the websocket, the topics, the telemetry it parses) and knows nothing of
 // orders; the mechanics know the order — what the body carries, what it held, the linger — and nothing of topics beyond
@@ -45,8 +46,9 @@ public sealed class RobotMechanics : IOutputSink
     // How the prints reach this target WITHOUT anybody dispatching them (Juan, 17-sep-2026: "esos print terminarán llamando
     // a Push automáticamente al terminar el script"): a command's print is PULL — it returns to the caller — and only a
     // Reaction's emit is PUSHED. So one Reaction per act shape watches the journal and emits NextOrder when the act lands:
-    // Underway() — the arrival and the decisions on the route underway write `route = g.Underway()` first (Arrive, Decide,
-    // Fail); Bump(_, _) — the bump, `route = g.Bump(touch, me)`; Find($id) — a route in hand by its handle (Then); Visit(_, _) and Cover(_, _) — the
+    // Underway() — the arrival and the ending on the route underway write `route = g.Underway()` first (Arrive, Fail);
+    // Bump(_, _) — the bump, `route = g.Bump(me, bearing)`; Wake(_) — the golem wakes where its body stands (a plan underway
+    // decided again inside); Find($id) — a route in hand by its handle (Then); Visit(_, _) and Cover(_, _) — the
     // errand; Follow(_) — a told point; Pause(_) and Resume(_) — the operator's hold on the golem itself.
     // Defined BEFORE performance.Start(); the lab (lab-push-real.txt) saw each act push exactly once with the speech
     // reactions around. Many reactions on the SAME act shape fired unreliably (lab-patterns.txt): one per shape, no more.
@@ -57,6 +59,7 @@ public sealed class RobotMechanics : IOutputSink
         {
             ("next-order-underway", "[_:Golem].Underway()"),   // the arrival and the decisions act on the route underway (18-sep lab: the zero-argument form fires)
             ("next-order-bump",   "[_:Golem].Bump(_, _)"),      // the bump is the golem's: it finds its route underway and corrects it inside
+            ("next-order-wake",   "[_:Golem].Wake(_)"),         // the golem wakes where its body stands: a plan underway is decided again inside
             ("next-order-find",   "[_:Golem].Find($id)"),        // a route in hand by its handle: Then
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
@@ -88,8 +91,7 @@ public sealed class RobotMechanics : IOutputSink
     public void Dispatch(string print) => Dispatch(Order.Parse(print));
 
     /// <summary>The dispatch to ROS: the action the domain named — advance | back | turnLeft | turnRight | stop — travels to
-    /// the body with its amount; the same order the body was holding comes back as continue; `decide` goes back to the
-    /// golem; nothing pending stops the body.</summary>
+    /// the body with its amount; the same order the body was holding comes back as continue; nothing pending stops the body.</summary>
     public void Dispatch(Order order)
     {
         if (order == null) { Stop(); return; }              // nothing pending: the body stands
@@ -112,9 +114,6 @@ public sealed class RobotMechanics : IOutputSink
                 if (Carrying == null) break;                // already standing: the clock asked again while held
                 Stop();
                 golemEmbodiment.Note($"route {order.Route}: paused by the operator — the body stands until resumed");
-                break;
-            case "decide":
-                golemEmbodiment.Decide("another road");
                 break;
             default:
                 golemEmbodiment.Note($"an action I do not know: '{order.Action}'");
