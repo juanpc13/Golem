@@ -157,7 +157,7 @@ internal sealed class Golem
 
     /// <summary>Where the last pending route ends: the point a NEW errand's way should start from when the golem is
     /// busy — it will stand there when the new errand comes up. Consult HasPendingMission first.</summary>
-    internal Position PlannedEnd() => LastPending().StopsAhead.Last();
+    internal Pose PlannedEnd() => LastPending().PlannedEnd;
 
     // ---- touches: the facts take their objects (a Pose, a Position); what a reaction must tell the peers is exposed
     //      beside the act as @params, because the matcher captures no object (Fase 0, P3). ONE row per touch (Juan,
@@ -172,26 +172,47 @@ internal sealed class Golem
         return ++idleBumps;
     }
 
-    /// <summary>A moving peer says it bumped — where, heading which way — while it stood at another point: heard and kept,
-    /// so a touch of my own there and then is known to be that peer (and I know where it is, to step out of its way); and
-    /// learned as a mark, as the peer itself presumed — until it says it met a body (LearnMet). Returns how many bumps heard.</summary>
-    internal int HearBump(string who, Pose touch, Position peerAt)
+    /// <summary>The body bumped into something on its way — WHERE THE BODY STOOD, facing which way (<paramref name="me"/>), and
+    /// WHERE ON ITS SHELL it was pressed (<paramref name="bearing"/>: radians from the direction it faces; 0 the nose, +π/2 the
+    /// left flank) — <c>route = g.Bump(me, @bearing);</c>. A bumper knows no more than that; where the touch landed on the
+    /// plane is the DOMAIN's to reckon, from the body it declared (Juan, 18-sep-2026: "el método del dominio debe calcular la
+    /// coordenada de la colisión basado en el cuerpo del robot: la posición del golpe más el radio, así sabemos con más certeza
+    /// dónde está realmente el obstáculo"): one radius from the centre, in the direction of the bearing, heading into the
+    /// thing. The golem finds its route underway, the route concludes what the touch was and corrects its way inside, and is
+    /// handed back to be asked what it says now. Refused when nothing is underway: a touch while the body stands is not written yet.</summary>
+    internal Route Bump(Pose me, double bearing)
     {
-        if (touch == null) throw new GolemDomainException("Golem.HearBump: 'touch' was not given");
-        if (peerAt == null) throw new GolemDomainException("Golem.HearBump: 'peerAt' was not given");
-        int heard = collisions.Hear(who, touch, peerAt);
-        collisions.Mark(touch);
-        return heard;
+        if (me == null) throw new GolemDomainException("Golem.Bump: 'me' was not given");
+        if (!double.IsFinite(bearing)) throw new GolemDomainException("Golem.Bump: 'bearing' must be an angle");
+        if (!HasPendingMission()) throw new GolemDomainException("nothing underway: a touch while the body stands is not written");
+        var route = Underway();
+        route.Touched(TouchOn(me, bearing), me);
+        return route;
     }
 
-    /// <summary>A standing peer says something touched it — where, while it stood at another point: heard and kept, so a
-    /// touch of my own there and then is known to be that peer. No mark: what touches a standing body is a body.</summary>
-    internal int HearTouch(string who, Position at, Position peerAt)
+    /// <summary>Where a touch on the shell landed on the plane, heading into what was touched: one radius of the body from
+    /// where it stands, in the direction it faces turned by the bearing.</summary>
+    private Pose TouchOn(Pose body, double bearing)
     {
-        if (at == null) throw new GolemDomainException("Golem.HearTouch: 'at' was not given");
-        if (peerAt == null) throw new GolemDomainException("Golem.HearTouch: 'peerAt' was not given");
-        if (ReferenceEquals(at, peerAt)) throw new GolemDomainException("Golem.HearTouch: 'at' and 'peerAt' are the same point");
-        return collisions.Hear(who, at, peerAt);
+        double heading = Math.Atan2(Math.Sin(body.Heading + bearing), Math.Cos(body.Heading + bearing));
+        var at = body.Along(heading, Radius());
+        return new Pose(at.X, at.Y, heading);
+    }
+
+    /// <summary>A moving peer says it bumped — where ITS BODY stood, facing which way, and where on its shell (the bearing): the
+    /// same words its own bump was written in. Where the touch landed is reckoned here as the peer reckoned it (the fleet's
+    /// bodies share one size, body_v1). Heard and kept, so I know where that peer is; and learned as a mark, as the peer
+    /// itself presumed — until it says it met a body (LearnMet). Returns how many bumps heard.</summary>
+    internal int HearBump(string who, Pose peerAt, double bearing)
+    {
+        if (peerAt == null) throw new GolemDomainException("Golem.HearBump: 'peerAt' was not given");
+        if (!double.IsFinite(bearing)) throw new GolemDomainException("Golem.HearBump: 'bearing' must be an angle");
+        var touch = TouchOn(peerAt, bearing);
+        if (collisions.HeardAlready(who, touch, peerAt)) return collisions.HeardCount;   // the wire said it twice: heard once
+        int heard = collisions.Hear(who, touch, peerAt);
+        if (layout.IsWallAt(touch, MapLayout.WallTolerance)) return heard;             // the peer grazed a wall we both know: nothing learned
+        collisions.Mark(touch);                                                          // for now every touch is a thing (Juan, 18-sep-2026)
+        return heard;
     }
 
     /// <summary>The golem concludes what it touched was a peer — who said it bumped there and then: the mark its bump
@@ -228,18 +249,6 @@ internal sealed class Golem
         if (at == null) throw new GolemDomainException("forgetting needs where");
         return collisions.Forget(at);
     }
-
-    /// <summary>What the golem suspects its body touched — the pose of the touch, as telemetry builds it in the query
-    /// (<c>g.Suspect(Pose(@x, @y, @heading), @since)</c>) — given what it has heard since the given count: a wall it
-    /// knows (Kind 'wall': conclude Graze), a peer that bumped near there and then (Kind 'peer', Who: conclude Met), or
-    /// a thing nobody charted (Kind 'thing': the mark the bump presumed stands). The domain reasons; the host waits for
-    /// the peers to speak, asks, and writes the conclusion the suspicion names.</summary>
-    internal Suspicion Suspect(Pose touch, int sinceCount)
-    {
-        if (touch == null) throw new GolemDomainException("Golem.Suspect: 'touch' was not given");
-        return collisions.Suspect(touch, sinceCount);
-    }
-
 
     // ---- routes: the progress — only what fulfils the plan is journaled ----
 

@@ -71,7 +71,7 @@ internal sealed class RoutePlanner
             raw.AddRange(RawRoad(here, stop));
             here = stop;
         }
-        return WithOpeningsNamed(from, layout.WithDoorCrossings(new Trajectory(raw)));
+        return WithOpeningsNamed(from, layout.WithDoorCrossings(from, new Trajectory(raw)));
     }
 
     /// <summary>How long the shortest road from one point to another is, leg to leg.</summary>

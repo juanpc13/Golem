@@ -138,15 +138,13 @@ internal sealed class Collisions
         return null;
     }
 
-    /// <summary>What a touch at a pose most likely was, given what was heard since a count: a wall the layout knows
-    /// (Graze), a peer that bumped near there and then (Met), or a thing nobody charted (Mark).</summary>
-    internal Suspicion Suspect(Pose touch, int sinceCount)
+    /// <summary>Whether this very word was heard already — the same peer, the same touch, standing at the same place: the wire
+    /// may deliver a tell twice (17-sep-2026 lab, both journals heard the doorway bump twice); a fact is heard once.</summary>
+    internal bool HeardAlready(string who, Position at, Position peerAt)
     {
-        if (touch == null) throw new GolemDomainException("Collisions.Suspect: 'touch' was not given");
-        if (Layout.IsWallAt(touch, MapLayout.WallTolerance)) return new WallTouched();
-        string who = HeardNear(touch, sinceCount);
-        if (who != "") return new PeerMet(who);
-        return new ThingFound();
+        if (at == null) throw new GolemDomainException("Collisions.HeardAlready: 'at' was not given");
+        if (peerAt == null) throw new GolemDomainException("Collisions.HeardAlready: 'peerAt' was not given");
+        return heard.Any(h => h.Who == who && h.At.DistanceTo(at) < SameTouch && h.PeerAt.DistanceTo(peerAt) < SameTouch);
     }
 
     /// <summary>A mark taken back: the touch that made it turned out to be a body, not a thing. Only the mark at that
