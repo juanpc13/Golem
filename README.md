@@ -24,7 +24,7 @@ in [CLAUDE.md](CLAUDE.md).
 │  RobotMechanics = the output target: the print → /golem/blue/order │                │
 └───────┬────────┘                                                    └───────┬────────┘
         │  rosbridge (JSON over websocket) :9090  ↓ orders                    │
-        │  HTTP /robot/arrived|bump|stuck ↑   advance/back/turnL|R/stop ↓     │
+        │  HTTP /robot/arrived|bump|stuck ↑   action + amount ↓ (advance…)   │
         └────────────────────────────┬────────────────────────────────────────┘
                                      │
                           ┌──────────┴───────────┐
@@ -127,9 +127,9 @@ Every write goes through the actor's DSL and lands in the journal. What the oper
 | `route = g.Cover(from, point)` | A route through several stops whose order the golem **chooses** so the whole way is shortest. |
 | `route = g.Follow(point)` | The golem follows its leader to a point a peer says it reached. |
 | `route.Decide(from)` · `route.DecidePast(who, me)` | The way decided again by the route itself, from where the body stands — after a bump, or awake with a plan underway; out of a peer's way the first leg is the courtesy step the route chooses. |
-| `route.Turn()` | The body turned in place to the next leg's heading (every leg has one, the first from where the errand started): the route now asks it to run. |
+| `route.Turn(me)` | The body turned in place as asked and says where it stands, facing which way (`me = Pose(@px, @py, @ptheta)`): the route now asks the advance, measured from there. |
 | `route = g.Find(id)` | The route by its handle, to act on it later — the only place an id enters. |
-| `route.Reach(point)` | A point of the way reached — a door, an opening, a point to pass, a stop — one at a time: the body reports each and the golem hands out the next (its `Order`: `turn`, `run`, `hold` or `decide`). A stop is never skipped. Reaching the last stop completes the route — there is no separate "complete". A stop reached is told to the follower. |
+| `route.Reach(me)` | The body moved as asked — forward, or in reverse — and says where it stands: the route moves one thing on (a door's approach reached lines it up; its exit reached puts the door behind; a stop reached is counted, the last completes the route). |
 | `route.Bump(touch, me)` · `g.Bump(touch)` | The body bumped into something the map does not hold — the touch (where, heading into it) and where the body stood facing which way — on a route, or while standing still (the golem's own act then, no route). A fact, told to every peer with the golem's name, and a mark at once on a route — AND the route corrects its way inside: a `back` leg (in reverse, the body's retreat behind where it stood) then the road around the figure; its print is `back`. What it was is concluded afterward: a peer that spoke there and then → `Met` takes the mark back and `DecidePast` steps out of its way. |
 | `HearBump(who, touch, peerAt)` · `HearTouch(who, at, peerAt)` | A peer told it bumped (heading which way, standing where) or was touched while standing. A touch of my own there and then was that peer: a body, not a thing. A bump heard is learned as a mark, as the peer presumed; a touch heard is not (what touches a standing body is a body). |
 | `route.Graze(at, me)` | The body grazed a wall the map KNOWS: its own execution error, no discovery. The route backs off and tries the same legs again while the golem's patience on the leg (`MayRetryLeg`) lasts; spent, the route is given up. |
@@ -145,7 +145,7 @@ concrete map, each area found once and told what it is in one train (`map = MapL
 map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
 map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the
 abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `{ from = Position(2.0, 1.5); point = map.Find('kitchen'); route = g.Visit(from, point); }`:
-the route decides its whole way inside and the journal prints only the next thing to do (`turn` to a heading, `run` to a point)
+the route decides its whole way inside and the journal prints only the next thing to do, in the robot's own words: an action (`advance`, `back`, `turnLeft`, `turnRight`, `stop`) and its amount (metres, or radians)
 — except what is told to the peers, which travels flat. Evolve the golem by appending a release, never by
 editing an applied one.
 

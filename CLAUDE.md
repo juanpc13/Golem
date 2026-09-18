@@ -49,7 +49,7 @@ Every observation must end as a note that lets us conclude and improve the domai
 | Colisiones | `Touches.Collisions` | The module that keeps what the bodies LEARNED by touching (marks, peers met, bumps heard) and INTERPRETS it (obstacles, suspicions, who was near). Global `collisions`, built in `init` over the layout. |
 | Marca (hecho) | `Touches.Mark` | A body touched something uncharted: HAS a `Position` and a heading (its normal). A fact. |
 | Obstáculo (hipótesis) | `Touches.Obstacle` (`Thing`, `Peer`) | Marks joined by closeness: a point, a line, a polygon. A hypothesis, refined by each bump; never stored, always derived. A thing's `Extent(margin)` is its FIGURE (14-sep-2026): the box around its marks grown by a mark's reach and a margin — one figure per thing, so the second way around a crate takes the width the crate showed between the touches; `Collisions.Figures(radius)` inflates it by the body: where the body's centre may not go. What blocks a way is the figure, not the vertex. |
-| Ruta (el encargo y su camino) | `Routes.Route` | Juan, 14-sep-2026: "visit, luego route devuelve un objeto con todos los puntos a visitar y eso es lo que se está siguiendo". 16-sep-2026: "la route tiene la lista de los puntos… `route.Reach` internamente se mueve al siguiente punto y el print dice todo lo necesario: si tiene que girar entonces gira". ONE object for what was `Mission` + the road, DECIDED INSIDE: the stops (`Then`), the way it plans itself from where it starts (held as legs, never written point by point — no `Via`, no `Stop` in the journal since 16-sep), the cursor (`Turn`: the body turned to the next leg's heading; `Reach`: it reached the next point, a stop never skipped), the touches — which CORRECT THE WAY INSIDE (Juan, 16-sep, evening: "cuando choca queriendo llegar de A a B mete entre A y B otros puntos: retroceder un poco, pasar al lado… posiciones de corrección"): `Bump(touch, me)` marks the thing and inserts a `back` leg (in reverse, the body's own retreat behind where it stood) followed by the planner's road from there around the figure; `Graze(at, me)` inserts the `back` leg and the same legs again (the patience on the leg stays spent); when no road fits from the retreat the retreat alone stays and the route asks `decide` after it — the way decided again (`Decide(from)` at wake or when stranded, `DecidePast(who, me)` out of a peer's way — the courtesy step is its first leg), the hold — the GOLEM's, not the route's (Juan, 17-sep: "pausamos el cerebro"): `route = g.Pause(me)` holds the golem where its body stands (`g.Held`, `g.HeldAt`), holds the route underway with it (`route.HeldAt`) and hands it back; `route = g.Resume(me)` lets it go on with the next leg's heading given again from where the body stands now; a route that becomes underway while the golem is held stays standing (`NextOrder` prints `g.Held`) — the ending (`Fail`, `Abandon`, `Announce`). A leg is a correction (`Leg.IsCorrection`: back, around, aside) or the plan's own (door, opening, via, stop). Handed out by `g.Visit(from, point)`, `g.Cover(from, point)` (the way decided from `from` at once; refused when no way fits) and `g.Follow(point)` (no start known: it asks `decide`) — the handle minted inside, a deterministic function of the routes the golem holds — and found again by `g.Find(@id)`, the only place the id enters. What it asks NOW is `Order`: `back` | `turn` | `run` | `hold` | `decide`. |
+| Ruta (el encargo y su camino) | `Routes.Route` | Juan, 14-sep-2026: "visit, luego route devuelve un objeto con todos los puntos a visitar y eso es lo que se está siguiendo". 16-sep-2026: "la route tiene la lista de los puntos… `route.Reach` internamente se mueve al siguiente punto y el print dice todo lo necesario: si tiene que girar entonces gira". ONE object for what was `Mission` + the road, DECIDED INSIDE: the stops (`Then`), the way it plans itself from where it starts (held as legs, never written point by point — no `Via`, no `Stop` in the journal since 16-sep), the cursor (`Turn(me)`: the body turned as asked and says where it stands facing which way; `Reach(me)`: it moved as asked and says where it stands — a door's approach reached lines it up, its exit reached puts the door behind; a stop reached counts it, the last completes; the route keeps `Standing`, the body's pose as last reported, and measures every amount from it — 17-sep-2026), the touches — which CORRECT THE WAY INSIDE (Juan, 16-sep, evening: "cuando choca queriendo llegar de A a B mete entre A y B otros puntos: retroceder un poco, pasar al lado… posiciones de corrección"): `Bump(touch, me)` marks the thing and inserts a `back` leg (in reverse, the body's own retreat behind where it stood) followed by the planner's road from there around the figure; `Graze(at, me)` inserts the `back` leg and the same legs again (the patience on the leg stays spent); when no road fits from the retreat the retreat alone stays and, once the body reached it, the route decides its way again from there BY ITSELF (`PlanAgainFrom`, 18-sep-2026; no road from there either: it fails) — `decide` is asked only when the route does not know the pose: a told point (`Follow`) before the body's pose enters, or awake with a plan underway (`Decide(from)`; `DecidePast(who, me)` out of a peer's way — the courtesy step is its first leg — stays in the repertoire), the hold — the GOLEM's, not the route's (Juan, 17-sep: "pausamos el cerebro"): `route = g.Pause(me)` holds the golem where its body stands (`g.Held`, `g.HeldAt`), holds the route underway with it (`route.HeldAt`) and hands it back; `route = g.Resume(me)` lets it go on with the next leg's heading given again from where the body stands now; a route that becomes underway while the golem is held stays standing (`NextOrder` prints `g.Held`) — the ending (`Fail`, `Abandon`, `Announce`). A leg is a correction (`Leg.IsCorrection`: back, around, aside) or the plan's own (door, opening, via, stop). Handed out by `g.Visit(from, point)`, `g.Cover(from, point)` (the way decided from `from` at once; refused when no way fits) and `g.Follow(point)` (no start known: it asks `decide`) — the handle minted inside, a deterministic function of the routes the golem holds — and found again by `g.Find(@id)`, the only place the id enters. What it asks NOW is `Order`, IN THE ROBOT'S OWN WORDS (Juan, 17-sep-2026: "al robot se le dice muy sencillamente lo que debe moverse hacia adelante, qué tanto debe rotar"): `advance` | `back` | `turnLeft` | `turnRight` | `stop` (the golem held), or `decide` (no way: the one order that is no action of the robot); and HOW MUCH is `Amount` — metres to advance or back, radians to turn (positive; the order says which way), measured from `Standing`; a follower's last stop is met `FollowerStandoff` short; a turn under `TurnTolerance` is not asked. `Target` is the pose the body heads to now — the leg's point, or a door's approach then its exit — with the heading to face from where it stands. `PlannedEnd` is where the way ends, facing the last leg's heading: where the next errand starts while this one is underway. |
 | Trayectoria | `Routes.Trajectory` | Each `Leg` says where it takes the body as a POSE — `NextLeg.Target` (x, y, heading), what the journal prints to the robot; approach and exit stay positions (17-sep-2026).  Ordered legs, born whole: the planner's answer (`g.Road`, a read), what a route holds once it decided (`route.AsPlan()` reads it), what a route holds once decided, an evasion maneuver. Never in the journal by itself. |
 | Planificador | `Routes.RoutePlanner` | Dijkstra over doors, openings and detours; consults the layout AND the collisions, owns neither; `EdgeCost` generic, `DistanceCost` today. Built at query time (`RoutePlanner(layout, collisions, radius)`), never a global. Detours are the corners of every thing's figure (grown by the body and a hair), not a ring per mark; a run is refused when it enters a figure; the start may still stand inside one (the touch estimated short, the thing wider since) — that first run out is judged mark by mark, on the mark's normal, and may leave the way the body came but never run through a mark (14-sep-2026). |
 | Magnitud / unidad de medida | `Units.Length`, `Speed`, `Acceleration`, `Duration` (abstract) — `Meters`, `Centimeters`, `MetersPerSecond`, `MetersPerSecondSquared`, `Seconds`, `Minutes` (concrete) | Juan, 11-sep-2026: "una clase que nos especifique qué son esos números, tipo las unidades de medida y velocidad, aceleraciones, segundos". The magnitude is the abstract class, the UNIT is the concrete one the journal constructs, so a value says what it is where it is written; every magnitude reads in its SI base unit (`InMeters`, `InMetersPerSecond`, `InMetersPerSecondSquared`, `InSeconds`) whatever unit wrote it, and is never negative. A duration where a length goes is refused by the engine's static type check before anything runs ("a value of type 'Length' is expected"). Nothing in the domain takes a bare double for a physical quantity from the journal any more; `Acceleration` waits for the body that declares one. |
@@ -116,7 +116,9 @@ whether it could or not, so the domain resolves what follows. Consequences:
   the journal never lists them (16-sep supersedes the 10/14-sep "way written as points": no `via{n}`, no `route.Stop`).
   One more stop is its own entry, `{ route = g.Find(@id); point = map.Find(@area); route.Then(point); }` (the id read
   back with `g.Newest().Id`), and the route decides again through them all. A way decided again is
-  `{ route = g.Find(@id); from = Position(@x, @y); route.Decide(from); }` — the pose is the only thing the host adds.
+  `{ route = g.Find(@id); from = Pose(@x, @y, @theta); route.Decide(from); }` — the pose is the only thing the host adds; the errand
+  starts from a pose too, `from = Pose(@fx, @fy, @ftheta)` (where the body stands and faces, or `g.PlannedEnd()` when it is busy), so the
+  first turn is measured from where the body really faces (17-sep-2026).
   The way decided inside is deterministic on replay (the planner reads the layout and the collisions module, both
   journaled state; paper 05 holds while the planner's code holds — a spike's trade, accepted 16-sep).
   **The body does ONE thing at a time; the journal says what, and every script lives in the GolemEmbodiment's action methods**
@@ -126,21 +128,27 @@ whether it could or not, so the domain resolves what follows. Consequences:
   que deberá moverse"; 17-sep: "el controller recibe y valida los parámetros y llama a robot; el método en el robot
   tiene los scripts, los valida una segunda vez, corre los scripts y hace los prints, y esos prints terminan llamando
   al Push de RobotToRos automáticamente al terminar el script"). The host holds no plan and no cursor. EVERY journal
-  script — the errand with its way, a point reached, a bump, a graze, a hold, a resume, a way decided again, an ending,
-  the uptake of a tell — is an action method or const of `Choreography/GolemEmbodiment.cs` (`Move`, `Cover`, `Pause`, `Resume`,
-  `Forget`, `Arrived`, `Stuck`, `BumpedAsync` and the touch protocol's `Bumped`, `Grazed`, `Met`, `Decided`,
-  `DecidedPast`, `Failed`, `LetGo`; `Uptake*`); the controller only validates the JSON and calls it. Every one that
+  script — the errand with its way, an arrival, a touch, a hold, a resume, a way decided again, an ending, the uptake of a
+  tell — is an action method or const of `Choreography/GolemEmbodiment.cs` (`Move`, `Cover`, `Pause`, `Resume`, `Forget`,
+  `Arrived`, `Bumped`, `Stuck`, `Decided`, `Failed`, `LetGo`; `Uptake*`), EVERY ONE THE SAME SHAPE (Juan, 18-sep-2026: "el
+  método debería llamar a un script de golemActor.Using, registrar el acto en la global g y hacer un print con el nuevo lugar
+  al que debe ir"): the validated parameters, one `golemActor.Using(check, script)` inline — no helper, no lambda, no
+  `Safely` — its answer returned to the caller. The controller only validates the JSON and calls it. Every one that
   changes what the body must do ENDS WITH ITS PRINT INSIDE THE BRACES, asked of the route the act was on (Juan, 17-sep:
-  "que lo que está afuera también esté dentro y le preguntes cosas al route"): `print route.Id 'route', route.Order 'order',
-  route.IsPending() 'pending'; if (route.IsWalkable) { print route.NextLeg.Kind 'kind', … route.StopsLeft 'stopsLeft'; }`
-  — `route.Order` is `hold` | `decide` | `back` | `turn` | `run`, or how the route ended (`completed`, `failed`,
-  `abandoned`) once it is no longer pending. That print is what the command RETURNS to the caller. What the engine
+  "que lo que está afuera también esté dentro y le preguntes cosas al route"): `print route.Id 'route', route.Order 'action',
+  route.Amount 'amount', route.IsPending() 'pending'; if (route.IsWalkable) { print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading', route.Following 'following', route.StopsLeft 'stopsLeft'; }`
+  — **THE PRINT SPEAKS THE ROBOT'S WORDS** (Juan, 17-sep-2026: "al robot se le dice muy sencillamente lo que debe moverse hacia
+  adelante, qué tanto debe rotar"): `route.Order` is the ACTION, `advance` | `back` | `turnLeft` | `turnRight` | `stop`, or `decide`
+  (the one order that is no action of the robot), or how the route ended (`completed`, `failed`, `abandoned`) once it is no
+  longer pending; `route.Amount` is HOW MUCH — metres, or radians — measured by the domain from where the body stands
+  (`route.Standing`, the pose the cursor's acts bring: `route.Turn(me)`, `route.Reach(me)`), so a relative order's error never
+  carries past one leg. A door is two things: an advance to its approach (lined up), then an advance to its exit (straight
+  through). The point headed to (`x y heading`) and the rest are for the panel and the log; the body needs the action and the
+  amount. That print is what the command RETURNS to the caller. What the engine
   PUSHES to the body is the reaction's emit, `GolemEmbodiment.NextOrder` — the same fields asked of `g.Underway()`, the route underway
   (a reaction sees no local variable), starting with `g.HasPendingMission() 'pending'` (always something, so it pushes
-  even when nothing is pending and the body must stop):
-  and, when walkable, the leg (`kind name x y ax ay ex ey hasHeading heading following stopsLeft`); the order is
-  `turn` (turn in place to the leg's heading — every leg has one now, the first from where the errand started), `run`
-  (run to the leg's point), `hold` or `decide`. A command's print
+  even when nothing is pending and the body must stop). A command's print
   comes back to WHOEVER PERFORMED IT, at write time — `PerformCheckThenCommand` returns it; a refused Check returns
   `{"EWI":[{"Error":"…"}]}`, the domain's own words (lab 16-sep, `lab-print.txt`) — so the answer to a report IS the
   next order (`Choreography/Order.cs`: `Order`, `Answer`). **The print is handed to the ROBOT, the actor's OUTPUT
@@ -151,44 +159,52 @@ whether it could or not, so the domain resolves what follows. Consequences:
   JsonFormatter)` (Juan, 16-sep: "una nueva clase que sirva de salida, RobotToRos, que herede de IOutputSink, que se
   ocupe del obey y haga el switch case para enviar al robot"). **Nobody dispatches the print: the engine pushes it.** A
   command's print is PULL (it returns to the caller); only a Reaction's emit is PUSHED — so `RobotMechanics.DefineReactions`
-  declares ONE reaction per act shape, `next-order-find` on `[_:Golem].Find($id)` (every act on a route in hand writes
-  `route = g.Find(@id)` first), `next-order-visit` / `-cover` on `Visit(_, _)` / `Cover(_, _)`, `next-order-follow` on
+  declares ONE reaction per act shape, `next-order-underway` on `[_:Golem].Underway()` (every report of the body and every
+  decision on the route underway writes `route = g.Underway()` first — no id enters the act, 18-sep lab `lab-underway.txt`:
+  the zero-argument form fires once per act), `next-order-find` on `[_:Golem].Find($id)` (a route in hand by its handle:
+  `Then`), `next-order-bump` on `[_:Golem].Bump(_, _)`, `next-order-visit` / `-cover` on `Visit(_, _)` / `Cover(_, _)`, `next-order-follow` on
   `Follow(_)`, each `.Program.Emit(Robot.NextOrder)`; when the act lands the engine calls `Push`, which parses the
   document and SWITCHES (17-sep lab, `lab-push-real.txt`: every act pushed exactly once with the speech reactions around;
   the morning's flakiness came from MANY reactions on the same act shape — one per shape, no more). The sink is armed
   after `performance.Start()` and the membrane (a replayed or early push would be lost or stale); the returned print is
-  kept only to answer the caller (a refusal, 409). `Push` ignores anything not named `next-order*` and switches: `hold` → `stop` (the body remembers what it was doing);
-  `decide` → `robot.Decide` writes `route.Decide(from)` from the pose and the new print comes back; `turn` → `turnLeft`
-  or `turnRight` to the domain's heading (which way round is read off the body's pose: the servo's business); `run` →
-  `advance`; `back` → `back`; the same order held and resumed → `continue`. **The robot's base actions are advance,
+  kept only to answer the caller (a refusal, 409). `Push` ignores anything not named `next-order*` and hands the print to `Dispatch` — the DISPATCH TO ROS (Juan, 17-sep:
+  "el Obey es una especie de dispatch para ROS"): it switches on the ACTION the domain named and sends the body that one base
+  action with its amount, no arithmetic — `advance` → `Advance(order)`, `back` → `Back(order)`, `turnLeft` → `TurnLeft(order)`,
+  `turnRight` → `TurnRight(order)`, `stop` → `Stop()` (the body remembers what it was doing and how much was left); the same
+  order held and back again → `Continue(order)`; `decide` is the one order that is no action of the robot: `golemEmbodiment.Decide`
+  writes `route.Decide(from)` from the pose and the new print comes back. `StopOnMark()` is a lever, not an order: after
+  a teleport the body stops, forgets everything and re-anchors. The one arithmetic left in the mechanics is the courtesy step
+  (`StepAside`, route 0): the golem chose the point (`g.Aside`), the mechanics say it as a turn then an advance from the pose. **The robot's base actions are advance,
   back, turnLeft, turnRight, stop, continue; the bump is what it reports.** The SAME JSON the journal printed travels
   to the body over the websocket (rosbridge, `std_msgs/String` on `/golem/<body>/order`) with the action, `within` and
-  the body the journal declared (speed, radius, retreat). The same order twice is not resent; a different one
+  the body the journal declared (speed, radius, retreat) — `{"action": "advance", "amount": 2.35, …}`. The same order twice is not resent; a different one
   replaces what the body was doing. `Choreography/GolemEmbodiment.cs` keeps the other face: the action methods with the scripts, what the body reports (`Arrived`,
   `BumpedAsync`, `Stuck`), the touch protocol, the follower's linger, the clock (a push is ephemeral: the journal is
   still asked every 2 s and obeyed only when it differs from what the body carries), the operator's levers. **The body is a ROS node in the simulator**
   (`sim/bridge/body.py`, one per body, launched by `kiosk.sh` from `GOLEMS`/`POSE_SOURCES`): it drives `cmd_vel`, watches
-  its odometry (the truth, or its wheels' reckoning anchored once) and its contact sensor, does that ONE thing and
-  reports on the golem's endpoints. **The body's vocabulary is its base actions** (Juan, 16-sep: "la interfaz del
+  its odometry (the truth, or its wheels' reckoning anchored once) and its contact sensor, does that ONE thing — the metres
+  travelled or the radians turned since the order began, measured on its own odometry, never against a point on the plane —
+  and reports on the golem's endpoints; `stop` keeps what was left of the amount, `continue` finishes it. **The body's vocabulary is its base actions** (Juan, 16-sep: "la interfaz del
   robot es extremadamente sencilla… avanzar / retroceder / girar a la derecha / girar a la izquierda / detener /
-  continuar / choque"): it is told `advance` (to a point), `back` (to a point, in reverse), `turnLeft` / `turnRight`
-  (to a heading), `stop`, `continue` — and it says `POST /robot/arrived` (`{route}`: the turn made, the
-  point reached — the endpoint knows which from what the GolemEmbodiment handed it) or `POST /robot/bump` (`{route, with, x, y,
-  heading, px, py, ptheta}`: what, where the touch landed on the plane heading into it, where it stood facing which way;
-  route 0 while standing) — plus `/robot/stuck` when it could not. **The bumper is a switch**: the moment it fires the
+  continuar / choque"): it is told `advance` (that many metres), `back` (that many, in reverse), `turnLeft` / `turnRight` (that many radians)
+  — each with its `amount` (metres, radians) — `stop`, `continue` — and it says `POST /robot/arrived` (`{route}`: the amount
+  done — the endpoint knows which act it was from the order the body carried, and brings the body's pose to it) or `POST /robot/bump` (`{bodyX, bodyY, bodyHeading,
+  bearing}`: where it stood facing which way, and where on its shell it was pressed — the touch on the plane is the domain's
+  to reckon; `route` and `with` ride along unread) — plus `/robot/stuck` when it could not. **The bumper is a switch**: the moment it fires the
   motors stop and the bump is reported; the body backs off NOTHING on its own — what follows is the domain's
   (`route.Bump(touch, me)` inserts the retreat and the way around; the print is `back`) and comes as the next order.
   One bump per contact: while the bumper stays pressed against the same thing it is not a new bump. Each report is a
-  validated JSON body whose endpoint writes the act whole (`route.Turn()`, `route.Reach(point)`) and hands the answer
+  validated JSON body whose endpoint writes the act whole (`route.Turn(me)`, `route.Reach(me)`, the pose from telemetry) and hands the answer
   back to the GolemEmbodiment: its print is the next order — "gira, luego ros le dice ya giré, se escribe que giró y esa escritura
-  imprime lo siguiente". The touch protocol lives in the GolemEmbodiment (`BumpedAsync`: `Suspect` → `Grazed` or `Bumped`, whose
-  print — `back` — goes to the body AT ONCE; then the peers' window, `Met`, `DecidedPast`), performed with the
-  controller's scripts. When nothing comes through a print (a told point taken up as a `Follow`, a boot) the GolemEmbodiment's
+  imprime lo siguiente". Each report is ONE act on `route = g.Underway()`, its script inline in the embodiment — `Arrived`
+  (`route.Arrive(me)`; the expose carries the route's id, the point and `@stop` for the tell alone, and `echo-reached` matches
+  the literal `true reached` so the follower is told on a stop alone), `Bumped` (`route = g.Bump(me, @bearing)`: `bodyX bodyY bodyHeading bearing`, nothing else read) — the host
+  relays the body's words, nothing more; the `route` the body echoes is the host's token for a stale ARRIVAL alone. When nothing comes through a print (a told point taken up as a `Follow`, a boot) the GolemEmbodiment's
   clock ASKS the same print as a query every 2 s (`AskOrder`) and obeys it if it differs from what the body carries. Every point of
   the way is journaled (the 10-sep "walk in silence" is superseded by the 16-sep dialogue). The host keeps only the
   clock (listening after a bump, the follower's linger), the wire, and the body's servo (turning to the heading,
-  running, backing off the retreat). The courtesy step is the golem's (`g.Aside(Pose)`); the host walks it. The acts
-  stay `{ route = g.Find(@id); … }`: `Reach`, `Bump`, `Graze`, `Pause`, `Resume`, `Fail`, `Abandon`.
+  running, backing off the retreat). The courtesy step is the route's own leg (a follower's `Reach` of its last stop appends it); the host walks nothing by itself. The acts stay `{ route = g.Find(@id); … }`: `Arrive`, `Touched`, `Decide`,
+  `Fail`, `Abandon`; `Turn`, `Reach`, `Bump`, `Graze`, `DecidePast` are the domain's own, reached through them.
   Names: the errand's stop is `point`, its start `from`; the route names its own legs (a door, an opening, `around`, `aside`, a stop
   by its zone) — Juan, 10-sep, trimmed 16-sep.
   The braces matter: an assignment at the top level of a command becomes a global of the actor (Fase 0,
@@ -200,28 +216,43 @@ whether it could or not, so the domain resolves what follows. Consequences:
   reaction that tells the peers captures the `expose` labels, because the matcher captures literals, `@params`
   and `expose` labels only, never an object variable (Fase 0, P3). Same for the idle `Bump(touch)` (`tx, ty,
   twho, tpx, tpy` → `TouchedAt`), `Met` (`ex, ey` → `MetPeer`), `Reach` (`rid, rx, ry`) and `Forget` (`gx, gy`);
-  `Graze`, `HearBump`, `HearTouch`, `LearnMet`, `LearnForget` need no expose (nothing captures them). Labels are
+  `HearBump`, `LearnForget` need no expose (nothing captures them). Labels are
   distinct per act so no two reactions match one shape. **An `expose` exists ONLY where a Reaction must capture a
   VALUE to tell it** (Juan, 16-sep: "estos tengo entendido que no aportan nada de valor"; lab `lab-patterns.txt`): a
   reaction can match the act itself — `[_:Route].Reach(_)`, `Stop(_)`, `Via(_)`, `Bump(_)`, `Pause()`, `Resume()`,
   `[_:Golem].Visit(_)`, `[_:Golem].Find($id)`, `[_:Route].Fail($why)` all define and fire on a braced command — so an
   expose used as a mere trigger adds nothing and was removed (`vid vx vy`, `order`, `held`, `resumed`, `ended`,
   `letgo` are gone; `Passed` carries none). What stays is what a tell needs: `rid rx ry` (`echo-reached` →
-  `PointVisited`), the bump's, the touch's, `ex ey`, `gx gy`. Lab caveat: firing of act-pattern reactions was
+  `PointVisited`, on the literal `true reached`), the touch's (`bodyX bodyY bodyHeading bearing who`), `gx gy`. Lab caveat: firing of act-pattern reactions was
   inconsistent across identical runs (`Stop`, `Resume`, `Then`, `Visit` fired, `Reach`, `Via`, `Pause`, `Bump`, `Fail`
   stayed silent in one run) — one more reason the next order is the command's own print, never a reaction's push.
   **A touch on a jamb is a wall** (16-sep lab): `MapLayout.DoorGap` — within it of a door's point there is no wall — is
   half the door's width MINUS the touch's estimation error (0.55 m), because the world's walls eat into the gap (~1.25 m
   clear: the jambs stand 0.62 m from the point); with the old `+ 0.1` two touches on the jambs of living/south were taken
   for things and marked.
-  **One row per touch** (Juan, 10-sep: "mantengamos una sola fila… el mismo g.Bump internamente se lo setea"):
-  there is no `Mark` verb. `route.Bump(touch, me)` presumes a THING and marks it inside (`collisions.Mark`); the peers
-  that hear `BumpedAt` mark it too (`HearBump`). If a peer says it bumped or was touched there and then, the
-  conclusion is `Met(who, at)`: the mark comes back (mine and the one heard from `who`), and `MetPeer` makes every
-  peer take back what it learned (`LearnMet`). A standing body's touch is `Bump(touch)` without a mark (things
-  do not move) and travels as `TouchedAt` → `HearTouch`. The host owns the clock: it listens 2.5 s, then keeps
-  reconsidering for 12 s more, because a peer's word may arrive after the window (a ghost mark lived in three
-  journals on 10-sep before that).
+  **One row per touch, and the ROUTE concludes what it was** (Juan, 10-sep: "mantengamos una sola fila… el mismo g.Bump
+  internamente se lo setea"; 17-sep: "no siguen el patrón de script… manejan lógica del dominio y concurrencia"; 18-sep:
+  "todo se considera un bump de momento"): there is no `Mark` verb and no suspicion read. The body's report is ONE act,
+  `route = g.Bump(me, @bearing)` — the GOLEM's verb, in the BODY'S WORDS (Juan, 18-sep: "el que da el siguiente punto es el
+  recálculo interno del g.Bump… la coordenada de la colisión la calcula el dominio con el cuerpo del robot: la posición del
+  golpe más el radio"): `me` is where the body stood facing which way, `bearing` where on its shell it was pressed (radians
+  from the direction it faces; 0 the nose, +π/2 the left flank) — all a bumper knows; the golem reckons the touch one radius
+  of the declared body from the centre in that direction, heading into the thing (`Golem.TouchOn`), finds its route
+  underway, hands it the touch (`Route.Touched`, internal) and hands the route back for the print; nothing underway, the
+  domain refuses — the host filters nothing — and the route decides over its own facts: a wall the map knows → `Graze` (its own error; the
+  third on a leg fails the route); anything else → `Bump`: presumed a THING and marked inside (the seventh bump fails the
+  route). WHETHER THE THING WAS ANOTHER BODY IS NOT CONCLUDED FOR NOW (Juan, 18-sep): the meeting protocol — a peer's body
+  beyond the touch, the mark taken back, the way decided past it — was built, tried live and TAKEN OUT the same day; what
+  it needs stays in the repertoire, tested and unused from the host (`g.Met`, `g.LearnMet`, `route.DecidePast`,
+  `Courtesy`), and the notebook keeps what the four live meetings taught (simultaneous touches conclude "thing" on both
+  sides; a late word must change the way; a 1.5 m corridor leaves no room to step aside — a yield rule is needed). A
+  peer's `BumpedAt` comes in the same words — its pose and the bearing — and `HearBump(who, peer, bearing)` reckons the
+  touch with the same body (the fleet shares `body_v1`), hears it (a word heard twice is heard once) and marks it, unless
+  it lies on a wall the map knows. A touch while the body stands, or about an order it no longer carries, is acknowledged and not journaled. The
+  body's arrival is ONE act too, `route.Arrive(me)`: the route knows whether it asked the turn or the move. No windows,
+  no waits, no counters in the host. Every change in what the domain decides (planner, crossings, corrections,
+  conclusions) archives the journals in the same deploy: an act accepted live is refused on replay otherwise (18-sep:
+  rehydration failed at entry 21 after the door-crossing fix).
 - **Modules are globals of the actor** (`body`, `map`, `collisions`), built in their own releases and handed
   to the golem (`g = Golem(body, map, collisions)`): a query may calculate with a module alone
   (`map.ZoneOf(Position(5.5, 5.5))`, `map.Connects('north', 'center')`, `collisions.All()`,
@@ -277,7 +308,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   so a button never lies), `/world/arena/create` · `/remove` and the GUI's
   `/gui/move_to/pose` (the pose read from the world's own `<camera_pose>`). **The bodies are ROS nodes here
   too** (16-sep-2026, `sim/bridge/body.py`, one per body): each takes its golem's order on `/golem/<body>/order`
-  (turn, run, stop), drives `/model/<body>/cmd_vel`, backs off after a touch, and reports to its golem's
+  (advance, back, turnLeft, turnRight, stop, continue — each with its amount), drives `/model/<body>/cmd_vel`, and reports to its golem's
   `/robot/*` endpoints — the robot is only the body; the golem tells it what to do, one thing at a time. Reality is
   GENERATED from `sim/world/plan.json` at image build (walls, doors, solid blocks, bodies
   with contact sensors); its `obstacles` are empty on purpose since 10-sep, so every test
@@ -313,7 +344,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   contacts are ephemeral telemetry, transitions are journaled — entrusting (`route = g.Visit(from, point)` /
   `g.Cover(from, point)` / `g.Follow(point)`, more stops with `route.Then(point)`, one entry each — the route decides
   and HOLDS its whole way, nothing of it is written), progress (`route.Turn()` and `route.Reach(point)` for EVERY leg,
-  one at a time — the body turns, reports it, runs, reports it; the golem hands out the next; the last stop completes —
+  one at a time — the body turns, reports it and where it stands, advances, reports it; the golem hands out the next; the last stop completes —
   Juan 16-sep, superseding 10-sep), the interruption (`route.Bump`/`route.Graze`: the plan stops; `route.Decide(from)`
   decides another way on the same route — also when the golem wakes with a plan underway; `route.DecidePast(who, me)`
   out of a peer's way), the hold (`route = g.Pause(me)` / `route = g.Resume(me)`, 14-sep-2026, the golem's own since 17-sep: the operator holds
@@ -325,7 +356,8 @@ whether it could or not, so the domain resolves what follows. Consequences:
   what the simulator reports (a collision with a crate) is reality. The
   language was fixed on 7-sep-2026, rewritten in objects on 10-sep-2026 (local plan
   *PLAN-objetos-en-el-journal.md*; journals before that day archived as `journal-legacy-20260910-*`) and the way
-  moved inside the route on 16-sep-2026 (journals archived as `journal-legacy-20260916-puntos/`):
+  moved inside the route on 16-sep-2026 (journals archived as `journal-legacy-20260916-puntos/`) and the route began to speak
+  the robot's words on 17-sep-2026 — action and amount, `Turn(me)` / `Reach(me)` (journals archived as `journal-legacy-20260917-cantidades/`):
   do not add verbs on the fly — propose them in the PLAN first. Reads (queries) may grow as the labs
   need them; writes (journaled verbs) only through the PLAN.
 
