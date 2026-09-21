@@ -1,13 +1,19 @@
 using GolemAPI.Choreography;
+using GolemAPI.Choreography.Roles;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GolemAPI.Controllers;
 
 // THE GOLEM'S ENDPOINTS: the operator's verbs and the body's reports come in as JSON bodies, typed and VALIDATED here
-// (Requests.cs), and go to the GolemEmbodiment's action methods — where the scripts live, validate again in the domain's voice
-// and run (Juan, 17-sep-2026: "el controller recibe y valida los parámetros y llama a robot"). Nothing here dispatches
-// the next order: every act's print is pushed to the output target (RobotMechanics) by the engine's own reaction on the
-// act. A refusal comes back in the domain's words (409); the reads the panel needs are queries on the golem's actor.
+// (Requests.cs), and go to the ROLE of the capability they belong to (Juan, 18-sep-2026: "los roles los vamos a dejar en el
+// lado de los controllers… en base a las capacidades del robot; si no tiene dicho rol no podemos mandar a usarlo"): the
+// errand, the hold and the reports of a turn or a move to the Displacer (the motors); the bump and the forget to the
+// CollisionCaptor (the bumper). The embodiment plays only the roles the operator declared for this body (`ROLES` in the
+// compose); an endpoint whose role the body lacks answers 409 saying which capability is missing. The scripts live in the
+// roles, validate again in the domain's voice and run (Juan, 17-sep: "el controller recibe y valida los parámetros y llama").
+// Nothing here dispatches the next order: every act's print is pushed to the output target (RobotMechanics) by the engine's
+// own reaction on the act. A refusal comes back in the domain's words (409); the reads the panel needs are queries on the
+// golem's actor.
 public class GolemController : Controller
 {
     private readonly GolemEmbodiment golemEmbodiment;
@@ -15,6 +21,21 @@ public class GolemController : Controller
     public GolemController(GolemEmbodiment golemEmbodiment)
     {
         this.golemEmbodiment = golemEmbodiment;
+    }
+
+    // The role an endpoint needs, or the refusal that says the body has no such capability.
+    private bool Motors(out Displacer displacer, out IActionResult refusal)
+    {
+        displacer = golemEmbodiment.Displacer;
+        refusal = displacer == null ? Conflict($"this body has no motors: the role '{Capabilities.Displacer}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
+        return displacer != null;
+    }
+
+    private bool Bumper(out CollisionCaptor captor, out IActionResult refusal)
+    {
+        captor = golemEmbodiment.Captor;
+        refusal = captor == null ? Conflict($"this body has no bumper: the role '{Capabilities.CollisionCaptor}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
+        return captor != null;
     }
 
     // ==================================================================
@@ -28,7 +49,8 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ErrandRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        return Answered(golemEmbodiment.Move(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Move(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
     // Send the golem through several points and let it choose the order that makes the way shortest.
@@ -38,15 +60,16 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ErrandRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        return Answered(golemEmbodiment.Cover(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Cover(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
-    // The operator holds the route underway, or lets it go on.
+    // The operator holds the golem where its body stands, or lets it go on.
     [HttpPost("pause")]
-    public IActionResult Pause() => Answered(golemEmbodiment.Pause());
+    public IActionResult Pause() => Motors(out var displacer, out var refusal) ? Answered(displacer.Pause()) : refusal;
 
     [HttpPost("resume")]
-    public IActionResult Resume() => Answered(golemEmbodiment.Resume());
+    public IActionResult Resume() => Motors(out var displacer, out var refusal) ? Answered(displacer.Resume()) : refusal;
 
     // Somebody took an obstacle away: the golem forgets it, with every mark that outlined it, and tells the peers.
     [HttpPost("forget")]
@@ -55,7 +78,8 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PointRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        return Answered(golemEmbodiment.Forget(request.X.Value, request.Y.Value));
+        if (!Bumper(out var captor, out var refusal)) return refusal;
+        return Answered(captor.Forget(request.X.Value, request.Y.Value));
     }
 
     // ==================================================================
@@ -69,7 +93,8 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.Arrived(report.Route.Value);
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        var answer = displacer.Arrived(report.Route.Value);
         if (answer == null) return Accepted("not the order the body was given");
         return answer.Value.Ok ? Accepted() : Conflict(answer.Value.Refused);
     }
@@ -83,7 +108,8 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + BumpReport.Shape);
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.Bumped(report.BodyX.Value, report.BodyY.Value, report.BodyHeading.Value, report.Bearing.Value);
+        if (!Bumper(out var captor, out var refusal)) return refusal;
+        var answer = captor.Bumped(report.BodyX.Value, report.BodyY.Value, report.BodyHeading.Value, report.Bearing.Value);
         return answer.Ok ? Accepted() : Conflict(answer.Refused);
     }
 
@@ -94,7 +120,8 @@ public class GolemController : Controller
         if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"reason\": \"stalled\"}");
         var problems = report.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.Stuck(report.Route.Value, report.Reason.Trim());
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        var answer = displacer.Stuck(report.Route.Value, report.Reason.Trim());
         if (answer == null) return Accepted("not the order the body was given");
         return answer.Value.Ok ? Accepted() : Conflict(answer.Value.Refused);
     }
@@ -148,33 +175,36 @@ public class GolemController : Controller
         var pose = golemEmbodiment.Pose;
         if (pose == null) return StatusCode(503, "no telemetry from the body yet");
         return Content(golemEmbodiment.Actor.Using(@"
-            print g.HasPendingMission() 'hasNext', g.PendingRoutes().Count 'pendingMissions',
-                  body.Speed.InMetersPerSecond 'speed', body.LingerAfterTold.InSeconds 'lingerAfterTold';
-            if (g.HasPendingMission()) {
-                print g.Underway().Id 'mission', g.Underway().StopsLeft 'stopsLeft',
-                      g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
-                if (map.IsOnMap(Position(@x, @y))) {
-                    print g.DistanceLeft(Position(@x, @y)) 'distanceLeft',
-                          g.SecondsLeft(Position(@x, @y)) 'secondsLeft',
-                          map.ZoneAt(Position(@x, @y)).Name 'here';
+            {
+                print g.HasPendingMission() 'hasNext', g.PendingRoutes().Count 'pendingMissions',
+                      body.Speed.InMetersPerSecond 'speed', body.LingerAfterTold.InSeconds 'lingerAfterTold';
+                if (g.HasPendingMission()) {
+                    route = g.Underway();
+                    here = Position(@px, @py);
+                    print route.Id 'mission', route.StopsLeft 'stopsLeft', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
+                    if (map.IsOnMap(here)) {
+                        print g.DistanceLeft(here) 'distanceLeft', g.SecondsLeft(here) 'secondsLeft', map.ZoneAt(here).Name 'here';
+                    }
                 }
             }
         ")
         .WithParameters(p => {
-            p["x", typeof(double)] = pose.X;
-            p["y", typeof(double)] = pose.Y;
+            p["px", typeof(double)] = pose.X;
+            p["py", typeof(double)] = pose.Y;
         })
         .PerformQuery(), "application/json");
     }
 
-    // One query, one document: the board the panel paints from.
+    // One query, one document: the board the panel paints from — the route underway found once, held in a local.
     private string Board() =>
         golemEmbodiment.Actor.Using(@"
-            print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
-            if (g.HasPendingMission()) {
-                print g.Underway().Id 'nextId',
-                      g.Underway().NextLeg.Target.X 'nextX', g.Underway().NextLeg.Target.Y 'nextY',
-                      g.Underway().StopsLeft 'stopsLeft', g.Underway().Paused 'paused';
+            {
+                print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
+                if (g.HasPendingMission()) {
+                    route = g.Underway();
+                    print route.Id 'nextId', route.NextLeg.Target.X 'nextX', route.NextLeg.Target.Y 'nextY',
+                          route.StopsLeft 'stopsLeft', route.Paused 'paused';
+                }
             }
         ")
         .PerformQuery();

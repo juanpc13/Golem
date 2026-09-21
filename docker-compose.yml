@@ -32,6 +32,9 @@ services:
   # "let go". Journals live in ./journal on the host — inspectable, they outlive containers.
   # RULE: one writer per journal — never point two processes at the same GOLEM.
   #
+  # ROLES is what the body can do — its capabilities, one role each: `displacer` (the motors: the errand, the turn
+  # and the move reported), `collision-captor` (the bumper: the bump reported, the forget). The golem plays only the
+  # roles declared and an endpoint whose role the body lacks answers 409; unset, it plays them all.
   # POSE_SOURCE is where a golem's idea of its position comes from: "world" (default) hands
   # it the simulator's true pose — a gift no real robot gets; "wheels" makes it live on dead
   # reckoning from its wheels, anchored once at start-up, so being blocked or pushed shows
@@ -56,6 +59,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=blue
       - BODY=blue
+      - ROLES=displacer,collision-captor   # the capabilities of this body: the motors and the bumper (18-sep-2026)
       - HOME_AT=6.3,10.4
       - PANEL_PORT=8080
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller);
@@ -81,6 +85,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=red
       - BODY=red
+      - ROLES=displacer,collision-captor   # the capabilities of this body: the motors and the bumper (18-sep-2026)
       - HOME_AT=2.5,2.5
       - PANEL_PORT=8080
       # tells TO blue go to blue; acks for tells addressed to ME return to blue;
@@ -111,6 +116,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=green
       - BODY=green
+      - ROLES=displacer,collision-captor   # the capabilities of this body: the motors and the bumper (18-sep-2026)   # the capabilities of this body: the motors and the bumper (18-sep-2026)
       - HOME_AT=10,10.5
       - POSE_SOURCE=wheels
       - PANEL_PORT=8080

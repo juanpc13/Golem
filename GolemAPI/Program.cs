@@ -36,6 +36,9 @@ int panelPort = int.Parse(Environment.GetEnvironmentVariable("PANEL_PORT") ?? "8
 string tellRoutes = Environment.GetEnvironmentVariable("TELL_ROUTES");     // topic=http://peer,... (the wire's route table)
 string tellDoneTo = Environment.GetEnvironmentVariable("TELL_DONE_TO");    // peer golem to echo visited points to
 var tellRetry = TimeSpan.FromSeconds(int.Parse(Environment.GetEnvironmentVariable("TELL_RETRY_SECONDS") ?? "30"));
+// The roles this body can play — its capabilities, declared by the operator (Juan, 18-sep-2026: "la configuración del golem
+// en el compose"): displacer (the motors), collision-captor (the bumper). An endpoint whose role the body lacks refuses.
+var capabilities = Capabilities.Parse(Environment.GetEnvironmentVariable("ROLES"));
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
@@ -67,7 +70,8 @@ speech.DefineReactions();
 // The golem's embodiment: the golem given a body. What the body reports comes to it; every print goes out through the
 // robot's mechanics, the actor's output target — parsed, switched on, sent to the body over the websocket as one of the robot's
 // base actions.
-var golemEmbodiment = new GolemEmbodiment(performance, ros, feed, wire, golem, home, journalPath);
+var golemEmbodiment = new GolemEmbodiment(performance, ros, feed, wire, golem, home, journalPath, capabilities);
+Console.WriteLine($"[golem {golem}] roles: {capabilities}");
 golemEmbodiment.Mechanics.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print to the body
 
 performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
