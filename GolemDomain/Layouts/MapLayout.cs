@@ -267,8 +267,8 @@ internal sealed class MapLayout : Map
         if (opening == null) throw new GolemDomainException("MapLayout.Pivots: 'opening' was not given");
         if (radius < 0) throw new GolemDomainException("MapLayout.Pivots: a body's radius cannot be negative");
         var edge = EdgeOf(opening);
+        if (edge.Length <= 2 * OpeningMargin + 1e-9) return new[] { edge.Midpoint };   // narrow: nowhere to turn but the middle
         double clearance = Clearance(edge, radius);
-        if (edge.Length <= 2 * clearance + 1e-9) return new[] { edge.Midpoint };
         if (edge.IsVertical)
         {
             double x = edge.From.X, lo = Math.Min(edge.From.Y, edge.To.Y), hi = Math.Max(edge.From.Y, edge.To.Y);

@@ -1,87 +1,174 @@
-using System.Globalization;
-using Choreography.Theater;
 using GolemDomain;
+using GolemDomain.Geometry;
 using GolemDomain.Layouts;
+using GolemDomain.Routes;
+using GolemDomain.Touches;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Puppeteer;
 
 namespace GolemTest;
 
-// The catalog of named maps (Catalog): each one is built with the domain's own class and reaches a golem's
-// journal as the release it renders — so the journal, not the code, keeps the map. Every test
-// charts one plan into a fresh actor through the perform and asks the golem about it.
+// THE MAPS OF THE DOMAIN, TESTED AS OBJECTS (Juan, 21-sep-2026: "el testing es sobre el dominio de las clases, no sobre los
+// scripts"): a layout is built with the domain's own classes — the areas first, then the passages between objects — and asked
+// in C# what it disposes (as a maquette), where things stand (as a layout), whether a straight run stays on it (Crossings),
+// where a body may turn on an open boundary (Pivots), and which road a planner finds over it. No actor, no journal, no
+// script here: the release a map renders is checked as text, because rendering it is the layout's own operation; that the
+// engine applies it is the acceptance tests' business.
 [TestClass]
 public class FloorPlanCatalogTests
 {
-    private PerformanceV2 perf;
+    private const double Radius = 0.25;   // body_v1
 
-    [TestInitialize]
-    public void PinTheCulture()
-    {
-        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
-        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-    }
-
-    [TestCleanup]
-    public void TheGolemRests() => perf?.Dispose();
+    // ---- the warehouse: built in two movements, read as a maquette and as a layout ----
 
     [TestMethod]
-    public void TheWarehouse_RendersTheReleaseTheHostCarries_EachAreaFoundOnceAndToldInOneTrain()
+    public void TheWarehouse_IsBuiltInTwoMovements_TheAreasFirst_ThenThePassagesBetweenObjects()
+    {
+        var map = new MapLayout("warehouse");
+        var kitchen = map.Area("kitchen").At(P(0, 8)).Size(4, 3);
+        var north = map.Area("north").At(P(4, 8)).Size(3, 3);
+        var center = map.Area("center").At(P(4, 3)).Size(3, 5);
+        var garage = map.Area("garage").At(P(7, 0)).Size(4, 3);
+        kitchen.DoorAt(north, P(4, 9.5));
+        north.OpenTo(center);
+
+        Assert.AreEqual(4, map.ZoneCount, "every area laid out");
+        Assert.AreEqual(2, map.PassageCount, "one door, one open boundary");
+        Assert.IsTrue(map.Connects(kitchen, north), "joined by a door: information");
+        Assert.IsTrue(map.Connects(north, center), "joined by an open boundary: information");
+        Assert.IsTrue(map.Touches(north, center), "and actually sharing an edge on the plane: geometry");
+        Assert.IsFalse(map.Connects(kitchen, garage));
+        Assert.AreEqual(4.0, map.PointOf(map.DoorBetween(kitchen, north)).X, 1e-9, "the door stands where it was told");
+        Assert.AreEqual(9.5, map.PointOf(map.DoorBetween(kitchen, north)).Y, 1e-9);
+        CollectionAssert.AreEquivalent(new[] { "north" }, kitchen.Neighbours().Select(a => a.Name).ToList());
+        Assert.AreEqual(4.0, kitchen.Width, 1e-9, "found once, read as the zone it is");
+        Assert.AreEqual("center", map.ZoneAt(P(5.5, 5.5)).Name);
+        Assert.AreEqual("north", map.ZoneOf(P(5.5, 9.5)).Name);
+    }
+
+    [TestMethod]
+    public void TheCatalogsWarehouse_IsTheOneTheWorldBuilds_NineAreasAroundTwoBlocks()
+    {
+        var map = Catalog.Warehouse();
+
+        Assert.AreEqual(9, map.AreaCount, "what the maquette disposes");
+        Assert.AreEqual(9, map.ZoneCount, "every area laid out");
+        Assert.AreEqual(10, map.PassageCount, "eight doors and two open boundaries");
+        Assert.AreEqual(8, map.Doors.Count());
+        Assert.AreEqual(2, map.Openings.Count());
+        Assert.AreEqual(2, map.Find("kitchen").Neighbours().Count, "the kitchen connects to two areas");
+        Assert.IsTrue(map.Connects(map.Find("north"), map.Find("center")));
+        Assert.IsTrue(map.Touches(map.Find("north"), map.Find("center")));
+        Assert.IsFalse(map.Connects(map.Find("kitchen"), map.Find("garage")));
+        Assert.IsTrue(map.IsOnMap(P(5.5, 5.5)));
+        Assert.IsFalse(map.IsOnMap(P(-1.0, 5.5)), "the floor is 11 x 11");
+    }
+
+    [TestMethod]
+    public void TheWarehouse_RendersItsReleaseInTwoMovements_NoNeighbourEntersByName()
     {
         string release = Catalog.Warehouse().AsRelease();
 
-        // one concrete map builds everything, in two movements (21-sep-2026): every area born as a variable — where it stands,
-        // how big it is — then, all of them existing, the doors placed and the boundaries opened BETWEEN OBJECTS
         StringAssert.StartsWith(release, "upgrade('warehouse_v1') {\n    map = MapLayout('warehouse');\n    {\n");
         StringAssert.Contains(release, "        kitchen = map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);\n");
         StringAssert.Contains(release, "        garage = map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);\n");
         StringAssert.Contains(release, "        kitchen.DoorAt(north, Position(4.0, 9.5));\n        kitchen.DoorAt(west, Position(0.75, 8.0));\n");
         StringAssert.Contains(release, "        north.DoorAt(storage, Position(7.0, 9.5));\n        north.OpenTo(center);\n");
         StringAssert.Contains(release, "        south.DoorAt(garage, Position(7.0, 1.5));\n    }\n}\n");
-        Assert.IsFalse(release.Contains("DoorAt('") || release.Contains("DoorTo('") || release.Contains("OpenTo('"), "no neighbour enters by name: the passages are opened between objects");
         Assert.IsTrue(release.IndexOf("garage = map.Area") < release.IndexOf("kitchen.DoorAt"), "every area exists before the first passage");
-        Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(release, @"g\."), "the golem writes nothing here: the map builds itself, and the golem receives it");
+        Assert.IsFalse(release.Contains("DoorAt('") || release.Contains("DoorTo('") || release.Contains("OpenTo('"), "no neighbour enters by name: the passages are opened between objects");
+        Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(release, @"\bg\."), "the golem writes nothing here: the map builds itself, and the golem receives it");
+    }
 
-        Born(release);
-        bool leaked = true;
-        try { Text("kitchen.Name"); } catch (Exception) { leaked = false; }
-        Assert.IsFalse(leaked, "the areas' variables die with their block: only the map is a global of the actor");
-        Assert.AreEqual(9, Int("map.ZoneCount"));
-        Assert.AreEqual(10, Int("map.PassageCount"), "eight doors and two openings, as the host's warehouse");
-        Assert.AreEqual("center", Text("map.ZoneAt(Position(5.5, 5.5)).Name"));
-        // and the map answers on its own, without the golem — as a maquette and as a layout, because it is both
-        Assert.AreEqual(9, Int("map.AreaCount"), "what the maquette disposes");
-        Assert.AreEqual(2, Int("map.Find('kitchen').Neighbours().Count"), "the kitchen connects to two areas");
-        Assert.IsTrue(Bool("map.Connects(map.Find('north'), map.Find('center'))"), "connected by an opening: information");
-        Assert.IsTrue(Bool("map.Touches(map.Find('north'), map.Find('center'))"), "and actually sharing an edge on the plane: geometry");
-        Assert.IsFalse(Bool("map.Connects(map.Find('kitchen'), map.Find('garage'))"));
-        Assert.AreEqual(9, Int("map.ZoneCount"), "every area laid out");
-        Assert.AreEqual("north", Text("map.ZoneOf(Position(5.5, 9.5)).Name"));
-        Assert.AreEqual(4.0, Double("map.Find('kitchen').Width"), 1e-9, "found once, read as the zone it is");
-        Assert.AreEqual(0.25, Double("body.Radius.InMeters"), 1e-9, "and the body: a magnitude, read in its base unit");
+    // ---- the straight run and the pivots: what the planner asks the layout ----
+
+    [TestMethod]
+    public void AStraightRun_StaysOnTheMap_ThroughAChainOfOpenBoundaries_AndSaysWhereItCrossesThem()
+    {
+        var map = Catalog.Warehouse();
+
+        var inOneZone = map.Crossings(P(4.5, 9.0), P(6.5, 10.5), Radius);
+        Assert.AreEqual(0, inOneZone.Count, "both points in the north hall: nothing crossed");
+
+        var northToSouth = map.Crossings(P(6.3, 10.4), P(5.5, 1.5), Radius);
+        Assert.AreEqual(2, northToSouth.Count, "north hall, centre, south hall: two open boundaries on the way");
+        Assert.AreEqual(8.0, northToSouth[0].Y, 1e-9, "the first where north~center lies");
+        Assert.AreEqual(3.0, northToSouth[1].Y, 1e-9, "the second where center~south lies");
+        Assert.IsTrue(northToSouth[0].X > 4.5 && northToSouth[0].X < 6.5, "crossed away from the blocks' corners");
+    }
+
+    [TestMethod]
+    public void AStraightRun_IsCutByAWall_ByADoor_AndByABlocksCorner()
+    {
+        var map = Catalog.Warehouse();
+
+        Assert.IsNull(map.Crossings(P(3.0, 9.5), P(5.5, 1.5), Radius), "out of the kitchen through its east wall: a door is not an open boundary");
+        Assert.IsNull(map.Crossings(P(4.2, 8.6), P(6.9, 2.4), Radius), "it would cross north~center 0.46 m from the block's corner: too close");
+        Assert.IsNull(map.Crossings(P(5.5, 9.5), P(7.5, 7.5), Radius), "through the corner where two walls meet");
+        Assert.IsNull(map.Crossings(P(2.0, 9.5), P(2.0, 1.5), Radius), "kitchen to living room straight down: two blocks and a corridor's walls in between");
+    }
+
+    [TestMethod]
+    public void ABodyMayTurnOnAnOpenBoundary_AtItsEndsInsetByTheMargin_OrInTheMiddle()
+    {
+        var warehouse = Catalog.Warehouse();
+        var wide = warehouse.Pivots(warehouse.OpeningBetween(warehouse.Find("north"), warehouse.Find("center")), Radius);
+        Assert.AreEqual(3, wide.Count, "a 3 m boundary: the two ends inset by the margin and the middle");
+        CollectionAssert.AreEquivalent(new[] { 4.5, 5.5, 6.5 }, wide.Select(p => p.X).ToList());
+        Assert.IsTrue(wide.All(p => Math.Abs(p.Y - 8.0) < 1e-9), "all of them on the boundary itself");
+
+        var ring = Catalog.RingCorridor();
+        var corridor = ring.Pivots(ring.OpeningBetween(ring.Find("west-corridor"), ring.Find("north-corridor")), Radius);
+        CollectionAssert.AreEquivalent(new[] { 10.0, 10.25, 10.5 }, corridor.Select(p => p.Y).ToList(), "a 1.5 m corridor's end: the margin still leaves three places to turn");
+        Assert.IsTrue(corridor.All(p => Math.Abs(p.X - 1.5) < 1e-9));
+
+        var tight = new MapLayout("tight");
+        var a = tight.Area("a").At(P(0, 0)).Size(0.8, 2);
+        var b = tight.Area("b").At(P(0, 2)).Size(0.8, 2);
+        a.OpenTo(b);
+        var narrow = tight.Pivots(tight.OpeningBetween(a, b), Radius);
+        Assert.AreEqual(1, narrow.Count, "a boundary narrower than twice the margin: the middle alone");
+        Assert.AreEqual(0.4, narrow[0].X, 1e-9);
+        Assert.AreEqual(2.0, narrow[0].Y, 1e-9);
+        Assert.AreEqual(1, tight.Crossings(P(0.2, 1.0), P(0.2, 3.0), Radius).Count, "and a straight run still passes wherever the body fits");
+        Assert.IsNull(tight.Crossings(P(0.05, 1.0), P(0.05, 3.0), Radius), "but not hugging the wall");
+    }
+
+    // ---- the road a planner finds over each map of the catalog ----
+
+    [TestMethod]
+    public void OverTheWarehouse_TheShortestRoad_CutsThroughTheCentre_OrTakesTheCorridor()
+    {
+        var map = Catalog.Warehouse();
+        var planner = Planner(map);
+
+        // kitchen -> garage: door to door in ONE straight run through the north hall, the centre and the south hall
+        Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", planner.Road(map.Find("kitchen").Center, map.Find("garage").Center).AsPlan());
+        Assert.AreEqual(2.0 + Math.Sqrt(9.0 + 64.0) + 2.0, planner.RoadLength(map.Find("kitchen").Center, map.Find("garage").Center), 0.01);
+        // kitchen -> living: the west corridor beats the shortcut for this pair
+        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", planner.Road(map.Find("kitchen").Center, map.Find("living").Center).AsPlan());
+        Assert.AreEqual(2 * Math.Sqrt(3.8125) + 5.0, planner.RoadLength(map.Find("kitchen").Center, map.Find("living").Center), 0.01);
+        // north hall -> south hall: one leg, the open boundaries crossed, not bent on
+        Assert.AreEqual("south@5.5,1.5", planner.Road(P(6.3, 10.4), P(5.5, 1.5)).AsPlan());
     }
 
     [TestMethod]
     public void CrossCorridors_FourRoomsInTheCorners_TwoAislesThatCross()
     {
-        Born(Catalog.Named("cross-corridors").AsRelease());
+        var map = Catalog.Named("cross-corridors");
 
-        Assert.AreEqual(9, Int("map.ZoneCount"), "four rooms, four aisles, the crossing");
-        Assert.AreEqual(12, Int("map.PassageCount"), "eight doors, four open boundaries around the crossing");
-        Assert.IsFalse(Bool("map.IsOnMap(Position(4.0, 5.5))") && Bool("map.IsOnMap(Position(-1.0, 5.5))"), "the floor is 11 x 11");
-        Assert.AreEqual("crossing", Text("map.ZoneAt(Position(5.5, 5.5)).Name"));
+        Assert.AreEqual(9, map.ZoneCount, "four rooms, four aisles, one crossing");
+        Assert.AreEqual(12, map.PassageCount, "eight doors, four open boundaries around the crossing");
+        Assert.AreEqual("crossing", map.ZoneAt(P(5.5, 5.5)).Name);
 
-        // from the northwest room to the southeast one: out a door into an aisle, through the crossing (two open
-        // boundaries), along the other aisle and in through a door — never through a wall. The two ways round
-        // (north then east, west then south) are the same length: the planner may take either.
-        Visit(1, "southeast", 2.375, 8.625);
-        string plan = Text("g.Road(g.Find(1), Position(2.375, 8.625)).AsPlan()");
+        // from the northwest room to the southeast one: out a door into an aisle, bending on the crossing's two open
+        // boundaries (the straight run would graze the crossing's corner), along the other aisle and in through a door
+        var planner = Planner(map);
+        string plan = planner.Road(map.Find("northwest").Center, map.Find("southeast").Center).AsPlan();
         StringAssert.StartsWith(plan, "northwest/");
         Assert.AreEqual(2, plan.Split("crossing~").Length - 1, "in through one aisle, out through the other: " + plan);
         StringAssert.EndsWith(plan, "> southeast@8.63,2.38");
         Assert.AreEqual(2, plan.Split('/').Length - 1, "exactly two doors: " + plan);
-        // the two aisles a room opens to: a corner room reaches its diagonal opposite only through the crossing
-        double diagonal = Double("g.Distance(map.Find('northwest'), map.Find('southeast'))");
+        double diagonal = planner.RoadLength(map.Find("northwest").Center, map.Find("southeast").Center);
         double straight = Math.Sqrt(6.25 * 6.25 * 2);   // ~8.84, through the crossing's corner: not a road
         Assert.IsTrue(diagonal > straight + 1.5 && diagonal < 11.5, "door, aisle, crossing, aisle, door — a bit over ten metres: " + diagonal);
     }
@@ -89,22 +176,19 @@ public class FloorPlanCatalogTests
     [TestMethod]
     public void RingCorridor_FourRoomsInTheMiddle_OneCorridorAllTheWayRound()
     {
-        Born(Catalog.Named("ring-corridor").AsRelease());
+        var map = Catalog.Named("ring-corridor");
 
-        Assert.AreEqual(8, Int("map.ZoneCount"), "four rooms, four stretches of corridor");
-        Assert.AreEqual(16, Int("map.PassageCount"), "eight doors to the corridor, four between the rooms, four open stretches");
-        Assert.AreEqual("west-corridor", Text("map.ZoneAt(Position(0.75, 5.5)).Name"));
+        Assert.AreEqual(8, map.ZoneCount, "four rooms, four stretches of corridor");
+        Assert.AreEqual(16, map.PassageCount, "eight doors to the corridor, four between the rooms, four open stretches");
+        Assert.AreEqual("west-corridor", map.ZoneAt(P(0.75, 5.5)).Name);
 
-        // neighbouring rooms are joined directly: center to center through the door they share
-        Assert.AreEqual(4.0, Double("g.Distance(map.Find('northwest'), map.Find('northeast'))"), 0.01, "two metres to the door, two more to the neighbour's center");
-        // the corridor runs all the way round: from one stretch into the next through an open boundary, no door
-        Visit(1, new[] { "9,10.25" }, 0.75, 10.25);                    // the east end of the north corridor
-        string plan = Text("g.Road(g.Find(1), Position(0.75, 10.25)).AsPlan()");       // from the northwest corner of the ring
-        Assert.AreEqual("north-corridor@9,10.25", plan, "one straight run along the corridor: the open stretch is crossed on the way, not bent on (21-sep-2026)");
-        Assert.IsFalse(plan.Contains('/'), "along the corridor, through no door: " + plan);
+        var planner = Planner(map);
+        // neighbouring rooms are joined directly: centre to centre through the door they share
+        Assert.AreEqual(4.0, planner.RoadLength(map.Find("northwest").Center, map.Find("northeast").Center), 0.01, "two metres to the door, two more to the neighbour's centre");
+        // the corridor runs all the way round: from one stretch into the next through an open boundary, in one straight run
+        Assert.AreEqual("north-corridor@9,10.25", planner.Road(P(0.75, 10.25), P(9.0, 10.25)).AsPlan(), "the open stretch is crossed on the way, not bent on");
         // and cutting through a room beats going round when it is shorter: the planner takes the rooms' doors
-        Visit(2, "east-corridor", 0.75, 10.25);
-        string across = Text("g.Road(g.Find(2), Position(0.75, 10.25)).AsPlan()");
+        string across = planner.Road(P(0.75, 10.25), map.Find("east-corridor").Center).AsPlan();
         StringAssert.Contains(across, "northeast/north-corridor@7.5,9.5 > northeast/east-corridor@9.5,7.5", "through the northeast room: " + across);
     }
 
@@ -116,20 +200,7 @@ public class FloorPlanCatalogTests
         StringAssert.Contains(refused.Message, "no map named 'attic'");
     }
 
-    // ---- helpers ----
-
-    private void Born(string mapRelease)
-    {
-        string name = "golem-under-test-" + Guid.NewGuid().ToString("N");
-        perf = new PerformanceV2(name, DomainLibrary.Assembly);
-        perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
-        perf.Start();
-        perf.Actor.Using(
-            "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); retreat = Meters(0.6); body = Body(radius, speed, linger, retreat); }\n"
-            + mapRelease
-            + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n")
-        .PerformCommand();
-    }
+    // ---- the guards every method keeps ----
 
     [TestMethod]
     public void AnObjectNotGiven_IsRefusedByTheDomain_BeforeAnythingRuns()
@@ -139,8 +210,10 @@ public class FloorPlanCatalogTests
         var kitchen = map.Find("kitchen");
         Assert.AreEqual("Map.Connects: 'a' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Connects(null, kitchen)).Message);
         Assert.AreEqual("Zone.Contains: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => kitchen.Contains(null)).Message);
-        Assert.AreEqual("a golem needs a body to drive", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Golem(null, map, new GolemDomain.Touches.Collisions(map))).Message);
-        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Routes.Route(1, null, false, false, map, new GolemDomain.Touches.Collisions(map), 0.25, 0.6, _ => { })).Message);
+        Assert.AreEqual("MapLayout.Crossings: 'to' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Crossings(P(1, 1), null, Radius)).Message);
+        Assert.AreEqual("MapLayout.Pivots: 'opening' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Pivots(null, Radius)).Message);
+        Assert.AreEqual("a golem needs a body to drive", Assert.ThrowsException<GolemDomainException>(() => new Golem(null, map, new Collisions(map))).Message);
+        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new Route(1, null, false, false, map, new Collisions(map), Radius, 0.6, _ => { })).Message);
     }
 
     [TestMethod]
@@ -149,12 +222,12 @@ public class FloorPlanCatalogTests
         // Juan, 14-sep-2026: an act that takes two areas (two points, two ends) refuses the same object twice
         var map = Catalog.Warehouse();
         var kitchen = map.Find("kitchen");
-        var p = new GolemDomain.Geometry.Position(1.0, 1.0);
+        var p = P(1.0, 1.0);
         Assert.AreEqual("Map.Connects: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.Connects(kitchen, kitchen)).Message);
         Assert.AreEqual("Map.DoorBetween: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.DoorBetween(kitchen, kitchen)).Message);
         Assert.AreEqual("MapLayout.Touches: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.Touches(kitchen, kitchen)).Message);
         Assert.AreEqual("area 'kitchen' has no door to itself", Assert.ThrowsException<GolemDomainException>(() => map.Door("kitchen", "kitchen")).Message);
-        Assert.AreEqual("Segment.Segment: 'from' and 'to' are the same point", Assert.ThrowsException<GolemDomainException>(() => new GolemDomain.Geometry.Segment(p, p)).Message);
+        Assert.AreEqual("Segment.Segment: 'from' and 'to' are the same point", Assert.ThrowsException<GolemDomainException>(() => new Segment(p, p)).Message);
         Assert.IsTrue(map.Connects(kitchen, map.Find("north")), "two different areas answer as before");
     }
 
@@ -162,90 +235,15 @@ public class FloorPlanCatalogTests
     public void APosition_LivesOnTheFloorUnlessToldItsHeight()
     {
         // Juan, 14-sep-2026: two coordinates are a point on the floor (z = 0); the third dimension waits for the day it is needed
-        Born(Catalog.Warehouse().AsRelease());
-        Assert.AreEqual(0.0, Double("Position(4.0, 9.5).Z"), 1e-12, "on the floor");
-        Assert.AreEqual(1.2, Double("Position(4.0, 9.5, 1.2).Z"), 1e-12, "above it");
-        Assert.AreEqual(5.0, Double("Position(0.0, 0.0, 0.0).DistanceTo(Position(3.0, 4.0))"), 1e-9, "the plane's distance");
-        Assert.AreEqual(13.0, Double("Position(0.0, 0.0, 0.0).DistanceTo(Position(3.0, 4.0, 12.0))"), 1e-9, "distance in space");
-        Assert.AreEqual(1.2, Double("Position(1.0, 1.0, 1.2).Along(0.0, 2.0).Z"), 1e-12, "a run along a heading keeps the height");
+        Assert.AreEqual(0.0, new Position(4.0, 9.5).Z, 1e-12, "on the floor");
+        Assert.AreEqual(1.2, new Position(4.0, 9.5, 1.2).Z, 1e-12, "above it");
+        Assert.AreEqual(5.0, new Position(0.0, 0.0, 0.0).DistanceTo(new Position(3.0, 4.0)), 1e-9, "the plane's distance");
+        Assert.AreEqual(13.0, new Position(0.0, 0.0, 0.0).DistanceTo(new Position(3.0, 4.0, 12.0)), 1e-9, "distance in space");
+        Assert.AreEqual(1.2, new Position(1.0, 1.0, 1.2).Along(0.0, 2.0).Z, 1e-12, "a run along a heading keeps the height");
     }
 
-    private void Visit(int id, string[] stops, double fromX, double fromY)
-    {
-        for (int i = 0; i < stops.Length; i++)
-        {
-            string stop = stops[i];
-            bool first = i == 0;
-            string script = stop.Contains(',')
-                ? (first ? "{ from = Position(@fx, @fy); point = Position(@x, @y); route = g.Visit(from, point); }" : "{ route = g.Find(@id); point = Position(@x, @y); route.Then(point); }")
-                : (first ? "{ from = Position(@fx, @fy); point = map.Find(@area); route = g.Visit(from, point); }" : "{ route = g.Find(@id); point = map.Find(@area); route.Then(point); }");
-            perf.Actor.Using(script)
-            .WithParameters(p => {
-                if (first) { p["fx", typeof(double)] = fromX; p["fy", typeof(double)] = fromY; }
-                else p["id", typeof(int)] = id;
-                if (stop.Contains(','))
-                {
-                    var xy = stop.Split(',');
-                    p["x", typeof(double)] = double.Parse(xy[0], CultureInfo.InvariantCulture);
-                    p["y", typeof(double)] = double.Parse(xy[1], CultureInfo.InvariantCulture);
-                }
-                else p["area", typeof(string)] = stop;
-            })
-            .PerformCommand();
-        }
-    }
+    // ---- helpers: the domain's own objects, nothing else ----
 
-    private void Visit(int id, string place, double fromX, double fromY) =>
-        perf.Actor.Using(@"
-            { from = Position(@fx, @fy); point = map.Find(@area); route = g.Visit(from, point); }
-        ")
-        .WithParameters(p => {
-            p["fx", typeof(double)] = fromX; p["fy", typeof(double)] = fromY;
-            p["area", typeof(string)] = place;
-        })
-        .PerformCommand();
-
-    private int Int(string expression)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using($"@value = {expression};")
-        .WithParameters(rented, p => {
-            p[Parameter.Out, "value", typeof(int)] = default;
-        })
-        .PerformQuery();
-        return rented["value"].GetValue<int>();
-    }
-
-    private double Double(string expression)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using($"@value = {expression};")
-        .WithParameters(rented, p => {
-            p[Parameter.Out, "value", typeof(double)] = default;
-        })
-        .PerformQuery();
-        return rented["value"].GetValue<double>();
-    }
-
-    private bool Bool(string expression)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using($"@value = {expression};")
-        .WithParameters(rented, p => {
-            p[Parameter.Out, "value", typeof(bool)] = default;
-        })
-        .PerformQuery();
-        return rented["value"].GetValue<bool>();
-    }
-
-    private string Text(string expression)
-    {
-        using var rented = perf.Actor.RentedParameters();
-        perf.Actor.Using($"@value = {expression};")
-        .WithParameters(rented, p => {
-            p[Parameter.Out, "value", typeof(string)] = default;
-        })
-        .PerformQuery();
-        return rented["value"].GetValue<string>();
-    }
+    private static Position P(double x, double y) => new(x, y);
+    private static RoutePlanner Planner(MapLayout map) => new(map, new Collisions(map), Radius);
 }
