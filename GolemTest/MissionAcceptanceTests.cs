@@ -171,14 +171,39 @@ public class MissionAcceptanceTests
     }
 
     [TestMethod]
+    public void FromTheNorthHall_ToTheSouthHall_IsOneStraightLeg_TheOpeningsCrossedNotBentOn()
+    {
+        // Juan, 21-sep-2026: "¿por qué el dominio no une esos puntos y llega directo?" — before, the way bent through the
+        // middle of north~center (5.5, 8) and of center~south (5.5, 3): three legs, five orders
+        Visit(1, 5.5, 1.5, 6.3, 10.4);   // from where blue wakes, in the north hall, to the middle of the south hall
+        Assert.AreEqual("south@5.5,1.5", Text("g.Find(1).AsPlan()"), "one leg: the two open boundaries are crossed on the way");
+        StringAssert.StartsWith(Text("g.Find(1).Order"), "turn", "one turn…");
+        Step(1, Text("g.Find(1).Order"));
+        Assert.AreEqual("advance", Text("g.Find(1).Order"), "…and one advance");
+        Assert.AreEqual(Math.Sqrt(0.8 * 0.8 + 8.9 * 8.9), Double("g.Find(1).Amount"), 1e-6, "the whole way in one amount");
+        Step(1, "advance");
+        Assert.AreEqual("completed", Text("g.Find(1).Status"));
+    }
+
+    [TestMethod]
+    public void WhereTheStraightRun_WouldGrazeABlocksCorner_TheWayBendsOnTheOpeningsPivot()
+    {
+        // from the north hall's west side, low, to the south hall's east side: the straight run would cross north~center at
+        // 0.46 m from the block's corner — so the way bends on the openings' pivots, inset OpeningMargin from the corners
+        Visit(1, 6.9, 2.4, 4.2, 8.6);
+        string plan = Text("g.Find(1).AsPlan()");
+        StringAssert.Contains(plan, "~", "a bend on an open boundary is a leg: " + plan);
+        Assert.IsFalse(plan.Contains("@5.5,"), "and it bends at the pivot by the corner, not in the middle: " + plan);
+    }
+
+    [TestMethod]
     public void TheShortestRoad_CutsThroughTheCenter_WhenThatIsShorter()
     {
-        // kitchen (2,9.5) -> door (4,9.5) -> the open boundary north~center at its middle (5.5,8) -> the open
-        // boundary center~south, crossed where the walked run to the door's approach point (6.4,1.5) meets it
-        // (x ~ 6.19) -> door (7,1.5) -> garage (9,1.5)
-        double cross = 5.5 + (6.4 - 5.5) * (5.0 / 6.5);
-        double throughTheCenter = 2.0 + Math.Sqrt(4.5) + Math.Sqrt((cross - 5.5) * (cross - 5.5) + 25)
-                                  + Math.Sqrt((7 - cross) * (7 - cross) + 2.25) + 2.0;      // ~12.87
+        // kitchen (2,9.5) -> door (4,9.5) -> ONE straight run through the north hall, the centre and the south hall — it
+        // crosses north~center at (4.56, 8) and center~south at (6.44, 3), both away from the blocks' corners — -> door
+        // (7,1.5) -> garage (9,1.5). 21-sep-2026: the openings are crossed, not bent on; before, the run bent through the
+        // middle of each one (~12.87)
+        double throughTheCenter = 2.0 + Math.Sqrt(9.0 + 64.0) + 2.0;                       // ~12.54
         double aroundByTheWest = 2 * Math.Sqrt(3.8125) + 5.0 + Math.Sqrt(12.8125) + 3.0 + 2.0; // ~15.5
         double road = Double("g.Distance(map.Find('kitchen'), map.Find('garage'))");
         Assert.AreEqual(throughTheCenter, road, 0.01);
@@ -298,10 +323,7 @@ public class MissionAcceptanceTests
         Visit(2, 9.0, 1.5);   // the garage
         Abandon(1, "the test moves on");
         string plan = Text("g.Road(g.Find(2), Position(2.0, 9.5)).AsPlan()");
-        StringAssert.StartsWith(plan, "kitchen/north@4,9.5 > ");
-        StringAssert.Contains(plan, "north~center@");
-        StringAssert.Contains(plan, "center~south@");
-        StringAssert.EndsWith(plan, "> south/garage@7,1.5 > garage@9,1.5");
+        Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", plan, "door to door in one straight run through the centre: the openings are crossed, not bent on (21-sep-2026)");
     }
 
     [TestMethod]
@@ -345,7 +367,7 @@ public class MissionAcceptanceTests
         Reach(1, 5.5, 9.5);
         Assert.AreEqual("pending", Text("g.Find(1).Status"), "one stop reached, one to go");
         Assert.AreEqual(1, Int("g.Find(1).StopsLeft"));
-        Assert.AreEqual("north~center", Text("g.Find(1).NextLeg.Name"), "the plan goes on from the stop: back through the opening");
+        Assert.AreEqual("south", Text("g.Find(1).NextLeg.Name"), "the plan goes on from the stop: straight down through both openings to the south hall, no bend (21-sep-2026)");
 
         Reach(1, 5.5, 1.5);
         Assert.AreEqual("completed", Text("g.Find(1).Status"));
@@ -419,8 +441,9 @@ public class MissionAcceptanceTests
     [TestMethod]
     public void ADoor_FollowedByAnOpening_IsStillCrossedStraight()
     {
-        // kitchen (3, 9.5) -> door kitchen/north at (4, 9.5) -> the opening north~center, whose crossing point sits ON the
-        // north hall's boundary -> south. 17-sep-2026 live: the door got no approach and no exit (neither side "held" the
+        // kitchen (3, 9.5) -> door kitchen/north at (4, 9.5) -> south (5.5, 1.5): the straight run from the door would cross
+        // north~center at x = 4.28, too close to the block's corner, so the way bends on the opening's pivot (4.5, 8) — a leg
+        // ON the north hall's boundary. 17-sep-2026 live: the door got no approach and no exit (neither side "held" the
         // opening's point), the body turned in the doorway and grazed the jamb. The next leg's passage tells the side.
         Visit(1, 5.5, 1.5, 3.0, 9.5);
         Assert.AreEqual("kitchen/north", Text("g.Find(1).NextLeg.Name"));

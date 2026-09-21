@@ -100,8 +100,7 @@ public class FloorPlanCatalogTests
         // the corridor runs all the way round: from one stretch into the next through an open boundary, no door
         Visit(1, new[] { "9,10.25" }, 0.75, 10.25);                    // the east end of the north corridor
         string plan = Text("g.Road(g.Find(1), Position(0.75, 10.25)).AsPlan()");       // from the northwest corner of the ring
-        StringAssert.StartsWith(plan, "west-corridor~north-corridor@1.5,10.2");
-        StringAssert.EndsWith(plan, "> north-corridor@9,10.25");
+        Assert.AreEqual("north-corridor@9,10.25", plan, "one straight run along the corridor: the open stretch is crossed on the way, not bent on (21-sep-2026)");
         Assert.IsFalse(plan.Contains('/'), "along the corridor, through no door: " + plan);
         // and cutting through a room beats going round when it is shorter: the planner takes the rooms' doors
         Visit(2, "east-corridor", 0.75, 10.25);

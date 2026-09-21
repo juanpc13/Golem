@@ -196,68 +196,92 @@ internal sealed class MapLayout : Map
         if (opening == null) throw new GolemDomainException("MapLayout.EdgeOf: 'opening' was not given");
         return Of(opening.AreaA).SharedEdgeWith(Of(opening.AreaB));
     }
-    internal Position MidpointOf(Opening opening)
+
+    /// <summary>Where the straight run from one point to another CROSSES the openings on its way — one point per boundary
+    /// it passes — for a body of this radius; null when a wall cuts it. The run leaves each zone through an open boundary,
+    /// never through a wall nor through a corner where two walls meet, and crosses that boundary OpeningMargin away from the
+    /// corners of the blocks (a narrow boundary: with room for the body). Empty when both points share a zone. This is the
+    /// calculation the planner asks (Juan, 21-sep-2026: "si tiene paso libre, que llegue directo"): a run through the north
+    /// hall, the centre and the south hall is one straight run, not three.</summary>
+    internal IReadOnlyList<Position> Crossings(Position from, Position to, double radius)
     {
-        if (opening == null) throw new GolemDomainException("MapLayout.MidpointOf: 'opening' was not given");
-        return EdgeOf(opening).Midpoint;
+        if (from == null) throw new GolemDomainException("MapLayout.Crossings: 'from' was not given");
+        if (to == null) throw new GolemDomainException("MapLayout.Crossings: 'to' was not given");
+        if (radius < 0) throw new GolemDomainException("MapLayout.Crossings: a body's radius cannot be negative");
+        if (from.DistanceTo(to) < 1e-9) return Array.Empty<Position>();
+        foreach (var start in ZonesOf(from))
+        {
+            var crossings = Walk(start, from, to, radius);
+            if (crossings != null) return crossings;
+        }
+        return null;
     }
 
-    /// <summary>Whether the straight run u→v crosses the edge an opening frees.</summary>
-    internal bool IsCrossed(Opening opening, Position u, Position v)
+    // The run from p to `to`, zone by zone: where it leaves the zone it is in, whether an open boundary is there (away from the
+    // corners), and on into the next zone — until the zone holds the end. Null: a wall, a corner, or the run leaves at once
+    // through the side p stands on (then p's other zone is the one to walk from).
+    private List<Position> Walk(Zone zone, Position p, Position to, double radius)
     {
-        if (opening == null) throw new GolemDomainException("MapLayout.IsCrossed: 'opening' was not given");
-        if (u == null) throw new GolemDomainException("MapLayout.IsCrossed: 'u' was not given");
-        if (v == null) throw new GolemDomainException("MapLayout.IsCrossed: 'v' was not given");
-        if (ReferenceEquals(u, v)) throw new GolemDomainException("MapLayout.IsCrossed: 'u' and 'v' are the same point");
+        var crossings = new List<Position>();
+        for (int hops = 0; hops <= ZoneCount; hops++)
+        {
+            if (zone.Contains(to)) return crossings;
+            double dx = to.X - p.X, dy = to.Y - p.Y;
+            var r = zone.Rect;
+            double tx = dx > 1e-12 ? (r.X + r.Width - p.X) / dx : dx < -1e-12 ? (r.X - p.X) / dx : double.PositiveInfinity;
+            double ty = dy > 1e-12 ? (r.Y + r.Height - p.Y) / dy : dy < -1e-12 ? (r.Y - p.Y) / dy : double.PositiveInfinity;
+            double t = Math.Min(tx, ty);
+            if (t <= 1e-9) return null;                        // leaves at once through the side it stands on
+            if (Math.Abs(tx - ty) < 1e-9) return null;         // through a corner: two walls meet there
+            if (t >= 1 - 1e-9) return crossings;               // the end lies on this zone's boundary
+            var exit = new Position(p.X + t * dx, p.Y + t * dy);
+            bool vertical = tx < ty;
+            Opening through = null;
+            foreach (var o in OpeningsOf(zone))
+            {
+                if (!Touches(o)) continue;
+                var edge = EdgeOf(o);
+                if (edge.IsVertical != vertical) continue;
+                if (vertical ? Math.Abs(edge.From.X - exit.X) > 1e-6 : Math.Abs(edge.From.Y - exit.Y) > 1e-6) continue;
+                double along = vertical ? exit.Y : exit.X;
+                double lo = vertical ? Math.Min(edge.From.Y, edge.To.Y) : Math.Min(edge.From.X, edge.To.X);
+                double hi = vertical ? Math.Max(edge.From.Y, edge.To.Y) : Math.Max(edge.From.X, edge.To.X);
+                double clearance = Clearance(edge, radius);
+                if (along < lo + clearance - 1e-9 || along > hi - clearance + 1e-9) continue;   // by the block's corner: a wall
+                through = o;
+                break;
+            }
+            if (through == null) return null;
+            crossings.Add(exit);
+            zone = Of(through.OtherSide(zone));
+            p = exit;
+        }
+        return null;
+    }
+
+    /// <summary>Where a body may TURN on an open boundary when its way is not straight: the two ends of the boundary, inset by
+    /// the clearance from the blocks' corners, and its middle — the middle alone when the boundary is narrow. The planner's
+    /// nodes on an opening (21-sep-2026; the middle was the only one before, so every crossing bent through it).</summary>
+    internal IReadOnlyList<Position> Pivots(Opening opening, double radius)
+    {
+        if (opening == null) throw new GolemDomainException("MapLayout.Pivots: 'opening' was not given");
+        if (radius < 0) throw new GolemDomainException("MapLayout.Pivots: a body's radius cannot be negative");
         var edge = EdgeOf(opening);
+        double clearance = Clearance(edge, radius);
+        if (edge.Length <= 2 * clearance + 1e-9) return new[] { edge.Midpoint };
         if (edge.IsVertical)
         {
-            double x = edge.From.X, y0 = Math.Min(edge.From.Y, edge.To.Y), y1 = Math.Max(edge.From.Y, edge.To.Y);
-            if ((u.X - x) * (v.X - x) > 0) return false;      // both on the same side: no crossing
-            if (Math.Abs(v.X - u.X) < 1e-9) return false;
-            double t = (x - u.X) / (v.X - u.X);
-            double y = u.Y + t * (v.Y - u.Y);
-            return y >= y0 - 1e-9 && y <= y1 + 1e-9;
+            double x = edge.From.X, lo = Math.Min(edge.From.Y, edge.To.Y), hi = Math.Max(edge.From.Y, edge.To.Y);
+            return new[] { new Position(x, lo + clearance), edge.Midpoint, new Position(x, hi - clearance) };
         }
-        else
-        {
-            double y = edge.From.Y, x0 = Math.Min(edge.From.X, edge.To.X), x1 = Math.Max(edge.From.X, edge.To.X);
-            if ((u.Y - y) * (v.Y - y) > 0) return false;
-            if (Math.Abs(v.Y - u.Y) < 1e-9) return false;
-            double t = (y - u.Y) / (v.Y - u.Y);
-            double x = u.X + t * (v.X - u.X);
-            return x >= x0 - 1e-9 && x <= x1 + 1e-9;
-        }
+        double y = edge.From.Y, x0 = Math.Min(edge.From.X, edge.To.X), x1 = Math.Max(edge.From.X, edge.To.X);
+        return new[] { new Position(x0 + clearance, y), edge.Midpoint, new Position(x1 - clearance, y) };
     }
 
-    /// <summary>Where the straight run u→v meets the edge an opening frees — kept OpeningMargin away from the corners,
-    /// where the walls of the solid blocks stand; a narrow opening is crossed through its middle.</summary>
-    internal Position CrossingPoint(Opening opening, Position u, Position v)
-    {
-        if (opening == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'opening' was not given");
-        if (u == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'u' was not given");
-        if (v == null) throw new GolemDomainException("MapLayout.CrossingPoint: 'v' was not given");
-        if (ReferenceEquals(u, v)) throw new GolemDomainException("MapLayout.CrossingPoint: 'u' and 'v' are the same point");
-        var edge = EdgeOf(opening);
-        if (edge.IsVertical)
-        {
-            double x = edge.From.X, t = (x - u.X) / (v.X - u.X);
-            double y0 = Math.Min(edge.From.Y, edge.To.Y), y1 = Math.Max(edge.From.Y, edge.To.Y);
-            return new Position(x, AwayFromCorners(u.Y + t * (v.Y - u.Y), y0, y1));
-        }
-        else
-        {
-            double y = edge.From.Y, t = (y - u.Y) / (v.Y - u.Y);
-            double x0 = Math.Min(edge.From.X, edge.To.X), x1 = Math.Max(edge.From.X, edge.To.X);
-            return new Position(AwayFromCorners(u.X + t * (v.X - u.X), x0, x1), y);
-        }
-    }
-
-    private static double AwayFromCorners(double along, double from, double to)
-    {
-        if (to - from <= 2 * OpeningMargin) return (from + to) / 2;   // a narrow opening: straight through the middle
-        return Math.Clamp(along, from + OpeningMargin, to - OpeningMargin);
-    }
+    // How far from the corners of an open boundary a body keeps: OpeningMargin, where the walls of the blocks stand; on a
+    // boundary too narrow for that, whatever leaves room for the body itself.
+    private static double Clearance(Segment edge, double radius) =>
+        edge.Length > 2 * OpeningMargin ? OpeningMargin : Math.Max(0.0, edge.Length / 2 - radius);
 
     /// <summary>A unit step through a door into one of its two areas, from the other.</summary>
     internal Position StepInto(Door door, Area side)
