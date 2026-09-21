@@ -97,9 +97,9 @@ internal sealed class MapLayout : Map
         return DoorAt(a?.Name, b?.Name, at);
     }
 
-    /// <summary>Where the door between two areas, named (the second may not be created yet), stands. Declares the door
-    /// if the map did not dispose it yet. Chainable.</summary>
-    internal MapLayout DoorAt(string a, string b, Position at)
+    // Where the door between two areas, named, stands — declares the door if the map did not dispose it yet. The names are
+    // the layout's own business: the journal hands in the areas as objects (21-sep-2026).
+    private MapLayout DoorAt(string a, string b, Position at)
     {
         if (at == null) throw new GolemDomainException($"the door {a}/{b} needs a point on the shared wall");
         var door = Door(a, b);
@@ -335,30 +335,46 @@ internal sealed class MapLayout : Map
     /// Constructor literals carry a decimal point: the engine does not coerce an integer literal into a double
     /// parameter (Fase 0, P7). A named map of the catalog reaches the journal through this text — the code never
     /// becomes the map's truth.</summary>
+    /// <summary>The release that builds this map in a journal, in TWO MOVEMENTS (Juan, 21-sep-2026: "primero crear las
+    /// variables de las áreas con el size y la posición, luego para el DoorAt pasar el objeto del área"): every area is born
+    /// as a variable — its name, where it stands, how big it is — and then, all of them existing, the doors are placed and
+    /// the boundaries opened BETWEEN OBJECTS. The areas live in a block of their own, so only <c>map</c> becomes a global of
+    /// the actor; a name with a hyphen becomes a camelCase identifier (<c>north-aisle</c> → <c>northAisle</c>).</summary>
     internal string AsRelease()
     {
         var text = new StringBuilder();
         text.Append("upgrade('").Append(Name).Append("_v1') {\n");
         text.Append("    map = MapLayout('").Append(Name).Append("');\n");
+        text.Append("    {\n");
         foreach (var z in areas.Cast<Zone>())
         {
-            text.Append("    map.Area('").Append(z.Name).Append("')");
+            text.Append("        ").Append(Identifier(z.Name)).Append(" = map.Area('").Append(z.Name).Append("')");
             if (z.IsLaidOut)
                 text.Append(".At(Position(").Append(Lit(z.X)).Append(", ").Append(Lit(z.Y)).Append(")).Size(").Append(Lit(z.Width)).Append(", ").Append(Lit(z.Height)).Append(')');
+            text.Append(";\n");
+        }
+        foreach (var z in areas.Cast<Zone>())
             foreach (var p in passages.Where(q => q.A == z.Name))
             {
+                text.Append("        ").Append(Identifier(z.Name));
                 if (p is Door d && IsPlaced(d))
                 {
                     var at = PointOf(d);
-                    text.Append(".DoorAt('").Append(d.B).Append("', Position(").Append(Lit(at.X)).Append(", ").Append(Lit(at.Y)).Append("))");
+                    text.Append(".DoorAt(").Append(Identifier(d.B)).Append(", Position(").Append(Lit(at.X)).Append(", ").Append(Lit(at.Y)).Append("));\n");
                 }
-                else if (p is Door) text.Append(".DoorTo('").Append(p.B).Append("')");
-                else text.Append(".OpenTo('").Append(p.B).Append("')");
+                else if (p is Door) text.Append(".DoorTo(").Append(Identifier(p.B)).Append(");\n");
+                else text.Append(".OpenTo(").Append(Identifier(p.B)).Append(");\n");
             }
-            text.Append(";\n");
-        }
+        text.Append("    }\n");
         text.Append("}\n");
         return text.ToString();
+    }
+
+    // The variable an area is held in while the release builds the map: its name, a hyphen turning the next letter upper.
+    private static string Identifier(string name)
+    {
+        var parts = name.Split('-');
+        return parts[0] + string.Concat(parts.Skip(1).Select(p => p.Length == 0 ? "" : char.ToUpperInvariant(p[0]) + p[1..]));
     }
 
     // A double literal for the DSL: always with a decimal point.

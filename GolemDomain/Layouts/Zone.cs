@@ -6,8 +6,9 @@ namespace GolemDomain.Layouts;
 /// <summary>
 /// A zone: an area of the map IN THE PERSPECTIVE OF POSITIONS — it is an <see cref="Area"/> (it inherits the
 /// name, the map, the passages) and it also occupies a rectangle on the plane, never overlapping another. It is
-/// created once and told what it is in one train: <c>map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0)
-/// .DoorAt('north', Position(4.0, 9.5))</c>, and found again with <c>map.Find('kitchen')</c>. From the rectangle
+/// created once and told what it is in one train — <c>kitchen = map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);</c> —
+/// and, once its neighbours exist, where its doors stand and what it opens to, BY OBJECT (Juan, 21-sep-2026):
+/// <c>kitchen.DoorAt(north, Position(4.0, 9.5)); north.OpenTo(center);</c>; found again with <c>map.Find('kitchen')</c>. From the rectangle
 /// and the map it derives its corners, its walls (every edge not freed by an opening, each knowing the doors that
 /// pierce it) and how it touches its neighbours.
 /// </summary>
@@ -45,19 +46,13 @@ internal sealed class Zone : Area
         if (area == null) throw new GolemDomainException("Zone.DoorAt: 'area' was not given");
         if (at == null) throw new GolemDomainException("Zone.DoorAt: 'at' was not given"); Layout.DoorAt(this, area, at); return this; }
 
-    /// <summary>Where the door into another area, named (it may not be created yet), stands. Chainable.</summary>
-    internal Zone DoorAt(string area, Position at) {
-        if (at == null) throw new GolemDomainException("Zone.DoorAt: 'at' was not given"); Layout.DoorAt(Name, area, at); return this; }
-
     /// <summary>A door into another area, its point still to be told with DoorAt. The train stays a zone's.</summary>
     internal override Zone DoorTo(Area area) {
         if (area == null) throw new GolemDomainException("Zone.DoorTo: 'area' was not given"); base.DoorTo(area); return this; }
-    internal override Zone DoorTo(string area) { base.DoorTo(area); return this; }
 
     /// <summary>The whole boundary with another area is open. The train stays a zone's.</summary>
     internal override Zone OpenTo(Area area) {
         if (area == null) throw new GolemDomainException("Zone.OpenTo: 'area' was not given"); base.OpenTo(area); return this; }
-    internal override Zone OpenTo(string area) { base.OpenTo(area); return this; }
 
     // ---- the geometry, once told ----
 

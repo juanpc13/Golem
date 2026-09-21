@@ -74,15 +74,27 @@ internal sealed class GolemPerformance : PerformanceV2
             }
             upgrade('warehouse_v1') {
                 map = MapLayout('warehouse');
-                map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
-                map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center');
-                map.Area('storage').At(Position(7.0, 8.0)).Size(4.0, 3.0).DoorAt('east', Position(10.25, 8.0));
-                map.Area('west').At(Position(0.0, 3.0)).Size(1.5, 5.0).DoorAt('living', Position(0.75, 3.0));
-                map.Area('center').At(Position(4.0, 3.0)).Size(3.0, 5.0).OpenTo('south');
-                map.Area('east').At(Position(9.5, 3.0)).Size(1.5, 5.0).DoorAt('garage', Position(10.25, 3.0));
-                map.Area('living').At(Position(0.0, 0.0)).Size(4.0, 3.0).DoorAt('south', Position(4.0, 1.5));
-                map.Area('south').At(Position(4.0, 0.0)).Size(3.0, 3.0).DoorAt('garage', Position(7.0, 1.5));
-                map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);
+                {
+                    kitchen = map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);
+                    north = map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0);
+                    storage = map.Area('storage').At(Position(7.0, 8.0)).Size(4.0, 3.0);
+                    west = map.Area('west').At(Position(0.0, 3.0)).Size(1.5, 5.0);
+                    center = map.Area('center').At(Position(4.0, 3.0)).Size(3.0, 5.0);
+                    east = map.Area('east').At(Position(9.5, 3.0)).Size(1.5, 5.0);
+                    living = map.Area('living').At(Position(0.0, 0.0)).Size(4.0, 3.0);
+                    south = map.Area('south').At(Position(4.0, 0.0)).Size(3.0, 3.0);
+                    garage = map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);
+                    kitchen.DoorAt(north, Position(4.0, 9.5));
+                    kitchen.DoorAt(west, Position(0.75, 8.0));
+                    north.DoorAt(storage, Position(7.0, 9.5));
+                    north.OpenTo(center);
+                    storage.DoorAt(east, Position(10.25, 8.0));
+                    west.DoorAt(living, Position(0.75, 3.0));
+                    center.OpenTo(south);
+                    east.DoorAt(garage, Position(10.25, 3.0));
+                    living.DoorAt(south, Position(4.0, 1.5));
+                    south.DoorAt(garage, Position(7.0, 1.5));
+                }
             }
             upgrade('init') {
                 collisions = Collisions(map);

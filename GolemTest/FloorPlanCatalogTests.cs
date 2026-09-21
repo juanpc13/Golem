@@ -30,15 +30,22 @@ public class FloorPlanCatalogTests
     {
         string release = Catalog.Warehouse().AsRelease();
 
-        // one concrete map builds everything: the area, where it stands, how big it is, its doors and what it opens to
-        StringAssert.StartsWith(release, "upgrade('warehouse_v1') {\n    map = MapLayout('warehouse');");
-        StringAssert.Contains(release, "    map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));\n");
-        StringAssert.Contains(release, "    map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center');\n");
-        StringAssert.Contains(release, "    map.Area('west').At(Position(0.0, 3.0)).Size(1.5, 5.0).DoorAt('living', Position(0.75, 3.0));\n");
-        StringAssert.Contains(release, "    map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);\n");
-        Assert.IsFalse(release.Contains("g."), "the golem writes nothing here: the map builds itself, and the golem receives it");
+        // one concrete map builds everything, in two movements (21-sep-2026): every area born as a variable — where it stands,
+        // how big it is — then, all of them existing, the doors placed and the boundaries opened BETWEEN OBJECTS
+        StringAssert.StartsWith(release, "upgrade('warehouse_v1') {\n    map = MapLayout('warehouse');\n    {\n");
+        StringAssert.Contains(release, "        kitchen = map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);\n");
+        StringAssert.Contains(release, "        garage = map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);\n");
+        StringAssert.Contains(release, "        kitchen.DoorAt(north, Position(4.0, 9.5));\n        kitchen.DoorAt(west, Position(0.75, 8.0));\n");
+        StringAssert.Contains(release, "        north.DoorAt(storage, Position(7.0, 9.5));\n        north.OpenTo(center);\n");
+        StringAssert.Contains(release, "        south.DoorAt(garage, Position(7.0, 1.5));\n    }\n}\n");
+        Assert.IsFalse(release.Contains("DoorAt('") || release.Contains("DoorTo('") || release.Contains("OpenTo('"), "no neighbour enters by name: the passages are opened between objects");
+        Assert.IsTrue(release.IndexOf("garage = map.Area") < release.IndexOf("kitchen.DoorAt"), "every area exists before the first passage");
+        Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(release, @"g\."), "the golem writes nothing here: the map builds itself, and the golem receives it");
 
         Born(release);
+        bool leaked = true;
+        try { Text("kitchen.Name"); } catch (Exception) { leaked = false; }
+        Assert.IsFalse(leaked, "the areas' variables die with their block: only the map is a global of the actor");
         Assert.AreEqual(9, Int("map.ZoneCount"));
         Assert.AreEqual(10, Int("map.PassageCount"), "eight doors and two openings, as the host's warehouse");
         Assert.AreEqual("center", Text("map.ZoneAt(Position(5.5, 5.5)).Name"));
