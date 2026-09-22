@@ -143,8 +143,8 @@ Every write goes through the actor's DSL and lands in the journal. What the oper
 Releases (versioned initialization inside the actor, applied once and journaled) build the golem's modules
 as globals of the actor and hand them to it: `body_v1` (`radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); retreat = Meters(0.6); body = Body(radius, speed, linger, retreat);` — magnitudes that say what they are, read in SI base units; the retreat is how far the body backs off after a touch), `warehouse_v1` — the
 concrete map, each area found once and told what it is in one train (`map = MapLayout('warehouse');
-map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0).DoorAt('north', Position(4.0, 9.5)).DoorAt('west', Position(0.75, 8.0));
-map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0).DoorAt('storage', Position(7.0, 9.5)).OpenTo('center'); …`; `Map` is the
+{ kitchen = map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0); north = map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0); …
+kitchen.DoorAt(north, Position(4.0, 9.5)); north.OpenTo(center); … }` (the areas first, then the passages between objects — 21-sep-2026); `Map` is the
 abstract maquette, `MapLayout : Map` adds the positions) and `init` (`collisions = Collisions(map); g = Golem(body, map, collisions);`). Values are objects in the journal — `{ from = Position(2.0, 1.5); point = map.Find('kitchen'); route = g.Visit(from, point); }`:
 the route decides its whole way inside and the journal prints only the next thing to do, in the robot's own words: an action (`advance`, `back`, `turnLeft`, `turnRight`, `stop`) and its amount (metres, or radians)
 — except what is told to the peers, which travels flat. Evolve the golem by appending a release, never by
@@ -166,7 +166,7 @@ Endpoints, per golem:
 | `POST /robot/arrived` `{"route": 3}` · `POST /robot/bump` `{"route", "with", "x", "y", "heading", "px", "py", "ptheta"}` · `POST /robot/stuck` | Where the BODY reports (`sim/bridge/body.py`) — its whole vocabulary: it arrived (a turn made, a point reached), it bumped (the motors stopped at once; what to do is the golem's), it is stuck. The endpoint writes the act and the print of that act is the next order, sent back to the body |
 
 Environment of a golem container: `GOLEM` (identity, names the journal), `BODY` (the model it drives),
-`HOME_AT` (its mark), `ROSBRIDGE_URL`, `JOURNAL_PATH`, `PANEL_PORT`, `TELL_ROUTES` (tell topic → peer
+`HOME_AT` (its mark), `ROLES` (the body's capabilities — the roles the golem may play: `displacer` the motors, `collision-captor` the bumper; an endpoint whose role the body lacks answers 409; unset, every role — 18-sep-2026), `ROSBRIDGE_URL`, `JOURNAL_PATH`, `PANEL_PORT`, `TELL_ROUTES` (tell topic → peer
 URL), `TELL_DONE_TO` (the peer to tell every visited place), `TELL_RETRY_SECONDS`. Only one direction of
 `TELL_DONE_TO` between two golems, or the told missions echo back forever. `POSE_SOURCE` is where a
 golem's idea of its position comes from: `world` (blue and red) hands it the simulator's true pose, a
