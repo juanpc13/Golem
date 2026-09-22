@@ -101,7 +101,7 @@ internal sealed class Route
         if (stop == null) throw new GolemDomainException("Route.Then: 'stop' was not given");
         MustBePending();
         if (Following) throw new GolemDomainException($"route {Id} follows a peer: a told point is one route each");
-        if (nextLeg > 0 || reached > 0 || turned) throw new GolemDomainException($"route {Id} is already underway: no stop can be added");
+        if (nextLeg > 0 || reached > 0 || turned || linedUp) throw new GolemDomainException($"route {Id} is already underway: no stop can be added");
         stops.Add(OnTheMap(stop));
         if (origin != null) Plan(origin);
         return this;

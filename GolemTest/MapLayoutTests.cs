@@ -14,7 +14,7 @@ namespace GolemTest;
 // script here: the release a map renders is checked as text, because rendering it is the layout's own operation; that the
 // engine applies it is the acceptance tests' business.
 [TestClass]
-public class FloorPlanCatalogTests
+public class MapLayoutTests
 {
     private const double Radius = 0.25;   // body_v1
 
