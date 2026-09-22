@@ -24,7 +24,7 @@ namespace GolemAPI.Choreography;
 // controllers ask the embodiment for the role, refusing the endpoint (409) when the body has none. What is the MIND's and no
 // capability's stays here: the waking (Wake: the golem wakes where its body stands — the first act of every boot), the letting
 // go of everything, the uptake of the peers' tells (a golem hears whatever its body can do), the print every act ends with
-// (NextOrder), the clock, the reads.
+// (written in full in each script), the clock, the reads.
 //
 // EVERY ACTION IS THE SAME SHAPE (Juan, 18-sep-2026: "el método debería llamar a un script de golemActor.Using, registrar el acto
 // en la global g y hacer un print con el nuevo lugar al que debe ir; ese print termina en RobotMechanics porque es el
@@ -88,21 +88,10 @@ public sealed class GolemEmbodiment
     // point the body heads to, for the panel and the log. Nothing pending: no route, no order. The route underway is found
     // ONCE and held in a local inside the guarded block (Juan, 21-sep-2026: "una variable local para no estar accediendo todo
     // el tiempo"; lab-local.txt: a braced local reads the same in a query, in an Emit and in a command, and leaks no global).
+    // It is WRITTEN IN FULL wherever it is spoken — Wake, LetGo, the bumper's report, the clock's question, the reactions'
+    // emit — never held in a constant and appended (Juan, 22-sep-2026: "el script ponlo completo, no lo generalices en una
+    // estática"): a script reads whole where it stands.
     // ==================================================================
-    public const string NextOrder = @"
-        {
-            print g.HasPendingMission() 'pending', g.Held 'held';
-            if (g.HasPendingMission()) {
-                route = g.Underway();
-                print route.Id 'route', route.Order 'action', route.Amount 'amount';
-                if (route.IsWalkable) {
-                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                }
-            }
-        }
-    ";
 
     // ==================================================================
     // What the peers' tells become in MY journal (the uptakes GolemSpeech binds) — the MIND's, whatever the body can do: a golem
@@ -133,9 +122,9 @@ public sealed class GolemEmbodiment
     // (Juan, 18-sep-2026: "veo innecesario el decide"). The golem keeps the pose, so a told point taken up by a reaction — which
     // has no telemetry — is planned from there at once; with a plan underway the route decides it again from there INSIDE
     // (the body may have been carried anywhere while the golem was down). The reaction on g.Wake(_) pushes the print. The
-    // act is its own block and the print is NextOrder, spoken once (Juan, 21-sep-2026); the pose's parameters are named
-    // `px py ptheta`, never like a print label: the journal's canonical render substitutes a parameter wherever its name
-    // appears, labels included (`'x'` came out as `'6.3'` on 21-sep).
+    // act is its own block and the print of what the body must do now follows it, in full, spoken once (Juan, 21-sep-2026);
+    // the pose's parameters are named `px py ptheta`, never like a print label: the journal's canonical render substitutes a
+    // parameter wherever its name appears, labels included (`'x'` came out as `'6.3'` on 21-sep).
     // ==================================================================
     public Answer Wake()
     {
@@ -146,7 +135,19 @@ public sealed class GolemEmbodiment
                     me = Pose(@px, @py, @ptheta);
                     g.Wake(me);
                 }
-            " + NextOrder)
+                {
+                    print g.HasPendingMission() 'pending', g.Held 'held';
+                    if (g.HasPendingMission()) {
+                        route = g.Underway();
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    }
+                }
+            ")
             .WithParameters(p => {
                 p["px", typeof(double)] = pose.X;
                 p["py", typeof(double)] = pose.Y;
@@ -156,15 +157,27 @@ public sealed class GolemEmbodiment
     }
 
     // The operator lets go of everything: every pending route abandoned with the reason, in ONE command — the mind's, no
-    // capability's. No reaction matches a foreach: the body is stopped by the lever itself (LetGoAsync). The print is
-    // NextOrder, spoken once.
+    // capability's. No reaction matches a foreach: the body is stopped by the lever itself (LetGoAsync). The print of what
+    // the body must do now follows, in full, spoken once.
     private Answer LetGo(string reason) => Answer.Of(golemActor.Using(@"
             {
                 foreach (pending in g.PendingRoutes()) {
                     pending.Abandon(@reason);
                 }
             }
-        " + NextOrder)
+            {
+                print g.HasPendingMission() 'pending', g.Held 'held';
+                if (g.HasPendingMission()) {
+                    route = g.Underway();
+                    print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                    if (route.IsWalkable) {
+                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
+                }
+            }
+        ")
         .WithParameters(p => {
             p["reason", typeof(string)] = reason;
         })
@@ -226,13 +239,34 @@ public sealed class GolemEmbodiment
         catch { /* the world reset is best-effort; the journaled fact is the point */ }
         Report(LetGo("the operator let go of everything"), "let go of every pending route");
         Note("letting go of every pending route");
+        // the body was carried: the golem wakes where it stands now (22-sep-2026, ajuste 49) — a told point that comes next is
+        // planned from the real pose, not from where the body stood before the operator moved it
+        await SettledAtHomeAsync(CancellationToken.None);
+        try { Report(Wake(), $"awake where the body stands after the reset"); }
+        catch (Exception ex) { Note($"waking after the reset refused: {Reason(ex)}"); }
     }
 
-    /// <summary>Reborn: the body is put back on its mark and told it stands there (dead reckoning re-anchors).</summary>
+    /// <summary>Reborn: the body is put back on its mark and told it stands there (dead reckoning re-anchors) — and the golem
+    /// waits until the membrane brings a pose ON the mark, so the waking that follows is measured from there (22-sep-2026 live:
+    /// blue woke with the pose from before the teleport, planned a told point from it and turned into a wall).</summary>
     public async Task PutBackHomeAsync(CancellationToken ct)
     {
         await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
         Mechanics.StopOnMark();
+        await SettledAtHomeAsync(ct);
+    }
+
+    // The body's pose, as the membrane brings it, within a body's width of the mark — or five seconds of patience.
+    private async Task SettledAtHomeAsync(CancellationToken ct)
+    {
+        var patience = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < patience && !ct.IsCancellationRequested)
+        {
+            var pose = ros.LatestPose;
+            if (pose != null && Math.Sqrt((pose.X - home.X) * (pose.X - home.X) + (pose.Y - home.Y) * (pose.Y - home.Y)) < 0.3) return;
+            await Task.Delay(100, ct);
+        }
+        Note("the body's pose did not settle on its mark in time: the golem wakes where the membrane says it stands");
     }
 
     // The hard reset — a LAB lever, not a domain fact: stop the body, wipe THIS golem's journal and exit; Docker
@@ -309,10 +343,26 @@ public sealed class GolemEmbodiment
     // The handle of the route just opened, to tell it the rest.
     internal int Newest() => Read("print g.Newest().Id 'v';").GetInt32();
 
-    // What the route asks now — the same question every script ends with.
+    // What the route asks now — the same question every script ends with, asked of the journal when no push brought it.
     private Order AskOrder()
     {
-        try { return Order.Parse(golemActor.Using(NextOrder).PerformQuery()); }
+        try
+        {
+            return Order.Parse(golemActor.Using(@"
+                {
+                    print g.HasPendingMission() 'pending', g.Held 'held';
+                    if (g.HasPendingMission()) {
+                        route = g.Underway();
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                        if (route.IsWalkable) {
+                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    }
+                }
+            ").PerformQuery());
+        }
         catch (Exception e) { Console.WriteLine($"[golem {golem}] asking the order failed: {e.Message}"); return null; }
     }
 

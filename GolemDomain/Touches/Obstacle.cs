@@ -69,7 +69,9 @@ internal sealed class Thing : Obstacle
 
 /// <summary>
 /// A peer: another body the golem met — it touched something, a peer said it bumped there and then, so it was
-/// that peer. History, not geometry: a peer moves on, so nothing is planned around it.
+/// that peer, standing where it stood when it told its bump. IN THE WAY while the route it was met on lasts (Juan,
+/// 22-sep-2026: "tenerlos presentes al momento de la ruta nada más"): the planner skirts it like a thing; once that route
+/// ends the peer has moved on — history, not geometry, and nothing is planned around it.
 /// </summary>
 internal sealed class Peer : Obstacle
 {
@@ -84,7 +86,13 @@ internal sealed class Peer : Obstacle
         this.who = who;
         this.at = at;
         this.where = where ?? "";
+        InTheWay = true;
     }
+
+    /// <summary>Whether the peer still stands in the way — until the route it was met on ends.</summary>
+    internal bool InTheWay { get; private set; }
+    /// <summary>The route ended: the peer has moved on, as bodies do.</summary>
+    internal void MovedOn() => InTheWay = false;
 
     internal override string Kind => "peer";
     internal override string Where => where;

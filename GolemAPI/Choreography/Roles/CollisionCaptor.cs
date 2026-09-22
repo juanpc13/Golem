@@ -23,13 +23,12 @@ public sealed class CollisionCaptor
         this.robot = robot;
     }
 
-    /// <summary>The body bumped and its motors stopped at once. It says what a bumper can say: where it stood, facing which way,
-    /// and where on its shell it was pressed (the bearing). ONE script: `route = g.Bump(me, @bearing)` — the golem reckons the
-    /// touch on the plane from the body it declared, finds its route underway, the route concludes inside what the touch was
-    /// and corrects its way, and the print is what it asks now: the retreat. The peers are told by the reaction that captures the
-    /// pose from the `Pose(@…)` beside the act and the bearing from the act itself; only the golem's NAME is exposed — the
-    /// journal's identity, in no act (ajuste 42). Nothing underway (the body was standing): the domain refuses, and that
-    /// refusal is the answer.</summary>
+    /// <summary>The body bumped and its motors stopped at once — or it stood and something touched it. It says what a bumper can
+    /// say: where it stood, facing which way, and where on its shell it was pressed (the bearing). ONE script: `g.Bump(me,
+    /// @bearing)` — the golem reckons the touch on the plane from the body it declared and concludes inside: a route underway
+    /// takes it (a wall grazed, a thing marked and skirted by the right) or, standing, a body touched it (no mark; ajuste 48). The
+    /// print is what the route underway asks now, if any — written in full after the act (Juan, 22-sep-2026). The peers are told by the reaction that captures the pose from the
+    /// `Pose(@…)` beside the act and the bearing from the act itself; only the golem's NAME is exposed (ajuste 42).</summary>
     public Answer Bumped(double bodyX, double bodyY, double bodyHeading, double bearing)
     {
         Answer answer;
@@ -37,20 +36,23 @@ public sealed class CollisionCaptor
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
-                    Check(g.HasPendingMission()) Error 'nothing underway: a touch while the body stands is not written';
-                ",
-                @"
                     {
                         me = Pose(@bodyX, @bodyY, @bodyHeading);
-                        route = g.Bump(me, @bearing);
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
+                        g.Bump(me, @bearing);
                     }
                     expose @name who;
+                    {
+                        print g.HasPendingMission() 'pending', g.Held 'held';
+                        if (g.HasPendingMission()) {
+                            route = g.Underway();
+                            print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                            if (route.IsWalkable) {
+                                print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        }
+                    }
                 ")
                 .WithParameters(p => {
                     p["bodyX", typeof(double)] = bodyX;
@@ -59,10 +61,10 @@ public sealed class CollisionCaptor
                     p["bearing", typeof(double)] = bearing;
                     p["name", typeof(string)] = robot.Name;
                 })
-                .PerformCheckThenCommand());
+                .PerformCommand());
         }
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
-        robot.Report(answer, "the touch is written; the route concluded and corrected its way inside");
+        robot.Report(answer, "the touch is written; the golem concluded inside — a route corrected its way, or a standing body was touched");
         return answer;
     }
 

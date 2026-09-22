@@ -75,7 +75,8 @@ public sealed class ReactionPatternLabTests
             + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n")
         .PerformCommand();
 
-        // the acts as the host writes them, one per command so each entry is its own case; a dummy first so the
+        // the acts as the host writes them, one per command so each entry is its own case (a turn reports the heading the
+        // route asked, 2.52 toward the door's approach: since 22-sep a turn that leaves the body facing elsewhere is asked again); a dummy first so the
         // first act is not the first entry after the releases
         perf.Actor.Using("{ warm = map.Find(@area); }").WithParameters(p => { p["area", typeof(string)] = "kitchen"; }).PerformCommand();
         perf.Actor.Using("{ from = Position(@fx, @fy); point1 = Position(@x, @y); route = g.Visit(from, point1); point2 = Position(@x2, @y2); route.Then(point2); }")
@@ -83,15 +84,15 @@ public sealed class ReactionPatternLabTests
         perf.Actor.Using("{ route = g.Find(@id); from = Position(@vx, @vy); route.Decide(from); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["vx", typeof(double)] = 2.0; p["vy", typeof(double)] = 1.5; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Turn(me); }")
-            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 1.5; p["t", typeof(double)] = 2.3; }).PerformCommand();
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 1.5; p["t", typeof(double)] = 2.52; }).PerformCommand();
         perf.Actor.Using("{ route = g.Pause(Pose(2.0, 9.5, 0.0)); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
         perf.Actor.Using("{ route = g.Resume(Pose(2.0, 9.5, 0.0)); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Turn(me); }")   // resumed: the turn is asked again
-            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; p["t", typeof(double)] = -2.0; }).PerformCommand();
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 2.0; p["y", typeof(double)] = 9.5; p["t", typeof(double)] = -1.745; }).PerformCommand();   // resumed from the kitchen: the door's approach lies south-south-west
         perf.Actor.Using("{ route = g.Find(@id); me = Pose(@x, @y, @t); route.Reach(me); }")
-            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 1.2; p["y", typeof(double)] = 8.6; p["t", typeof(double)] = -2.0; }).PerformCommand();
+            .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 1.2; p["y", typeof(double)] = 8.6; p["t", typeof(double)] = 2.52; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); touch = Pose(@x, @y, @h); me = Pose(@px, @py, @h); route.Bump(touch, me); }")
             .WithParameters(p => { p["id", typeof(int)] = 1; p["x", typeof(double)] = 3.0; p["y", typeof(double)] = 9.5; p["h", typeof(double)] = 3.14; p["px", typeof(double)] = 3.25; p["py", typeof(double)] = 9.5; }).PerformCommand();
         perf.Actor.Using("{ route = g.Find(@id); route.Fail(@why); }")

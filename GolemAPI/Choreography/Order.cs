@@ -23,7 +23,7 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
         other != null && Route == other.Route && Action == other.Action && Kind == other.Kind && X == other.X && Y == other.Y
         && Math.Abs(Amount - other.Amount) < 1e-6;
 
-    // The labels the golem prints (GolemEmbodiment.NextOrder): route, action, amount and, for a leg, kind name x y heading
+    // The labels the golem prints at the end of every act (the same print, written in full in each script): route, action, amount and, for a leg, kind name x y heading
     // following stopsLeft. `held` true — the golem is held — reads as `stop` whatever the route says.
     public static Order Parse(string json)
     {

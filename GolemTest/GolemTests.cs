@@ -165,10 +165,9 @@ public class GolemTests
     [TestMethod]
     public void TheBump_IsTheGolems_ItReckonsTheTouchFromTheBody_FindsItsRouteUnderway_AndTheRouteCorrectsInside()
     {
-        Refuses(() => g.Bump(At(10.25, 6.1, South), 0.0), "nothing underway");
         var route = g.Visit(At(9.0, 9.5, South), P(9.0, 1.5));  // down the east corridor
         // the body stood at (10.25, 6.1) facing south and was pressed on the nose: the golem reckons the touch one radius ahead
-        Assert.AreSame(route, g.Bump(At(10.25, 6.1, South), 0.0), "the golem handed the touch to its route underway and hands it back");
+        Assert.IsTrue(g.Bump(At(10.25, 6.1, South), 0.0), "the golem handed the touch to its route underway");
         Assert.AreEqual(1, route.Bumps);
         Assert.AreEqual(1, collisions.MarkCount);
         Assert.IsTrue(collisions.KnowsAt(P(10.25, 5.85)), "the mark where the touch landed: the body's radius ahead of where it stood");
@@ -197,6 +196,84 @@ public class GolemTests
         Refuses(() => g.HearBump("", At(1.0, 1.0, 0.0), 0.0), "who");
     }
 
+    // ---- the meeting of two bodies, concluded by the peer's word (22-sep-2026, ajuste 46) ----
+
+    [TestMethod]
+    public void APeersTouchThatLandedOnMyBody_AnnulsMyLastBump_AndKeepsTheEncounter()
+    {
+        // blue drives south down the centre hall and bumps red head-on: blue stood at (5.5, 6.0), its touch at (5.5, 5.75)
+        var route = g.Visit(At(5.5, 9.5, South), P(5.5, 1.5));
+        g.Bump(At(5.5, 6.0, South), 0.0);
+        Assert.AreEqual(1, collisions.MarkCount, "at write time it is a thing: marked, told");
+        Assert.AreEqual(1, route.Bumps);
+        StringAssert.Contains(route.AsPlan(), "aside@", "and the way steps to the right of the thing: " + route.AsPlan());
+
+        // red's word arrives: it stood at (5.5, 5.5) facing north and was pressed on the nose — its touch landed at (5.5, 5.75), ON blue's body
+        g.HearBump("red", At(5.5, 5.5, North), 0.0);
+        Assert.AreEqual(0, collisions.MarkCount, "my mark is taken back and red's touch is not learned: it was red");
+        Assert.AreEqual(1, collisions.EncounterCount, "the encounter is kept as history");
+        Assert.AreEqual("red", collisions.All().Single().Who);
+        Assert.AreEqual(0, route.Bumps, "the route annulled the bump: it counts no more against its patience");
+        StringAssert.StartsWith(route.AsPlan(), "back@", "the retreat already inserted is kept…");
+        StringAssert.Contains(route.AsPlan(), "> aside@", "…then the step to the body's own right (ajuste 47)…");
+        Assert.AreEqual("back", route.Order);
+        // and red, standing there, is IN THE WAY for the rest of this route (ajuste 50): a figure the way keeps a body from
+        Assert.AreEqual(1, collisions.PeersInTheWay().Count);
+        Assert.AreEqual(1, collisions.Figures(Radius).Count, "no thing, but the peer's berth");
+        Assert.IsTrue(collisions.Blocks(P(5.5, 5.5), Radius), "where red stands the body does not fit");
+        var red = P(5.5, 5.5);
+        foreach (var run in route.LegsAhead.Skip(1).Zip(route.LegsAhead, (next, prev) => new Segment(prev.At, next.At)))
+            Assert.IsTrue(run.DistanceTo(red) >= 2 * Radius - 1e-9, "every run of the way keeps a body from red: " + route.AsPlan());
+        WalkToTheEnd(route);
+        Assert.AreEqual("completed", route.Status);
+        Assert.AreEqual(0, collisions.PeersInTheWay().Count, "the route ended: red has moved on, as bodies do");
+        Assert.AreEqual(1, collisions.EncounterCount, "but the encounter is history still");
+        Assert.AreEqual(0, collisions.Figures(Radius).Count);
+    }
+
+    [TestMethod]
+    public void AnIdleGolem_SettingOutAfresh_PlansAroundNobodyItMetWhileStanding()
+    {
+        g.Wake(At(5.5, 9.5, East));
+        g.Bump(At(5.5, 9.5, East), Math.PI / 2);                  // standing, touched on the left flank…
+        g.HearBump("blue", At(5.5, 10.0, South), 0.0);            // …by blue, whose word lands on my body: met, and in my way
+        Assert.AreEqual(1, collisions.PeersInTheWay().Count);
+        var route = g.Visit(At(5.5, 9.5, East), P(9.0, 9.5));    // then the operator sends me east
+        Assert.AreEqual(0, collisions.PeersInTheWay().Count, "setting out afresh: blue has moved on");
+        Assert.AreEqual("storage@9,9.5", route.AsPlan().Split(" > ").Last());
+    }
+
+    [TestMethod]
+    public void APeersTouchFarFromMyBody_IsLearnedAsAMark_AndMyBumpStands()
+    {
+        var route = g.Visit(At(5.5, 9.5, South), P(5.5, 1.5));
+        g.Bump(At(5.5, 6.0, South), 0.0);
+        g.HearBump("red", At(10.25, 6.1, South), 0.0);        // red bumped the crate in the east corridor, a room away
+        Assert.AreEqual(2, collisions.MarkCount, "two things: mine and red's");
+        Assert.AreEqual(0, collisions.EncounterCount);
+        Assert.AreEqual(1, route.Bumps, "my bump stands");
+    }
+
+    [TestMethod]
+    public void OnlyTheLastBump_CanBeAnnulled_ByAWordThatLandsOnIt()
+    {
+        var route = g.Visit(At(9.0, 9.5, South), P(9.0, 1.5));  // down the east corridor
+        g.Bump(At(10.25, 7.0, South), 0.0);                       // a first thing, high in the corridor
+        Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);     // backed off
+        g.Bump(At(10.25, 6.1, South), 0.0);                       // and a second, lower down
+        Assert.AreEqual(2, collisions.MarkCount);
+        g.HearBump("red", At(10.25, 6.5, North), 0.0);            // red's touch at (10.25, 6.75): on my body of the FIRST bump, not the last
+        Assert.AreEqual(0, collisions.EncounterCount, "only the last bump can be annulled: red's word is learned as a mark like any other…");
+        Assert.AreEqual(2, collisions.MarkCount, "…and that mark is the very one my first bump left, so nothing new");
+        g.HearBump("red", At(10.25, 5.6, North), 0.0);            // red's touch at (10.25, 5.85): on my body of the last bump (10.25, 6.1)
+        Assert.AreEqual(1, collisions.MarkCount, "the last bump annulled: my last mark gone, red's word not learned; the first mark stays");
+        Assert.AreEqual(1, collisions.EncounterCount);
+        g.HearBump("red", At(10.25, 5.6, North), 0.0);            // the wire says it again
+        Assert.AreEqual(1, collisions.MarkCount, "heard once: nothing changes");
+        g.HearBump("red", At(10.25, 5.7, North), 0.0);            // and a word that would land on the annulled body again
+        Assert.AreEqual(2, collisions.MarkCount, "annulled once: the next word is about something else, learned as a mark");
+    }
+
     [TestMethod]
     public void TheSameWordHeardTwice_IsHeardOnce()
     {
@@ -205,14 +282,50 @@ public class GolemTests
         g.HearBump("blue", At(5.1, 9.5, West), 0.0);           // the wire says it again (17-sep live: both journals heard the doorway bump twice)
         Assert.AreEqual(1, collisions.HeardCount, "heard once");
         Assert.AreEqual(1, collisions.MarkCount, "and nothing more is learned from the repeat");
+        g.HearBump("blue", At(5.11, 9.5, West), 0.0);          // blue bumped there AGAIN, a centimetre off: a new word (22-sep live, ajuste 50)
+        Assert.AreEqual(2, collisions.HeardCount, "the wire's repeat is the same word to the last digit; a near one is a new one");
+        Assert.AreEqual(1, collisions.MarkCount, "learned as the mark already standing there");
     }
 
     [TestMethod]
-    public void ABodyStandingIdle_ThatGetsTouched_CountsItsBumps_WithoutARoute()
+    public void AStandingBody_Touched_WritesItsBump_MarksNothing_AndTheMoversWordIsNoThingEither()
     {
-        Assert.AreEqual(1, g.Bump(At(4.9, 9.5, 0.0)));
-        Assert.AreEqual(2, g.Bump(At(4.9, 9.5, 0.0)));
+        // 22-sep-2026 live: blue drove into red standing in the north hall; red's touch was refused, so blue kept its mark
+        g.Wake(At(5.5, 9.5, East));                               // red stands in the north hall, facing east
+        Assert.IsFalse(g.Bump(At(5.5, 9.5, East), Math.PI / 2), "no route took it: the body stood — pressed on its left flank");
+        Assert.AreEqual(1, g.IdleBumps);
         Assert.AreEqual(0, collisions.MarkCount, "no mark: things do not move, so it was a body");
+        Assert.AreEqual(0, g.Routes().Count, "and no route was minted");
+        // blue's word: it stood at (5.5, 10.0) facing south, pressed on the nose — its touch at (5.5, 9.75), on red's shell
+        g.HearBump("blue", At(5.5, 10.0, South), 0.0);
+        Assert.AreEqual(0, collisions.MarkCount, "red learns no thing where blue touched it: that was red");
+        Assert.AreEqual(1, collisions.EncounterCount, "the encounter is history");
+        Assert.AreEqual("blue", collisions.All().Single().Who);
+    }
+
+    [TestMethod]
+    public void TheMover_HearingTheStandingBodysWord_AnnulsItsMark()
+    {
+        var route = g.Visit(At(6.3, 10.4, South), P(4.6, 9.2));  // blue drives across the north hall…
+        g.Bump(At(5.5, 10.0, South), 0.0);                        // …and bumps into something at (5.5, 9.75): a thing, marked
+        Assert.AreEqual(1, collisions.MarkCount);
+        g.HearBump("red", At(5.5, 9.5, East), Math.PI / 2);      // red, standing at (5.5, 9.5) facing east, says it was pressed on its left flank: its touch (5.5, 9.75) landed on blue's body
+        Assert.AreEqual(0, collisions.MarkCount, "blue takes its mark back: it bumped into red");
+        Assert.AreEqual(1, collisions.EncounterCount);
+        Assert.AreEqual(0, route.Bumps, "and the route annulled the bump");
+    }
+
+    [TestMethod]
+    public void AThirdParty_HearingTwoWordsThatLandOnEachOther_LearnsNoThing()
+    {
+        // green hears blue's bump, then red's: blue's touch landed on red's body and red's on blue's — they met each other
+        g.HearBump("blue", At(5.5, 10.0, South), 0.0);            // blue's touch at (5.5, 9.75)
+        Assert.AreEqual(1, collisions.MarkCount, "on the first word alone, a thing is learned");
+        g.HearBump("red", At(5.5, 9.5, East), Math.PI / 2);      // red's body at (5.5, 9.5): blue's touch landed on it
+        Assert.AreEqual(0, collisions.MarkCount, "the second word says whose body it was: the mark learned from the first goes, and none is learned from the second");
+        Assert.AreEqual(2, collisions.HeardCount, "both words are kept: I know where blue and red were");
+        g.HearBump("blue", At(10.25, 6.1, South), 0.0);          // and a bump of blue's far from anybody stays a thing
+        Assert.AreEqual(1, collisions.MarkCount);
     }
 
     [TestMethod]
@@ -282,6 +395,28 @@ public class GolemTests
         Assert.AreEqual(3, g.Visit(P(2.0, 9.5), P(2.0, 1.5)).Id, "a spent handle is never minted again: the idempotency keys hang on it");
         Assert.AreEqual(3, g.Newest().Id, "the route handed out last");
         Refuses(() => g.Find(9), "unknown route 9");
+    }
+
+    [TestMethod]
+    public void AQueuedRoute_MeasuresItsFirstOrder_FromWhereTheBodyReallyStands_NotFromThePlannedEnd()
+    {
+        // 22-sep-2026 live: blue's second errand was planned from where the first was expected to end; the body ended half a
+        // metre away facing elsewhere, and the first turn — measured from the planned pose — sent it the wrong way
+        var first = g.Visit(At(5.5, 9.5, South), P(5.5, 1.5));            // down through the centre to the south hall
+        var queued = g.Visit(g.PlannedEnd(), P(2.0, 1.5));                // then to the living room, planned from (5.5, 1.5) facing south
+        Assert.AreEqual(5.5, queued.Standing.X, 1e-9, "planned from the expected end");
+        Assert.AreEqual("advance", first.Order, "facing south already: the first errand is one advance");
+        first.Reach(At(6.0, 2.5, East));                                   // reported where the body REALLY ended: off the stop, facing east
+        Assert.AreEqual("completed", first.Status);
+        Assert.AreSame(queued, g.Underway());
+        Assert.AreEqual(6.0, queued.Standing.X, 1e-9, "the queued route measures from the real pose");
+        Assert.AreEqual(East, queued.Standing.Heading, 1e-9);
+        Assert.AreEqual("turnRight", queued.Order, "facing east, the door to the living room lies west-south-west: turn right, the shorter way");
+        Assert.AreEqual(At(6.0, 2.5, East).DistanceTo(queued.Target), P(6.0, 2.5).DistanceTo(queued.Target), 1e-9);
+        Step(queued);
+        Assert.AreEqual("advance", queued.Order);
+        Assert.AreEqual(P(6.0, 2.5).DistanceTo(queued.Target), queued.Amount, 1e-9, "and the advance is measured from there too");
+        Refuses(() => queued.StandAt(At(1, 1, 0)), "already underway");
     }
 
     [TestMethod]

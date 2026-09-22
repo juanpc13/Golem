@@ -113,6 +113,28 @@ public class RouteTests
     }
 
     [TestMethod]
+    public void ATurn_ThatLeftTheBodyFacingElsewhere_IsAskedAgain_AtMostThreeTimes()
+    {
+        // 22-sep-2026 live: a turn measured from a stale pose left blue facing the north wall, the route took it as done and advanced
+        var route = g.Visit(At(6.3, 10.4, East), P(5.5, 1.5));
+        StringAssert.StartsWith(route.Order, "turn");
+        route.Turn(At(6.3, 10.4, 1.89));                            // the body reports it turned — but it faces north-north-east, not the stop
+        StringAssert.StartsWith(route.Order, "turn", "the body does not face its point: another turn, measured from where it really faces");
+        double left = P(6.3, 10.4).HeadingTo(P(5.5, 1.5)) - 1.89;
+        while (left > Math.PI) left -= 2 * Math.PI;
+        while (left < -Math.PI) left += 2 * Math.PI;
+        Assert.AreEqual(Math.Abs(left), route.Amount, 0.01, "the turn left, measured from where the body really faces");
+        route.Turn(At(6.3, 10.4, route.Target.Heading));            // now it faces the stop
+        Assert.AreEqual("advance", route.Order);
+
+        var stubborn = g.Visit(At(2.0, 9.5, East), P(2.0, 1.5));   // a body that never lines up is not asked forever
+        stubborn.Turn(At(2.0, 9.5, 0.3)); stubborn.Turn(At(2.0, 9.5, 0.6));
+        StringAssert.StartsWith(stubborn.Order, "turn", "two turns off: still asked");
+        stubborn.Turn(At(2.0, 9.5, 0.9));
+        Assert.AreEqual("advance", stubborn.Order, "three turns on one leg: the route takes the heading the body reached");
+    }
+
+    [TestMethod]
     public void TheArrival_IsOneAct_AndTheRouteKnowsWhetherItAskedATurnOrAMove()
     {
         var route = g.Visit(At(2.0, 9.5, East), P(2.0, 1.5));
@@ -245,8 +267,37 @@ public class RouteTests
         Assert.IsTrue(g.FitsAt(P(5.5, backY)), "and standing clear there");
         string plan = route.AsPlan();
         StringAssert.StartsWith(plan, "back@", plan);
-        StringAssert.Contains(plan, "around@", "the body fits past the crate in the 3 m hall: it goes around, not another way — " + plan);
-        StringAssert.EndsWith(plan, "> south@5.5,1.5");
+        Assert.AreEqual("aside", route.LegsAhead[1].Name, "then the courtesy step to the body's own right (22-sep-2026): " + plan);
+        Assert.IsTrue(route.LegsAhead[1].At.X < 5.5 - 0.7, "facing south, its right is west, three radii off: " + plan);
+        Assert.IsTrue(route.LegsAhead[1].IsCorrection);
+        StringAssert.EndsWith(plan, "> south@5.5,1.5", "and on to the stop from there, past the crate: " + plan);
+    }
+
+    [TestMethod]
+    public void TwoBodiesMeetingHeadOn_EachStepsToItsOwnRight_AndTheirWaysPassEachOther()
+    {
+        // 22-sep-2026 live: annulled, both ways went straight again and the bodies met a second time and stalled
+        var (red, redMap, redCollisions) = Born();
+        var (green, greenMap, greenCollisions) = Born();
+        var south = red.Visit(At(5.4, 9.5, South), P(5.5, 1.5));       // red comes down the centre hall…
+        var north = green.Visit(At(5.6, 1.5, North), P(5.5, 9.5));     // …green comes up it
+        red.Bump(At(5.5, 5.8, South), 0.0);                            // they touch head-on at y ≈ 5.5
+        green.Bump(At(5.5, 5.2, North), 0.0);
+        red.HearBump("green", At(5.5, 5.2, North), 0.0);               // each hears the other: the bumps annul
+        green.HearBump("red", At(5.5, 5.8, South), 0.0);
+        Assert.AreEqual(0, redCollisions.MarkCount); Assert.AreEqual(0, greenCollisions.MarkCount);
+
+        var redAside = south.LegsAhead.First(l => l.Name == "aside").At;
+        var greenAside = north.LegsAhead.First(l => l.Name == "aside").At;
+        Assert.IsTrue(redAside.X < 5.5 - 0.7, "red, facing south, steps three radii to its right: west — " + south.AsPlan());
+        Assert.IsTrue(greenAside.X > 5.5 + 0.7, "green, facing north, steps three radii to its right: east — " + north.AsPlan());
+        // then AHEAD, parallel, until the other is a body's length behind — and only then on to the stop
+        var redAhead = south.LegsAhead.First(l => l.Name == "via").At;
+        Assert.AreEqual(redAside.X, redAhead.X, 1e-3, "parallel to the way it came: " + south.AsPlan());
+        Assert.IsTrue(redAhead.Y <= 5.2 - 2 * Radius + 1e-3, "a body's length past where green's body stood: " + south.AsPlan());
+        // even if the other did NOT move (22-sep live: green stalled), red's way keeps a body apart from green's body
+        var pastGreen = new Segment(redAside, redAhead);
+        Assert.IsTrue(pastGreen.DistanceTo(P(5.5, 5.2)) >= 2 * Radius, "red passes green's body without touching it: " + south.AsPlan());
     }
 
     [TestMethod]
@@ -286,6 +337,42 @@ public class RouteTests
         Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);      // the retreat reached: the route decided again from there
         Assert.IsTrue(route.IsPending() ? route.LegsLeft >= 1 : route.Status == "failed", "either a way from the retreat, or the route ended itself: " + route.AsPlan());
         Assert.IsTrue(legs >= 1);
+    }
+
+    [TestMethod]
+    public void AnAnnulledBump_CountsNoMore_AndTheWayFromTheRetreatIsDecidedAgainWithoutTheMark()
+    {
+        var route = g.Visit(At(5.5, 9.5, South), P(5.5, 1.5));
+        Refuses(() => route.Unbump(), "no bump to annul");
+        Bump(route, 5.5, 5.85, South);
+        Assert.AreEqual(1, route.Bumps);
+        StringAssert.Contains(route.AsPlan(), "aside@");
+        collisions.Unmark(P(5.5, 5.85));                          // the golem took the mark back: the word landed on the body
+        route.Unbump();
+        Assert.AreEqual(0, route.Bumps);
+        Assert.IsFalse(route.BumpedSinceRoute);
+        StringAssert.StartsWith(route.AsPlan(), "back@5.5,", "the retreat kept…");
+        Assert.AreEqual("aside", route.LegsAhead[1].Name, "…then the step to the right, never straight back into the body just met…");
+        Assert.AreEqual("via", route.LegsAhead[2].Name, "…then ahead until the body met is behind…");
+        StringAssert.EndsWith(route.AsPlan(), " > south@5.5,1.5", "…then on to the stop: " + route.AsPlan());
+        Assert.AreEqual(4, route.LegsLeft);
+        Assert.IsFalse(route.AsPlan().Contains("around@"), "no void to skirt: " + route.AsPlan());
+        Assert.AreEqual("back", route.Order, "the body still backs off first");
+        Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);
+        Assert.AreEqual("aside", route.NextLeg.Name);
+    }
+
+    [TestMethod]
+    public void AnAnnulledBump_AfterTheRetreatWasWalked_DecidesTheWayAgainFromWhereTheBodyStands()
+    {
+        var route = g.Visit(At(5.5, 9.5, South), P(5.5, 1.5));
+        Bump(route, 5.5, 5.85, South);
+        Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);     // the retreat walked: the next leg is the step to the right
+        Assert.AreEqual("aside", route.NextLeg.Name);
+        collisions.Unmark(P(5.5, 5.85));
+        route.Unbump();
+        StringAssert.StartsWith(route.AsPlan(), "aside@", "from where the body stands: the step to the right first — " + route.AsPlan());
+        StringAssert.EndsWith(route.AsPlan(), "> south@5.5,1.5");
     }
 
     // ---- the hold ----
@@ -387,7 +474,7 @@ public class RouteTests
         g.Met("blue", P(4.7, 9.5));                                // …and the golem names blue: both marks go, the way is clear to step aside
         route.DecidePast("blue", At(4.6, 9.5, East));
         string way = route.AsPlan();
-        StringAssert.StartsWith(way, "aside@4.6,9", "a body's width to its right, off the line it was on: " + way);
+        StringAssert.StartsWith(way, "aside@4.6,8.75", "three radii to its right, clear of the peer's berth (ajustes 47, 50): " + way);
         StringAssert.EndsWith(way, "> north@5.5,9.5", "and then the errand goes on");
         Assert.IsFalse(route.NextLeg.IsStop, "the step is a leg to cross, never a stop");
         Assert.AreEqual("aside", route.NextLeg.Name);

@@ -59,7 +59,7 @@ public class JournalAcceptanceTests
     public void ADomainRefusal_ReachesACommand_InTheDomainsOwnWords()
     {
         Refuses("{ point = Position(5.5, 9.5); g.Follow(point); }", "does not know where its body stands");
-        Refuses("{ route = g.Bump(Pose(10.25, 6.1, -1.5708), 0.0); }", "nothing underway");
+        Refuses("{ route = g.Pause(Pose(10.25, 6.1, -1.5708)); }", "no pending mission");
         Refuses("g.Visit(Position(2.0, 9.5), map.Find('attic'));", "attic");
     }
 

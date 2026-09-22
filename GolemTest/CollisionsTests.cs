@@ -83,7 +83,7 @@ public class CollisionsTests
     }
 
     [TestMethod]
-    public void MeetingAPeer_TakesTheMarksBack_AndKeepsTheEncounterAsHistoryNeverGeometry()
+    public void MeetingAPeer_TakesTheMarksBack_AndKeepsThePeerInTheWay_UntilThePeersMoveOn()
     {
         collisions.Hear("blue", P(4.85, 9.5), P(5.1, 9.5));
         PlantMark(collisions, 4.85, 9.5, East);                // what blue's bump was learned as
@@ -97,8 +97,18 @@ public class CollisionsTests
         Assert.AreEqual(1, collisions.MarkCount, "meeting a body takes both marks back: mine, and the one learned from blue's bump there");
         Assert.AreEqual(1, collisions.EncounterCount);
         Assert.AreEqual(2, collisions.All().Count, "a thing and a peer");
-        Assert.AreEqual(1, collisions.Things().Count, "only the thing is planned around");
-        Assert.IsFalse(collisions.Blocks(P(4.7, 9.5), Radius), "the peer moved on: a body fits where it was met");
+        Assert.AreEqual(1, collisions.Things().Count, "one thing…");
+        Assert.AreEqual(1, collisions.PeersInTheWay().Count, "…and a peer still in the way (ajuste 50)");
+        Assert.AreEqual(2, collisions.Figures(Radius).Count, "both are figures the planner skirts");
+        Assert.IsTrue(collisions.Blocks(P(4.7, 9.5), Radius), "no body fits where the peer stands…");
+        Assert.IsTrue(collisions.Blocks(P(4.7 + 2 * Radius + Collisions.MarkMargin - 0.01, 9.5), Radius), "…nor within two radii and a margin of it");
+        Assert.IsFalse(collisions.Blocks(P(4.7 + 2 * Radius + Collisions.MarkMargin + 0.01, 9.5), Radius), "just past the berth it does");
+        Assert.AreEqual(1, collisions.PeersMovedOn(), "the route ended: the peer moved on…");
+        Assert.AreEqual(0, collisions.PeersInTheWay().Count);
+        Assert.AreEqual(1, collisions.Figures(Radius).Count, "…only the thing is a figure now");
+        Assert.IsFalse(collisions.Blocks(P(4.7, 9.5), Radius), "a body fits where the peer was met");
+        Assert.AreEqual(1, collisions.EncounterCount, "the encounter stays as history");
+        Assert.AreEqual(0, collisions.PeersMovedOn(), "nobody left to move on");
 
         var peer = collisions.All().Single(o => o.Kind == "peer");
         Assert.AreEqual("blue", peer.Who);

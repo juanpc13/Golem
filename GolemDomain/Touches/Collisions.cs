@@ -49,13 +49,24 @@ internal sealed class Collisions
         return marks.Count;
     }
 
-    /// <summary>A body met another body at a point: kept as a peer among the obstacles, never planned around.
-    /// Returns how many encounters it holds.</summary>
+    /// <summary>A body met another body standing at a point: kept as a peer among the obstacles — IN THE WAY, planned
+    /// around like a thing, until the route it was met on ends (PeersMovedOn). Returns how many encounters it holds.</summary>
     internal int Meet(string who, Position at)
     {
         if (at == null) throw new GolemDomainException("Collisions.Meet: 'at' was not given");
         encounters.Add(new Peer(who, at, Layout.ZoneOf(at)?.Name ?? ""));
         return encounters.Count;
+    }
+
+    /// <summary>The peers still standing in the way: met on a route that has not ended.</summary>
+    internal IReadOnlyList<Peer> PeersInTheWay() => encounters.Where(p => p.InTheWay).ToList();
+
+    /// <summary>The route ended: every peer met on it has moved on — history from now on, nothing planned around. Returns how many.</summary>
+    internal int PeersMovedOn()
+    {
+        int moved = 0;
+        foreach (var p in encounters) if (p.InTheWay) { p.MovedOn(); moved++; }
+        return moved;
     }
 
     /// <summary>A peer said it bumped at a point while it stood somewhere: heard and kept, so a touch of my own
@@ -144,8 +155,13 @@ internal sealed class Collisions
     {
         if (at == null) throw new GolemDomainException("Collisions.HeardAlready: 'at' was not given");
         if (peerAt == null) throw new GolemDomainException("Collisions.HeardAlready: 'peerAt' was not given");
-        return heard.Any(h => h.Who == who && h.At.DistanceTo(at) < SameTouch && h.PeerAt.DistanceTo(peerAt) < SameTouch);
+        return heard.Any(h => h.Who == who && h.At.DistanceTo(at) < SameWord && h.PeerAt.DistanceTo(peerAt) < SameWord);
     }
+
+    /// <summary>The wire's repeat of a word is the SAME word — the same pose, the same bearing, to the last digit. A peer that
+    /// bumped again at the same spot, standing where it stood, says a NEW word (22-sep-2026 live: blue, parked, was bumped twice
+    /// on two errands and its second word was dropped as a repeat within SameTouch; green kept its mark).</summary>
+    internal const double SameWord = 1e-6;
 
     /// <summary>A mark taken back: the touch that made it turned out to be a body, not a thing. Only the mark at that
     /// point (within SameTouch) goes; the figure it was a vertex of is recomputed from what remains. Returns how many.</summary>
@@ -225,8 +241,19 @@ internal sealed class Collisions
     }
 
     /// <summary>Where a body's CENTRE may not go: the figure of every thing (its extent with the mark margin) grown by
-    /// the body's radius. Derived every time, like the things themselves; a planner keeps the list for one road.</summary>
-    internal IReadOnlyList<Rectangle> Figures(double radius) => Things().Select(t => t.Extent(MarkMargin).Inflated(radius)).ToList();
+    /// the body's radius — and, while the route they were met on lasts, the figure of every peer in the way: a box around
+    /// where it stands, its radius and mine and the margin (the fleet shares one body). Derived every time, like the things
+    /// themselves; a planner keeps the list for one road.</summary>
+    internal IReadOnlyList<Rectangle> Figures(double radius) =>
+        Things().Select(t => t.Extent(MarkMargin).Inflated(radius)).Concat(PeersInTheWay().Select(p => PeerFigure(p, radius))).ToList();
+
+    /// <summary>The berth a body keeps around a peer standing in the way: two radii and a mark's margin around its centre.</summary>
+    internal static Rectangle PeerFigure(Peer peer, double radius)
+    {
+        if (peer == null) throw new GolemDomainException("Collisions.PeerFigure: 'peer' was not given");
+        double berth = 2 * radius + MarkMargin;
+        return new Rectangle(peer.Center.X - berth, peer.Center.Y - berth, 2 * berth, 2 * berth);
+    }
 
 
 

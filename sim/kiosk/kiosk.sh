@@ -35,15 +35,15 @@ sleep 3
 set -f   # the bridge mappings carry [ and ]: no globbing
 ros2 run ros_gz_bridge parameter_bridge $(cat /world/bridge.args) &
 set +f
-python3 /golem/teleport.py arena &
-python3 /golem/crates.py arena &
+python3 -u /golem/teleport.py arena &
+python3 -u /golem/crates.py arena &
 # The bodies: one node per body, the ROBOT the golem orders around — GOLEMS=name=url;name=url, POSE_SOURCES=name=wheels
 IFS=';' read -ra GOLEM_LIST <<< "${GOLEMS:-}"
 for entry in "${GOLEM_LIST[@]}"; do
   [ -z "$entry" ] && continue
   name="${entry%%=*}"; url="${entry#*=}"; src=world
   case ";${POSE_SOURCES:-};" in *";${name}=wheels;"*) src=wheels;; esac
-  python3 /golem/body.py "$name" "$url" "$src" &
+  python3 -u /golem/body.py "$name" "$url" "$src" &   # -u: its words reach docker logs as they happen
 done
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
 

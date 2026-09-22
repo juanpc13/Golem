@@ -183,7 +183,16 @@ class Body(Node):
             return 0.0
         if self.order["action"] in ("turnLeft", "turnRight"):
             return self.turned
-        return math.hypot(self.pose[0] - self.start[0], self.pose[1] - self.start[1])
+        return self.moved(self.order["action"], self.pose[0], self.pose[1])
+
+    # The metres of a move done so far: the displacement since the order began PROJECTED on the direction it asked — ahead
+    # for an advance, behind for a back — never below zero. Not the plain distance from the start: a body that bumped at
+    # speed is still sliding forward when the `back` order arrives (22-sep-2026 live: began at (6.11, 5.46), slid to 0.46 m
+    # ahead, then backed 0.36 m past the start and was declared stalled, the slide having set the mark to beat).
+    def moved(self, action, x, y):
+        dx, dy = x - self.start[0], y - self.start[1]
+        along = dx * math.cos(self.start[2]) + dy * math.sin(self.start[2])
+        return max(0.0, -along if action == "back" else along)
 
     # ---- the servo's beat ----
     def tick(self):
@@ -240,7 +249,7 @@ class Body(Node):
                 self.drive(0.0, sign * max(0.25, min(1.5, 3.0 * left)))
                 return
             # a move, forward or in reverse: straight, holding the heading it began with, until the metres told are travelled
-            travelled = math.hypot(x - self.start[0], y - self.start[1])
+            travelled = self.moved(action, x, y)
             left = amount - travelled
             if left <= DONE_WITHIN:
                 self.drive(0.0, 0.0)
@@ -251,6 +260,8 @@ class Body(Node):
                 self.improved = now
             elif now - self.improved > STALL_AFTER:
                 self.drive(0.0, 0.0)
+                self.get_logger().warning("route %s: %s stalled — travelled %.3f of %.3f (best %.3f), began at (%.2f, %.2f), now at (%.2f, %.2f)"
+                                          % (route, action, travelled, amount, self.best, self.start[0], self.start[1], x, y))
                 self.done(order, "stuck", {"route": route, "reason": "stalled: no progress for 3 s"})
                 return
             if now - self.began > MOVE_TIMEOUT:

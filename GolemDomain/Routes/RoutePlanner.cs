@@ -48,7 +48,8 @@ internal sealed class RoutePlanner
     }
 
     private IReadOnlyList<Thing> things = Array.Empty<Thing>();            // the things the marks outline, for one road
-    private IReadOnlyList<Rectangle> figures = Array.Empty<Rectangle>();   // their figures grown by the body: where its centre may not go
+    private IReadOnlyList<Peer> peers = Array.Empty<Peer>();               // the peers still standing in the way (22-sep-2026)
+    private IReadOnlyList<Rectangle> figures = Array.Empty<Rectangle>();   // the things' figures grown by the body, then the peers': where its centre may not go
 
     // A point is clear when the walls leave room AND no figure of a thing holds it.
     private bool Fits(Position at) => layout.HasRoom(at, radius) && !figures.Any(f => f.Contains(at));
@@ -161,7 +162,8 @@ internal sealed class RoutePlanner
         // corner to the next stays clear — only where the body fits (the figure of a thing, not a ring per mark:
         // the second way around a crate already takes the crate's real width; Juan, 14-sep-2026)
         things = collisions.Things();
-        figures = things.Select(t => t.Extent(Collisions.MarkMargin).Inflated(radius)).ToList();
+        peers = collisions.PeersInTheWay();
+        figures = things.Select(t => t.Extent(Collisions.MarkMargin).Inflated(radius)).Concat(peers.Select(p => Collisions.PeerFigure(p, radius))).ToList();
         foreach (var figure in figures)
             foreach (var corner in figure.Inflated(0.08).Corners())
             {
@@ -237,6 +239,13 @@ internal sealed class RoutePlanner
         for (int i = 0; i < figures.Count; i++)
         {
             if (!figures[i].IsCrossedBy(run)) continue;
+            if (i >= things.Count)
+            {
+                // a peer's figure: a body that starts inside it (it just met the peer) may leave, moving away from the peer
+                var peer = peers[i - things.Count].Center;
+                if (u.Kind == NodeKind.Start && figures[i].Contains(u.At) && run.DistanceTo(peer) >= u.At.DistanceTo(peer) - 1e-9) continue;
+                return false;
+            }
             if (u.Kind == NodeKind.Start && figures[i].Contains(u.At))
             {
                 foreach (var m in things[i].Vertices())

@@ -27,6 +27,9 @@ internal sealed class Golem
     private int idleBumps;       // times something touched the body while it stood without a mission
     private Pose held;           // where the body stood when the operator held the golem; null while it is free to move
     private Pose standing;       // where the body last stood, facing which way, as the acts brought it; null until the first act with a pose
+    private Pose lastBumpBody;   // the LAST bump into a thing: where the body stood — a peer's touch landing there annuls it (22-sep-2026)
+    private Pose lastBumpTouch;  // …where the touch landed (the mark it left)
+    private Route lastBumpRoute; // …and the route that took it
     private int lastHandle;      // a handle names one route forever — even after letting go (idempotency keys hang on it)
 
     internal Golem(Body body, MapLayout map, Collisions collisions)
@@ -134,7 +137,7 @@ internal sealed class Golem
     internal bool Wake(Pose me)
     {
         if (me == null) throw new GolemDomainException("Golem.Wake: 'me' was not given");
-        standing = me;
+        Stood(me);
         if (!HasPendingMission() || Held) return false;
         Underway().Awake(me);
         return true;
@@ -190,13 +193,8 @@ internal sealed class Golem
     //      10-sep): the bump presumes it touched a THING and marks it at once; if a peer says it bumped there and
     //      then, Met takes the mark back — and the peers, told, take back what they learned (LearnMet). ----
 
-    /// <summary>Something touched the body while it stood without a mission — a body, since things do not move; told
-    /// to the peers so the one that moved knows it met a body. No mark. Returns how many such touches so far.</summary>
-    internal int Bump(Pose touch)
-    {
-        if (touch == null) throw new GolemDomainException("a bump needs the pose of the touch");
-        return ++idleBumps;
-    }
+    /// <summary>How many times something touched the body while it stood without a route — a body each time, since things do not move.</summary>
+    internal int IdleBumps => idleBumps;
 
     /// <summary>The body bumped into something on its way — WHERE THE BODY STOOD, facing which way (<paramref name="me"/>), and
     /// WHERE ON ITS SHELL it was pressed (<paramref name="bearing"/>: radians from the direction it faces; 0 the nose, +π/2 the
@@ -204,18 +202,34 @@ internal sealed class Golem
     /// plane is the DOMAIN's to reckon, from the body it declared (Juan, 18-sep-2026: "el método del dominio debe calcular la
     /// coordenada de la colisión basado en el cuerpo del robot: la posición del golpe más el radio, así sabemos con más certeza
     /// dónde está realmente el obstáculo"): one radius from the centre, in the direction of the bearing, heading into the
-    /// thing. The golem finds its route underway, the route concludes what the touch was and corrects its way inside, and is
-    /// handed back to be asked what it says now. Refused when nothing is underway: a touch while the body stands is not written yet.</summary>
-    internal Route Bump(Pose me, double bearing)
+    /// thing. With a route underway the golem hands it the touch: the route concludes what it was and corrects its way inside.
+    /// With NOTHING underway the body stood and something touched it — a body, since things do not move (Juan, 22-sep-2026,
+    /// ajuste 48): no mark, counted, remembered, and told like any bump, so the one that moved learns it met a body. Returns
+    /// whether a route took the touch.</summary>
+    internal bool Bump(Pose me, double bearing)
     {
         if (me == null) throw new GolemDomainException("Golem.Bump: 'me' was not given");
         if (!double.IsFinite(bearing)) throw new GolemDomainException("Golem.Bump: 'bearing' must be an angle");
-        if (!HasPendingMission()) throw new GolemDomainException("nothing underway: a touch while the body stands is not written");
+        var touch = TouchOn(me, bearing);
+        if (!HasPendingMission())
+        {
+            idleBumps++;
+            lastBumpBody = me; lastBumpTouch = touch; lastBumpRoute = null;   // a body touched me: its word will land here
+            Stood(me);
+            return false;
+        }
         var route = Underway();
-        route.Touched(TouchOn(me, bearing), me);
-        standing = me;
-        return route;
+        int bumps = route.Bumps;
+        route.Touched(touch, me);
+        if (route.Bumps > bumps) { lastBumpBody = me; lastBumpTouch = touch; lastBumpRoute = route; }   // a thing, for now: remembered, a peer's word may annul it
+        Stood(me);
+        return true;
     }
+
+    /// <summary>How far from where my body stood a peer's touch may land and still be a touch ON MY BODY: the shell itself is one
+    /// radius away; another radius and a mark's margin for the estimation error of two bumps (Juan, 22-sep-2026: "si su toque está
+    /// dentro de mi radio o cerca").</summary>
+    private double MeetingTolerance() => 2 * Radius() + Collisions.MarkMargin;
 
     /// <summary>Where a touch on the shell landed on the plane, heading into what was touched: one radius of the body from
     /// where it stands, in the direction it faces turned by the bearing.</summary>
@@ -228,8 +242,12 @@ internal sealed class Golem
 
     /// <summary>A moving peer says it bumped — where ITS BODY stood, facing which way, and where on its shell (the bearing): the
     /// same words its own bump was written in. Where the touch landed is reckoned here as the peer reckoned it (the fleet's
-    /// bodies share one size, body_v1). Heard and kept, so I know where that peer is; and learned as a mark, as the peer
-    /// itself presumed — until it says it met a body (LearnMet). Returns how many bumps heard.</summary>
+    /// bodies share one size, body_v1). Heard and kept, so I know where that peer is. Then the golem CONCLUDES (Juan,
+    /// 22-sep-2026: "si su toque está dentro de mi radio o cerca, anular el último bump"): if the peer's touch landed ON MY
+    /// BODY — within MeetingTolerance of where I stood at my last bump — what I bumped into was that body: my mark is taken
+    /// back, the peer's touch is not learned, the encounter is kept as history (Met) and the route that took the bump annuls
+    /// it (Route.Unbump). Otherwise the peer's touch is learned as a mark, unless it lies on a wall we both know. Returns how
+    /// many bumps heard.</summary>
     internal int HearBump(string who, Pose peerAt, double bearing)
     {
         if (peerAt == null) throw new GolemDomainException("Golem.HearBump: 'peerAt' was not given");
@@ -237,14 +255,31 @@ internal sealed class Golem
         var touch = TouchOn(peerAt, bearing);
         if (collisions.HeardAlready(who, touch, peerAt)) return collisions.HeardCount;   // the wire said it twice: heard once
         int heard = collisions.Hear(who, touch, peerAt);
+        if (lastBumpTouch != null && touch.DistanceTo(lastBumpBody) <= MeetingTolerance())
+        {
+            collisions.Meet(who, peerAt);                                                 // the peer's touch landed on my body: we met — it stands THERE, in my way while my route lasts…
+            if (lastBumpRoute != null)
+            {
+                collisions.Unmark(lastBumpTouch);                                         // …the mark my bump left is taken back — that one alone…
+                if (lastBumpRoute.IsPending()) lastBumpRoute.Unbump();                    // …and my route annuls the bump (a standing body marked nothing)
+            }
+            lastBumpBody = null; lastBumpTouch = null; lastBumpRoute = null;             // annulled once: the next word is about something else
+            return heard;
+        }
+        // a third party's ear (22-sep-2026): this touch landed on the body of another peer heard before, or that peer's touch
+        // landed on this one's body — those two met each other; nothing stands there, and what I learned from the first word goes
+        var other = collisions.Heard.LastOrDefault(h => h.Who != who
+            && (h.PeerAt.DistanceTo(touch) <= MeetingTolerance() || h.At.DistanceTo(peerAt) <= MeetingTolerance()));
+        if (other != null) { collisions.Unmark(other.At); return heard; }
         if (layout.IsWallAt(touch, MapLayout.WallTolerance)) return heard;             // the peer grazed a wall we both know: nothing learned
-        collisions.Mark(touch);                                                          // for now every touch is a thing (Juan, 18-sep-2026)
+        collisions.Mark(touch);                                                          // a thing, as the peer presumed
         return heard;
     }
 
     /// <summary>The golem concludes what it touched was a peer — who said it bumped there and then: the mark its bump
     /// presumed is taken back, and the encounter is kept among the obstacles as a Peer, history, nothing to plan around.
-    /// Told to the peers, who take back what they learned. Returns how many bodies it has met.</summary>
+    /// Concluded inside HearBump when the peer's touch landed on my body (22-sep-2026); each side hears the other and annuls
+    /// its own, so no tell is needed. Returns how many bodies it has met.</summary>
     internal int Met(string who, Position at)
     {
         if (at == null) throw new GolemDomainException("Golem.Met: 'at' was not given");
@@ -360,7 +395,7 @@ internal sealed class Golem
         var route = Underway();
         route.Pause(me);
         held = me;
-        standing = me;
+        Stood(me);
         return route;
     }
 
@@ -372,7 +407,7 @@ internal sealed class Golem
         if (me == null) throw new GolemDomainException("Golem.Resume: 'me' was not given");
         if (!Held) throw new GolemDomainException("the golem is not paused");
         held = null;
-        standing = me;
+        Stood(me);
         var route = Underway();
         if (route.Paused) route.Resume(me);
         return route;
@@ -396,6 +431,7 @@ internal sealed class Golem
     // keys of the host hang on it. Opened while the golem is free, `from` is where its body stands: kept.
     private Route Entrust(Position from, Position stop, bool following, bool choosesOrder)
     {
+        if (!HasPendingMission()) collisions.PeersMovedOn();   // an idle golem sets out afresh: whoever it met while standing has moved on
         var route = new Route(lastHandle + 1, stop, following, choosesOrder, layout, collisions, Radius(), body.Retreat.InMeters, Stood);
         route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
         if (!HasPendingMission()) standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
@@ -408,8 +444,14 @@ internal sealed class Golem
     // else where its body last stood; null before any act brought a pose.
     private Pose Whereabouts() => HasPendingMission() ? PlannedEnd() : standing;
 
-    // What a route tells its golem when the body reported a turn or a move: where it stood then.
-    private void Stood(Pose me) => standing = me;
+    // What a route tells its golem when the body reported a turn or a move: where it stood then — and every route the body
+    // has not set out on yet measures its first order from there, not from where its planning expected the body to be.
+    private void Stood(Pose me)
+    {
+        standing = me;
+        foreach (var route in routes)
+            if (route.IsPending() && !route.HasSetOut) route.StandAt(me);
+    }
 
     private Position Centre(Area area)
     {

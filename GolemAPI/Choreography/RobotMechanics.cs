@@ -9,7 +9,7 @@ namespace GolemAPI.Choreography;
 // 17-sep-2026: "algo como robot + mecánicas"; the class was `RobotToRos` on 16-sep: "una nueva clase que sirva de
 // salida, que herede de IOutputSink, que se ocupe del obey y haga el switch case para enviar al robot"). Only the way
 // OUT lives here — golem to body; what comes back (the pose, the contacts, the reports) enters through the membrane and
-// the golem's endpoints. Every command the golem performs ends with the same print (GolemEmbodiment.NextOrder); the
+// the golem's endpoints. Every command the golem performs ends with the same print, written in full in each script; the
 // print comes back to whoever performed it and is handed here — Dispatch — or pushed here by the engine when a Reaction
 // emits it (Push). SINCE 17-sep THE PRINT ALREADY SPEAKS THE ROBOT'S WORDS (Juan: "al robot se le dice muy sencillamente
 // lo que debe moverse hacia adelante, qué tanto debe rotar"): an ACTION — advance, back, turnLeft, turnRight, stop — and
@@ -45,7 +45,7 @@ public sealed class RobotMechanics : IOutputSink
     // ==================================================================
     // How the prints reach this target WITHOUT anybody dispatching them (Juan, 17-sep-2026: "esos print terminarán llamando
     // a Push automáticamente al terminar el script"): a command's print is PULL — it returns to the caller — and only a
-    // Reaction's emit is PUSHED. So one Reaction per act shape watches the journal and emits NextOrder when the act lands:
+    // Reaction's emit is PUSHED. So one Reaction per act shape watches the journal and emits that print, in full, when the act lands:
     // Underway() — the arrival and the ending on the route underway write `route = g.Underway()` first (Arrive, Fail);
     // Bump(_, _) — the bump, `route = g.Bump(me, bearing)`; Wake(_) — the golem wakes where its body stands (a plan underway
     // decided again inside); Find($id) — a route in hand by its handle (Then); Visit(_, _) and Cover(_, _) — the
@@ -71,7 +71,20 @@ public sealed class RobotMechanics : IOutputSink
                 .Cue().Company().WithSharedHydration()
                 .Seek("Act").One()
                     .OnMatch(pattern)
-                .Program.Emit(GolemEmbodiment.NextOrder);
+                .Program.Emit(@"
+                    {
+                        print g.HasPendingMission() 'pending', g.Held 'held';
+                        if (g.HasPendingMission()) {
+                            route = g.Underway();
+                            print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                            if (route.IsWalkable) {
+                                print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        }
+                    }
+                ");
     }
 
     // ==================================================================

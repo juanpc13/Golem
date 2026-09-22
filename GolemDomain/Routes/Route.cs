@@ -53,12 +53,14 @@ internal sealed class Route
     private Pose standing;                               // where the body stands and faces, as its last act reported it
     private int nextLeg;                                 // the first leg not yet known to be walked
     private bool turned;                                 // the body already turned to face the next leg's point
+    private int turnsOnLeg;                              // turns asked on the leg ahead: a body that cannot line up is not asked forever
     private bool linedUp;                                // the body reached the next leg's approach: a door lined up, to be crossed to its exit
     private int reached;                                 // stops reached so far
     private int bumps;                                   // times the body touched something the map did not hold, on this route
     private int bumpsSinceRoute;                         // ...since the way was last decided: a reason to decide it again
     private int grazes;                                  // times the body grazed a wall it knows, on this route
     private int grazesOnLeg;                             // ...since the last stop reached or way decided: the golem's patience with its own error
+    private Position lastTouch;                          // where the last touch landed: what the way past it must leave behind
 
     /// <summary>How many times the golem retries after grazing a known wall before it gives the route up.</summary>
     internal const int PatienceWithWalls = 3;
@@ -66,6 +68,8 @@ internal sealed class Route
     internal const int PatienceWithThings = 6;
     /// <summary>A turn smaller than this (radians) is not asked: the body already faces its point closely enough.</summary>
     internal const double TurnTolerance = 0.05;
+    /// <summary>How many turns a route asks on one leg before it takes the heading the body reached (22-sep-2026).</summary>
+    internal const int TurnsAtMost = 3;
     /// <summary>The clearance a follower keeps beyond the two bodies on its last stop, in metres.</summary>
     internal const double FollowerClearance = 0.5;
     /// <summary>How short of a leader's spot a follower stops on its last stop: the two bodies and a clearance (the leader may
@@ -160,7 +164,7 @@ internal sealed class Route
     {
         if (me == null) throw new GolemDomainException("Route.DecidePast: 'me' was not given");
         MustBePending();
-        var aside = Courtesy.StepOutOfTheWayOf(layout, collisions, radius, who, me);
+        var aside = Courtesy.StepOutOfTheWayOf(layout, collisions, radius, who, me, PassingStep);   // as far as passing a body wants (ajuste 47)
         if (aside == null) { Plan(me); return this; }
         var legs = new List<Leg> { new(aside, Leg.Courtesy) };
         legs.AddRange(Planner().Road(aside, Ordered(aside)).Legs());
@@ -198,9 +202,31 @@ internal sealed class Route
         standing = StandingAt(from);
         nextLeg = 0;
         turned = false;
+        turnsOnLeg = 0;
         linedUp = false;
         bumpsSinceRoute = 0;
         grazesOnLeg = 0;
+    }
+
+    /// <summary>Whether the body has set out on this route: a turn made, a door lined up, a leg or a stop behind.</summary>
+    internal bool HasSetOut => turned || linedUp || nextLeg > 0 || reached > 0;
+
+    /// <summary>Where the body stands NOW, told by the golem to a route the body has not set out on yet — a route queued behind
+    /// another was planned from where that one was expected to end, and the body ends up nearby, not there (22-sep-2026 live:
+    /// blue's first turn on a queued route was measured from the planned pose and sent it the wrong way). The way keeps; the
+    /// first order is measured from the real pose.</summary>
+    internal Route StandAt(Pose me)
+    {
+        if (me == null) throw new GolemDomainException("Route.StandAt: 'me' was not given");
+        if (HasSetOut) throw new GolemDomainException($"route {Id} is already underway: the body's pose enters through its acts");
+        standing = me;
+        if (IsRouted && way.Count > 0)
+        {
+            var legs = way.Legs().ToList();
+            legs[0] = legs[0].WalkedFrom(me);
+            way = new Trajectory(legs);
+        }
+        return this;
     }
 
     // Where the body stands after an act that brings a point: the pose itself when it is one; a bare position keeps the
@@ -313,8 +339,10 @@ internal sealed class Route
         throw new GolemDomainException($"route {Id} asked nothing of the body's motors now: it asks '{Order}'");
     }
 
-    /// <summary>The body turned in place as asked and says where it stands, facing which way: the route now asks it to
-    /// advance (from there — the amount is measured from where it really is).</summary>
+    /// <summary>The body turned in place as asked and says where it stands, facing which way. If it now faces its point — the
+    /// turn left is within two tolerances — the route asks it to advance (from there: the amount is measured from where it really
+    /// is); if not (22-sep-2026 live: a turn measured from a stale pose left the body facing a wall), the route asks another turn,
+    /// measured from the real pose — up to TurnsAtMost on one leg, then it takes the heading the body reached.</summary>
     internal Route Turn(Pose me)
     {
         if (me == null) throw new GolemDomainException("Route.Turn: 'me' was not given");
@@ -322,7 +350,8 @@ internal sealed class Route
         if (Order != "turnLeft" && Order != "turnRight") throw new GolemDomainException($"route {Id} asked no turn now: it asks '{Order}'");
         standing = me;
         stood(me);
-        turned = true;
+        turnsOnLeg++;
+        turned = turnsOnLeg >= TurnsAtMost || Math.Abs(TurnAhead) <= 2 * TurnTolerance;
         return this;
     }
 
@@ -339,6 +368,7 @@ internal sealed class Route
         standing = me;
         stood(me);
         turned = false;
+        turnsOnLeg = 0;
         if (!leg.IsReverse && !linedUp && !Same(leg.Approach, leg.Exit)) { linedUp = true; return this; }   // lined up in front of the door: now through it
         linedUp = false;
         nextLeg++;
@@ -348,7 +378,7 @@ internal sealed class Route
             reached++;
             if (reached == stops.Count && Following) PullOver(me);
         }
-        if (reached == stops.Count && nextLeg >= way.Count) status = RouteStatus.Completed;
+        if (reached == stops.Count && nextLeg >= way.Count) End(RouteStatus.Completed);
         else if (nextLeg >= way.Count) PlanAgainFrom(me);   // the way ran out short of a stop (a retreat with no road from it): decided again from here
         return this;
     }
@@ -359,7 +389,7 @@ internal sealed class Route
     private void PlanAgainFrom(Pose me)
     {
         try { Plan(me); }
-        catch (GolemDomainException) { status = RouteStatus.Failed; }
+        catch (GolemDomainException) { End(RouteStatus.Failed); }
     }
 
     // A follower that reached its last stop — the leader's spot — pulls over before it is done: a courtesy step to one
@@ -412,8 +442,34 @@ internal sealed class Route
         bumps++;
         bumpsSinceRoute++;
         collisions.Mark(touch);
+        lastTouch = touch;
         Correct(me, replan: true);
-        if (bumps > PatienceWithThings) status = RouteStatus.Failed;   // the golem's patience with things is spent
+        if (bumps > PatienceWithThings) End(RouteStatus.Failed);   // the golem's patience with things is spent
+        return this;
+    }
+
+    /// <summary>The last bump on this route was no thing — a peer's word landed on my body (22-sep-2026): it counts no more
+    /// against the patience with things, and the way is decided again WITHOUT the mark but NOT straight back into the body just
+    /// met (ajuste 47): the retreat, if not yet walked, is kept, then the courtesy step to the body's own right, then the road
+    /// from there; if the retreat was already walked, the step and the road from where the body stands. No road: the retreat
+    /// alone stays (PlanAgainFrom decides once it is reached), or the route fails by itself.</summary>
+    internal Route Unbump()
+    {
+        MustBePending();
+        if (bumps == 0) throw new GolemDomainException($"route {Id} has no bump to annul");
+        bumps--;
+        if (bumpsSinceRoute > 0) bumpsSinceRoute--;
+        if (IsRouted && nextLeg < way.Count && NextLeg.IsReverse)
+        {
+            var back = NextLeg.At;
+            var legs = new List<Leg> { new(back, Leg.Retreat) };
+            try { legs.AddRange(PastFrom(back, standing.Heading, lastTouch)); }
+            catch (GolemDomainException) { Strand(legs, standing); return this; }   // stranded still: the retreat alone, decided again once reached
+            Take(new Trajectory(legs), standing);
+            return this;
+        }
+        try { Take(new Trajectory(PastFrom(standing, standing.Heading, lastTouch)), standing); }
+        catch (GolemDomainException) { End(RouteStatus.Failed); }
         return this;
     }
 
@@ -429,8 +485,20 @@ internal sealed class Route
         grazes++;
         grazesOnLeg++;
         Correct(me, replan: false);
-        if (grazesOnLeg >= PatienceWithWalls) status = RouteStatus.Failed;   // patience spent: the route ends by itself
+        if (grazesOnLeg >= PatienceWithWalls) End(RouteStatus.Failed);   // patience spent: the route ends by itself
         return this;
+    }
+
+    // Stranded: no road fits from the retreat. The retreat alone is the way for now — walked from where the body stands — and
+    // the route decides again once it is reached (Reach → PlanAgainFrom).
+    private void Strand(List<Leg> retreat, Pose me)
+    {
+        way = new Trajectory(retreat).WalkedFrom(me);
+        standing = me;
+        nextLeg = 0;
+        turned = false;
+        turnsOnLeg = 0;
+        linedUp = false;
     }
 
     // The corrections a touch inserts ahead of what was left: back off first (a leg walked in reverse, the body's retreat
@@ -443,16 +511,8 @@ internal sealed class Route
         var legs = new List<Leg> { new(back, Leg.Retreat) };
         if (replan)
         {
-            try { legs.AddRange(Planner().Road(back, Ordered(back)).Legs()); }
-            catch (GolemDomainException)
-            {
-                way = new Trajectory(legs).WalkedFrom(me);   // stranded: back off, then decide again
-                standing = me;
-                nextLeg = 0;
-                turned = false;
-                linedUp = false;
-                return;
-            }
+            try { legs.AddRange(PastFrom(back, me.Heading, lastTouch)); }
+            catch (GolemDomainException) { Strand(legs, me); return; }   // stranded: back off, then decide again
         }
         else
             foreach (var left in way.Legs().Skip(nextLeg))
@@ -461,6 +521,34 @@ internal sealed class Route
         Take(new Trajectory(legs), me);
         if (!replan) grazesOnLeg = patience;   // the same leg, tried again: the patience spent on it stays spent
     }
+
+    // The way past what was bumped, from a point the body backed off to, facing as it faced: THE COURTESY STEP TO THE BODY'S OWN
+    // RIGHT first (Juan, 22-sep-2026: "cada choque debería intentar siempre el tramo de la derecha") — two radii to the side,
+    // where the body fits; to the left when the right does not fit; none when neither does — then the planner's road from there
+    // through the stops ahead. So a thing is skirted by the right first, and two bodies meeting head-on step each to its own
+    // right and pass. Throws when no road fits from there (the caller decides what stays).
+    private List<Leg> PastFrom(Position from, double heading, Position touched)
+    {
+        var legs = new List<Leg>();
+        var aside = Courtesy.StepOutOfTheWayOf(layout, collisions, radius, null, new Pose(from.X, from.Y, heading), PassingStep);
+        if (aside != null)
+        {
+            legs.Add(new Leg(aside, Leg.Courtesy));
+            from = aside;
+            // then AHEAD, parallel to the way it came, until what was touched is a body's length behind - so the run on to the
+            // stop does not converge back onto it (22-sep-2026 live: the straight run from the step grazed the peer again)
+            double dx = Math.Cos(heading), dy = Math.Sin(heading);
+            double along = (touched.X - aside.X) * dx + (touched.Y - aside.Y) * dy;
+            var ahead = aside.Along(heading, Math.Max(0.0, along) + 3 * radius + Collisions.MarkMargin);   // the touch is on its shell: its centre one radius beyond, then a body's length
+            if (layout.HasRoom(ahead, radius) && !collisions.Blocks(ahead, radius)) { legs.Add(new Leg(ahead, Leg.Waypoint)); from = ahead; }
+        }
+        legs.AddRange(Planner().Road(from, Ordered(from)).Legs());
+        return legs;
+    }
+
+    /// <summary>How far to the side a body steps to pass what it bumped into: three radii - two would leave the centres exactly a
+    /// body apart when the other does not move.</summary>
+    internal double PassingStep => 3 * radius;
 
     /// <summary>How far the retreat may grow, in retreats, when the body's own retreat leaves it no room to turn.</summary>
     internal const double RetreatAtMost = 3;
@@ -512,6 +600,7 @@ internal sealed class Route
             legs[nextLeg] = legs[nextLeg].WalkedFrom(me);
             way = new Trajectory(legs);
             turned = false;
+            turnsOnLeg = 0;
         }
         return this;
     }
@@ -523,7 +612,7 @@ internal sealed class Route
     {
         MustBePending();
         if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"failing route {Id} needs a reason");
-        status = RouteStatus.Failed;
+        End(RouteStatus.Failed);
         return this;
     }
 
@@ -532,7 +621,7 @@ internal sealed class Route
     {
         MustBePending();
         if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"abandoning route {Id} needs a reason");
-        status = RouteStatus.Abandoned;
+        End(RouteStatus.Abandoned);
         return this;
     }
 
@@ -542,6 +631,14 @@ internal sealed class Route
         if (reached == 0) throw new GolemDomainException($"route {Id} has reached no stop yet: only a reached stop is announced");
         Announced = true;
         return this;
+    }
+
+    // The route ends, one way or another: the peers met on it have moved on — bodies do — and are planned around no more
+    // (Juan, 22-sep-2026: "tenerlos presentes al momento de la ruta nada más").
+    private void End(RouteStatus ending)
+    {
+        status = ending;
+        collisions.PeersMovedOn();
     }
 
     private void MustBePending()
