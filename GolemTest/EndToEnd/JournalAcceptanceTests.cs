@@ -26,9 +26,22 @@ public class JournalAcceptanceTests
         perf.ConfigureStorage(DatabaseType.IN_MEMORY, name);
         perf.Start();
         perf.Actor.Using(
-            "upgrade('body_v1') { radius = Meters(0.25); speed = MetersPerSecond(2.0); linger = Seconds(6.0); retreat = Meters(0.6); body = Body(radius, speed, linger, retreat); }\n"
+            @"
+                upgrade('body_v1') {
+                    radius = Meters(0.25);
+                    speed = MetersPerSecond(2.0);
+                    linger = Seconds(6.0);
+                    retreat = Meters(0.6);
+                    body = Body(radius, speed, linger, retreat);
+                }
+            "
             + Catalog.Warehouse().AsRelease()
-            + "upgrade('init') { collisions = Collisions(map); g = Golem(body, map, collisions); }\n").PerformCommand();
+            + @"
+                upgrade('init') {
+                    collisions = Collisions(map);
+                    g = Golem(body, map, collisions);
+                }
+            ").PerformCommand();
     }
 
     [TestCleanup]
@@ -199,7 +212,9 @@ public class JournalAcceptanceTests
     {
         using var rented = perf.Actor.RentedParameters();
         perf.Actor.Using($"@value = {expression};")
-            .WithParameters(rented, p => { p[Parameter.Out, "value", typeof(T)] = default; })
+            .WithParameters(rented, p => {
+                p[Parameter.Out, "value", typeof(T)] = default;
+            })
             .PerformQuery();
         return rented["value"].GetValue<T>();
     }
