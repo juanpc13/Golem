@@ -33,6 +33,10 @@ public sealed class MockWorld : ILabWorld
     private readonly Dictionary<string, Golem> golems = new();
     private readonly InProcessBroker broker = new();
     private readonly List<WorldContact> contacts = new();
+    private readonly List<WayDecided> ways = new();   // guarded by `contacts`, numbered with the same sequence
+    private readonly List<ErrandSent> errands = new();
+    private readonly LegTracker tracker = new();
+    private Task watcher;
     private readonly SemaphoreSlim wake = new(0);
     private readonly CancellationTokenSource stop = new();
     private Task pump;
@@ -74,6 +78,7 @@ public sealed class MockWorld : ILabWorld
         var golem = new Golem { Name = name, Host = host, Body = body };
         lock (golems) golems[name] = golem;
         pump ??= Task.Run(PumpAsync);
+        watcher ??= Task.Run(WatchAsync);
         await host.ConnectAsync(stop.Token);
         golem.Clock = host.RunAsync(stop.Token);
         await Until(() => Read(name, "print g.KnowsWhereItStands 'v';").GetBoolean(), TimeSpan.FromSeconds(10));
@@ -81,10 +86,62 @@ public sealed class MockWorld : ILabWorld
 
     public Task PlaceGolemAsync(string golem, (double X, double Y)? at = null) => AddGolemAsync(golem, at);
 
-    public void Send(string golem, params (double X, double Y)[] stops)
+    public string Send(string golem, params (double X, double Y)[] stops)
     {
         var answer = Of(golem).Host.Embodiment.Displacer.Move(stops);
         if (!answer.Ok) throw new InvalidOperationException($"{golem} refused the errand: {answer.Refused}");
+        string print = Compact(answer.Print);
+        lock (contacts) errands.Add(new ErrandSent(golem, string.Join(" > ", stops.Select(s => $"({s.X}, {s.Y})")), print, ++sequence));
+        NoteWay(golem);
+        Observe(Of(golem));
+        return print;
+    }
+
+    public IReadOnlyList<ErrandSent> Errands(string golem)
+    {
+        lock (contacts) return errands.Where(e => e.Golem == golem).ToList();
+    }
+
+    public IReadOnlyList<LegReport> Legs(string golem) => tracker.Of(golem);
+
+    public async Task<LegReport> NextLegAsync(string golem, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            var leg = tracker.Next(golem);
+            if (leg != null) return leg;
+            await Task.Delay(10);
+        }
+        throw new TimeoutException($"no leg of {golem} ended in {timeout}: {Outcome(golem)}");
+    }
+
+    // The legs, watched: every golem's route asked again and again while the bodies move (a leg lasts far longer than this beat).
+    private async Task WatchAsync()
+    {
+        while (!stop.IsCancellationRequested)
+        {
+            List<Golem> all;
+            lock (golems) all = golems.Values.ToList();
+            foreach (var g in all) Observe(g);
+            try { await Task.Delay(10, stop.Token); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    private void Observe(Golem g)
+    {
+        try
+        {
+            var state = RouteState.Parse(g.Host.Performance.Actor.Using(RouteState.Query).PerformQuery());
+            tracker.Observe(g.Name, state, (g.Body.X, g.Body.Y), Contacts(g.Name), () => { lock (contacts) return ++sequence; });
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested) { Console.WriteLine($"[world] watching {g.Name}: {e.Message}"); }
+        catch { }
+    }
+
+    private static string Compact(string json)
+    {
+        try { return JsonSerializer.Serialize(JsonDocument.Parse(json).RootElement); } catch (JsonException) { return json; }
     }
 
     public async Task SendTogetherAsync(params (string Golem, (double X, double Y) Stop)[] errands)
@@ -106,6 +163,7 @@ public sealed class MockWorld : ILabWorld
         {
             List<Golem> all;
             lock (golems) all = golems.Values.ToList();
+            foreach (var g in all) NoteWay(g.Name);   // a way decided again by a peer's word, off the body's own reports
             bool busy = all.Any(g => g.Body.Busy || Read(g.Name, "print g.HasPendingMission() 'v';").GetBoolean());
             if (busy) quietSince = DateTime.MaxValue;
             else if (quietSince == DateTime.MaxValue) quietSince = DateTime.UtcNow;
@@ -126,6 +184,26 @@ public sealed class MockWorld : ILabWorld
     public IReadOnlyList<WorldContact> Contacts(string golem)
     {
         lock (contacts) return contacts.Where(c => c.Golem == golem).ToList();
+    }
+
+    public IReadOnlyList<WayDecided> Ways(string golem)
+    {
+        lock (contacts) return ways.Where(w => w.Golem == golem).ToList();
+    }
+
+    // The way the golem's newest route holds now, kept when it differs from the last one kept.
+    private void NoteWay(string golem)
+    {
+        using var doc = JsonDocument.Parse(Of(golem).Host.Performance.Actor.Using("{ if (g.Routes().Count > 0) { route = g.Newest(); print route.Id 'route', route.AsPlan() 'plan'; } }").PerformQuery());
+        if (!doc.RootElement.TryGetProperty("route", out var route)) return;
+        int id = route.GetInt32();
+        string plan = doc.RootElement.GetProperty("plan").GetString();
+        lock (contacts)
+        {
+            var last = ways.LastOrDefault(w => w.Golem == golem);
+            if (last != null && last.Route == id && last.Plan == plan) return;
+            ways.Add(new WayDecided(golem, id, plan, ++sequence));
+        }
     }
 
     public (double X, double Y, double Heading) TruePose(string golem)
@@ -153,6 +231,7 @@ public sealed class MockWorld : ILabWorld
             await g.Host.DisposeAsync();
         }
         if (pump != null) try { await pump; } catch (OperationCanceledException) { }
+        if (watcher != null) try { await watcher; } catch (OperationCanceledException) { }
     }
 
     private Golem Of(string name)
@@ -252,6 +331,7 @@ public sealed class MockWorld : ILabWorld
         lock (contacts) contacts.Add(new WorldContact(golem.Name, with, body.X, body.Y, body.Theta, bearing, ++sequence));
         body.Touched(with, bearing);
         golem.Host.Embodiment.Captor.Bumped(body.X, body.Y, body.Theta, bearing);
+        NoteWay(golem.Name);   // the route corrected its way inside the bump
     }
 
     // What a disc centred at (x, y) would press against: a wall piece or a crate (the point touched), or another body.

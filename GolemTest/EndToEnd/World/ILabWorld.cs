@@ -4,6 +4,14 @@ namespace GolemTest.World;
 /// there, facing that way, on that part of its shell. The world's testimony, never the golem's belief.</summary>
 public sealed record WorldContact(string Golem, string With, double BodyX, double BodyY, double BodyHeading, double Bearing, int Sequence);
 
+/// <summary>A way the golem's route held at some moment — `route.AsPlan()`, every leg of it — numbered in the SAME sequence as
+/// the contacts, so a scenario can tell the story in order: the way first decided, the contact, the way decided again.</summary>
+public sealed record WayDecided(string Golem, int Route, string Plan, int Sequence);
+
+/// <summary>An errand sent to a golem and the PRINT its command returned — the same order the engine pushes to the body —
+/// numbered in the same sequence as the contacts and the ways.</summary>
+public sealed record ErrandSent(string Golem, string Stops, string Print, int Sequence);
+
 /// <summary>How a golem's newest errand ended, as the golem's own journal says it (`none` when it never had one).</summary>
 public sealed record ErrandOutcome(string Status, int Bumps, int Marks, int Encounters);
 
@@ -17,8 +25,11 @@ public interface ILabWorld : IAsyncDisposable
     Task PlaceGolemAsync(string golem, (double X, double Y)? at = null);
     /// <summary>A crate from the kiosk's table (west, center, east, big) stands in the world.</summary>
     void PlaceCrate(string spot);
-    /// <summary>An errand for a golem: the points to visit, in order.</summary>
-    void Send(string golem, params (double X, double Y)[] stops);
+    /// <summary>An errand for a golem: the points to visit, in order. Returns the print its command returned — what the route
+    /// asks of the body now, in the robot's words.</summary>
+    string Send(string golem, params (double X, double Y)[] stops);
+    /// <summary>Every errand sent to the golem since it was placed, with the print each one returned.</summary>
+    IReadOnlyList<ErrandSent> Errands(string golem);
     /// <summary>Errands for several golems that must SET OUT TOGETHER (two bodies meeting halfway): each body starts once every
     /// one of them holds its first order.</summary>
     Task SendTogetherAsync(params (string Golem, (double X, double Y) Stop)[] errands);
@@ -28,6 +39,14 @@ public interface ILabWorld : IAsyncDisposable
     ErrandOutcome Outcome(string golem);
     /// <summary>Every contact the world saw on that golem's body, in order.</summary>
     IReadOnlyList<WorldContact> Contacts(string golem);
+    /// <summary>Every way the golem's newest route held since it was placed, in order: the first as decided, then each time it
+    /// was decided again (a bump, a word from a peer, a stranded retreat). Asked of the golem's own journal.</summary>
+    IReadOnlyList<WayDecided> Ways(string golem);
+    /// <summary>The next leg of the golem's route that ENDED — completed, or cut short — waiting for it while the body moves:
+    /// a scenario validates the legs one by one, as they happen, instead of only at the end.</summary>
+    Task<LegReport> NextLegAsync(string golem, TimeSpan timeout);
+    /// <summary>Every leg that ended since the golem was placed, in order.</summary>
+    IReadOnlyList<LegReport> Legs(string golem);
     /// <summary>Where the body really went: its true position, sampled along the way, from its placing to now.</summary>
     IReadOnlyList<(double X, double Y)> Trail(string golem);
     /// <summary>Where the body really is, and facing which way.</summary>

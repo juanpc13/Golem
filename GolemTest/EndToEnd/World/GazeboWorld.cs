@@ -32,6 +32,10 @@ public sealed class GazeboWorld : ILabWorld
     private readonly Dictionary<string, List<(double X, double Y)>> trails = new();   // the true position, every 5 cm moved
     private readonly Dictionary<string, (string With, DateTime Last)> pressed = new();
     private readonly List<WorldContact> contacts = new();
+    private readonly List<WayDecided> ways = new();
+    private readonly List<ErrandSent> errands = new();
+    private readonly LegTracker tracker = new();
+    private Task watcher;
     private readonly HashSet<string> placed = new();
     private string crates = "";
     private Task reader;
@@ -67,6 +71,7 @@ public sealed class GazeboWorld : ILabWorld
             await world.SendAsync(new { op = "subscribe", topic = $"/model/{name}/contacts", type = "ros_gz_interfaces/Contacts", throttle_rate = 20 });
         }
         await world.ResetAsync(patience);
+        world.watcher = Task.Run(world.WatchAsync);
         return world;
     }
 
@@ -88,7 +93,7 @@ public sealed class GazeboWorld : ILabWorld
             }
         lock (gate) placed.Clear();
         await SettleAsync(golems.Keys, patience);
-        lock (gate) { contacts.Clear(); trails.Clear(); }
+        lock (gate) { contacts.Clear(); trails.Clear(); ways.Clear(); errands.Clear(); }
     }
 
     public void PlaceCrate(string spot)
@@ -108,15 +113,74 @@ public sealed class GazeboWorld : ILabWorld
         if (at == null) return;
         Send(golem, at.Value);
         await SettleAsync(golems.Keys, TimeSpan.FromSeconds(120));   // the followers too: nobody still driving into the scenario
-        lock (gate) { contacts.RemoveAll(c => c.Golem == golem); trails.Remove(golem); }
+        lock (gate)
+        {
+            contacts.RemoveAll(c => c.Golem == golem);
+            trails.Remove(golem);
+            ways.RemoveAll(w => w.Golem == golem);
+            errands.RemoveAll(e => e.Golem == golem);
+        }
+        tracker.Forget(golem);
     }
 
-    public void Send(string golem, params (double X, double Y)[] stops)
+    public string Send(string golem, params (double X, double Y)[] stops)
     {
         var answer = http.PostAsJsonAsync(new Uri(golems[golem], "move"), new { stops = stops.Select(s => new { x = s.X, y = s.Y }) })
             .GetAwaiter().GetResult();
         string body = answer.Content.ReadAsStringAsync().GetAwaiter().GetResult();
         if (!answer.IsSuccessStatusCode || body.Contains("\"EWI\"")) throw new InvalidOperationException($"{golem} refused the errand: {body}");
+        using var doc = JsonDocument.Parse(body);
+        string print = doc.RootElement.TryGetProperty("print", out var p) ? JsonSerializer.Serialize(p) : "(the golem's /move answered no print)";
+        lock (gate) errands.Add(new ErrandSent(golem, string.Join(" > ", stops.Select(s => $"({s.X}, {s.Y})")), print, ++sequence));
+        NoteWayAsync(golem).GetAwaiter().GetResult();
+        ObserveAsync(golem).GetAwaiter().GetResult();
+        return print;
+    }
+
+    public IReadOnlyList<ErrandSent> Errands(string golem)
+    {
+        lock (gate) return errands.Where(e => e.Golem == golem).ToList();
+    }
+
+    public IReadOnlyList<LegReport> Legs(string golem) => tracker.Of(golem);
+
+    public async Task<LegReport> NextLegAsync(string golem, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            var leg = tracker.Next(golem);
+            if (leg != null) return leg;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"no leg of {golem} ended in {timeout}: {Outcome(golem)}");
+    }
+
+    // The legs, watched: every placed golem's route asked at its /query while the bodies drive (a leg lasts seconds in Gazebo).
+    private async Task WatchAsync()
+    {
+        while (!stop.IsCancellationRequested)
+        {
+            List<string> who;
+            lock (gate) who = placed.ToList();
+            foreach (var name in who) await ObserveAsync(name);
+            try { await Task.Delay(100, stop.Token); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    private async Task ObserveAsync(string golem)
+    {
+        try
+        {
+            var answer = await http.PostAsJsonAsync(new Uri(golems[golem], "query"), new { script = RouteState.Query });
+            if (!answer.IsSuccessStatusCode) return;
+            var state = RouteState.Parse(await answer.Content.ReadAsStringAsync());
+            (double X, double Y) body;
+            lock (gate) body = truth.TryGetValue(golem, out var t) ? (t.X, t.Y) : (double.NaN, double.NaN);
+            tracker.Observe(golem, state, body, Contacts(golem), () => { lock (gate) return ++sequence; });
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested) { Console.WriteLine($"[gazebo] watching {golem}: {e.Message}"); }
+        catch { }
     }
 
     public Task SendTogetherAsync(params (string Golem, (double X, double Y) Stop)[] errands)
@@ -159,6 +223,28 @@ public sealed class GazeboWorld : ILabWorld
         lock (gate) return contacts.Where(c => c.Golem == golem).ToList();
     }
 
+    public IReadOnlyList<WayDecided> Ways(string golem)
+    {
+        lock (gate) return ways.Where(w => w.Golem == golem).ToList();
+    }
+
+    // The way the golem's newest route holds now, asked at its /query, kept when it differs from the last one kept.
+    private async Task NoteWayAsync(string golem)
+    {
+        var answer = await http.PostAsJsonAsync(new Uri(golems[golem], "query"), new { script = "{ if (g.Routes().Count > 0) { route = g.Newest(); print route.Id 'route', route.AsPlan() 'plan'; } }" });
+        if (!answer.IsSuccessStatusCode) return;
+        using var doc = JsonDocument.Parse(await answer.Content.ReadAsStringAsync());
+        if (!doc.RootElement.TryGetProperty("route", out var route)) return;
+        int id = route.GetInt32();
+        string plan = doc.RootElement.GetProperty("plan").GetString();
+        lock (gate)
+        {
+            var last = ways.LastOrDefault(w => w.Golem == golem);
+            if (last != null && last.Route == id && last.Plan == plan) return;
+            ways.Add(new WayDecided(golem, id, plan, ++sequence));
+        }
+    }
+
     public IReadOnlyList<(double X, double Y)> Trail(string golem)
     {
         lock (gate) return trails.TryGetValue(golem, out var t) ? t.ToList() : new List<(double X, double Y)>();
@@ -174,6 +260,7 @@ public sealed class GazeboWorld : ILabWorld
         stop.Cancel();
         try { if (ws.State == WebSocketState.Open) await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None); } catch { }
         if (reader != null) try { await reader; } catch { }
+        if (watcher != null) try { await watcher; } catch { }
         ws.Dispose();
         http.Dispose();
     }
@@ -191,6 +278,7 @@ public sealed class GazeboWorld : ILabWorld
             bool pending = false;
             foreach (var name in names)
             {
+                await NoteWayAsync(name);
                 using var doc = JsonDocument.Parse(await http.GetStringAsync(new Uri(golems[name], "state")));
                 if (doc.RootElement.GetProperty("pending").GetInt32() > 0) pending = true;
             }
@@ -203,7 +291,7 @@ public sealed class GazeboWorld : ILabWorld
             if (pending || moving) still = DateTime.MaxValue;
             else if (still == DateTime.MaxValue) still = DateTime.UtcNow;
             else if (DateTime.UtcNow - still > TimeSpan.FromSeconds(1.5)) return;
-            await Task.Delay(500);
+            await Task.Delay(250);
         }
         throw new TimeoutException($"the world did not settle in {timeout}: {string.Join("; ", names.Select(n => $"{n} {Outcome(n)}"))}");
     }

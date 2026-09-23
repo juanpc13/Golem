@@ -211,5 +211,16 @@ public class GolemController : Controller
 
     // The action's answer becomes the response: refused → 409 in the domain's words; done → the board back to the
     // operator. The next order is already on its way to the body: the reaction on the act pushed it.
-    private IActionResult Answered(Answer answer) => answer.Ok ? Content(Board(), "application/json") : Conflict(answer.Refused);
+    // What an operator's verb answers: the board as always, and — since 23-sep-2026 (Juan: "ese print no sería posible verlo…
+    // que el Send retorne ese response") — the PRINT the command itself returned, the same order the engine pushes to the body.
+    // The panel reads only whether it was refused; a scenario reads the print.
+    private IActionResult Answered(Answer answer)
+    {
+        if (!answer.Ok) return Conflict(answer.Refused);
+        var board = System.Text.Json.Nodes.JsonNode.Parse(Board())?.AsObject() ?? new System.Text.Json.Nodes.JsonObject();
+        if (!string.IsNullOrWhiteSpace(answer.Print))
+            try { board["print"] = System.Text.Json.Nodes.JsonNode.Parse(answer.Print); }
+            catch (System.Text.Json.JsonException) { board["print"] = answer.Print; }
+        return Content(board.ToJsonString(), "application/json");
+    }
 }
