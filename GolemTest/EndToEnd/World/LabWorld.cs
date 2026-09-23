@@ -21,7 +21,8 @@ public sealed record LabSettings(string World, Uri Rosbridge, IReadOnlyDictionar
         {
             string path = Path.Combine(AppContext.BaseDirectory, file);
             if (!File.Exists(path)) continue;
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            // comments and trailing commas are allowed: the settings explain themselves (Juan, 23-sep-2026)
+            using var doc = JsonDocument.Parse(File.ReadAllText(path), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
             if (!doc.RootElement.TryGetProperty("Lab", out var lab)) continue;
             if (lab.TryGetProperty("World", out var w)) world = w.GetString();
             if (lab.TryGetProperty("Rosbridge", out var r)) rosbridge = r.GetString();
@@ -46,7 +47,7 @@ public static class LabWorld
     public static async Task<ILabWorld> OpenAsync(LabSettings settings)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
-        if (!settings.InGazebo) return new FloorWorld();
+        if (!settings.InGazebo) return new MockWorld();
         if (settings.Golems.Count == 0) throw new InvalidOperationException("Lab:World is 'gazebo' but Lab:Golems names no golem to ask");
         return await GazeboWorld.OpenAsync(settings.Rosbridge, settings.Golems, settings.Patience);
     }

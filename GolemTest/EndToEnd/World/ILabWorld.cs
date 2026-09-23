@@ -8,7 +8,7 @@ public sealed record WorldContact(string Golem, string With, double BodyX, doubl
 public sealed record ErrandOutcome(string Status, int Bumps, int Marks, int Encounters);
 
 // ONE FACE FOR BOTH WORLDS (propuesta 52): a scenario is written once against it — put crates, send errands, let the world
-// run, ask what the golem concluded and what the world saw — and runs against the world held in memory (FloorWorld) or,
+// run, ask what the golem concluded and what the world saw — and runs against the world held in memory (MockWorld) or,
 // in fase 2, against Gazebo. The domain decides, the world says whether it COLLIDED, the scenario asserts.
 public interface ILabWorld : IAsyncDisposable
 {

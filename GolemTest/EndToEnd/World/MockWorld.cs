@@ -19,7 +19,7 @@ namespace GolemTest.World;
 // declares — all of them interleaved, looked at every centimetre — so two bodies driving at once really meet halfway, and an
 // order that takes a while to arrive (the reaction's push) costs the same distance it would in Gazebo, scaled. The golems are
 // the fleet as the compose deploys it: each can tell every other, and red tells blue every stop it reaches.
-public sealed class FloorWorld : ILabWorld
+public sealed class MockWorld : ILabWorld
 {
     private const double Step = 0.01;        // metres a run advances between two looks at the shell
     private const double TurnSpeed = 1.5;    // rad/s, body.py's fastest turn
@@ -47,9 +47,9 @@ public sealed class FloorWorld : ILabWorld
         public Task Clock;
     }
 
-    public FloorWorld() : this(FloorPlan.Load()) { }
+    public MockWorld() : this(FloorPlan.Load()) { }
 
-    public FloorWorld(FloorPlan plan)
+    public MockWorld(FloorPlan plan)
     {
         this.plan = plan ?? throw new ArgumentNullException(nameof(plan));
     }
@@ -290,7 +290,7 @@ public sealed class FloorWorld : ILabWorld
 
     internal sealed class KinematicBody : IBodyWire
     {
-        private readonly FloorWorld world;
+        private readonly MockWorld world;
         private readonly string name;
         private readonly object gate = new();
         private readonly List<(double X, double Y)> trail = new();
@@ -301,7 +301,7 @@ public sealed class FloorWorld : ILabWorld
         private volatile Contact contact;
         private int ticks;
 
-        public KinematicBody(FloorWorld world, string name, double x, double y, double theta)
+        public KinematicBody(MockWorld world, string name, double x, double y, double theta)
         {
             this.world = world;
             this.name = name;
