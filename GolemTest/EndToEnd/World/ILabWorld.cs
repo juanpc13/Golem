@@ -4,7 +4,7 @@ namespace GolemTest.World;
 /// there, facing that way, on that part of its shell. The world's testimony, never the golem's belief.</summary>
 public sealed record WorldContact(string Golem, string With, double BodyX, double BodyY, double BodyHeading, double Bearing, int Sequence);
 
-/// <summary>How a golem's newest errand ended, as the golem's own journal says it.</summary>
+/// <summary>How a golem's newest errand ended, as the golem's own journal says it (`none` when it never had one).</summary>
 public sealed record ErrandOutcome(string Status, int Bumps, int Marks, int Encounters);
 
 // ONE FACE FOR BOTH WORLDS (propuesta 52): a scenario is written once against it — put crates, send errands, let the world
@@ -19,12 +19,17 @@ public interface ILabWorld : IAsyncDisposable
     void PlaceCrate(string spot);
     /// <summary>An errand for a golem: the points to visit, in order.</summary>
     void Send(string golem, params (double X, double Y)[] stops);
+    /// <summary>Errands for several golems that must SET OUT TOGETHER (two bodies meeting halfway): each body starts once every
+    /// one of them holds its first order.</summary>
+    Task SendTogetherAsync(params (string Golem, (double X, double Y) Stop)[] errands);
     /// <summary>Let the world run until no golem has anything pending and the bodies are quiet — or the timeout.</summary>
     Task RunUntilSettledAsync(TimeSpan timeout);
     /// <summary>How the golem's newest errand ended, in its own words.</summary>
     ErrandOutcome Outcome(string golem);
     /// <summary>Every contact the world saw on that golem's body, in order.</summary>
     IReadOnlyList<WorldContact> Contacts(string golem);
+    /// <summary>Where the body really went: its true position, sampled along the way, from its placing to now.</summary>
+    IReadOnlyList<(double X, double Y)> Trail(string golem);
     /// <summary>Where the body really is, and facing which way.</summary>
     (double X, double Y, double Heading) TruePose(string golem);
 }

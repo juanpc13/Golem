@@ -72,6 +72,103 @@ public class ScenarioTests
         AssertStandsAt(world, "red", 5.5, 1.5);
     }
 
+    [TestMethod]
+    [Ignore("the domain does not learn yet that a crate shuts the hall (23-sep-2026): it bumps the same two points — "
+            + "straight ahead and a body's step to its right — seven times and the route fails; an ajuste for the PLAN")]
+    public async Task AHallShutWallToWall_TurnsTheWayThroughASideCorridor()
+    {
+        await using var world = await OpenWorldAsync();
+        await world.PlaceGolemAsync("red", (5.5, 9.5));                 // in the north hall
+        world.PlaceCrate("big");                                        // the central hall shut, wall to wall
+        world.Send("red", (5.5, 1.5));                                  // to the south hall
+        await world.RunUntilSettledAsync(Patience);
+        string seen = Report(world, "red");
+
+        Assert.AreEqual("completed", world.Outcome("red").Status, seen);
+        Assert.IsTrue(world.Contacts("red").All(c => c.With == "crate_big"), "it only ever touched the crate — " + seen);
+        Assert.IsTrue(world.Trail("red").Any(t => t.X < 1.5 || t.X > 9.5), "the way went round through a side corridor — " + seen);
+        AssertStandsAt(world, "red", 5.5, 1.5);
+    }
+
+    [TestMethod]
+    public async Task ACorridorShut_TurnsTheWayThroughTheCentre()
+    {
+        await using var world = await OpenWorldAsync();
+        await world.PlaceGolemAsync("red", (9.0, 9.5));                 // in the storage room
+        world.PlaceCrate("east");                                       // the east corridor shut
+        world.Send("red", (9.0, 1.5));                                  // to the garage: its shortest way is down that corridor
+        await world.RunUntilSettledAsync(Patience);
+        string seen = Report(world, "red");
+
+        var outcome = world.Outcome("red");
+        Assert.AreEqual("completed", outcome.Status, seen);
+        // the only THING it touched is the crate: a graze on a wall is the domain's own correction, and in Gazebo a body may be
+        // a bystander (blue follows red's stops)
+        var things = world.Contacts("red").Where(c => c.With.StartsWith("crate_")).ToList();
+        Assert.IsTrue(things.Count >= 1, "it walked into the corridor and met the crate — " + seen);
+        Assert.IsTrue(things.All(c => c.With == "crate_east"), "and the only thing it touched is that crate — " + seen);
+        Assert.IsTrue(outcome.Marks >= 1, "the crate is kept as a thing — " + seen);
+        Assert.IsTrue(world.Trail("red").Any(t => t.X > 4 && t.X < 7 && t.Y > 3 && t.Y < 8), "the way went down the central hall instead — " + seen);
+        AssertStandsAt(world, "red", 9.0, 1.5);
+    }
+
+    [TestMethod]
+    [Ignore("findings of 23-sep-2026, for the PLAN: (1) when the bodies meet close to one's start, the other's stop lies inside "
+            + "the met body's berth (ajuste 50) and its route FAILS instead of waiting for the body to move on; (2) the annulment "
+            + "of a bump by the peer's word holds only if my bump was written first — the word arriving first leaves a phantom mark; "
+            + "(3) in Gazebo green lives on dead reckoning and the collision's push leaves it 0.76 m from where it believes it stands")]
+    public async Task TwoBodiesHeadOn_PassEachOther()
+    {
+        await using var world = await OpenWorldAsync();
+        await world.PlaceGolemAsync("red", (5.5, 9.5));                 // red in the north hall…
+        await world.PlaceGolemAsync("green", (5.5, 1.5));               // …green in the south hall
+        await world.SendTogetherAsync(("red", (5.5, 1.5)), ("green", (5.5, 9.5)));   // they trade places, down and up the centre
+        await world.RunUntilSettledAsync(Patience);
+        string seen = Report(world, "red") + " || " + Report(world, "green");
+
+        Assert.AreEqual("completed", world.Outcome("red").Status, seen);
+        Assert.AreEqual("completed", world.Outcome("green").Status, seen);
+        Assert.IsTrue(world.Contacts("red").Any(c => c.With == "green") || world.Contacts("green").Any(c => c.With == "red"),
+                      "the world saw the two bodies meet halfway — " + seen);
+        Assert.IsTrue(world.Outcome("red").Encounters + world.Outcome("green").Encounters >= 1,
+                      "at least one of them concluded it met a body, not a thing (ajuste 46) — " + seen);
+        AssertStandsAt(world, "red", 5.5, 1.5);
+        AssertStandsAt(world, "green", 5.5, 9.5);
+    }
+
+    [TestMethod]
+    [Ignore("findings of 23-sep-2026, for the PLAN: (1) the annulment holds only if the mover's bump was written before the parked "
+            + "body's word — in memory the word often arrives first and a phantom mark stays; (2) in Gazebo green, on dead reckoning, "
+            + "was pushed off its belief by the meeting and took the central hall's east wall for a thing seven times — the route failed")]
+    public async Task ABodyParkedInTheWay_IsMet_AndPassed()
+    {
+        await using var world = await OpenWorldAsync();
+        await world.PlaceGolemAsync("blue", (6.0, 5.0));                // blue parked in the central hall
+        await world.PlaceGolemAsync("green");                           // green on its mark in the storage room
+        world.Send("green", (5.5, 1.5));                                // to the south hall, through where blue stands
+        await world.RunUntilSettledAsync(Patience);
+        string seen = Report(world, "green") + " || " + Report(world, "blue");
+
+        var green = world.Outcome("green");
+        Assert.AreEqual("completed", green.Status, seen);
+        Assert.IsTrue(world.Contacts("green").Any(c => c.With == "blue"), "green met blue's body on the way — " + seen);
+        Assert.AreEqual(0, green.Marks, "and kept no thing where blue stood: blue's word annulled the bump (ajustes 46, 48) — " + seen);
+        Assert.IsTrue(green.Encounters >= 1, "it concluded it met a body — " + seen);
+        AssertStandsAt(world, "green", 5.5, 1.5);
+    }
+
+    // What the golem concluded and what the world saw, in one line: printed, and carried by every assertion's message.
+    private static string Report(ILabWorld world, string golem)
+    {
+        var (px, py, _) = world.TruePose(golem);
+        var trail = world.Trail(golem);
+        string said = $"{Lab.World} — {golem}: {world.Outcome(golem)}; stands at ({px:0.00}, {py:0.00}); "
+                      + $"west of 1.5: {trail.Any(t => t.X < 1.5)}, east of 9.5: {trail.Any(t => t.X > 9.5)}, centre: {trail.Any(t => t.X > 4 && t.X < 7 && t.Y > 3 && t.Y < 8)}; "
+                      + $"contacts: {string.Join(" | ", world.Contacts(golem).Select(c => $"{c.With} at ({c.BodyX:0.00}, {c.BodyY:0.00}) bearing {c.Bearing:0.00}"))}";
+        Console.WriteLine("[scenario] " + said);
+        return said;
+    }
+
     private static async Task<ILabWorld> OpenWorldAsync()
     {
         try { return await LabWorld.OpenAsync(Lab); }

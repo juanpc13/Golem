@@ -29,6 +29,7 @@ public sealed class GazeboWorld : ILabWorld
     private readonly CancellationTokenSource stop = new();
     private readonly object gate = new();
     private readonly Dictionary<string, (double X, double Y, double Heading)> truth = new();
+    private readonly Dictionary<string, List<(double X, double Y)>> trails = new();   // the true position, every 5 cm moved
     private readonly Dictionary<string, (string With, DateTime Last)> pressed = new();
     private readonly List<WorldContact> contacts = new();
     private readonly HashSet<string> placed = new();
@@ -87,7 +88,7 @@ public sealed class GazeboWorld : ILabWorld
             }
         lock (gate) placed.Clear();
         await SettleAsync(golems.Keys, patience);
-        lock (gate) contacts.Clear();
+        lock (gate) { contacts.Clear(); trails.Clear(); }
     }
 
     public void PlaceCrate(string spot)
@@ -107,7 +108,7 @@ public sealed class GazeboWorld : ILabWorld
         if (at == null) return;
         Send(golem, at.Value);
         await SettleAsync(golems.Keys, TimeSpan.FromSeconds(120));   // the followers too: nobody still driving into the scenario
-        lock (gate) contacts.RemoveAll(c => c.Golem == golem);
+        lock (gate) { contacts.RemoveAll(c => c.Golem == golem); trails.Remove(golem); }
     }
 
     public void Send(string golem, params (double X, double Y)[] stops)
@@ -116,6 +117,12 @@ public sealed class GazeboWorld : ILabWorld
             .GetAwaiter().GetResult();
         string body = answer.Content.ReadAsStringAsync().GetAwaiter().GetResult();
         if (!answer.IsSuccessStatusCode || body.Contains("\"EWI\"")) throw new InvalidOperationException($"{golem} refused the errand: {body}");
+    }
+
+    public Task SendTogetherAsync(params (string Golem, (double X, double Y) Stop)[] errands)
+    {
+        foreach (var (golem, stop) in errands) Send(golem, stop);   // one process each: nobody waits for another's push
+        return Task.CompletedTask;
     }
 
     public Task RunUntilSettledAsync(TimeSpan timeout)
@@ -130,19 +137,31 @@ public sealed class GazeboWorld : ILabWorld
         var answer = http.PostAsJsonAsync(new Uri(golems[golem], "query"), new
         {
             // a full block runs verbatim at /query (a bare expression would be wrapped as one print)
-            script = "{ route = g.Newest(); print route.Status 'status', route.Bumps 'bumps', collisions.MarkCount 'marks', collisions.EncounterCount 'met'; }"
+            script = @"{
+                print collisions.MarkCount 'marks', collisions.EncounterCount 'met';
+                if (g.Routes().Count > 0) {
+                    route = g.Newest();
+                    print route.Status 'status', route.Bumps 'bumps';
+                }
+            }"
         }).GetAwaiter().GetResult();
         string body = answer.Content.ReadAsStringAsync().GetAwaiter().GetResult();
         if (!answer.IsSuccessStatusCode) throw new InvalidOperationException($"{golem} did not answer the question: {body}");
         using var doc = JsonDocument.Parse(body);
         var e = doc.RootElement;
-        return new ErrandOutcome(e.GetProperty("status").GetString(), e.GetProperty("bumps").GetInt32(),
+        return new ErrandOutcome(e.TryGetProperty("status", out var status) ? status.GetString() : "none",
+                                 e.TryGetProperty("bumps", out var bumps) ? bumps.GetInt32() : 0,
                                  e.GetProperty("marks").GetInt32(), e.GetProperty("met").GetInt32());
     }
 
     public IReadOnlyList<WorldContact> Contacts(string golem)
     {
         lock (gate) return contacts.Where(c => c.Golem == golem).ToList();
+    }
+
+    public IReadOnlyList<(double X, double Y)> Trail(string golem)
+    {
+        lock (gate) return trails.TryGetValue(golem, out var t) ? t.ToList() : new List<(double X, double Y)>();
     }
 
     public (double X, double Y, double Heading) TruePose(string golem)
@@ -238,7 +257,13 @@ public sealed class GazeboWorld : ILabWorld
             var q = pose.GetProperty("orientation");
             double qx = q.GetProperty("x").GetDouble(), qy = q.GetProperty("y").GetDouble(), qz = q.GetProperty("z").GetDouble(), qw = q.GetProperty("w").GetDouble();
             double yaw = Math.Atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz));
-            lock (gate) truth[body] = (p.GetProperty("x").GetDouble(), p.GetProperty("y").GetDouble(), yaw);
+            double x = p.GetProperty("x").GetDouble(), y = p.GetProperty("y").GetDouble();
+            lock (gate)
+            {
+                truth[body] = (x, y, yaw);
+                if (!trails.TryGetValue(body, out var trail)) trails[body] = trail = new List<(double X, double Y)>();
+                if (trail.Count == 0 || Math.Abs(trail[^1].X - x) + Math.Abs(trail[^1].Y - y) > 0.05) trail.Add((x, y));
+            }
         }
         else if (parts[3] == "contacts")
             foreach (var c in msg.GetProperty("contacts").EnumerateArray())
