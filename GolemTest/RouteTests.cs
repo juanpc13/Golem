@@ -274,6 +274,34 @@ public class RouteTests
     }
 
     [TestMethod]
+    public void ABump_GrowsTheWay_FromOneLegToTheCorrectionsAndTheStop()
+    {
+        // north hall to south hall, straight down the centre: ONE leg, the stop itself (ajuste 45: a free run is one leg)
+        var route = g.Visit(At(5.5, 9.5, South), P(5.5, 1.5));
+        Assert.AreEqual(1, route.LegsAhead.Count, "before the bump: " + route.AsPlan());
+        Assert.AreEqual("south@5.5,1.5", route.AsPlan());
+        Assert.AreEqual("advance", route.Order);
+
+        Bump(route, 5.5, 5.85, South);                             // the crate's north face, halfway down
+
+        // after the bump the way is REWRITTEN inside the route: the corrections first, the same stop last
+        Assert.AreEqual(4, route.LegsAhead.Count, "back, aside, via and the stop: " + route.AsPlan());
+        CollectionAssert.AreEqual(new[] { "back", "aside", "via", "south" }, route.LegsAhead.Select(l => l.Name).ToArray(), route.AsPlan());
+        Assert.IsTrue(route.LegsAhead[0].IsCorrection && route.LegsAhead[1].IsCorrection, "the retreat and the step aside are corrections…");
+        Assert.IsFalse(route.LegsAhead[3].IsCorrection, "…the stop is the plan's own");
+        Assert.AreEqual(1, route.StopsLeft, "one stop still ahead: the corrections add legs, never stops");
+        Assert.AreEqual("back", route.Order, "and what the body is asked now is the first correction");
+        Assert.IsTrue(route.Amount >= Retreat, "at least the body's own retreat, in metres: " + route.Amount);
+
+        // walking it: every leg reached takes one off, until the stop completes the route
+        Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);     // back
+        Assert.AreEqual(3, route.LegsAhead.Count);
+        WalkToTheEnd(route);
+        Assert.AreEqual(0, route.LegsAhead.Count);
+        Assert.AreEqual("completed", route.Status);
+    }
+
+    [TestMethod]
     public void TwoBodiesMeetingHeadOn_EachStepsToItsOwnRight_AndTheirWaysPassEachOther()
     {
         // 22-sep-2026 live: annulled, both ways went straight again and the bodies met a second time and stalled
