@@ -62,8 +62,10 @@ public sealed class GolemHost : IAsyncDisposable
 
         // Storage first; then the tell transport and every Reaction, because Start is what arms them and runs the release chain.
         var performance = new GolemPerformance(settings.Golem, DomainLibrary.Assembly);
+        // A journal in memory is keyed by its name and outlives the performance in this process: every build gets its own,
+        // or a second golem of the same name would rehydrate the first one's journal (23-sep-2026, the scenarios in a row).
         performance.ConfigureStorage(settings.Storage,
-            settings.Storage == DatabaseType.FileSystem ? $"path={settings.JournalPath}" : settings.Golem);
+            settings.Storage == DatabaseType.FileSystem ? $"path={settings.JournalPath}" : $"{settings.Golem}-{Guid.NewGuid():N}");
 
         var speech = new GolemSpeech(performance, tellWire, feed, settings.Golem, settings.TellDoneTo, settings.Peers);
         speech.DefineReactions();

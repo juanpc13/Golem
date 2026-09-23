@@ -17,6 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the world the simulator is built from, beside the tests: the scenarios' world in memory reads it (propuesta 52) -->
+    <None Include="..\sim\world\plan.json" Link="World\plan.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\GolemDomain\GolemDomain.csproj" />
     <ProjectReference Include="..\GolemAPI\GolemAPI.csproj" />
   </ItemGroup>
