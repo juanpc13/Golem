@@ -314,7 +314,9 @@ public sealed class GazeboWorld : ILabWorld
     private async Task PostAsync(Uri golem, string path, object body)
     {
         var answer = await http.PostAsJsonAsync(new Uri(golem, path), body);
-        if (!answer.IsSuccessStatusCode) Console.WriteLine($"[gazebo] {golem}{path} answered {(int)answer.StatusCode}: {await answer.Content.ReadAsStringAsync()}");
+        // a 409 to a forget only says there was nothing left to forget (a peer's word forgot it first): no news
+        if (!answer.IsSuccessStatusCode && !(path == "forget" && answer.StatusCode == System.Net.HttpStatusCode.Conflict))
+            Console.WriteLine($"[gazebo] {golem}{path} answered {(int)answer.StatusCode}: {await answer.Content.ReadAsStringAsync()}");
     }
 
     private async Task ReadAsync()

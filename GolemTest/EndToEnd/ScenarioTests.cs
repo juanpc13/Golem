@@ -41,7 +41,7 @@ public class ScenarioTests
     {
         await using var world = await OpenWorldAsync();
         await world.PlaceGolemAsync("red");                             // on its mark in the living room
-        Console.WriteLine("[sent] red: " + world.Send("red", (5.5, 9.5)));   // to the north hall, through the centre
+        world.Send("red", (5.5, 9.5));   // to the north hall, through the centre
         var way = world.Ways("red").Single().Plan;
         Assert.AreEqual(3, way.Split(" > ").Length, "out of the living room, into the central hall, up to the north hall: " + way);
 
@@ -67,12 +67,12 @@ public class ScenarioTests
         await using var world = await OpenWorldAsync();
         await world.PlaceGolemAsync("red", (5.5, 9.5));                 // in the north hall, before the crate stands
         world.PlaceCrate("center");                                     // the middle of the central hall
-        Console.WriteLine("[sent] red: " + world.Send("red", (5.5, 1.5)));   // to the south hall: the straight line runs into the crate
+        world.Send("red", (5.5, 1.5));   // to the south hall: the straight line runs into the crate
         Assert.AreEqual("south@5.5,1.5", world.Ways("red").Single().Plan, "one straight leg: the golem knows nothing of the crate yet");
 
         // leg 1: the straight run, cut short by the crate — and the way decided again starts backing off
         var cut = await world.NextLegAsync("red", Patience);
-        Console.WriteLine("[leg] red " + cut);
+        Console.WriteLine("[leg] red " + cut.Line());
         Assert.AreEqual("south", cut.Name, cut.ToString());
         Assert.IsFalse(cut.Completed, "the crate stood on it — " + cut);
         CollectionAssert.Contains(cut.Touched.ToList(), "crate_center", cut.ToString());
@@ -122,7 +122,7 @@ public class ScenarioTests
         await using var world = await OpenWorldAsync();
         await world.PlaceGolemAsync("red", (9.0, 9.5));                 // in the storage room
         world.PlaceCrate("east");                                       // the east corridor shut
-        Console.WriteLine("[sent] red: " + world.Send("red", (9.0, 1.5)));   // to the garage: its shortest way is down that corridor
+        world.Send("red", (9.0, 1.5));   // to the garage: its shortest way is down that corridor
         StringAssert.StartsWith(world.Ways("red").Single().Plan, "storage/east@", "its first way goes down the east corridor");
 
         // every leg validated as it ends: completed where it said, or cut short by something the world saw it touch — never cut
@@ -191,42 +191,81 @@ public class ScenarioTests
         AssertStandsAt(world, "green", 5.5, 1.5);
     }
 
-    // THE STORY OF A GOLEM IN A SCENARIO — printed, and carried by every assertion's message: how its errand ended, where its
-    // body really stands, and then, in the order they happened, every way its route held (the first as decided, then each one
-    // decided again) and every contact the world saw, and at the end where the trail went. Juan, 23-sep-2026: "mostrar la lista
-    // de tramos que debía hacer, y si hay una colisión, cuál fue el recálculo… todos los testcase deberían mostrar salidas".
+    // THE STORY OF A GOLEM IN A SCENARIO — printed at the end, and carried by every assertion's message (Juan, 23-sep-2026: "poder
+    // ver la lista de los legs mejor y cuáles van saliendo o ya están completados"): a header with how the errand ended and where the
+    // body really stands; the first order its errand returned; then EVERY WAY its route held, in order — as decided, then each one
+    // decided again and why — with the list of its legs, each marked ✓ completed, ✗ cut short, or · not walked; and where the trail went.
     private static string Report(ILabWorld world, string golem, (double X, double Y) stop)
     {
         var outcome = world.Outcome(golem);
-        var (px, py, ph) = world.TruePose(golem);
+        var (px, py, _) = world.TruePose(golem);
         double off = Math.Sqrt((px - stop.X) * (px - stop.X) + (py - stop.Y) * (py - stop.Y));
         var lines = new List<string>
         {
-            $"{Lab.World} — {golem} to ({stop.X}, {stop.Y}): {outcome.Status}; {outcome.Bumps} bump(s), {outcome.Marks} mark(s), "
-            + $"{outcome.Encounters} body met; stands at ({px:0.00}, {py:0.00}) facing {ph:0.00}, {off:0.00} m from its stop",
+            $"═══ {golem} → ({stop.X}, {stop.Y}) · {Lab.World} · {outcome.Status} · {outcome.Bumps} bump(s), {outcome.Marks} mark(s), "
+            + $"{outcome.Encounters} body met · stands at ({px:0.00}, {py:0.00}), {off:0.00} m from its stop",
         };
-        var story = world.Errands(golem).Select(e => (e.Sequence, Line: $"  sent · to {e.Stops}: print {e.Print}"))
-            .Concat(world.Legs(golem).Select(l => (l.Sequence, Line: "  " + l)))
-            .Concat(world.Ways(golem).Select(w => (w.Sequence, Line: WayLine(w, world.Ways(golem)))))
-            .Concat(world.Contacts(golem).Select(c => (c.Sequence,
-                Line: $"  contact · {c.With}: the body at ({c.BodyX:0.00}, {c.BodyY:0.00}) facing {c.BodyHeading:0.00}, pressed at bearing {c.Bearing:0.00}")))
-            .OrderBy(e => e.Sequence);
-        lines.AddRange(story.Select(e => e.Line));
+        var errand = world.Errands(golem).LastOrDefault();
+        if (errand != null) lines.Add("  first order: " + FirstOrder(errand.Print));
+
+        var legs = world.Legs(golem);
+        var first = world.Ways(golem).FirstOrDefault();
+        // the ways, in order: the first as the golem decided it, then one after every leg cut short
+        var ways = new List<(string Plan, string Why, List<LegReport> Walked)>();
+        if (first != null) ways.Add((first.Plan, "as decided", new List<LegReport>()));
+        foreach (var leg in legs)
+        {
+            if (ways.Count == 0) ways.Add((leg.WayAfter, "as decided", new List<LegReport>()));
+            ways[^1].Walked.Add(leg);
+            if (!leg.Completed)
+                ways.Add((leg.WayAfter, "decided again after " + (leg.Touched.Count > 0 ? "bumping " + string.Join(", ", leg.Touched.Distinct()) : leg.EndedBy),
+                          new List<LegReport>()));
+        }
+        for (int i = 0; i < ways.Count; i++)
+        {
+            var (plan, why, walked) = ways[i];
+            if (i == ways.Count - 1 && walked.Count == 0 && i > 0 && plan == ways[i - 1].Plan) continue;   // the route ended on the cut
+            var decided = plan.Split(" > ", StringSplitOptions.RemoveEmptyEntries);
+            lines.Add("");
+            lines.Add($"  way {i + 1} · {why} · {decided.Length} leg(s)");
+            for (int k = 0; k < decided.Length; k++)
+            {
+                var done = walked.FirstOrDefault(l => l.Index == k + 1);
+                lines.Add("    " + (done != null ? done.Line() : NotWalked(k + 1, decided[k])));
+            }
+        }
         var trail = world.Trail(golem);
-        lines.Add($"  trail · {trail.Count} point(s): west corridor {(trail.Any(t => t.X < 1.5) ? "yes" : "no")}, "
-                  + $"central hall {(trail.Any(t => t.X > 4 && t.X < 7 && t.Y > 3 && t.Y < 8) ? "yes" : "no")}, "
-                  + $"east corridor {(trail.Any(t => t.X > 9.5) ? "yes" : "no")}");
+        var through = new[] { ("west corridor", trail.Any(t => t.X < 1.5)), ("central hall", trail.Any(t => t.X > 4 && t.X < 7 && t.Y > 3 && t.Y < 8)),
+                              ("east corridor", trail.Any(t => t.X > 9.5)) }.Where(t => t.Item2).Select(t => t.Item1);
+        lines.Add("");
+        lines.Add($"  trail: {trail.Count} points · {string.Join(", ", through)}");
         string said = string.Join(Environment.NewLine, lines);
-        Console.WriteLine("[scenario] " + said);
+        Console.WriteLine(Environment.NewLine + said);
         return said;
     }
 
-    // "way decided" for the first way of a route, "way decided again" for the ones after; the legs one per line when long.
-    private static string WayLine(WayDecided way, IReadOnlyList<WayDecided> all)
+    // A leg of a way the route never walked (cut before it): `· 3  garage   → (9.00, 1.50)   not walked`.
+    private static string NotWalked(int index, string leg)
     {
-        bool first = all.First(w => w.Route == way.Route) == way;
-        var legs = way.Plan.Split(" > ");
-        return $"  {(first ? "way decided" : "way decided again")} · route {way.Route}, {legs.Length} leg(s): {string.Join(" > ", legs)}";
+        int at = leg.IndexOf('@');
+        var xy = leg[(at + 1)..].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+        return $"· {index,-2} {leg[..at],-14} {"",16}→ ({xy[0]:0.00}, {xy[1]:0.00})   not walked";
+    }
+
+    // The errand's print, said the robot's way: `turnRight 2.991 rad, toward south (5.5, 1.5)`.
+    private static string FirstOrder(string print)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(print);
+            var e = doc.RootElement;
+            string action = e.GetProperty("action").GetString();
+            double amount = e.GetProperty("amount").GetDouble();
+            string unit = action is "advance" or "back" ? "m" : "rad";
+            string toward = e.TryGetProperty("name", out var n) ? $", toward {n.GetString()} ({e.GetProperty("x").GetDouble():0.##}, {e.GetProperty("y").GetDouble():0.##})" : "";
+            return $"{action} {amount:0.000} {unit}{toward}";
+        }
+        catch (Exception) { return print; }
     }
 
     // The legs of the golem's route, one by one AS THEY END — each printed and handed to `validate` right then — until the route
@@ -237,7 +276,7 @@ public class ScenarioTests
         while (true)
         {
             var leg = await world.NextLegAsync(golem, Patience);
-            Console.WriteLine($"[leg] {golem} {leg}");
+            Console.WriteLine($"[leg] {golem} {leg.Line()}");
             validate(leg);
             walked.Add(leg);
             if (leg.RouteStatus != "pending") return walked;

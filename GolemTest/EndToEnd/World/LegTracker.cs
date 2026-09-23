@@ -11,6 +11,12 @@ public sealed record LegReport(
     bool Completed, string EndedBy, IReadOnlyList<string> Touched, (double X, double Y) BodyAt, double Off,
     string WayAfter, string RouteStatus, int Sequence)
 {
+    /// <summary>The leg in one line, for a list: `✓ 2  aside   (5.51, 6.82) → (4.76, 6.80)   0.03 m off`.</summary>
+    public string Line() =>
+        $"{(Completed ? "✓" : "✗")} {Index,-2} {Name,-14} ({From.X:0.00}, {From.Y:0.00}) → ({To.X:0.00}, {To.Y:0.00})   "
+        + (Completed ? $"{Off:0.00} m off" + (Touched.Count > 0 ? $", touched {string.Join(", ", Touched.Distinct())}" : "")
+                     : $"cut at ({BodyAt.X:0.00}, {BodyAt.Y:0.00}): " + (Touched.Count > 0 ? "bumped " + string.Join(", ", Touched.Distinct()) : EndedBy));
+
     public override string ToString() =>
         $"leg {Index} · {Name} ({From.X:0.##}, {From.Y:0.##}) → ({To.X:0.##}, {To.Y:0.##}): "
         + (Completed ? "completed" : "NOT completed — " + EndedBy)
