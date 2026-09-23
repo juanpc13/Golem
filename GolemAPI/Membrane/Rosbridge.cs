@@ -40,7 +40,7 @@ public enum PoseSource { World, Wheels }
 //   /sim/teleport                 geometry_msgs/PoseStamped  (in)  the lab lever: put a body on a mark
 //   /golem/<body>/order           std_msgs/String            (out) the golem's order to its body: the print, as JSON (body.py)
 // Everything arriving here is ephemeral telemetry; nothing of it reaches the journal.
-public sealed class Rosbridge : IAsyncDisposable
+public sealed class Rosbridge : IBodyWire
 {
     private ClientWebSocket ws = new();
     private readonly string url;
@@ -54,11 +54,13 @@ public sealed class Rosbridge : IAsyncDisposable
 
     public PoseSource Source { get; }
 
+    private volatile Pose latestPose, latestTruth;
+    private volatile Contact latestContact;
     /// <summary>Where the golem believes its body is: the truth, or dead reckoning. THE pose the golem acts on.</summary>
-    public volatile Pose LatestPose;
+    public Pose LatestPose { get => latestPose; private set => latestPose = value; }
     /// <summary>Where the body really is, for the operator's eyes only (the panel's ghost). Never for the golem.</summary>
-    public volatile Pose LatestTruth;
-    public volatile Contact LatestContact;
+    public Pose LatestTruth { get => latestTruth; private set => latestTruth = value; }
+    public Contact LatestContact { get => latestContact; private set => latestContact = value; }
 
     private string CmdVel => $"/model/{body}/cmd_vel";
     private string Odometry => $"/model/{body}/odometry";

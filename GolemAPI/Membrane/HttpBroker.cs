@@ -23,7 +23,7 @@ public sealed record Frame(string Topic, string Key, Dictionary<string, string> 
 //   * headers travel intact.
 // Delivery policy (retries, timeout) lives here too: TELL_RETRY_SECONDS bounds how
 // long an undeliverable record is retried before the verdict is given.
-public sealed class HttpBroker : IMessageBroker
+public sealed class HttpBroker : ITellWire
 {
     private static readonly HttpClient Wire = new() { Timeout = TimeSpan.FromSeconds(10) };
     private const int RetainedPerTopic = 500;

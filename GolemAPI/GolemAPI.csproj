@@ -22,4 +22,8 @@
     <None Include="Panel\panel.html" CopyToOutputDirectory="PreserveNewest" TargetPath="panel.html" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="GolemTest" />
+  </ItemGroup>
+
 </Project>

@@ -27,13 +27,13 @@ namespace GolemAPI.Choreography;
 public sealed class RobotMechanics : IOutputSink
 {
     private readonly GolemEmbodiment golemEmbodiment;
-    private readonly Rosbridge ros;
+    private readonly IBodyWire ros;
     private readonly object gate = new();
     private Order carrying;         // the order the body is carrying out now; null while it stands
     private Order held;             // the order the body was carrying when the operator held it: 'continue' resumes it
     private DateTime lingerUntil = DateTime.MinValue;   // the follower's linger: no order goes out to the body before this
 
-    public RobotMechanics(GolemEmbodiment golemEmbodiment, Rosbridge ros)
+    public RobotMechanics(GolemEmbodiment golemEmbodiment, IBodyWire ros)
     {
         this.golemEmbodiment = golemEmbodiment;
         this.ros = ros;

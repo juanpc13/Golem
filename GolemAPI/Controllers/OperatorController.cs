@@ -16,10 +16,10 @@ public class OperatorController : Controller
     private readonly PerformanceV2 performance;
     private readonly GolemEmbodiment golemEmbodiment;   // the golem's actor is its Actor: the lab console performs on golemEmbodiment.Actor
     private readonly PanelFeed feed;
-    private readonly Rosbridge ros;
+    private readonly IBodyWire ros;
     private readonly GolemIdentity identity;
 
-    public OperatorController(PerformanceV2 performance, GolemEmbodiment golemEmbodiment, PanelFeed feed, Rosbridge ros, GolemIdentity identity)
+    public OperatorController(PerformanceV2 performance, GolemEmbodiment golemEmbodiment, PanelFeed feed, IBodyWire ros, GolemIdentity identity)
     {
         this.performance = performance;
         this.golemEmbodiment = golemEmbodiment;

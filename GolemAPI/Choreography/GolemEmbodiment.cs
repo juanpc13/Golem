@@ -40,14 +40,14 @@ public sealed class GolemEmbodiment
 {
     private readonly PerformanceV2 performance;   // the journal's entry id and the shutdown
     private readonly ActorV2 golemActor;          // the golem itself: every script and query goes to it
-    private readonly Rosbridge ros;
+    private readonly IBodyWire ros;
     private readonly PanelFeed feed;
-    private readonly HttpBroker wire;
+    private readonly ITellWire wire;
     private readonly string golem;
     private readonly (double X, double Y) home;
     private readonly string journalPath;
 
-    public GolemEmbodiment(PerformanceV2 performance, Rosbridge ros, PanelFeed feed, HttpBroker wire,
+    public GolemEmbodiment(PerformanceV2 performance, IBodyWire ros, PanelFeed feed, ITellWire wire,
                  string golem, (double X, double Y) home, string journalPath, Capabilities capabilities)
     {
         if (capabilities == null) throw new ArgumentNullException(nameof(capabilities), "the embodiment needs to know which roles its body can play");

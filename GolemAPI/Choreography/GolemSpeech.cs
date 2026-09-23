@@ -17,7 +17,7 @@ public sealed class GolemSpeech
 {
     private readonly PerformanceV2 performance;
     private readonly ActorV2 golemActor;
-    private readonly HttpBroker wire;
+    private readonly IMessageBroker wire;
     private readonly PanelFeed feed;
     private readonly string golem;
     private readonly string tellDoneTo;
@@ -25,7 +25,7 @@ public sealed class GolemSpeech
     private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
 
-    public GolemSpeech(PerformanceV2 performance, HttpBroker wire, PanelFeed feed, string golem, string tellDoneTo, IReadOnlyList<string> peers)
+    public GolemSpeech(PerformanceV2 performance, IMessageBroker wire, PanelFeed feed, string golem, string tellDoneTo, IReadOnlyList<string> peers)
     {
         this.performance = performance;
         this.golemActor = performance.Actor;

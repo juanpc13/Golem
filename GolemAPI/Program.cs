@@ -1,11 +1,9 @@
 using Choreography.Theater;
 using GolemAPI;
 using GolemAPI.Choreography;
-using GolemDomain;
 using GolemAPI.Membrane;
 using GolemAPI.Panel;
 using Puppeteer;
-using Puppeteer.EventSourcing.Interpreter.Formatters;
 
 // The DSL renders numbers into the journal with the current culture: pin it, or a
 // Spanish-locale host would journal 11,08 and rehydrate a verb with the wrong arity.
@@ -44,11 +42,7 @@ using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
 var ct = shutdown.Token;
 
-// --- The actor. Storage first; then the tell transport and every Reaction, because
-//     Start is what arms them and runs the release chain (OnHydrated). ---
-var performance = new GolemPerformance(golem, DomainLibrary.Assembly);
-performance.ConfigureStorage(DatabaseType.FileSystem, $"path={journalPath}");
-
+// --- The wires: the body over rosbridge, the tells over HTTP between containers. ---
 var ros = new Rosbridge(rosbridgeUrl, body, poseSource);
 var feed = new PanelFeed();
 // Where peers reach ME (the origin every outgoing frame carries, so acks find their way back).
@@ -65,30 +59,20 @@ var peers = routes.Keys
     .Distinct()
     .ToList();
 
-var speech = new GolemSpeech(performance, wire, feed, golem, tellDoneTo, peers);
-speech.DefineReactions();
-// The golem's embodiment: the golem given a body. What the body reports comes to it; every print goes out through the
-// robot's mechanics, the actor's output target — parsed, switched on, sent to the body over the websocket as one of the robot's
-// base actions.
-var golemEmbodiment = new GolemEmbodiment(performance, ros, feed, wire, golem, home, journalPath, capabilities);
-Console.WriteLine($"[golem {golem}] roles: {capabilities}");
-golemEmbodiment.Mechanics.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print to the body
-
-performance.Start(); // rehydration + release chain + the .Cue() reactions come alive here
-new JournalTap(performance, feed).Start(); // the panel's journal lane: the whole diary, then every record as it lands
-Console.WriteLine($"[golem {golem}] journal at {journalPath}");
-Console.WriteLine($"[golem {golem}] rehydrated at entry {performance.CurrentEntryId}");
+// --- The golem assembled (GolemHost): the actor, the speech, the embodiment with its roles, the mechanics — started. ---
+var settings = new GolemSettings(golem, body, home, capabilities, peers, tellDoneTo, DatabaseType.FileSystem, journalPath);
+await using var host = GolemHost.Build(settings, ros, wire, feed);
 
 // --- The controllers: the actor's endpoints and the operator's. ---
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls($"http://*:{panelPort}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddControllers();
-builder.Services.AddSingleton<PerformanceV2>(performance);
-builder.Services.AddSingleton(golemEmbodiment);
+builder.Services.AddSingleton<PerformanceV2>(host.Performance);
+builder.Services.AddSingleton(host.Embodiment);
 builder.Services.AddSingleton(feed);
 builder.Services.AddSingleton(wire);
-builder.Services.AddSingleton(ros);
+builder.Services.AddSingleton<IBodyWire>(ros);
 builder.Services.AddSingleton(new GolemIdentity(golem, body));
 
 var app = builder.Build();
@@ -98,41 +82,23 @@ app.Lifetime.ApplicationStopping.Register(() => shutdown.Cancel());
 await app.StartAsync();
 Console.WriteLine($"[golem {golem}] controllers listening on :{panelPort}");
 
-feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "info", "",
-    $"golem awake — rehydrated at entry {performance.CurrentEntryId}", DateTime.UtcNow));
+feed.Broadcast(new PanelEvent(host.Performance.CurrentEntryId, "info", "",
+    $"golem awake — rehydrated at entry {host.Performance.CurrentEntryId}", DateTime.UtcNow));
 
-// --- The speech: take up the peers' tells. ---
-speech.Listen();
-
-// --- The membrane: connect and bind to my body. The body exists in the world from the start
-//     (the sim builds it from the floor plan). A REBORN golem puts it back on its mark; a golem
+// --- Into the world: the peers' tells taken up, the body connected and bound, the output target armed, a reborn body
+//     put back on its mark. The body exists in the world from the start (the sim builds it from the floor plan); a golem
 //     that merely restarted resumes with the body where it stands — as with a real robot. ---
-await ros.ConnectAsync(ct);
-await ros.BindAsync(ct);
-feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
-    $"membrane connected to {rosbridgeUrl} — driving body '{body}', pose from {(poseSource == PoseSource.Wheels ? "the wheels (dead reckoning: the world's truth is shown to you, never to the golem)" : "the world's truth")}", DateTime.UtcNow));
-// The output target is armed only now — after hydration (what the reactions replay while hydrating is history) and
-// with the membrane up (an order pushed before the body listens would be lost).
-performance.OutputTarget(golemEmbodiment.Mechanics, new JsonFormatter());
-if (performance.BornThisBoot)
-{
-    await Task.Delay(500, ct); // let the advertise settle before the first publish
-    await golemEmbodiment.PutBackHomeAsync(ct);
-    feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
-        $"reborn — body '{body}' put back on its mark at ({home.X}, {home.Y})", DateTime.UtcNow));
-}
+await host.ConnectAsync(ct);
 
 // --- The clock, until shutdown: the journal asked now and then what it wants, when no print brought it. ---
 try
 {
-    await golemEmbodiment.RunAsync(ct);
+    await host.RunAsync(ct);
 }
 catch (OperationCanceledException) { }
 
-await ros.DisposeAsync();
-performance.Dispose();
 await app.StopAsync();
-Console.WriteLine($"[golem {golem}] clean shutdown at entry {performance.CurrentEntryId}");
+Console.WriteLine($"[golem {golem}] clean shutdown at entry {host.Performance.CurrentEntryId}");
 
 static (double X, double Y) ParsePoint(string xy)
 {
