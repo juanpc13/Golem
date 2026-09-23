@@ -70,6 +70,8 @@ public sealed class FloorWorld : ILabWorld
         await Until(() => Read(name, "print g.KnowsWhereItStands 'v';").GetBoolean(), TimeSpan.FromSeconds(10));
     }
 
+    public Task PlaceGolemAsync(string golem, (double X, double Y)? at = null) => AddGolemAsync(golem, at);
+
     public void Send(string golem, params (double X, double Y)[] stops)
     {
         var answer = Of(golem).Host.Embodiment.Displacer.Move(stops);

@@ -7,12 +7,15 @@ namespace GolemTest;
 // SCENARIOS (propuesta 52, 23-sep-2026): the domain decides, the world says whether the body COLLIDED, the domain corrects, and
 // the scenario asserts on both — what the golem's journal concluded and what the world saw. "It collides and corrects" reads:
 // the world saw a contact → the golem bumped (and marked what it took for a thing) → it did not press the same thing again
-// more than it had to → the errand completed with the body really standing at its stop. Fase 1: the world held in memory.
+// more than it had to → the errand completed with the body really standing at its stop. The world is the one held in memory
+// (fase 1) unless GOLEM_LAB_WORLD=gazebo asks for the fleet deployed in Gazebo (fase 2); a Gazebo that does not answer makes
+// the scenario inconclusive, never red.
 [TestClass]
 [TestCategory("scenario")]
 public class ScenarioTests
 {
-    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(60);
+    private static bool InGazebo => string.Equals(Environment.GetEnvironmentVariable("GOLEM_LAB_WORLD"), "gazebo", StringComparison.OrdinalIgnoreCase);
+    private static TimeSpan Patience => InGazebo ? TimeSpan.FromSeconds(180) : TimeSpan.FromSeconds(60);
     private const double AtTheStop = 0.3;   // metres: the body really stands this close to its stop
 
     [TestInitialize]
@@ -36,8 +39,8 @@ public class ScenarioTests
     [TestMethod]
     public async Task AFreeWay_IsWalkedWithoutTouchingAnything()
     {
-        await using var world = new FloorWorld();
-        await world.AddGolemAsync("red");                               // on its mark in the living room
+        await using var world = await OpenWorldAsync();
+        await world.PlaceGolemAsync("red");                             // on its mark in the living room
         world.Send("red", (5.5, 9.5));                                  // to the north hall, through the centre
         await world.RunUntilSettledAsync(Patience);
 
@@ -51,9 +54,9 @@ public class ScenarioTests
     [TestMethod]
     public async Task ACrateInTheWay_IsBumped_Marked_AndSkirted_AndTheErrandCompletes()
     {
-        await using var world = new FloorWorld();
+        await using var world = await OpenWorldAsync();
+        await world.PlaceGolemAsync("red", (5.5, 9.5));                 // in the north hall, before the crate stands
         world.PlaceCrate("center");                                     // the middle of the central hall
-        await world.AddGolemAsync("red", home: (5.5, 9.5));             // in the north hall
         world.Send("red", (5.5, 1.5));                                  // to the south hall: the straight line runs into the crate
         await world.RunUntilSettledAsync(Patience);
 
@@ -68,9 +71,26 @@ public class ScenarioTests
         AssertStandsAt(world, "red", 5.5, 1.5);
     }
 
-    private static void AssertStandsAt(FloorWorld world, string golem, double x, double y)
+    private static async Task<ILabWorld> OpenWorldAsync()
+    {
+        if (!InGazebo) return new FloorWorld();
+        try
+        {
+            return await GazeboWorld.OpenAsync(new Uri("ws://localhost:9090"), new Dictionary<string, Uri>
+            {
+                ["blue"] = new Uri("http://localhost:8081/"),
+                ["red"] = new Uri("http://localhost:8082/"),
+                ["green"] = new Uri("http://localhost:8083/"),
+            }, Patience);
+        }
+        catch (WorldUnavailableException e) { Assert.Inconclusive(e.Message); return null; }
+    }
+
+    private static void AssertStandsAt(ILabWorld world, string golem, double x, double y)
     {
         var (px, py, _) = world.TruePose(golem);
+        Console.WriteLine($"[scenario] {(InGazebo ? "gazebo" : "memory")} — {golem}: {world.Outcome(golem)}; stands at ({px:0.00}, {py:0.00}); "
+                          + $"contacts: {string.Join(" | ", world.Contacts(golem).Select(c => $"{c.With} at ({c.BodyX:0.00}, {c.BodyY:0.00}) bearing {c.Bearing:0.00}"))}");
         double off = Math.Sqrt((px - x) * (px - x) + (py - y) * (py - y));
         Assert.IsTrue(off <= AtTheStop, $"{golem} really stands at ({px:0.00}, {py:0.00}), {off:0.00} m from its stop ({x}, {y})");
     }

@@ -61,11 +61,13 @@ public sealed class GolemHost : IAsyncDisposable
         if (feed == null) throw new ArgumentNullException(nameof(feed));
 
         // Storage first; then the tell transport and every Reaction, because Start is what arms them and runs the release chain.
-        var performance = new GolemPerformance(settings.Golem, DomainLibrary.Assembly);
-        // A journal in memory is keyed by its name and outlives the performance in this process: every build gets its own,
-        // or a second golem of the same name would rehydrate the first one's journal (23-sep-2026, the scenarios in a row).
-        performance.ConfigureStorage(settings.Storage,
-            settings.Storage == DatabaseType.FileSystem ? $"path={settings.JournalPath}" : $"{settings.Golem}-{Guid.NewGuid():N}");
+        // A journal in memory is keyed by the ACTOR's name and outlives the performance in this process: every build in memory
+        // gets its own actor name, or a second golem called the same would rehydrate the first one's journal (23-sep-2026, the
+        // scenarios in a row: the second 'red' woke at entry 16). The golem's name — the journal's identity in the tells — stays.
+        bool inMemory = settings.Storage != DatabaseType.FileSystem;
+        string actor = inMemory ? $"{settings.Golem}-{Guid.NewGuid():N}" : settings.Golem;
+        var performance = new GolemPerformance(actor, DomainLibrary.Assembly);
+        performance.ConfigureStorage(settings.Storage, inMemory ? actor : $"path={settings.JournalPath}");
 
         var speech = new GolemSpeech(performance, tellWire, feed, settings.Golem, settings.TellDoneTo, settings.Peers);
         speech.DefineReactions();

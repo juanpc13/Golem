@@ -12,6 +12,9 @@ public sealed record ErrandOutcome(string Status, int Bumps, int Marks, int Enco
 // in fase 2, against Gazebo. The domain decides, the world says whether it COLLIDED, the scenario asserts.
 public interface ILabWorld : IAsyncDisposable
 {
+    /// <summary>The golem takes part in the scenario, its body on its mark — or, given a place, standing there when the scenario
+    /// begins. Place the golems BEFORE the crates: a golem walking to its start must not learn the scenario's crate on the way.</summary>
+    Task PlaceGolemAsync(string golem, (double X, double Y)? at = null);
     /// <summary>A crate from the kiosk's table (west, center, east, big) stands in the world.</summary>
     void PlaceCrate(string spot);
     /// <summary>An errand for a golem: the points to visit, in order.</summary>
