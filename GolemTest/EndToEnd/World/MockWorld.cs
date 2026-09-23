@@ -194,7 +194,9 @@ public sealed class MockWorld : ILabWorld
     // The way the golem's newest route holds now, kept when it differs from the last one kept.
     private void NoteWay(string golem)
     {
-        using var doc = JsonDocument.Parse(Of(golem).Host.Performance.Actor.Using("{ if (g.Routes().Count > 0) { route = g.Newest(); print route.Id 'route', route.AsPlan() 'plan'; } }").PerformQuery());
+        string printed = Of(golem).Host.Performance.Actor.Using("{ if (g.Routes().Count > 0) { route = g.Newest(); print route.Id 'route', route.AsPlan() 'plan'; } }").PerformQuery();
+        if (string.IsNullOrWhiteSpace(printed)) return;   // a golem with no route yet prints nothing
+        using var doc = JsonDocument.Parse(printed);
         if (!doc.RootElement.TryGetProperty("route", out var route)) return;
         int id = route.GetInt32();
         string plan = doc.RootElement.GetProperty("plan").GetString();

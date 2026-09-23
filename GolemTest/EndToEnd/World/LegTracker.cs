@@ -26,6 +26,7 @@ public sealed record RouteState(int Route, int Ahead, string Plan, string Status
 
     public static RouteState Parse(string json)
     {
+        if (string.IsNullOrWhiteSpace(json)) return null;   // a golem with no route yet prints nothing
         using var doc = JsonDocument.Parse(json);
         var e = doc.RootElement;
         if (!e.TryGetProperty("route", out var route)) return null;

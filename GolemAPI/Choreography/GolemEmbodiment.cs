@@ -149,9 +149,9 @@ public sealed class GolemEmbodiment
                 }
             ")
             .WithParameters(p => {
-                p["px", typeof(double)] = pose.X;
-                p["py", typeof(double)] = pose.Y;
-                p["ptheta", typeof(double)] = pose.Theta;
+                p["px", typeof(double)] = Resolution.Metres(pose.X);
+                p["py", typeof(double)] = Resolution.Metres(pose.Y);
+                p["ptheta", typeof(double)] = Resolution.Radians(pose.Theta);
             })
             .PerformCommand());
     }

@@ -61,11 +61,11 @@ public sealed class Displacer
                     }
                 ")
                 .WithParameters(p => {
-                    p["fx", typeof(double)] = start.Value.X;
-                    p["fy", typeof(double)] = start.Value.Y;
-                    p["ftheta", typeof(double)] = start.Value.Theta;
-                    p["x", typeof(double)] = first.X;
-                    p["y", typeof(double)] = first.Y;
+                    p["fx", typeof(double)] = Resolution.Metres(start.Value.X);
+                    p["fy", typeof(double)] = Resolution.Metres(start.Value.Y);
+                    p["ftheta", typeof(double)] = Resolution.Radians(start.Value.Theta);
+                    p["x", typeof(double)] = Resolution.Metres(first.X);
+                    p["y", typeof(double)] = Resolution.Metres(first.Y);
                 })
                 .PerformCheckThenCommand());
         }
@@ -102,11 +102,11 @@ public sealed class Displacer
                     }
                 ")
                 .WithParameters(p => {
-                    p["fx", typeof(double)] = start.Value.X;
-                    p["fy", typeof(double)] = start.Value.Y;
-                    p["ftheta", typeof(double)] = start.Value.Theta;
-                    p["x", typeof(double)] = first.X;
-                    p["y", typeof(double)] = first.Y;
+                    p["fx", typeof(double)] = Resolution.Metres(start.Value.X);
+                    p["fy", typeof(double)] = Resolution.Metres(start.Value.Y);
+                    p["ftheta", typeof(double)] = Resolution.Radians(start.Value.Theta);
+                    p["x", typeof(double)] = Resolution.Metres(first.X);
+                    p["y", typeof(double)] = Resolution.Metres(first.Y);
                 })
                 .PerformCheckThenCommand());
         }
@@ -142,8 +142,8 @@ public sealed class Displacer
                     ")
                     .WithParameters(p => {
                         p["id", typeof(int)] = id;
-                        p["x", typeof(double)] = point.X;
-                        p["y", typeof(double)] = point.Y;
+                        p["x", typeof(double)] = Resolution.Metres(point.X);
+                        p["y", typeof(double)] = Resolution.Metres(point.Y);
                     })
                     .PerformCheckThenCommand());
             }
@@ -177,9 +177,9 @@ public sealed class Displacer
                 }
             ")
             .WithParameters(p => {
-                p["x", typeof(double)] = pose.X;
-                p["y", typeof(double)] = pose.Y;
-                p["theta", typeof(double)] = pose.Theta;
+                p["x", typeof(double)] = Resolution.Metres(pose.X);
+                p["y", typeof(double)] = Resolution.Metres(pose.Y);
+                p["theta", typeof(double)] = Resolution.Radians(pose.Theta);
             })
             .PerformCheckThenCommand());
     }
@@ -208,9 +208,9 @@ public sealed class Displacer
                 }
             ")
             .WithParameters(p => {
-                p["x", typeof(double)] = pose.X;
-                p["y", typeof(double)] = pose.Y;
-                p["theta", typeof(double)] = pose.Theta;
+                p["x", typeof(double)] = Resolution.Metres(pose.X);
+                p["y", typeof(double)] = Resolution.Metres(pose.Y);
+                p["theta", typeof(double)] = Resolution.Radians(pose.Theta);
             })
             .PerformCheckThenCommand());
     }
@@ -259,9 +259,9 @@ public sealed class Displacer
                 .WithParameters(p => {
                     p["id", typeof(int)] = was.Route;
                     p["stop", typeof(bool)] = stop;
-                    p["px", typeof(double)] = here.X;
-                    p["py", typeof(double)] = here.Y;
-                    p["ptheta", typeof(double)] = here.Theta;
+                    p["px", typeof(double)] = Resolution.Metres(here.X);
+                    p["py", typeof(double)] = Resolution.Metres(here.Y);
+                    p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
                 })
                 .PerformCheckThenCommand());
         }

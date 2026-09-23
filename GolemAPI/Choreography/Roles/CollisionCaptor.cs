@@ -55,10 +55,10 @@ public sealed class CollisionCaptor
                     }
                 ")
                 .WithParameters(p => {
-                    p["bodyX", typeof(double)] = bodyX;
-                    p["bodyY", typeof(double)] = bodyY;
-                    p["bodyHeading", typeof(double)] = bodyHeading;
-                    p["bearing", typeof(double)] = bearing;
+                    p["bodyX", typeof(double)] = Resolution.Metres(bodyX);
+                    p["bodyY", typeof(double)] = Resolution.Metres(bodyY);
+                    p["bodyHeading", typeof(double)] = Resolution.Radians(bodyHeading);
+                    p["bearing", typeof(double)] = Resolution.Radians(bearing);
                     p["name", typeof(string)] = robot.Name;
                 })
                 .PerformCommand());
@@ -82,8 +82,8 @@ public sealed class CollisionCaptor
             }
         ")
         .WithParameters(p => {
-            p["x", typeof(double)] = x;
-            p["y", typeof(double)] = y;
+            p["x", typeof(double)] = Resolution.Metres(x);
+            p["y", typeof(double)] = Resolution.Metres(y);
         })
         .PerformCheckThenCommand());
 }

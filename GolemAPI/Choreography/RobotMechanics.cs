@@ -235,9 +235,11 @@ public sealed class RobotMechanics : IOutputSink
         var (speed, radius, retreat) = golemEmbodiment.BodyDeclared();
         return ros.PublishAsync(ros.OrderTopic, JsonSerializer.Serialize(new
         {
-            action = order.Action, amount = order.Amount,
+            // the body measures what it did on its own odometry: a millimetre, a milliradian is all it can use (ajuste 53)
+            action = order.Action, amount = order.IsMove ? Resolution.Metres(order.Amount) : Resolution.Radians(order.Amount),
             route = order.Route, kind = order.Kind, name = order.Name,
-            x = order.X, y = order.Y, heading = order.Heading, following = order.Following, stopsLeft = order.StopsLeft,
+            x = Resolution.Metres(order.X), y = Resolution.Metres(order.Y), heading = Resolution.Radians(order.Heading),
+            following = order.Following, stopsLeft = order.StopsLeft,
             body = new { speed, radius, retreat }
         }));
     }

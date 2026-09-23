@@ -99,8 +99,11 @@ public sealed class GazeboWorld : ILabWorld
     public void PlaceCrate(string spot)
     {
         if (!FloorPlan.Crates.ContainsKey(spot)) throw new ArgumentException($"the kiosk has no crate spot '{spot}'", nameof(spot));
+        // ONE request, and patience: under load Gazebo's create service takes ~12 s and the lever may even say REFUSED while
+        // the crate appears later (23-sep-2026, the sim at 670% CPU with the kiosk's picture). Asking again would remove the
+        // crate and create it anew — the body can drive through the hall right in that window.
         SendAsync(new { op = "publish", topic = "/sim/crate", msg = new { data = spot } }).GetAwaiter().GetResult();
-        UntilAsync(() => { lock (gate) return crates.Split(',').Contains(spot); }, TimeSpan.FromSeconds(10), $"the crate '{spot}' to stand")
+        UntilAsync(() => { lock (gate) return crates.Split(',').Contains(spot); }, TimeSpan.FromSeconds(45), $"the crate '{spot}' to stand")
             .GetAwaiter().GetResult();
     }
 
@@ -233,7 +236,9 @@ public sealed class GazeboWorld : ILabWorld
     {
         var answer = await http.PostAsJsonAsync(new Uri(golems[golem], "query"), new { script = "{ if (g.Routes().Count > 0) { route = g.Newest(); print route.Id 'route', route.AsPlan() 'plan'; } }" });
         if (!answer.IsSuccessStatusCode) return;
-        using var doc = JsonDocument.Parse(await answer.Content.ReadAsStringAsync());
+        string body = await answer.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(body)) return;   // a golem with no route yet prints nothing
+        using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("route", out var route)) return;
         int id = route.GetInt32();
         string plan = doc.RootElement.GetProperty("plan").GetString();

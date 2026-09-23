@@ -37,6 +37,7 @@ public class GolemHostTests
             return Task.CompletedTask;
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public void Nudge(double x, double y, double theta) { LatestPose = new Pose(x, y, theta); LatestTruth = LatestPose; }
     }
 
     // The tells' wire in memory: the engine's own broker, with no peers to ask.
@@ -71,6 +72,13 @@ public class GolemHostTests
         var clock = host.RunAsync(cancel.Token);                     // the clock wakes the golem where its body stands
         await Until(() => Read(host, "print g.KnowsWhereItStands 'v';").GetBoolean(), cancel.Token);
         Assert.AreEqual("warehouse", Read(host, "print map.Name 'v';").GetString(), "the releases the host carries built the map");
+
+        // the pose the body reported entered the journal at its resolution: to the millimetre (ajuste 53)
+        body.Nudge(2.0004, 9.5006, 0.00049);
+        host.Embodiment.Wake();
+        Assert.AreEqual(2.0, Read(host, "print g.Standing.X 'v';").GetDouble(), 0.0, "2.0004 m is written as 2.000");
+        Assert.AreEqual(9.501, Read(host, "print g.Standing.Y 'v';").GetDouble(), 0.0, "9.5006 m is written as 9.501");
+        Assert.AreEqual(0.0, Read(host, "print g.Standing.Heading 'v';").GetDouble(), 0.0, "0.00049 rad is written as 0.000");
 
         // what the body heard before the errand: the lever that put it on its mark (stop, and anchor there)
         lock (body.Orders) StringAssert.Contains(body.Orders.First().Json, "\"anchor\":true", "reborn: stopped and anchored on the mark");
