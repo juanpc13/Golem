@@ -5,3 +5,5 @@ journal/
 
 # archived, incompatible journals (renamed aside on a breaking change)
 journal-legacy-*/
+# each one's own wiring of the scenarios' world (propuesta 52)
+GolemTest/appsettings.local.json

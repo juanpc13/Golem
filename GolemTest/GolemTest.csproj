@@ -19,6 +19,9 @@
   <ItemGroup>
     <!-- the world the simulator is built from, beside the tests: the scenarios' world in memory reads it (propuesta 52) -->
     <None Include="..\sim\world\plan.json" Link="World\plan.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- which world the scenarios run against: memory by default; a local overlay (not versioned) or GOLEM_LAB_WORLD may say gazebo -->
+    <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="appsettings.local.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('appsettings.local.json')" />
   </ItemGroup>
 
   <ItemGroup>

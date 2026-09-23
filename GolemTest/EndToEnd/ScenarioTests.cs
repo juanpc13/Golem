@@ -7,15 +7,15 @@ namespace GolemTest;
 // SCENARIOS (propuesta 52, 23-sep-2026): the domain decides, the world says whether the body COLLIDED, the domain corrects, and
 // the scenario asserts on both — what the golem's journal concluded and what the world saw. "It collides and corrects" reads:
 // the world saw a contact → the golem bumped (and marked what it took for a thing) → it did not press the same thing again
-// more than it had to → the errand completed with the body really standing at its stop. The world is the one held in memory
-// (fase 1) unless GOLEM_LAB_WORLD=gazebo asks for the fleet deployed in Gazebo (fase 2); a Gazebo that does not answer makes
-// the scenario inconclusive, never red.
+// more than it had to → the errand completed with the body really standing at its stop. The world is the one the configuration
+// asks for (fase 3: `appsettings.json`, a local overlay, or GOLEM_LAB_WORLD): held in memory by default, the fleet deployed in
+// Gazebo when it says `gazebo`; a Gazebo that does not answer makes the scenario inconclusive, never red.
 [TestClass]
 [TestCategory("scenario")]
 public class ScenarioTests
 {
-    private static bool InGazebo => string.Equals(Environment.GetEnvironmentVariable("GOLEM_LAB_WORLD"), "gazebo", StringComparison.OrdinalIgnoreCase);
-    private static TimeSpan Patience => InGazebo ? TimeSpan.FromSeconds(180) : TimeSpan.FromSeconds(60);
+    private static readonly LabSettings Lab = LabSettings.Load();
+    private static TimeSpan Patience => Lab.Patience;
     private const double AtTheStop = 0.3;   // metres: the body really stands this close to its stop
 
     [TestInitialize]
@@ -62,34 +62,26 @@ public class ScenarioTests
 
         var outcome = world.Outcome("red");
         var touches = world.Contacts("red");
-        Assert.AreEqual("completed", outcome.Status, outcome + " — " + string.Join("; ", touches));
-        Assert.IsTrue(touches.Count >= 1, "the world saw the body meet the crate");
-        Assert.IsTrue(touches.All(t => t.With == "crate_center"), "and nothing but the crate: " + string.Join("; ", touches));
-        Assert.IsTrue(touches.Count <= 2, "once head-on, at most once more while it learns the crate's width: " + string.Join("; ", touches));
-        Assert.AreEqual(touches.Count, outcome.Bumps, "every contact the world saw is a bump the golem wrote");
-        Assert.IsTrue(outcome.Marks >= 1, "what it touched is kept as a thing");
+        string seen = $"{Lab.World}: {outcome} — the world saw {touches.Count}: {string.Join("; ", touches)}";
+        Assert.AreEqual("completed", outcome.Status, seen);
+        Assert.IsTrue(touches.Count >= 1, "the world saw the body meet the crate — " + seen);
+        Assert.IsTrue(touches.All(t => t.With == "crate_center"), "and nothing but the crate — " + seen);
+        Assert.IsTrue(touches.Count <= 2, "once head-on, at most once more while it learns the crate's width — " + seen);
+        Assert.AreEqual(touches.Count, outcome.Bumps, "every contact the world saw is a bump the golem wrote — " + seen);
+        Assert.IsTrue(outcome.Marks >= 1, "what it touched is kept as a thing — " + seen);
         AssertStandsAt(world, "red", 5.5, 1.5);
     }
 
     private static async Task<ILabWorld> OpenWorldAsync()
     {
-        if (!InGazebo) return new FloorWorld();
-        try
-        {
-            return await GazeboWorld.OpenAsync(new Uri("ws://localhost:9090"), new Dictionary<string, Uri>
-            {
-                ["blue"] = new Uri("http://localhost:8081/"),
-                ["red"] = new Uri("http://localhost:8082/"),
-                ["green"] = new Uri("http://localhost:8083/"),
-            }, Patience);
-        }
+        try { return await LabWorld.OpenAsync(Lab); }
         catch (WorldUnavailableException e) { Assert.Inconclusive(e.Message); return null; }
     }
 
     private static void AssertStandsAt(ILabWorld world, string golem, double x, double y)
     {
         var (px, py, _) = world.TruePose(golem);
-        Console.WriteLine($"[scenario] {(InGazebo ? "gazebo" : "memory")} — {golem}: {world.Outcome(golem)}; stands at ({px:0.00}, {py:0.00}); "
+        Console.WriteLine($"[scenario] {Lab.World} — {golem}: {world.Outcome(golem)}; stands at ({px:0.00}, {py:0.00}); "
                           + $"contacts: {string.Join(" | ", world.Contacts(golem).Select(c => $"{c.With} at ({c.BodyX:0.00}, {c.BodyY:0.00}) bearing {c.Bearing:0.00}"))}");
         double off = Math.Sqrt((px - x) * (px - x) + (py - y) * (py - y));
         Assert.IsTrue(off <= AtTheStop, $"{golem} really stands at ({px:0.00}, {py:0.00}), {off:0.00} m from its stop ({x}, {y})");
