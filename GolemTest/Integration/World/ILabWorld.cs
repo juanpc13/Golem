@@ -10,7 +10,22 @@ public sealed record WayDecided(string Golem, int Route, string Plan, int Sequen
 
 /// <summary>An errand sent to a golem and the PRINT its command returned — the same order the engine pushes to the body —
 /// numbered in the same sequence as the contacts and the ways.</summary>
-public sealed record ErrandSent(string Golem, string Stops, string Print, int Sequence);
+public sealed record ErrandSent(string Golem, string Stops, string Print, int Sequence)
+{
+    /// <summary>The handle of the route the errand opened, as its print says it (-1 when the print names none).</summary>
+    public int Route
+    {
+        get
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(Print);
+                return doc.RootElement.TryGetProperty("route", out var route) ? route.GetInt32() : -1;
+            }
+            catch (System.Text.Json.JsonException) { return -1; }
+        }
+    }
+}
 
 /// <summary>How a golem's newest errand ended, as the golem's own journal says it (`none` when it never had one).</summary>
 public sealed record ErrandOutcome(string Status, int Bumps, int Marks, int Encounters);
@@ -20,9 +35,11 @@ public sealed record ErrandOutcome(string Status, int Bumps, int Marks, int Enco
 // in fase 2, against Gazebo. The domain decides, the world says whether it COLLIDED, the scenario asserts.
 public interface ILabWorld : IAsyncDisposable
 {
-    /// <summary>The golem takes part in the scenario, its body on its mark — or, given a place, standing there when the scenario
-    /// begins. Place the golems BEFORE the crates: a golem walking to its start must not learn the scenario's crate on the way.</summary>
-    Task PlaceGolemAsync(string golem, (double X, double Y)? at = null);
+    /// <summary>The golem takes part in the scenario, its body on its mark (sim/world/plan.json) — and nowhere else: a scenario that
+    /// starts somewhere else WALKS the golem there with an errand of its own, leg by leg, validated like any other (Juan,
+    /// 24-sep-2026: "quisiera validar todos los legs… desde la living a la zona norte"). Walk it there BEFORE the crates stand:
+    /// a golem walking to its start must not learn the scenario's crate on the way.</summary>
+    Task PlaceGolemAsync(string golem);
     /// <summary>A crate from the kiosk's table (west, center, east, big) stands in the world.</summary>
     void PlaceCrate(string spot);
     /// <summary>An errand for a golem: the points to visit, in order. Returns the print its command returned — what the route
@@ -33,14 +50,15 @@ public interface ILabWorld : IAsyncDisposable
     /// <summary>Errands for several golems that must SET OUT TOGETHER (two bodies meeting halfway): each body starts once every
     /// one of them holds its first order.</summary>
     Task SendTogetherAsync(params (string Golem, (double X, double Y) Stop)[] errands);
-    /// <summary>Let the world run until no golem has anything pending and the bodies are quiet — or the timeout.</summary>
+    /// <summary>Let the world run until no golem has anything pending and every body is quiet — a follower still driving after its
+    /// leader too — or the timeout.</summary>
     Task RunUntilSettledAsync(TimeSpan timeout);
     /// <summary>How the golem's newest errand ended, in its own words.</summary>
     ErrandOutcome Outcome(string golem);
     /// <summary>Every contact the world saw on that golem's body, in order.</summary>
     IReadOnlyList<WorldContact> Contacts(string golem);
-    /// <summary>Every way the golem's newest route held since it was placed, in order: the first as decided, then each time it
-    /// was decided again (a bump, a word from a peer, a stranded retreat). Asked of the golem's own journal.</summary>
+    /// <summary>Every way the golem's routes held since it was placed, in order, each with its route's handle: the first as decided,
+    /// then each time it was decided again (a bump, a word from a peer, a stranded retreat). Asked of the golem's own journal.</summary>
     IReadOnlyList<WayDecided> Ways(string golem);
     /// <summary>The next leg of the golem's route that ENDED — completed, or cut short — waiting for it while the body moves:
     /// a scenario validates the legs one by one, as they happen, instead of only at the end.</summary>

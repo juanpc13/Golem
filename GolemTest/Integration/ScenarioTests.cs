@@ -42,22 +42,17 @@ public class ScenarioTests
         await using var world = await OpenWorldAsync();
         await world.PlaceGolemAsync("red");                             // on its mark in the living room
         world.Send("red", (5.5, 9.5));   // to the north hall, through the centre
-        var way = world.Ways("red").Single().Plan;
+        var way = WaysOf(world, "red").Single().Plan;
         Assert.AreEqual(3, way.Split(" > ").Length, "out of the living room, into the central hall, up to the north hall: " + way);
 
         // every leg of the way, validated as it ends: completed, where the leg said, touching nothing
-        var legs = await WalkAsync(world, "red", leg =>
-        {
-            Assert.IsTrue(leg.Completed, leg.ToString());
-            Assert.AreEqual(0, leg.Touched.Count, "nothing on a free way — " + leg);
-            AssertOnTheLeg(leg);
-        });
+        var legs = await WalkAsync(world, "red", AFreeLeg);
         CollectionAssert.AreEqual(way.Split(" > ").Select(l => l[..l.IndexOf('@')]).ToArray(), legs.Select(l => l.Name).ToArray(),
                                   "the legs walked are the legs decided, in order");
         await world.RunUntilSettledAsync(Patience);
         string seen = Report(world, "red", (5.5, 9.5));
         Assert.AreEqual("completed", world.Outcome("red").Status, seen);
-        Assert.AreEqual(1, world.Ways("red").Count, "nothing made it decide again — " + seen);
+        Assert.AreEqual(1, WaysOf(world, "red").Count, "nothing made it decide again — " + seen);
         AssertStandsAt(world, "red", 5.5, 9.5);
     }
 
@@ -65,10 +60,14 @@ public class ScenarioTests
     public async Task ACrateInTheWay_IsBumped_Marked_AndSkirted_AndTheErrandCompletes()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red", (5.5, 9.5));                 // in the north hall, before the crate stands
+        await world.PlaceGolemAsync("red");                          // on its mark
+        world.Send("red", (5.5, 9.5));                              // first to the north hall, where the scenario starts
+        await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
+        Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the north hall — " + Report(world, "red", (5.5, 9.5)));
+        await world.RunUntilSettledAsync(Patience);                     // nobody still driving when the crate stands
         world.PlaceCrate("center");                                     // the middle of the central hall
         world.Send("red", (5.5, 1.5));   // to the south hall: the straight line runs into the crate
-        Assert.AreEqual("south@5.5,1.5", world.Ways("red").Single().Plan, "one straight leg: the golem knows nothing of the crate yet");
+        Assert.AreEqual("south@5.5,1.5", WaysOf(world, "red").Single().Plan, "one straight leg: the golem knows nothing of the crate yet");
 
         // leg 1: the straight run, cut short by the crate — and the way decided again starts backing off
         var cut = await world.NextLegAsync("red", Patience);
@@ -104,7 +103,11 @@ public class ScenarioTests
     public async Task AHallShutWallToWall_TurnsTheWayThroughASideCorridor()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red", (5.5, 9.5));                 // in the north hall
+        await world.PlaceGolemAsync("red");                          // on its mark
+        world.Send("red", (5.5, 9.5));                              // first to the north hall, where the scenario starts
+        await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
+        Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the north hall — " + Report(world, "red", (5.5, 9.5)));
+        await world.RunUntilSettledAsync(Patience);                     // nobody still driving when the crate stands
         world.PlaceCrate("big");                                        // the central hall shut, wall to wall
         world.Send("red", (5.5, 1.5));                                  // to the south hall
         await world.RunUntilSettledAsync(Patience);
@@ -120,10 +123,14 @@ public class ScenarioTests
     public async Task ACorridorShut_TurnsTheWayThroughTheCentre()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red", (9.0, 9.5));                 // in the storage room
+        await world.PlaceGolemAsync("red");                          // on its mark
+        world.Send("red", (9.0, 9.5));                              // first to the storage room, where the scenario starts
+        await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
+        Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the storage room — " + Report(world, "red", (9.0, 9.5)));
+        await world.RunUntilSettledAsync(Patience);                     // nobody still driving when the crate stands
         world.PlaceCrate("east");                                       // the east corridor shut
         world.Send("red", (9.0, 1.5));   // to the garage: its shortest way is down that corridor
-        StringAssert.StartsWith(world.Ways("red").Single().Plan, "storage/east@", "its first way goes down the east corridor");
+        StringAssert.StartsWith(WaysOf(world, "red").Single().Plan, "storage/east@", "its first way goes down the east corridor");
 
         // every leg validated as it ends: completed where it said, or cut short by something the world saw it touch — never cut
         // for nothing; and the one leg the crate cut is the one down the corridor
@@ -154,8 +161,15 @@ public class ScenarioTests
     public async Task TwoBodiesHeadOn_PassEachOther()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red", (5.5, 9.5));                 // red in the north hall…
-        await world.PlaceGolemAsync("green", (5.5, 1.5));               // …green in the south hall
+        await world.PlaceGolemAsync("red");                          // on its mark
+        world.Send("red", (5.5, 9.5));                              // first to the north hall, where the scenario starts
+        await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
+        Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the north hall — " + Report(world, "red", (5.5, 9.5)));
+        await world.PlaceGolemAsync("green");                          // on its mark
+        world.Send("green", (5.5, 1.5));                              // first to the south hall, where the scenario starts
+        await WalkAsync(world, "green", AFreeLeg);                     // every leg of the walk there, validated as it ends
+        Assert.AreEqual("completed", world.Outcome("green").Status, "green walked to the south hall — " + Report(world, "green", (5.5, 1.5)));
+        await world.RunUntilSettledAsync(Patience);                     // nobody still driving when they set out
         await world.SendTogetherAsync(("red", (5.5, 1.5)), ("green", (5.5, 9.5)));   // they trade places, down and up the centre
         await world.RunUntilSettledAsync(Patience);
         string seen = Report(world, "red", (5.5, 1.5)) + Environment.NewLine + Report(world, "green", (5.5, 9.5));
@@ -177,7 +191,11 @@ public class ScenarioTests
     public async Task ABodyParkedInTheWay_IsMet_AndPassed()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("blue", (6.0, 5.0));                // blue parked in the central hall
+        await world.PlaceGolemAsync("blue");                          // on its mark
+        world.Send("blue", (6.0, 5.0));                              // first to the central hall, where the scenario starts
+        await WalkAsync(world, "blue", AFreeLeg);                     // every leg of the walk there, validated as it ends
+        Assert.AreEqual("completed", world.Outcome("blue").Status, "blue walked to the central hall — " + Report(world, "blue", (6.0, 5.0)));
+        await world.RunUntilSettledAsync(Patience);                     // blue parked there
         await world.PlaceGolemAsync("green");                           // green on its mark in the storage room
         world.Send("green", (5.5, 1.5));                                // to the south hall, through where blue stands
         await world.RunUntilSettledAsync(Patience);
@@ -192,9 +210,11 @@ public class ScenarioTests
     }
 
     // THE STORY OF A GOLEM IN A SCENARIO — printed at the end, and carried by every assertion's message (Juan, 23-sep-2026: "poder
-    // ver la lista de los legs mejor y cuáles van saliendo o ya están completados"): a header with how the errand ended and where the
-    // body really stands; the first order its errand returned; then EVERY WAY its route held, in order — as decided, then each one
-    // decided again and why — with the list of its legs, each marked ✓ completed, ✗ cut short, or · not walked; and where the trail went.
+    // ver la lista de los legs mejor y cuáles van saliendo o ya están completados"; 24-sep: "desde la living a la zona norte… en el
+    // testcase no veo todos esos leg"): a header with how the newest errand ended and where the body really stands; then EVERY ERRAND
+    // it was sent, in order — the walk to where the scenario starts included — with how it ended and the first order its command
+    // returned, and inside it every way its route held — as decided, then each one decided again and why — with the list of its
+    // legs, each marked ✓ completed, ✗ cut short, or · not walked; and where the trail went.
     private static string Report(ILabWorld world, string golem, (double X, double Y) stop)
     {
         var outcome = world.Outcome(golem);
@@ -205,33 +225,38 @@ public class ScenarioTests
             $"═══ {golem} → ({stop.X}, {stop.Y}) · {Lab.World} · {outcome.Status} · {outcome.Bumps} bump(s), {outcome.Marks} mark(s), "
             + $"{outcome.Encounters} body met · stands at ({px:0.00}, {py:0.00}), {off:0.00} m from its stop",
         };
-        var errand = world.Errands(golem).LastOrDefault();
-        if (errand != null) lines.Add("  first order: " + FirstOrder(errand.Print));
-
-        var legs = world.Legs(golem);
-        var first = world.Ways(golem).FirstOrDefault();
-        // the ways, in order: the first as the golem decided it, then one after every leg cut short
-        var ways = new List<(string Plan, string Why, List<LegReport> Walked)>();
-        if (first != null) ways.Add((first.Plan, "as decided", new List<LegReport>()));
-        foreach (var leg in legs)
+        var errands = world.Errands(golem);
+        for (int n = 0; n < errands.Count; n++)
         {
-            if (ways.Count == 0) ways.Add((leg.WayAfter, "as decided", new List<LegReport>()));
-            ways[^1].Walked.Add(leg);
-            if (!leg.Completed)
-                ways.Add((leg.WayAfter, "decided again after " + (leg.Touched.Count > 0 ? "bumping " + string.Join(", ", leg.Touched.Distinct()) : leg.EndedBy),
-                          new List<LegReport>()));
-        }
-        for (int i = 0; i < ways.Count; i++)
-        {
-            var (plan, why, walked) = ways[i];
-            if (i == ways.Count - 1 && walked.Count == 0 && i > 0 && plan == ways[i - 1].Plan) continue;   // the route ended on the cut
-            var decided = plan.Split(" > ", StringSplitOptions.RemoveEmptyEntries);
+            var errand = errands[n];
+            var legs = world.Legs(golem).Where(l => l.Route == errand.Route).ToList();
+            string status = legs.Count > 0 ? legs[^1].RouteStatus : "pending";
             lines.Add("");
-            lines.Add($"  way {i + 1} · {why} · {decided.Length} leg(s)");
-            for (int k = 0; k < decided.Length; k++)
+            lines.Add($"  errand {n + 1} · to {errand.Stops} · {status} · first order: {FirstOrder(errand.Print)}");
+
+            // the ways, in order: the first as the golem decided it, then one after every leg cut short
+            var first = world.Ways(golem).FirstOrDefault(w => w.Route == errand.Route);
+            var ways = new List<(string Plan, string Why, List<LegReport> Walked)>();
+            if (first != null) ways.Add((first.Plan, "as decided", new List<LegReport>()));
+            foreach (var leg in legs)
             {
-                var done = walked.FirstOrDefault(l => l.Index == k + 1);
-                lines.Add("    " + (done != null ? done.Line() : NotWalked(k + 1, decided[k])));
+                if (ways.Count == 0) ways.Add((leg.WayAfter, "as decided", new List<LegReport>()));
+                ways[^1].Walked.Add(leg);
+                if (!leg.Completed)
+                    ways.Add((leg.WayAfter, "decided again after " + (leg.Touched.Count > 0 ? "bumping " + string.Join(", ", leg.Touched.Distinct()) : leg.EndedBy),
+                              new List<LegReport>()));
+            }
+            for (int i = 0; i < ways.Count; i++)
+            {
+                var (plan, why, walked) = ways[i];
+                if (i == ways.Count - 1 && walked.Count == 0 && i > 0 && plan == ways[i - 1].Plan) continue;   // the route ended on the cut
+                var decided = plan.Split(" > ", StringSplitOptions.RemoveEmptyEntries);
+                lines.Add($"    way {i + 1} · {why} · {decided.Length} leg(s)");
+                for (int k = 0; k < decided.Length; k++)
+                {
+                    var done = walked.FirstOrDefault(l => l.Index == k + 1);
+                    lines.Add("      " + (done != null ? done.Line() : NotWalked(k + 1, decided[k])));
+                }
             }
         }
         var trail = world.Trail(golem);
@@ -242,6 +267,13 @@ public class ScenarioTests
         string said = string.Join(Environment.NewLine, lines);
         Console.WriteLine(Environment.NewLine + said);
         return said;
+    }
+
+    // The ways of the golem's NEWEST errand — the one the scenario is about, not the walk that brought the body to its start.
+    private static List<WayDecided> WaysOf(ILabWorld world, string golem)
+    {
+        int route = world.Errands(golem).Last().Route;
+        return world.Ways(golem).Where(w => w.Route == route).ToList();
     }
 
     // A leg of a way the route never walked (cut before it): `· 3  garage   → (9.00, 1.50)   not walked`.
@@ -281,6 +313,14 @@ public class ScenarioTests
             walked.Add(leg);
             if (leg.RouteStatus != "pending") return walked;
         }
+    }
+
+    // A leg on a clean floor: completed, where the leg said, touching nothing.
+    private static void AFreeLeg(LegReport leg)
+    {
+        Assert.IsTrue(leg.Completed, leg.ToString());
+        Assert.AreEqual(0, leg.Touched.Count, "nothing on a free way — " + leg);
+        AssertOnTheLeg(leg);
     }
 
     // A completed leg leaves the body where the leg said: at its point — or, for a door, crossed to its exit, a jamb's

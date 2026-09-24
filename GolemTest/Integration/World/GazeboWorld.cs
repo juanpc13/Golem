@@ -107,23 +107,12 @@ public sealed class GazeboWorld : ILabWorld
             .GetAwaiter().GetResult();
     }
 
-    /// <summary>The golem takes part in the scenario. With a place to start from, it is sent there first — an errand like any
-    /// other, the world still clean — and the scenario begins once every body is quiet, with no contact counted yet.</summary>
-    public async Task PlaceGolemAsync(string golem, (double X, double Y)? at = null)
+    /// <summary>The golem takes part in the scenario: the reset already stood its body on its mark; from here its legs are watched.</summary>
+    public Task PlaceGolemAsync(string golem)
     {
         if (!golems.ContainsKey(golem)) throw new ArgumentException($"no golem '{golem}' in this fleet");
         lock (gate) placed.Add(golem);
-        if (at == null) return;
-        Send(golem, at.Value);
-        await SettleAsync(golems.Keys, TimeSpan.FromSeconds(120));   // the followers too: nobody still driving into the scenario
-        lock (gate)
-        {
-            contacts.RemoveAll(c => c.Golem == golem);
-            trails.Remove(golem);
-            ways.RemoveAll(w => w.Golem == golem);
-            errands.RemoveAll(e => e.Golem == golem);
-        }
-        tracker.Forget(golem);
+        return Task.CompletedTask;
     }
 
     public string Send(string golem, params (double X, double Y)[] stops)
@@ -192,12 +181,8 @@ public sealed class GazeboWorld : ILabWorld
         return Task.CompletedTask;
     }
 
-    public Task RunUntilSettledAsync(TimeSpan timeout)
-    {
-        List<string> who;
-        lock (gate) who = placed.ToList();
-        return SettleAsync(who, timeout);
-    }
+    // every body of the fleet: a follower told of its leader's stop is still driving there after the leader stood still
+    public Task RunUntilSettledAsync(TimeSpan timeout) => SettleAsync(golems.Keys, timeout);
 
     public ErrandOutcome Outcome(string golem)
     {

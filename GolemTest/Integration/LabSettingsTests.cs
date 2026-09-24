@@ -3,19 +3,19 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace GolemTest;
 
-// WHICH WORLD THE SCENARIOS RUN AGAINST (propuesta 52, fase 3): the versioned appsettings.json says memory; a local overlay or
+// WHICH WORLD THE SCENARIOS RUN AGAINST (propuesta 52, fase 3): the versioned appsettings.json says mock; a local overlay or
 // the environment may say gazebo. These tests change the environment of THIS process only, and put it back.
 [TestClass]
 public class LabSettingsTests
 {
     [TestMethod]
-    public void TheVersionedSettings_AskForTheWorldInMemory_AndNameTheFleet()
+    public void TheVersionedSettings_AskForTheMockWorld_AndNameTheFleet()
     {
         using var _ = new Environment("GOLEM_LAB_WORLD", null);
         var lab = LabSettings.Load();
         if (File.Exists(Path.Combine(AppContext.BaseDirectory, "appsettings.local.json")))
             Assert.Inconclusive("a local overlay is wired here: the versioned default cannot be read alone");
-        Assert.AreEqual("memory", lab.World, "with nothing said, the scenarios never need the simulator");
+        Assert.AreEqual("mock", lab.World, "with nothing said, the scenarios never need the simulator");
         Assert.IsFalse(lab.InGazebo);
         CollectionAssert.AreEquivalent(new[] { "blue", "red", "green" }, lab.Golems.Keys.ToArray());
         Assert.AreEqual(new Uri("http://localhost:8082/"), lab.Golems["red"]);
@@ -37,7 +37,7 @@ public class LabSettingsTests
     {
         using var _ = new Environment("GOLEM_LAB_WORLD", "turtlesim");
         var e = Assert.ThrowsException<InvalidOperationException>(() => LabSettings.Load());
-        StringAssert.Contains(e.Message, "'memory' or 'gazebo'");
+        StringAssert.Contains(e.Message, "'mock' or 'gazebo'");
     }
 
     // A variable of this process set for one test and put back after it.
