@@ -22,7 +22,7 @@ public sealed class GazeboWorld : ILabWorld
 {
     private static readonly TimeSpan Released = TimeSpan.FromMilliseconds(400);   // body.py: quiet this long, the bumper is released
     private readonly Uri rosbridge;
-    private readonly IReadOnlyDictionary<string, Uri> golems;
+    private IReadOnlyDictionary<string, Uri> golems;   // the golems that ANSWER: the fleet deployed may be a part of the one configured
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly ClientWebSocket ws = new();
     private readonly SemaphoreSlim sending = new(1, 1);
@@ -47,25 +47,38 @@ public sealed class GazeboWorld : ILabWorld
         this.golems = golems;
     }
 
-    /// <summary>Connects to rosbridge and to every golem, and leaves the world clean: no crates, every golem let go (its body back
-    /// on its mark, awake there) and nothing it learned by touching left in its collisions. Unreachable: WorldUnavailableException.</summary>
+    /// <summary>Connects to rosbridge and to the golems that answer — the fleet deployed may be a part of the one configured
+    /// (24-sep-2026: a demo with blue and red, green commented out in the compose); a golem that does not answer is left out, and a
+    /// scenario that places it is inconclusive — and leaves the world clean: no crates, every golem let go (its body back on its
+    /// mark, awake there) and nothing it learned by touching left in its collisions. No simulator, or no golem at all: WorldUnavailableException.</summary>
     public static async Task<GazeboWorld> OpenAsync(Uri rosbridge, IReadOnlyDictionary<string, Uri> golems, TimeSpan patience)
     {
         var world = new GazeboWorld(rosbridge, golems);
         try
         {
             using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5))) await world.ws.ConnectAsync(rosbridge, cts.Token);
-            foreach (var (name, url) in golems) (await world.http.GetAsync(new Uri(url, "state"))).EnsureSuccessStatusCode();
         }
         catch (Exception e)
         {
             await world.DisposeAsync();
-            throw new WorldUnavailableException($"the simulator ({rosbridge}) or a golem ({string.Join(", ", golems.Values)}) does not answer", e);
+            throw new WorldUnavailableException($"the simulator ({rosbridge}) does not answer", e);
         }
+        var answering = new Dictionary<string, Uri>();
+        foreach (var (name, url) in golems)
+        {
+            try { (await world.http.GetAsync(new Uri(url, "state"))).EnsureSuccessStatusCode(); answering[name] = url; }
+            catch (Exception) { Console.WriteLine($"[gazebo] {name} ({url}) does not answer: left out of the fleet"); }
+        }
+        if (answering.Count == 0)
+        {
+            await world.DisposeAsync();
+            throw new WorldUnavailableException($"no golem answers ({string.Join(", ", golems.Values)})");
+        }
+        world.golems = answering;
         world.reader = Task.Run(world.ReadAsync);
         await world.SendAsync(new { op = "advertise", topic = "/sim/crate", type = "std_msgs/String" });
         await world.SendAsync(new { op = "subscribe", topic = "/sim/crates", type = "std_msgs/String" });
-        foreach (var name in golems.Keys)
+        foreach (var name in world.golems.Keys)
         {
             await world.SendAsync(new { op = "subscribe", topic = $"/model/{name}/odometry", type = "nav_msgs/Odometry", throttle_rate = 100 });
             await world.SendAsync(new { op = "subscribe", topic = $"/model/{name}/contacts", type = "ros_gz_interfaces/Contacts", throttle_rate = 20 });
@@ -110,7 +123,8 @@ public sealed class GazeboWorld : ILabWorld
     /// <summary>The golem takes part in the scenario: the reset already stood its body on its mark; from here its legs are watched.</summary>
     public Task PlaceGolemAsync(string golem)
     {
-        if (!golems.ContainsKey(golem)) throw new ArgumentException($"no golem '{golem}' in this fleet");
+        if (!golems.ContainsKey(golem))
+            throw new WorldUnavailableException($"the fleet deployed has no golem '{golem}' (answering: {string.Join(", ", golems.Keys)}): the scenario needs it");
         lock (gate) placed.Add(golem);
         return Task.CompletedTask;
     }

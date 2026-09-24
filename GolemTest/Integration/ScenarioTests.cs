@@ -40,7 +40,7 @@ public class ScenarioTests
     public async Task AFreeWay_IsWalkedWithoutTouchingAnything()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red");                             // on its mark in the living room
+        await PlaceAsync(world, "red");                             // on its mark in the living room
         world.Send("red", (5.5, 9.5));   // to the north hall, through the centre
         var way = WaysOf(world, "red").Single().Plan;
         Assert.AreEqual(3, way.Split(" > ").Length, "out of the living room, into the central hall, up to the north hall: " + way);
@@ -60,7 +60,7 @@ public class ScenarioTests
     public async Task ACrateInTheWay_IsBumped_Marked_AndSkirted_AndTheErrandCompletes()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red");                          // on its mark
+        await PlaceAsync(world, "red");                          // on its mark
         world.Send("red", (5.5, 9.5));                              // first to the north hall, where the scenario starts
         await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
         Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the north hall — " + Report(world, "red", (5.5, 9.5)));
@@ -103,7 +103,7 @@ public class ScenarioTests
     public async Task AHallShutWallToWall_TurnsTheWayThroughASideCorridor()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red");                          // on its mark
+        await PlaceAsync(world, "red");                          // on its mark
         world.Send("red", (5.5, 9.5));                              // first to the north hall, where the scenario starts
         await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
         Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the north hall — " + Report(world, "red", (5.5, 9.5)));
@@ -123,7 +123,7 @@ public class ScenarioTests
     public async Task ACorridorShut_TurnsTheWayThroughTheCentre()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red");                          // on its mark
+        await PlaceAsync(world, "red");                          // on its mark
         world.Send("red", (9.0, 9.5));                              // first to the storage room, where the scenario starts
         await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
         Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the storage room — " + Report(world, "red", (9.0, 9.5)));
@@ -161,11 +161,11 @@ public class ScenarioTests
     public async Task TwoBodiesHeadOn_PassEachOther()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("red");                          // on its mark
+        await PlaceAsync(world, "red");                          // on its mark
         world.Send("red", (5.5, 9.5));                              // first to the north hall, where the scenario starts
         await WalkAsync(world, "red", AFreeLeg);                     // every leg of the walk there, validated as it ends
         Assert.AreEqual("completed", world.Outcome("red").Status, "red walked to the north hall — " + Report(world, "red", (5.5, 9.5)));
-        await world.PlaceGolemAsync("green");                          // on its mark
+        await PlaceAsync(world, "green");                          // on its mark
         world.Send("green", (5.5, 1.5));                              // first to the south hall, where the scenario starts
         await WalkAsync(world, "green", AFreeLeg);                     // every leg of the walk there, validated as it ends
         Assert.AreEqual("completed", world.Outcome("green").Status, "green walked to the south hall — " + Report(world, "green", (5.5, 1.5)));
@@ -191,12 +191,12 @@ public class ScenarioTests
     public async Task ABodyParkedInTheWay_IsMet_AndPassed()
     {
         await using var world = await OpenWorldAsync();
-        await world.PlaceGolemAsync("blue");                          // on its mark
+        await PlaceAsync(world, "blue");                          // on its mark
         world.Send("blue", (6.0, 5.0));                              // first to the central hall, where the scenario starts
         await WalkAsync(world, "blue", AFreeLeg);                     // every leg of the walk there, validated as it ends
         Assert.AreEqual("completed", world.Outcome("blue").Status, "blue walked to the central hall — " + Report(world, "blue", (6.0, 5.0)));
         await world.RunUntilSettledAsync(Patience);                     // blue parked there
-        await world.PlaceGolemAsync("green");                           // green on its mark in the storage room
+        await PlaceAsync(world, "green");                           // green on its mark in the storage room
         world.Send("green", (5.5, 1.5));                                // to the south hall, through where blue stands
         await world.RunUntilSettledAsync(Patience);
         string seen = Report(world, "green", (5.5, 1.5)) + Environment.NewLine + Report(world, "blue", (6.0, 5.0));
@@ -329,6 +329,14 @@ public class ScenarioTests
     {
         double near = leg.Name.Contains('/') ? 0.75 : AtTheStop;
         Assert.IsTrue(leg.Off <= near, $"{leg.Off:0.00} m off the leg's point — {leg}");
+    }
+
+    // A golem takes part in the scenario — or the scenario is inconclusive when the fleet deployed lacks it (24-sep-2026: a demo
+    // fleet with green commented out), never red: the world was there, the golem was not.
+    private static async Task PlaceAsync(ILabWorld world, string golem)
+    {
+        try { await world.PlaceGolemAsync(golem); }
+        catch (WorldUnavailableException e) { Assert.Inconclusive(e.Message); }
     }
 
     private static async Task<ILabWorld> OpenWorldAsync()
