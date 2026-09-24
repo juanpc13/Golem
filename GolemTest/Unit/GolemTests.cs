@@ -11,7 +11,8 @@ namespace GolemTest;
 
 // THE GOLEM (GolemDomain.Golem): the mind that RECEIVES its body, its map and its collisions module, hands out routes (Visit,
 // Cover, Follow), keeps where its body stands (Standing, Wake), takes what the body reports (Bump) and what the peers tell
-// (HearBump, LearnForget), holds and releases itself (Pause, Resume), and answers over the fleet of its routes.
+// (HearBump, LearnForget), holds and releases itself (Pause, Resume), and answers over the fleet of its routes. Everything the
+// bodies learned enters as the journal writes it (Juan, 24-sep-2026): my bump as g.Bump, a peer's as g.HearBump.
 [TestClass]
 public class GolemTests
 {
@@ -64,10 +65,10 @@ public class GolemTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
-        collisions.Mark(new Pose(4.0, 9.2, 0.0));        // marks close the kitchen/north doorway…
-        collisions.Mark(new Pose(4.0, 9.8, 0.0));
-        collisions.Mark(new Pose(0.75, 8.2, -1.5708));      // …and the kitchen/west one
-        collisions.Mark(new Pose(0.75, 7.8, -1.5708));
+        g.HearBump("red", new Pose(3.75, 9.2, 0.0), 0.0);        // red's bumps close the kitchen/north doorway: (4.0, 9.2)…
+        g.HearBump("red", new Pose(3.75, 9.8, 0.0), 0.0);        // …(4.0, 9.8)…
+        g.HearBump("red", new Pose(0.75, 8.45, -1.5708), 0.0);   // …and the kitchen/west one: (0.75, 8.2)…
+        g.HearBump("red", new Pose(0.75, 8.05, -1.5708), 0.0);   // …(0.75, 7.8)
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), new Position(9.0, 9.5))).Message, "no road");
         Assert.AreEqual(0, g.Routes().Count, "nothing minted, no handle spent");
     }
@@ -448,14 +449,14 @@ public class GolemTests
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), map.Find("north"));
         g.HearBump("blue", new Pose(5.1, 9.5, 3.1416), 0.0);
-        route.Bump(new Pose(4.7, 9.5, 0.0), new Pose(4.45, 9.5, 0.0));   // my own touch, right there
+        g.Bump(new Pose(4.45, 9.5, 0.0), 0.0);   // my own touch, right there: (4.7, 9.5)
         Assert.AreEqual(2, collisions.MarkCount, "two marks presumed: blue's bump, heard, and my own");
         Assert.AreEqual(1, g.Met("blue", new Position(4.7, 9.5)));
         Assert.AreEqual(0, collisions.MarkCount, "meeting a body takes both marks back: mine, and the one I learned from blue's bump there");
         Assert.AreEqual(0, g.LearnMet(new Position(4.6, 9.5)), "when blue tells it met a body too, nothing is left to take back");
 
-        collisions.Mark(new Pose(10.25, 5.85, -1.5708));
-        collisions.Mark(new Pose(10.25, 5.15, 1.5708));
+        g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);   // red bumped the crate in the east corridor, both faces
+        g.HearBump("red", new Pose(10.25, 4.9, 1.5708), 0.0);
         Assert.AreEqual(2, g.Forget(new Position(10.2, 5.5)), "the operator says the thing is gone: every mark that outlined it goes");
         Assert.AreEqual(0, g.LearnForget(new Position(10.2, 5.5)), "a peer says so too: nothing left");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Forget(null)).Message, "needs where");
@@ -602,11 +603,11 @@ public class GolemTests
         route.Abandon("the test is over");
         Assert.AreEqual(0.0, g.DistanceLeft(new Position(2.0, 9.5)), 0.001);
 
-        g.Visit(new Position(9.0, 9.5), new Position(2.0, 9.5));                     // the kitchen, from the storage
-        collisions.Mark(new Pose(4.0, 9.2, 0.0));                  // marks close the kitchen/north doorway…
-        collisions.Mark(new Pose(4.0, 9.8, 0.0));
-        collisions.Mark(new Pose(0.75, 8.2, -1.5708));                // …and the kitchen/west one
-        collisions.Mark(new Pose(0.75, 7.8, -1.5708));
+        g.Visit(new Position(9.0, 9.5), new Position(2.0, 9.5));   // the kitchen, from the storage
+        g.HearBump("red", new Pose(3.75, 9.2, 0.0), 0.0);          // red's bumps close the kitchen/north doorway…
+        g.HearBump("red", new Pose(3.75, 9.8, 0.0), 0.0);
+        g.HearBump("red", new Pose(0.75, 8.45, -1.5708), 0.0);     // …and the kitchen/west one
+        g.HearBump("red", new Pose(0.75, 8.05, -1.5708), 0.0);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Road(g.Underway(), new Position(9.0, 9.5))).Message, "no road");
         Assert.AreEqual(7.0, g.DistanceLeft(new Position(9.0, 9.5)), 0.001, "straight from (9, 9.5) to (2, 9.5): a read never refuses");
         Assert.IsTrue(g.SecondsLeft(new Position(9.0, 9.5)) > 0);
@@ -623,7 +624,7 @@ public class GolemTests
         Assert.IsTrue(g.FitsAt(new Position(5.5, 5.5)), "the middle of the centre hall");
         Assert.IsFalse(g.HasRoomAt(new Position(9.7, 5.5)), "too close to the corridor's wall for the body");
         Assert.IsTrue(g.HasRoomAt(new Position(10.25, 5.5)));
-        collisions.Mark(new Pose(10.25, 5.85, -1.5708));
+        g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);   // red bumped into something there: (10.25, 5.85)
         Assert.IsFalse(g.FitsAt(new Position(10.25, 5.5)), "the walls leave room, the mark does not");
         Assert.AreEqual(2.0 + Math.Sqrt(9.0 + 64.0) + 2.0, g.Distance(map.Find("kitchen"), map.Find("garage")), 0.01, "centre to centre through the passages");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Distance(map.Find("kitchen"), map.Find("kitchen"))).Message, "the same area");

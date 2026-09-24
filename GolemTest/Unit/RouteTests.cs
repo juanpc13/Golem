@@ -11,8 +11,10 @@ namespace GolemTest;
 
 // THE ROUTE (Routes.Route): the errand and its way, one object, decided inside — the stops, the way planned from where the
 // body stands, the cursor that hands out ONE thing at a time in the robot's words (an action and an amount measured from where
-// the body last stood), the touches that correct the way inside, the hold, the ending. Handed out by the golem; here it is
-// asked directly.
+// the body last stood), the touches that correct the way inside, the hold, the ending. Handed out by the golem (g.Visit,
+// g.Cover, g.Follow) and reached through it (Juan, 24-sep-2026: "que los testcase le pasen los módulos que se están testeando al
+// golem"): every touch enters as the body reports it, g.Bump(me, bearing), every peer's word as g.HearBump, the hold as g.Pause and
+// g.Resume; what the route holds — its way, its cursor, its order in the robot's words — is read from the route the golem handed out.
 [TestClass]
 public class RouteTests
 {
@@ -282,7 +284,7 @@ public class RouteTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));   // kitchen/west > west/living > living
-        route.Touched(new Pose(0.05, 8.5, 3.1416), new Pose(0.3, 8.5, 3.1416));   // the west corridor's outer wall
+        g.Bump(new Pose(0.3, 8.5, 3.1416), 0.0);   // standing a radius off the west corridor's outer wall, facing it, pressed on the nose: the touch at (0.05, 8.5)
         Assert.AreEqual(1, route.Grazes, "a wall I know: my own error, a graze");
         Assert.AreEqual(0, route.Bumps);
         Assert.AreEqual(0, collisions.MarkCount, "no mark: the wall was known");
@@ -298,7 +300,7 @@ public class RouteTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Pose(9.0, 9.5, -1.5708), new Position(9.0, 1.5));  // down the east corridor
-        route.Touched(new Pose(10.25, 5.85, -1.5708), new Pose(10.25, 6.1, -1.5708));
+        g.Bump(new Pose(10.25, 6.1, -1.5708), 0.0);   // the touch at (10.25, 5.85): the middle of the corridor
         Assert.AreEqual(1, route.Bumps, "nothing on the map there: a thing");
         Assert.AreEqual(1, collisions.MarkCount, "presumed and marked at once");
         Assert.AreEqual("back", route.Order, "the retreat first, then the road around");
@@ -313,15 +315,15 @@ public class RouteTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Pose(9.0, 9.5, -1.5708), new Position(9.0, 1.5));  // the garage, down the east corridor
-        Assert.IsFalse(collisions.Blocks(new Position(10.25, 5.5), body.Radius.InMeters), "the corridor is clear as far as the map knows");
-        route.Bump(new Pose(10.25, 5.85, -1.5708), new Pose(10.25, 6.1, -1.5708));   // the crate's face: presumed a thing, in one act
+        Assert.IsTrue(g.FitsAt(new Position(10.25, 5.5)), "the corridor is clear as far as the map knows");
+        g.Bump(new Pose(10.25, 6.1, -1.5708), 0.0);   // the crate's face, one radius ahead: presumed a thing, in one act
         Assert.AreEqual(1, collisions.MarkCount, "a bump is a touch AND a mark, with the heading of the touch as its normal");
         Assert.AreEqual(1, route.Bumps);
         Assert.AreEqual("back", route.Order, "the route corrected its way inside: back off first");
         StringAssert.StartsWith(route.AsPlan(), "back@", "the retreat is the first correction: " + route.AsPlan());
-        Assert.IsTrue(collisions.Blocks(new Position(10.25, 5.5), body.Radius.InMeters), "the body no longer fits where the mark reaches");
-        Assert.IsTrue(map.HasRoom(new Position(10.25, 5.5), body.Radius.InMeters), "the walls alone still leave room there: marks are what the body feels around");
-        Assert.IsFalse(map.HasRoom(new Position(9.7, 5.5), body.Radius.InMeters), "too close to the corridor's wall for the body");
+        Assert.IsFalse(g.FitsAt(new Position(10.25, 5.5)), "the body no longer fits where the mark reaches");
+        Assert.IsTrue(g.HasRoomAt(new Position(10.25, 5.5)), "the walls alone still leave room there: marks are what the body feels around");
+        Assert.IsFalse(g.HasRoomAt(new Position(9.7, 5.5)), "too close to the corridor's wall for the body");
     }
 
     [TestMethod]
@@ -334,7 +336,7 @@ public class RouteTests
 
         // north → south through the centre hall; the body meets the crate's north face head-on, halfway down
         var route = g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
-        route.Bump(new Pose(5.5, 5.85, -1.5708), new Pose(5.5, 6.1, -1.5708));
+        g.Bump(new Pose(5.5, 6.1, -1.5708), 0.0);
         Assert.AreEqual("back", route.Order, "the first correction: back off");
         double backY = route.NextLeg.Target.Y;
         Assert.IsTrue(backY >= 5.85 + body.Radius.InMeters + body.Retreat.InMeters - 1e-6, "at least the body's retreat behind where it stood: " + backY);
@@ -361,7 +363,7 @@ public class RouteTests
         Assert.AreEqual("south@5.5,1.5", route.AsPlan());
         Assert.AreEqual("advance", route.Order);
 
-        route.Bump(new Pose(5.5, 5.85, -1.5708), new Pose(5.5, 6.1, -1.5708));   // the crate's north face, halfway down
+        g.Bump(new Pose(5.5, 6.1, -1.5708), 0.0);   // the crate's north face, halfway down: the touch at (5.5, 5.85)
 
         // after the bump the way is REWRITTEN inside the route: the corrections first, the same stop last
         Assert.AreEqual(4, route.LegsAhead.Count, "back, aside, via and the stop: " + route.AsPlan());
@@ -422,18 +424,18 @@ public class RouteTests
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));
         Assert.IsFalse(route.BumpedSinceRoute);
-        route.Bump(new Pose(2.0, 10.8, 1.5708), new Pose(2.0, 10.55, 1.5708));   // something by the kitchen's north wall
+        g.Bump(new Pose(2.0, 10.25, 1.5708), 0.0);   // something in the kitchen, half a metre off its north wall: the touch at (2.0, 10.5)
         Assert.AreEqual("back", route.Order, "the touch corrected the way: back off first, then the road around");
         Assert.IsFalse(route.BumpedSinceRoute, "nothing left to decide: the route decided inside");
         Assert.AreEqual("pending", route.Status, "and the errand goes on");
         Assert.AreEqual(1, route.StopsLeft);
 
         Assert.IsTrue(route.MayRetryLeg);
-        route.Graze(new Position(0.05, 8.5), new Pose(0.3, 8.5, 3.1416));
-        route.Graze(new Position(0.05, 8.4), new Pose(0.3, 8.4, 3.1416));
+        g.Bump(new Pose(0.3, 8.5, 3.1416), 0.0);   // the west corridor's outer wall, a wall it knows: a graze
+        g.Bump(new Pose(0.3, 8.4, 3.1416), 0.0);
         Assert.AreEqual(2, route.Grazes);
         Assert.IsTrue(route.MayRetryLeg, "two grazes: still patient");
-        route.Graze(new Position(0.05, 8.6), new Pose(0.3, 8.6, 3.1416));
+        g.Bump(new Pose(0.3, 8.6, 3.1416), 0.0);
         Assert.IsFalse(route.MayRetryLeg, "three grazes on one leg: patience spent");
         Assert.AreEqual("failed", route.Status, "the route gave itself up: the third graze ended it inside, no host decides that");
         Assert.AreEqual(1, collisions.MarkCount, "the bump's mark stays; a graze leaves none: the wall was known");
@@ -451,9 +453,9 @@ public class RouteTests
         // marks close the kitchen's doors except a sliver; a bump right by the kitchen/north door leaves only the retreat, and
         // once the body backed off, the route plans again from the real pose — or fails by itself when no road exists
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(9.0, 9.5));   // to the storage through the north hall
-        collisions.Mark(new Pose(0.75, 8.2, -1.5708));
-        collisions.Mark(new Pose(0.75, 7.8, -1.5708));                   // the west door is closed
-        route.Bump(new Pose(3.5, 9.5, 0.0), new Pose(3.25, 9.5, 0.0));   // something right in front of the north door
+        g.HearBump("red", new Pose(0.75, 8.45, -1.5708), 0.0);   // red bumped twice in the kitchen's west doorway: the west door is closed
+        g.HearBump("red", new Pose(0.75, 8.05, -1.5708), 0.0);
+        g.Bump(new Pose(3.25, 9.5, 0.0), 0.0);                  // something right in front of the north door: the touch at (3.5, 9.5)
         StringAssert.StartsWith(route.AsPlan(), "back@");
         int legs = route.LegsLeft;
         Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);      // the retreat reached: the route decided again from there
@@ -470,20 +472,19 @@ public class RouteTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Unbump()).Message, "no bump to annul");
-        route.Bump(new Pose(5.5, 5.85, -1.5708), new Pose(5.5, 6.1, -1.5708));
+        g.Bump(new Pose(5.5, 6.1, -1.5708), 0.0);
         Assert.AreEqual(1, route.Bumps);
         StringAssert.Contains(route.AsPlan(), "aside@");
-        collisions.Unmark(new Position(5.5, 5.85));   // the golem took the mark back: the word landed on the body
-        route.Unbump();
+        g.HearBump("red", new Pose(5.5, 5.5, 1.5708), 0.0);   // red's word: it stood right there facing north, pressed on the nose — its touch landed on my body: the mark is taken back, the bump annulled
         Assert.AreEqual(0, route.Bumps);
         Assert.IsFalse(route.BumpedSinceRoute);
         StringAssert.StartsWith(route.AsPlan(), "back@5.5,", "the retreat kept…");
         Assert.AreEqual("aside", route.LegsAhead[1].Name, "…then the step to the right, never straight back into the body just met…");
         Assert.AreEqual("via", route.LegsAhead[2].Name, "…then ahead until the body met is behind…");
         StringAssert.EndsWith(route.AsPlan(), " > south@5.5,1.5", "…then on to the stop: " + route.AsPlan());
-        Assert.AreEqual(4, route.LegsLeft);
-        Assert.IsFalse(route.AsPlan().Contains("around@"), "no void to skirt: " + route.AsPlan());
+        var red = new Position(5.5, 5.5);
+        foreach (var run in route.LegsAhead.Skip(1).Zip(route.LegsAhead, (next, prev) => new Segment(prev.At, next.At)))
+            Assert.IsTrue(run.DistanceTo(red) >= 2 * body.Radius.InMeters - 1e-9, "every run of the way keeps a body from red, in the way while this route lasts: " + route.AsPlan());
         Assert.AreEqual("back", route.Order, "the body still backs off first");
         Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);
         Assert.AreEqual("aside", route.NextLeg.Name);
@@ -498,11 +499,10 @@ public class RouteTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
-        route.Bump(new Pose(5.5, 5.85, -1.5708), new Pose(5.5, 6.1, -1.5708));
+        g.Bump(new Pose(5.5, 6.1, -1.5708), 0.0);
         Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);     // the retreat walked: the next leg is the step to the right
         Assert.AreEqual("aside", route.NextLeg.Name);
-        collisions.Unmark(new Position(5.5, 5.85));
-        route.Unbump();
+        g.HearBump("red", new Pose(5.5, 5.5, 1.5708), 0.0);       // red's word lands on my body: the bump annulled, the way decided again
         StringAssert.StartsWith(route.AsPlan(), "aside@", "from where the body stands: the step to the right first — " + route.AsPlan());
         StringAssert.EndsWith(route.AsPlan(), "> south@5.5,1.5");
     }
@@ -519,21 +519,21 @@ public class RouteTests
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 9.5));   // already there: the stop alone, west of where it will be held
         Assert.IsFalse(route.Paused);
-        route.Pause(new Pose(2.6, 9.5, 1.5708));
+        Assert.AreSame(route, g.Pause(new Pose(2.6, 9.5, 1.5708)), "the operator holds the golem: the route underway is held with it");
         Assert.IsTrue(route.Paused, "held");
         Assert.AreEqual("stop", route.Order, "held: the body stops");
         Assert.AreEqual(2.6, route.HeldAt.X, 1e-9, "where it was held is kept");
         Assert.IsTrue(route.IsPending(), "a hold is not an ending");
         Assert.IsTrue(route.IsRouted, "the way keeps");
         Assert.AreEqual(1, route.StopsLeft, "and so do the stops ahead");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Pause(new Pose(2.6, 9.5, 0.0))).Message, "already paused");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Pause(new Pose(2.6, 9.5, 0.0))).Message, "already paused");
 
-        route.Resume(new Pose(2.6, 9.5, 1.5708));
+        g.Resume(new Pose(2.6, 9.5, 1.5708));
         Assert.IsFalse(route.Paused);
         Assert.AreEqual("turnLeft", route.Order, "from where it was held, facing north, the stop lies due west: a quarter turn to the left");
         Assert.AreEqual(1.5708, route.Amount, 0.001, "how much: a quarter turn, in radians");
         Assert.AreEqual(3.1416, route.NextLeg.Target.Heading, 0.001, "the heading to the stop (2.0, 9.5) from (2.6, 9.5): due west");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Resume(new Pose(2.6, 9.5, 1.5708))).Message, "is not paused");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Resume(new Pose(2.6, 9.5, 1.5708))).Message, "is not paused");
     }
 
     // ---- the ending ----
@@ -636,8 +636,8 @@ public class RouteTests
         // red drives east across the kitchen toward the north hall; blue stands just past the doorway. Knowing where blue is,
         // red's way starts by stepping out of the way — to its own right, facing east, is south — and then the errand goes on
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), map.Find("north"));
-        g.HearBump("blue", new Pose(5.1, 9.5, 3.1416), 0.0);              // blue's bump, learned as a mark for now…
-        route.Bump(new Pose(4.7, 9.5, 0.0), new Pose(4.45, 9.5, 0.0));   // …my own touch, right there…
+        g.HearBump("blue", new Pose(5.1, 9.5, 3.1416), 0.0);   // blue's bump, learned as a mark for now…
+        g.Bump(new Pose(4.45, 9.5, 0.0), 0.0);                 // …my own touch, right there: (4.7, 9.5)…
         g.Met("blue", new Position(4.7, 9.5));   // …and the golem names blue: both marks go, the way is clear to step aside
         route.DecidePast("blue", new Pose(4.6, 9.5, 0.0));
         string way = route.AsPlan();
@@ -673,14 +673,12 @@ public class RouteTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Route(1, null, false, false, map, collisions, body.Radius.InMeters, body.Retreat.InMeters, _ => { })).Message, "Route.Route: 'stop' was not given");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Route(1, new Position(2, 9.5), false, false, map, collisions, body.Radius.InMeters, body.Retreat.InMeters, null)).Message, "'stood' was not given");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), (Position)null)).Message, "Golem.Visit: 'stop' was not given");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), new Position(3.0, 5.0))).Message, "nowhere on the map");
         var route = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Arrive(null)).Message, "Route.Arrive: 'me' was not given");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Touched(new Pose(1, 1, 0), null)).Message, "Route.Touched: 'me' was not given");
-        var same = new Pose(1.0, 1.0, 0.0);
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Touched(same, same)).Message, "the same pose");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Bump(null, 0.0)).Message, "Golem.Bump: 'me' was not given");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Bump(new Pose(1.0, 1.0, 0.0), double.NaN)).Message, "must be an angle");
     }
 
     // The body the test drives: ONE thing the route asks, done — a turn made (the body stands where it stood, facing the target's
