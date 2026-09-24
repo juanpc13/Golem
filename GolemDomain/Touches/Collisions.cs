@@ -8,8 +8,9 @@ namespace GolemDomain.Touches;
 /// and the layout (where that stands). It keeps the facts — the marks where a touch met something the map does
 /// not hold, the peers met, the bumps peers told about — and INTERPRETS them: the things the marks outline, who
 /// was bumped near a point, what a fresh touch most likely was. It never stores a hypothesis; every reading
-/// recomputes it (paper 08: the facts are testimony, the figure is inference). It leans on the layout only to
-/// measure and to name the zone a mark stands in.
+/// recomputes it (paper 08: the facts are testimony, the figure is inference). It holds NO map (Juan, 24-sep-2026, ajuste 54:
+/// "¿qué tan conveniente es pasar de parámetro el mapa?"): the facts are the bodies' own, the geometry is derived from them alone,
+/// and the zone an obstacle stands in is the map's answer (`map.ZoneNameOf`), asked by whoever needs the name — a table.
 /// </summary>
 internal sealed class Collisions
 {
@@ -30,13 +31,8 @@ internal sealed class Collisions
     private readonly List<Peer> encounters = new();     // facts: where a body met another body — history, never planned around
     private readonly List<HeardBump> heard = new();     // facts: the bumps peers told about — who, where, and where they stood
 
-    internal MapLayout Layout { get; }
-
-    internal Collisions(MapLayout layout)
-    {
-        if (layout == null) throw new GolemDomainException("collisions are measured over a layout");
-        Layout = layout;
-    }
+    /// <summary>Born empty, over nothing: what it will hold is what the bodies learn.</summary>
+    internal Collisions() { }
 
     // ---- the facts ----
 
@@ -54,7 +50,7 @@ internal sealed class Collisions
     internal int Meet(string who, Position at)
     {
         if (at == null) throw new GolemDomainException("Collisions.Meet: 'at' was not given");
-        encounters.Add(new Peer(who, at, Layout.ZoneOf(at)?.Name ?? ""));
+        encounters.Add(new Peer(who, at));
         return encounters.Count;
     }
 
@@ -113,7 +109,7 @@ internal sealed class Collisions
             var members = group.Select(i => marks[i]).ToList();
             var centre = new Position(members.Average(m => m.At.X), members.Average(m => m.At.Y));
             var ordered = members.OrderBy(m => Math.Atan2(m.At.Y - centre.Y, m.At.X - centre.X)).ToList();
-            obstacles.Add(new Thing(ordered, centre, Layout.ZoneOf(centre)?.Name ?? ""));
+            obstacles.Add(new Thing(ordered, centre));
         }
         obstacles.AddRange(encounters);
         return obstacles;

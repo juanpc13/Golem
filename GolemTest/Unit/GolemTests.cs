@@ -21,7 +21,7 @@ public class GolemTests
     public void Visit_APoint_HandsOutARouteThatIsPending_AndIsTheOperators()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -42,7 +42,7 @@ public class GolemTests
     public void Visit_APlace_HeadsForItsCentre_AndAnUnknownPlaceOrAPointOffTheMapIsRefused()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -60,7 +60,7 @@ public class GolemTests
     public void Visit_WhenNoWayFits_IsRefusedBeforeAnythingIsMinted()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -76,7 +76,7 @@ public class GolemTests
     public void Cover_HandsOutARouteWhoseOrderOfStopsTheGolemChooses()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -89,7 +89,7 @@ public class GolemTests
     public void Follow_TakesAPointAPeerReached_WithAHandleOfItsOwn_AndItFollows()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -107,7 +107,7 @@ public class GolemTests
     public void TheGolem_LearnsWhereItsBodyStands_FromEveryActThatBringsThePose()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -127,7 +127,7 @@ public class GolemTests
     public void AToldPoint_IsPlannedAtOnce_FromWhereTheGolemKnowsItsBodyStands()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -143,7 +143,7 @@ public class GolemTests
     public void AToldPoint_WhileBusy_IsPlannedFromWhereTheWayUnderwayEnds()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -158,7 +158,7 @@ public class GolemTests
     public void AToldPoint_BeforeAnyActBroughtThePose_IsRefused()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -170,7 +170,7 @@ public class GolemTests
     public void Awake_TheGolemKeepsWhereItsBodyStands_AndAPlanUnderway_IsDecidedAgainFromThere()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -187,7 +187,7 @@ public class GolemTests
     public void Awake_WithNothingUnderway_OnlyKeepsWhereItStands()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -202,7 +202,7 @@ public class GolemTests
     public void Awake_WhileHeld_TheWayUnderwayStaysAsItWas()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -221,7 +221,7 @@ public class GolemTests
     public void TheBump_IsTheGolems_ItReckonsTheTouchFromTheBody_FindsItsRouteUnderway_AndTheRouteCorrectsInside()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -241,7 +241,7 @@ public class GolemTests
     public void ATouchOnTheLeftFlank_LandsALeftOfTheBody()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -254,7 +254,7 @@ public class GolemTests
     public void APeersBump_IsHeardAndLearnedAsAMark_UnlessItLiesOnAWallWeBothKnow()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -272,7 +272,7 @@ public class GolemTests
     public void APeersTouchThatLandedOnMyBody_AnnulsMyLastBump_AndKeepsTheEncounter()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -310,7 +310,7 @@ public class GolemTests
     public void AnIdleGolem_SettingOutAfresh_PlansAroundNobodyItMetWhileStanding()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -327,7 +327,7 @@ public class GolemTests
     public void APeersTouchFarFromMyBody_IsLearnedAsAMark_AndMyBumpStands()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -343,7 +343,7 @@ public class GolemTests
     public void OnlyTheLastBump_CanBeAnnulled_ByAWordThatLandsOnIt()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -368,7 +368,7 @@ public class GolemTests
     public void TheSameWordHeardTwice_IsHeardOnce()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -386,7 +386,7 @@ public class GolemTests
     public void AStandingBody_Touched_WritesItsBump_MarksNothing_AndTheMoversWordIsNoThingEither()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -407,7 +407,7 @@ public class GolemTests
     public void TheMover_HearingTheStandingBodysWord_AnnulsItsMark()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -424,7 +424,7 @@ public class GolemTests
     public void AThirdParty_HearingTwoWordsThatLandOnEachOther_LearnsNoThing()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -442,7 +442,7 @@ public class GolemTests
     public void MeetingAPeer_TakesTheMarksBack_AndForgettingDropsWhatStoodThere()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -467,7 +467,7 @@ public class GolemTests
     public void TheOperatorHoldsTheGolem_WhereItsBodyStands_AndLetsItGoOn()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -493,7 +493,7 @@ public class GolemTests
     public void AStaleFollowedPoint_IsOvertakenByANewerOne_AndTheOperatorsPointNeverIs()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -512,7 +512,7 @@ public class GolemTests
     public void LettingGo_AbandonsEveryPendingRoute_AndAHandleIsNeverMintedAgain()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -531,7 +531,7 @@ public class GolemTests
     public void AQueuedRoute_MeasuresItsFirstOrder_FromWhereTheBodyReallyStands_NotFromThePlannedEnd()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -558,7 +558,7 @@ public class GolemTests
     public void ThePlannedEnd_IsWhereTheNextErrandStarts_WhileTheGolemIsBusy()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -575,7 +575,7 @@ public class GolemTests
     public void TheRoadLeft_RunsThroughEveryStopAhead_AlongThePassages_AndTheTimeCountsTheLingers()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -594,7 +594,7 @@ public class GolemTests
     public void WithNothingPending_TheRoadLeftIsZero_AndWithNoRoadItIsAsTheCrowFlies()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -616,7 +616,7 @@ public class GolemTests
     public void TheGolem_AnswersForItsBody_WhereItFits_AndHowFarAreasLie()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -637,14 +637,13 @@ public class GolemTests
     public void AGolem_ReceivesItsModules_AndRefusesNothingGiven()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(null, map, collisions)).Message, "a golem needs a body to drive");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, null, collisions)).Message, "a golem needs its map, laid out");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, map, null)).Message, "even empty");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, Catalog.RingCorridor(), collisions)).Message, "over the golem's own layout");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(null, new Position(1, 1))).Message, "'from' was not given");
         var same = new Position(2.0, 9.5);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(same, same)).Message, "the same position");

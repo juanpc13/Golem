@@ -38,7 +38,7 @@ public class JournalAcceptanceTests
             + Catalog.Warehouse().AsRelease()
             + @"
                 upgrade('init') {
-                    collisions = Collisions(map);
+                    collisions = Collisions();
                     g = Golem(body, map, collisions);
                 }
             ").PerformCommand();
@@ -174,7 +174,7 @@ public class JournalAcceptanceTests
         string json = perf.Actor.Using(@"
             print collisions.All().Count 'total';
             foreach (obstacles in collisions.All()) {
-                print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size', obstacles.Who 'who';
+                print obstacles.Kind 'kind', map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size', obstacles.Who 'who';
                 foreach (vertices in obstacles.Vertices()) { print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal'; }
             }
         ").PerformQuery();
@@ -182,7 +182,7 @@ public class JournalAcceptanceTests
         Assert.AreEqual(3, doc.RootElement.GetProperty("total").GetInt32(), "two things and one peer");
         var list = doc.RootElement.GetProperty("obstacles");
         Assert.AreEqual("thing", list[0].GetProperty("kind").GetString());
-        Assert.AreEqual("east", list[0].GetProperty("zone").GetString(), "the flat list says the zone: no need to walk the places");
+        Assert.AreEqual("east", list[0].GetProperty("zone").GetString(), "the flat list says the zone, asked of the map with the obstacle's centre (ajuste 54): no need to walk the places");
         Assert.AreEqual(3, list[0].GetProperty("vertices").GetArrayLength(), "its three touches, each with the normal");
         Assert.AreEqual("peer", list[2].GetProperty("kind").GetString());
         Assert.AreEqual("blue", list[2].GetProperty("who").GetString());

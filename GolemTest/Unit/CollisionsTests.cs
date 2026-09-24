@@ -15,8 +15,7 @@ public class CollisionsTests
     [TestMethod]
     public void AMark_IsATouchWithItsNormal_AndATouchWithinATenthIsTheSameMark()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         Assert.AreEqual(1, collisions.Mark(new Pose(10.25, 5.85, -1.5708)), "the crate's north face, touched heading south");
         Assert.AreEqual(1, collisions.Mark(new Pose(10.25, 5.9, -1.5708)), "a touch within a tenth of a metre is the same mark");
@@ -27,8 +26,7 @@ public class CollisionsTests
     [TestMethod]
     public void MarksCloseTogether_AreJoinedIntoOneObstacle_WhoseVerticesOutlineIt()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         collisions.Mark(new Pose(10.25, 5.85, -1.5708));    // the crate's north face
         collisions.Mark(new Pose(10.25, 5.15, 1.5708));    // its south face
@@ -40,7 +38,6 @@ public class CollisionsTests
         Assert.AreEqual(2, obstacles.Count, "three touches on one thing, one on another");
         var crate = obstacles[0];
         Assert.AreEqual("thing", crate.Kind);
-        Assert.AreEqual("east", crate.Where, "the crate stands in the east corridor");
         Assert.AreEqual(3, crate.Size, "the three touches outline one obstacle");
         Assert.AreEqual("polygon", crate.Shape);
         Assert.AreEqual(3, crate.Vertices().Count);
@@ -48,15 +45,13 @@ public class CollisionsTests
         var normals = crate.Vertices().Select(v => v.Heading).ToList();
         Assert.IsTrue(normals.Any(n => Math.Abs(n - -1.5708) < 0.001) && normals.Any(n => Math.Abs(n - 1.5708) < 0.001),
             "each vertex keeps the normal of ITS touch: the faces are told apart");
-        Assert.AreEqual("storage", obstacles[1].Where);
         Assert.AreEqual("point", obstacles[1].Shape, "one touch is a point, not a figure yet");
     }
 
     [TestMethod]
     public void AThingIsAFigure_TheBoxAroundItsMarks_GrownByAMarksReachAndAMargin_ThenByTheBody()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         // 14-sep-2026: one figure per thing, so the second way around a crate takes the width the crate showed
         collisions.Mark(new Pose(5.5, 5.85, -1.5708));   // the crate's north face, touched by a body heading south
@@ -74,8 +69,7 @@ public class CollisionsTests
     [TestMethod]
     public void APeersBumpHeard_IsKeptWithWhereThePeerStood_AndNamesWhoWasNear()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         Assert.AreEqual(1, collisions.Hear("blue", new Position(4.85, 9.5), new Position(5.1, 9.5)), "blue's touch, and where blue stood");
         int heard = collisions.HeardCount;
@@ -91,8 +85,7 @@ public class CollisionsTests
     [TestMethod]
     public void MeetingAPeer_TakesTheMarksBack_AndKeepsThePeerInTheWay_UntilThePeersMoveOn()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         collisions.Hear("blue", new Position(4.85, 9.5), new Position(5.1, 9.5));
         collisions.Mark(new Pose(4.85, 9.5, 0.0));                // what blue's bump was learned as
@@ -121,7 +114,6 @@ public class CollisionsTests
 
         var peer = collisions.All().Single(o => o.Kind == "peer");
         Assert.AreEqual("blue", peer.Who);
-        Assert.AreEqual("north", peer.Where, "the encounter stands in the north hall");
         Assert.AreEqual("point", peer.Shape);
         Assert.AreEqual(0, peer.Vertices().Count, "a peer outlines nothing: bodies move on");
         Assert.AreEqual("thing", collisions.All()[0].Kind, "the things come first, the peers after them, as history");
@@ -130,8 +122,7 @@ public class CollisionsTests
     [TestMethod]
     public void ForgettingAThing_DropsEveryMarkThatOutlinedIt_AndANewTouchThereIsANewObstacle()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         collisions.Mark(new Pose(10.25, 5.85, -1.5708));   // three touches on the crate of the east corridor
         collisions.Mark(new Pose(10.25, 5.15, 1.5708));
@@ -156,8 +147,7 @@ public class CollisionsTests
     [TestMethod]
     public void ForgettingAnEncounter_DropsThatPeer_AndLeavesTheThings()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         collisions.Meet("blue", new Position(4.7, 9.5));
         collisions.Mark(new Pose(10.25, 5.85, -1.5708));
@@ -173,7 +163,7 @@ public class CollisionsTests
     public void TheObstaclesOfAZone_AreReadThroughTheZone()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
         collisions.Mark(new Pose(10.25, 5.85, -1.5708));
         collisions.Mark(new Pose(2.0, 9.5, 0.0));
@@ -183,12 +173,10 @@ public class CollisionsTests
     }
 
     [TestMethod]
-    public void TheModule_IsMeasuredOverALayout_AndRefusesNothingGiven()
+    public void TheModule_RefusesNothingGiven()
     {
-        var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
 
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Collisions(null)).Message, "layout");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => collisions.Mark(null)).Message, "needs the pose of the touch");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => collisions.KnowsAt(null)).Message, "not given");
     }

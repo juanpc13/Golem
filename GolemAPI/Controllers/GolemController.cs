@@ -155,7 +155,7 @@ public class GolemController : Controller
             print collisions.All().Count 'total', collisions.Things().Count 'things',
                   collisions.EncounterCount 'met', collisions.MarkCount 'marks';
             foreach (obstacles in collisions.All()) {
-                print obstacles.Kind 'kind', obstacles.Where 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
+                print obstacles.Kind 'kind', map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
                       obstacles.Who 'who', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
                 foreach (vertices in obstacles.Vertices()) {
                     print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal', vertices.Reach 'reach';

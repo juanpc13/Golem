@@ -149,6 +149,15 @@ internal sealed class MapLayout : Map
         return null;
     }
 
+    /// <summary>The NAME of the zone a point stands in, or "" when the map holds nothing there: what a table prints beside an
+    /// obstacle's centre (ajuste 54, 24-sep-2026: the zone is the map's answer, not the obstacle's — and a query cannot ask a
+    /// null zone its name).</summary>
+    internal string ZoneNameOf(Position at)
+    {
+        if (at == null) throw new GolemDomainException("MapLayout.ZoneNameOf: 'at' was not given");
+        return ZoneOf(at)?.Name ?? "";
+    }
+
     /// <summary>The zone a point stands in. A point on a shared wall belongs to the first laid out.</summary>
     internal Zone ZoneAt(Position at)
     {

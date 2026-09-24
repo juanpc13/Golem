@@ -85,7 +85,7 @@ public sealed class OrderPushLabTests
                 + Catalog.Warehouse().AsRelease()
                 + @"
                     upgrade('init') {
-                        collisions = Collisions(map);
+                        collisions = Collisions();
                         g = Golem(body, map, collisions);
                     }
                 ")
@@ -307,7 +307,7 @@ public sealed class OrderPushLabTests
             + Catalog.Warehouse().AsRelease()
             + @"
                 upgrade('init') {
-                    collisions = Collisions(map);
+                    collisions = Collisions();
                     g = Golem(body, map, collisions);
                 }
             ")
@@ -577,7 +577,7 @@ public sealed class OrderPushLabTests
                 + Catalog.Warehouse().AsRelease()
                 + @"
                     upgrade('init') {
-                        collisions = Collisions(map);
+                        collisions = Collisions();
                         g = Golem(body, map, collisions);
                     }
                 ")

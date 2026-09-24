@@ -137,7 +137,7 @@ public class MapLayoutTests
     public void OverTheWarehouse_TheShortestRoad_CutsThroughTheCentre_OrTakesTheCorridor()
     {
         var map = Catalog.Warehouse();
-        var planner = new RoutePlanner(map, new Collisions(map), 0.25);
+        var planner = new RoutePlanner(map, new Collisions(), 0.25);
 
         // kitchen -> garage: door to door in ONE straight run through the north hall, the centre and the south hall
         Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", planner.Road(map.Find("kitchen").Center, map.Find("garage").Center).AsPlan());
@@ -160,7 +160,7 @@ public class MapLayoutTests
 
         // from the northwest room to the southeast one: out a door into an aisle, bending on the crossing's two open
         // boundaries (the straight run would graze the crossing's corner), along the other aisle and in through a door
-        var planner = new RoutePlanner(map, new Collisions(map), 0.25);
+        var planner = new RoutePlanner(map, new Collisions(), 0.25);
         string plan = planner.Road(map.Find("northwest").Center, map.Find("southeast").Center).AsPlan();
         StringAssert.StartsWith(plan, "northwest/");
         Assert.AreEqual(2, plan.Split("crossing~").Length - 1, "in through one aisle, out through the other: " + plan);
@@ -180,7 +180,7 @@ public class MapLayoutTests
         Assert.AreEqual(16, map.PassageCount, "eight doors to the corridor, four between the rooms, four open stretches");
         Assert.AreEqual("west-corridor", map.ZoneAt(new Position(0.75, 5.5)).Name);
 
-        var planner = new RoutePlanner(map, new Collisions(map), 0.25);
+        var planner = new RoutePlanner(map, new Collisions(), 0.25);
         // neighbouring rooms are joined directly: centre to centre through the door they share
         Assert.AreEqual(4.0, planner.RoadLength(map.Find("northwest").Center, map.Find("northeast").Center), 0.01, "two metres to the door, two more to the neighbour's centre");
         // the corridor runs all the way round: from one stretch into the next through an open boundary, in one straight run
@@ -210,8 +210,8 @@ public class MapLayoutTests
         Assert.AreEqual("Zone.Contains: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => kitchen.Contains(null)).Message);
         Assert.AreEqual("MapLayout.Crossings: 'to' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Crossings(new Position(1, 1), null, 0.25)).Message);
         Assert.AreEqual("MapLayout.Pivots: 'opening' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Pivots(null, 0.25)).Message);
-        Assert.AreEqual("a golem needs a body to drive", Assert.ThrowsException<GolemDomainException>(() => new Golem(null, map, new Collisions(map))).Message);
-        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new Route(1, null, false, false, map, new Collisions(map), 0.25, 0.6, _ => { })).Message);
+        Assert.AreEqual("a golem needs a body to drive", Assert.ThrowsException<GolemDomainException>(() => new Golem(null, map, new Collisions())).Message);
+        Assert.AreEqual("Route.Route: 'stop' was not given", Assert.ThrowsException<GolemDomainException>(() => new Route(1, null, false, false, map, new Collisions(), 0.25, 0.6, _ => { })).Message);
     }
 
     [TestMethod]
@@ -242,4 +242,15 @@ public class MapLayoutTests
 
     // ---- helpers: the domain's own objects, nothing else ----
 
+    [TestMethod]
+    public void TheZoneOfAPoint_IsNamedByTheMap_AndEmptyWhereItHoldsNothing()
+    {
+        // ajuste 54 (24-sep-2026): an obstacle no longer says its zone; a table asks the map where the obstacle's centre stands
+        var map = Catalog.Warehouse();
+        Assert.AreEqual("east", map.ZoneNameOf(new Position(10.13, 5.5)), "the crate's centre, in the east corridor");
+        Assert.AreEqual("storage", map.ZoneNameOf(new Position(8.0, 9.5)));
+        Assert.AreEqual("north", map.ZoneNameOf(new Position(4.7, 9.5)), "where a peer was met, in the north hall");
+        Assert.AreEqual("", map.ZoneNameOf(new Position(2.0, 5.5)), "a solid block: nowhere the map holds, and no refusal — a table prints it");
+        Assert.AreEqual("MapLayout.ZoneNameOf: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => map.ZoneNameOf(null)).Message);
+    }
 }

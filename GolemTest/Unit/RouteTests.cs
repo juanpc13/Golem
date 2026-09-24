@@ -22,7 +22,7 @@ public class RouteTests
     public void TheErrand_DecidesItsWholeWayInside_AndAsksOnlyTheNextThing()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -55,7 +55,7 @@ public class RouteTests
     public void TheWay_ReadsAsOneLine_NamingEveryDoorAndStop()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -68,7 +68,7 @@ public class RouteTests
     public void OneMoreStop_IsToldToTheRoute_AndTheWayIsDecidedAgainThroughThemAll()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -87,7 +87,7 @@ public class RouteTests
     public void ACoverRoute_LetsTheGolemChooseTheOrderOfItsStops_AndKeepsIt()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -105,7 +105,7 @@ public class RouteTests
     public void TheWay_IsWalkedOneLegAtATime_ATurnBeforeAMove_AndTheLastStopCompletes()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -135,7 +135,7 @@ public class RouteTests
     public void ATurn_ThatLeftTheBodyFacingElsewhere_IsAskedAgain_AtMostThreeTimes()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -162,7 +162,7 @@ public class RouteTests
     public void TheArrival_IsOneAct_AndTheRouteKnowsWhetherItAskedATurnOrAMove()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -181,7 +181,7 @@ public class RouteTests
     public void ARouteWithSeveralStops_ReachesEachInTurn_AndCompletesOnTheLast()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -200,7 +200,7 @@ public class RouteTests
     public void SeveralStopsInOneRoom_AreReachedInOrder_TheFirstWithAnAdvanceOfNothing()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -219,7 +219,7 @@ public class RouteTests
     public void ADoor_IsCrossedStraight_LiningUpOffTheWallOnBothSides()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -241,7 +241,7 @@ public class RouteTests
     public void ADoor_FollowedByABendOnAnOpening_IsStillCrossedStraight()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -260,7 +260,7 @@ public class RouteTests
     public void TheNextLegsPose_AndThePlannedEnd_AreReadFromTheRoute()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -277,7 +277,7 @@ public class RouteTests
     public void ATouchOnAWallItKnows_IsAGraze_ConcludedInside()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -293,7 +293,7 @@ public class RouteTests
     public void ATouchOnNothingCharted_IsABump_ConcludedInside()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -308,7 +308,7 @@ public class RouteTests
     public void ABump_IsATouchAndAMarkAtOnce_AndTheRouteBacksOffFirst()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -328,7 +328,7 @@ public class RouteTests
     public void AfterABump_TheRetreatLeavesRoomToTurn_AndTheRoadGoesAroundIfTheBodyFits()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -351,7 +351,7 @@ public class RouteTests
     public void ABump_GrowsTheWay_FromOneLegToTheCorrectionsAndTheStop()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -386,10 +386,10 @@ public class RouteTests
         // 22-sep-2026 live: annulled, both ways went straight again and the bodies met a second time and stalled
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));   // the fleet shares one body
         var redMap = Catalog.Warehouse();
-        var redCollisions = new Collisions(redMap);
+        var redCollisions = new Collisions();
         var red = new Golem(body, redMap, redCollisions);
         var greenMap = Catalog.Warehouse();
-        var greenCollisions = new Collisions(greenMap);
+        var greenCollisions = new Collisions();
         var green = new Golem(body, greenMap, greenCollisions);
         var south = red.Visit(new Pose(5.4, 9.5, -1.5708), new Position(5.5, 1.5));   // red comes down the centre hall…
         var north = green.Visit(new Pose(5.6, 1.5, 1.5708), new Position(5.5, 9.5));     // …green comes up it
@@ -416,7 +416,7 @@ public class RouteTests
     public void ATouch_CorrectsTheWayInside_AndGrazesSpendThePatienceOnTheLeg_UntilTheRouteFailsItself()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -444,7 +444,7 @@ public class RouteTests
     public void StrandedAfterARetreat_TheRouteDecidesItsWayAgainFromThere_ByItself()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -465,7 +465,7 @@ public class RouteTests
     public void AnAnnulledBump_CountsNoMore_AndTheWayFromTheRetreatIsDecidedAgainWithoutTheMark()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -493,7 +493,7 @@ public class RouteTests
     public void AnAnnulledBump_AfterTheRetreatWasWalked_DecidesTheWayAgainFromWhereTheBodyStands()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -513,7 +513,7 @@ public class RouteTests
     public void AHeldRoute_KeepsItsWayAndItsPlace_AndResumesTowardItsNextLegFromWhereTheBodyStands()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -542,7 +542,7 @@ public class RouteTests
     public void AFailedRoute_IsNoLongerPending_AndCannotFailAgain()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -558,7 +558,7 @@ public class RouteTests
     public void AnAbandonedRoute_StaysAbandoned_AndAbandoningNeedsAReason()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -574,7 +574,7 @@ public class RouteTests
     public void AReachedStop_CanBeAnnounced_AndARouteWithoutOneCannot()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -593,7 +593,7 @@ public class RouteTests
     public void TheFollowerStandoff_IsTwoBodiesAndAClearance_NotALooseNumber()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -608,7 +608,7 @@ public class RouteTests
     public void AFollowerOnItsLastStop_PullsOver_BeforeTheRouteCompletes()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -629,7 +629,7 @@ public class RouteTests
     public void DecidingPastAPeer_StepsOutOfItsWayFirst_AndTheStepIsALegLikeAnyOther()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -653,7 +653,7 @@ public class RouteTests
     public void WithNowhereToStepAside_TheWayIsThePlainOne()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
@@ -669,7 +669,7 @@ public class RouteTests
     public void ARoute_RefusesNothingGiven_AndAStopNowhereOnTheMap()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 

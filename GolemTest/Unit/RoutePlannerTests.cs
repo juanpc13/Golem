@@ -19,7 +19,7 @@ public class RoutePlannerTests
     public void FromTheNorthHall_ToTheSouthHall_IsOneStraightLeg_TheOpeningsCrossedNotBentOn()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         // Juan, 21-sep-2026: "¿por qué el dominio no une esos puntos y llega directo?"
@@ -30,7 +30,7 @@ public class RoutePlannerTests
     public void WhereTheStraightRun_WouldGrazeABlocksCorner_TheWayBendsOnTheOpeningsPivots()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         // the straight run would cross north~center 0.46 m from the block's corner: the way bends on the pivots by the corners
@@ -41,7 +41,7 @@ public class RoutePlannerTests
     public void TheShortestRoad_CutsThroughTheCentre_WhenThatIsShorter()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         // kitchen (2,9.5) -> door (4,9.5) -> ONE straight run through the north hall, the centre and the south hall -> door (7,1.5) -> garage (9,1.5)
@@ -57,7 +57,7 @@ public class RoutePlannerTests
     public void TheShortestRoad_TakesTheCorridor_WhenThatIsShorter()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         // kitchen (2,9.5) -> door (0.75,8) -> west corridor -> door (0.75,3) -> living (2,1.5)
@@ -70,7 +70,7 @@ public class RoutePlannerTests
     public void AnErrandInTheSameRoom_HasAWayOfOneLeg_TheStopItself()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         Assert.AreEqual("kitchen@2,9.5", planner.Road(new Position(3.0, 9.0), new Position(2.0, 9.5)).AsPlan(), "same room, nothing in between");
@@ -82,7 +82,7 @@ public class RoutePlannerTests
     public void ARoadThroughSeveralStops_IsWalkedAsOne_InTheOrderGiven()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         // from the living room: garage first, back out through the same door, the centre shortcut to the kitchen, then the storage
@@ -96,7 +96,7 @@ public class RoutePlannerTests
     public void TheBestOrder_MakesTheWholeRoadShortest()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         // from the living room the shortest round is garage (7), then storage by the east corridor (8.9), then kitchen (7);
@@ -112,7 +112,7 @@ public class RoutePlannerTests
     public void AMarkInACorridorTooNarrowForTheBody_ClosesIt_AndTheRoadGoesRound()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         var storage = map.Find("storage").Center; var garage = map.Find("garage").Center;
@@ -129,7 +129,7 @@ public class RoutePlannerTests
     public void AMarkInAWideRoom_IsSkirted_WithAroundLegs()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         collisions.Mark(new Pose(9.0, 9.5, 0.0));   // something in the middle of the storage room, touched heading east
@@ -145,7 +145,7 @@ public class RoutePlannerTests
     public void AfterABump_TheRoadFromTheRetreat_LeavesTheWayItCame_NeverThroughTheMark()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         collisions.Mark(new Pose(10.25, 5.85, -1.5708));       // the crate, met halfway down the corridor
@@ -158,7 +158,7 @@ public class RoutePlannerTests
     public void ABodyStandingAmongMarks_CanStillLeave_ButNotThroughThem()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         collisions.Mark(new Pose(8.2, 9.3, -1.5708));   // two touches on something right beside the body — a thing 0.6 wide
@@ -177,7 +177,7 @@ public class RoutePlannerTests
     public void ABodyStandingInsideItsOwnMark_CanStillLeave_MovingAwayFromIt()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         // From the 8-sep live run: red grazed the crate's corner with its side; the touch was estimated head-on, so the mark fell
@@ -191,7 +191,7 @@ public class RoutePlannerTests
     public void WhenNoRoadFitsTheBody_ThePlannerSaysSo_CountingTheMarks()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         collisions.Mark(new Pose(7.0, 1.5, 0.0));           // something in the south/garage door
@@ -205,14 +205,14 @@ public class RoutePlannerTests
         var island = new MapLayout("islands");
         var a = island.Area("a").At(new Position(0, 0)).Size(2, 2);
         island.Area("b").At(new Position(5, 5)).Size(2, 2);
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new RoutePlanner(island, new Collisions(island), 0.25).Road(a.Center, new Position(6, 6))).Message, "through the map");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new RoutePlanner(island, new Collisions(), 0.25).Road(a.Center, new Position(6, 6))).Message, "through the map");
     }
 
     [TestMethod]
     public void ThePlanner_RefusesNothingGiven_AndABodyOfNegativeRadius()
     {
         var map = Catalog.Warehouse();
-        var collisions = new Collisions(map);
+        var collisions = new Collisions();
         var planner = new RoutePlanner(map, collisions, 0.25);
 
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new RoutePlanner(null, collisions, 0.25)).Message, "layout");

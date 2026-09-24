@@ -82,7 +82,7 @@ public sealed class ReactionPatternLabTests
             + Catalog.Warehouse().AsRelease()
             + @"
                 upgrade('init') {
-                    collisions = Collisions(map);
+                    collisions = Collisions();
                     g = Golem(body, map, collisions);
                 }
             ")

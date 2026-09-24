@@ -97,7 +97,7 @@ internal sealed class GolemPerformance : PerformanceV2
                 }
             }
             upgrade('init') {
-                collisions = Collisions(map);
+                collisions = Collisions();
                 g = Golem(body, map, collisions);
             }
         ")

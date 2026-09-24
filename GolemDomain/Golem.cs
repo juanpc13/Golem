@@ -40,7 +40,6 @@ internal sealed class Golem
         this.body = body;
         layout = map;
         this.collisions = collisions;
-        if (collisions.Layout != layout) throw new GolemDomainException("the collisions must be measured over the golem's own layout");
     }
 
     // ---- the body, in base units, for the golem's own sums (the journal reads the module: body.Radius.InMeters) ----
