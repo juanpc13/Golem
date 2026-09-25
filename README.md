@@ -24,7 +24,7 @@ in [CLAUDE.md](CLAUDE.md).
 │  RobotMechanics = the output target: the print → /golem/blue/order │                │
 └───────┬────────┘                                                    └───────┬────────┘
         │  rosbridge (JSON over websocket) :9090  ↓ orders                    │
-        │  HTTP /robot/arrived|bump|stuck ↑   action + amount ↓ (advance…)   │
+        │  /golem/<body>/result ↑ done|bumped|stuck   order ↓ ticket + action + amount   │
         └────────────────────────────┬────────────────────────────────────────┘
                                      │
                           ┌──────────┴───────────┐
@@ -112,7 +112,7 @@ golem's journal concluded and on what the world saw (contacts, true pose). The w
 `GolemTest/appsettings.json` says `mock` — a world held in memory, built from the same `sim/world/plan.json` as Gazebo,
 with bodies that behave like `body.py`: a scenario takes about a second and needs nothing running. To run the scenarios
 against the fleet deployed in Gazebo, say `gazebo` — in the environment, or in a `GolemTest/appsettings.local.json`
-(not versioned) with `{"Lab": {"World": "gazebo"}}`. The deployed fleet is let go, its obstacles forgotten and the crates
+(not versioned) with `{"Lab": {"World": "gazebo"}}`. A golem of the fleet that does not answer is left out, and a scenario that needs it is inconclusive. The deployed fleet is let go, its obstacles forgotten and the crates
 cleared before the scenarios; a simulator that does not answer makes them inconclusive, never red.
 
 ```bash
@@ -127,10 +127,10 @@ GOLEM_LAB_WORLD=gazebo dotnet test GolemTest --filter TestCategory=scenario
 
 | Path | Role |
 |---|---|
-| `sim/` | The world. `world/plan.json` is the floor plan (places, doors, open boundaries, bodies, obstacles); `world/build_world.py` turns it into the Gazebo world and the bridge's topic mappings at image build; `kiosk/kiosk.sh` starts physics, bridges, rosbridge, the GUI and one `bridge/body.py` per body — the ROBOT: it takes its golem's order on `/golem/<body>/order` (turn, run, stop), drives the body, backs off after a touch and reports to the golem's `/robot/*` endpoints; `bridge/teleport.py` is the lab lever that puts a body back on its mark. |
+| `sim/` | The world. `world/plan.json` is the floor plan (places, doors, open boundaries, bodies, obstacles); `world/build_world.py` turns it into the Gazebo world and the bridge's topic mappings at image build; `kiosk/kiosk.sh` starts physics, bridges, rosbridge, the GUI and one `bridge/body.py` per body — the ROBOT: it takes its golem's order on `/golem/<body>/order` (a ticket, an action, an amount), drives the body and says what came of it on `/golem/<body>/result` — done, bumped, stuck — knowing nothing of routes or golems (ajuste 55); `bridge/teleport.py` is the lab lever that puts a body back on its mark. |
 | `GolemDomain/` | The pure domain, no framework references: `Golem` (the subject: missions, decisions, orders), `Body`, `Maps` (`Map`, `Area`, `Door`, `Opening`: information only), `Layouts` (`Layout`, `Zone`, `Wall`, the `Catalog`: the map on the plane), `Touches` (`Collisions`, `Mark`, `Obstacle`: what the bodies learned), `Routes` (`RoutePlanner`: Dijkstra over doors, openings and detours; doors are crossed straight, openings away from their corners). |
 | `GolemTest/` | `EndToEnd/`: the whole flows the API runs under the hood, exercised through the golem as the journal writes them, one file per module. `Integration/`: the engine's acceptance tests and labs, the golem assembled in process (`GolemHostTests`), and the scenarios over a world (`World/`: `MockWorld` in memory, `GazeboWorld` over the deployed fleet, chosen by `appsettings.json`). `dotnet test GolemTest` |
-| `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Choreography/` (`GolemEmbodiment` — the golem given a body: the action methods with every journal script, what the body reports, the touch protocol, the clock, the operator's levers; `RobotMechanics` — the actor's output target: one reaction per act shape pushes the print here, parsed, switched on and sent to the body over the websocket as one of its base actions: advance, back, turnLeft, turnRight, stop, continue; `GolemSpeech` — the tell reactions and uptakes), `Panel/` (the page and the journal tap), `Controllers/` (`GolemController`: validates the JSON and calls the GolemEmbodiment's action methods, where EVERY journal script lives, each ending in the print of the next order — pushed to `RobotMechanics` by the engine's own reaction on the act; the robot reports on `/robot/arrived`, `/robot/bump`, `/robot/stuck`). |
+| `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Choreography/` (`GolemEmbodiment` — the golem given a body: the action methods with every journal script, what the body reports, the touch protocol, the clock, the operator's levers; `RobotMechanics` — the actor's output target: one reaction per act shape pushes the print here, parsed, switched on and sent to the body over the websocket as one of its base actions: advance, back, turnLeft, turnRight, stop, continue; `GolemSpeech` — the tell reactions and uptakes), `Panel/` (the page and the journal tap), `Controllers/` (`GolemController`: validates the JSON and calls the GolemEmbodiment's action methods, where EVERY journal script lives, each ending in the print of the next order — pushed to `RobotMechanics` by the engine's own reaction on the act; the robot reports on `/golem/<body>/result`, `/golem/<body>/result`, `/golem/<body>/result`). |
 | `journal/` | The golems' journals (FileSystem backend), one folder per golem. Git-ignored; disposable in this spike. |
 | `PLAN-Golem.md` | The team's plan and decision log (Spanish): what was tried, what was retired, what the engine taught us. |
 
@@ -181,7 +181,7 @@ Endpoints, per golem:
 | `POST /reset` · `POST /reset-everything` `{"cascade": true}` | Abandon every pending mission (journaled, one command) and put the body back; wipe the journals of this golem and (with cascade) its peers and reboot them reborn |
 | `GET /events` | The panel's feed: the whole journal replayed, then every record as it lands, plus runtime events |
 | `POST /tell` | Where a peer's tells arrive |
-| `POST /robot/arrived` `{"route": 3}` · `POST /robot/bump` `{"route", "with", "x", "y", "heading", "px", "py", "ptheta"}` · `POST /robot/stuck` | Where the BODY reports (`sim/bridge/body.py`) — its whole vocabulary: it arrived (a turn made, a point reached), it bumped (the motors stopped at once; what to do is the golem's), it is stuck. The endpoint writes the act and the print of that act is the next order, sent back to the body |
+| `/golem/<body>/order` (to the body) `{"order": 17, "action": "advance", "amount": 1.35, "speed": 2.0}`; `/golem/<body>/result` (from it) `{"order": 17, "result": "done"}`, `"bumped"` (x, y, heading, bearing), `"stuck"` (reason) | Where the BODY reports (`sim/bridge/body.py`) — its whole vocabulary: it arrived (a turn made, a point reached), it bumped (the motors stopped at once; what to do is the golem's), it is stuck. The endpoint writes the act and the print of that act is the next order, sent back to the body |
 
 Environment of a golem container: `GOLEM` (identity, names the journal), `BODY` (the model it drives),
 `HOME_AT` (its mark), `ROLES` (the body's capabilities — the roles the golem may play: `displacer` the motors, `collision-captor` the bumper; an endpoint whose role the body lacks answers 409; unset, every role — 18-sep-2026), `ROSBRIDGE_URL`, `JOURNAL_PATH`, `PANEL_PORT`, `TELL_ROUTES` (tell topic → peer
