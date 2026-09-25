@@ -15,7 +15,8 @@ The golems' map (release map_v1 in their journal) mirrors places, doors and open
 nothing of the obstacles. That is the point: when the simulator reports a body touching a crate,
 the golem has met a real collision its map never contemplated.
 
-Usage: build_world.py plan.json out_dir   -> writes out_dir/arena.sdf and out_dir/bridge.args
+Usage: build_world.py plan.json out_dir [bodies]   -> writes out_dir/arena.sdf and out_dir/bridge.args
+       bodies: the plan's bodies to put in the world, comma-separated ("blue" for a demo with blue alone); empty = all
 """
 import json
 import os
@@ -312,9 +313,15 @@ def bridge_args(bodies):
     return " ".join(args)
 
 
-def main(plan_path, out_dir):
+def main(plan_path, out_dir, keep=""):
     with open(plan_path) as f:
         plan = json.load(f)
+    wanted = [n.strip() for n in keep.split(",") if n.strip()]
+    if wanted:   # only the bodies asked for stand in the world (the plan keeps them all)
+        unknown = [n for n in wanted if n not in [b["name"] for b in plan["bodies"]]]
+        if unknown:
+            sys.exit("the plan has no body %s" % ", ".join(unknown))
+        plan["bodies"] = [b for b in plan["bodies"] if b["name"] in wanted]
     places, doors, opens = plan["places"], plan["doors"], plan["opens"]
     max_x = max(p["x"] + p["w"] for p in places)
     max_y = max(p["y"] + p["h"] for p in places)
@@ -349,6 +356,6 @@ def main(plan_path, out_dir):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         sys.exit(__doc__)
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) == 4 else "")
