@@ -27,6 +27,7 @@ public class GolemHostTests
         public Pose LatestTruth { get; private set; }
         public Contact LatestContact => null;
         public string OrderTopic => "/golem/lab/order";
+        public event Action<string> ResultReported { add { } remove { } }   // it never moves: it never reports
         public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
         public Task BindAsync(CancellationToken ct) => Task.CompletedTask;
         public Task PublishAsync(string topic, string json) { lock (Orders) Orders.Add((DateTime.UtcNow, json)); return Task.CompletedTask; }
@@ -86,7 +87,7 @@ public class GolemHostTests
         var sent = DateTime.UtcNow;
         var answer = host.Embodiment.Displacer.Move(new[] { (9.0, 9.5) });   // kitchen → storage, through the north hall
         Assert.IsTrue(answer.Ok, "the errand is written: " + answer.Refused);
-        static bool Moves(string json) => json.Contains("\"route\"");
+        static bool Moves(string json) => json.Contains("\"order\"");   // the body's words alone: a ticket, an action, an amount (ajuste 55)
         await Until(() => { lock (body.Orders) return body.Orders.Any(o => Moves(o.Json)); }, cancel.Token);
         (DateTime At, string Json) first; lock (body.Orders) first = body.Orders.First(o => Moves(o.Json));
         using var order = JsonDocument.Parse(first.Json);

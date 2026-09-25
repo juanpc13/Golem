@@ -8,7 +8,7 @@ namespace GolemAPI.Choreography.Roles;
 // reports, and the operator's word that what was learned by touching is gone. It RECEIVES the robot (the golem with its body:
 // the actor, the golem's NAME that rides beside a touch so the peers know who bumped) and builds nothing. The embodiment plays
 // it only when the body declared it (Capabilities.CollisionCaptor, `ROLES` in the compose); a body without a bumper has no
-// `/robot/bump` to answer, and the controller says so.
+// `bumped` result to take from `/golem/<body>/result`, and the embodiment says so (ajuste 55).
 //
 // WHAT THE CAPTOR DOES NOT DO: decide. What a touch WAS — a wall the map knows (a graze), a thing (marked, the way corrected
 // around it) — is the ROUTE's conclusion inside `g.Bump(me, bearing)`; FOR NOW EVERY TOUCH IS A BUMP (Juan, 18-sep-2026), the

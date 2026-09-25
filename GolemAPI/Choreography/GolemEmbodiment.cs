@@ -312,6 +312,57 @@ public sealed class GolemEmbodiment
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", text, DateTime.UtcNow));
     }
 
+    /// <summary>An order sent to the body — WHOLE, for the log, the panel and the lab (kind 'order' on the feed: the print with the ticket
+    /// the mechanics stamped); the body itself got only its words (ajuste 55).</summary>
+    internal void Told(Order order, string text)
+    {
+        Console.WriteLine($"[golem {golem}] {text}");
+        feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "order", JsonSerializer.Serialize(new
+        {
+            order = order.Ticket, route = order.Route, action = order.Action, amount = order.Amount, kind = order.Kind, name = order.Name,
+            x = order.X, y = order.Y, heading = order.Heading, following = order.Following, stopsLeft = order.StopsLeft,
+        }), text, DateTime.UtcNow));
+    }
+
+    /// <summary>What the body reported on its result topic — its only word back (ajuste 55, 24-sep-2026): `done`, `bumped` (where it
+    /// stood, facing which way, where on its shell), `stuck` (why) — handed to the role that takes it, as the /robot endpoints used to.
+    /// A body without that role, or a word without its parts: noted, nothing written.</summary>
+    public void Resulted(string json)
+    {
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
+        catch (JsonException) { Note($"a result I cannot read: {json}"); return; }
+        using (doc)
+        {
+            var e = doc.RootElement;
+            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("order", out var o) || o.ValueKind != JsonValueKind.Number
+                || !e.TryGetProperty("result", out var r)) { Note($"a result without its order or its word: {json}"); return; }
+            int order = o.GetInt32();
+            double D(string n) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : double.NaN;
+            switch (r.GetString())
+            {
+                case "done":
+                    if (Displacer == null) { Note("the body says done, but this body has no motors"); return; }
+                    Displacer.Arrived(order);
+                    return;
+                case "bumped":
+                    if (Captor == null) { Note("the body says it bumped, but this body has no bumper"); return; }
+                    double x = D("x"), y = D("y"), heading = D("heading"), bearing = D("bearing");
+                    if (double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(heading) || double.IsNaN(bearing)) { Note($"a bump without where the body stood or where it was pressed: {json}"); return; }
+                    Captor.Bumped(x, y, heading, bearing);
+                    return;
+                case "stuck":
+                    if (Displacer == null) { Note("the body says it is stuck, but this body has no motors"); return; }
+                    string reason = e.TryGetProperty("reason", out var why) ? (why.GetString() ?? "").Trim() : "";
+                    Displacer.Stuck(order, reason == "" ? "the body could not say why" : reason);
+                    return;
+                default:
+                    Note($"a result I do not know: {json}");
+                    return;
+            }
+        }
+    }
+
     // A script that faults (the domain refused inside the command, not in its Check) answers as a refusal, in its words.
     internal static string Reason(Exception ex)
     {

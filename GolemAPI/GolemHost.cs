@@ -92,6 +92,7 @@ public sealed class GolemHost : IAsyncDisposable
         Speech.Listen();
         await BodyWire.ConnectAsync(ct);
         await BodyWire.BindAsync(ct);
+        BodyWire.ResultReported += Embodiment.Resulted;   // the body's only word back (ajuste 55)
         Feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "",
             $"membrane connected — driving body '{Settings.Body}', pose from {(BodyWire.Source == PoseSource.Wheels ? "the wheels (dead reckoning: the world's truth is shown to you, never to the golem)" : "the world's truth")}",
             DateTime.UtcNow));

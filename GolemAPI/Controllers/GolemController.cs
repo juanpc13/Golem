@@ -83,50 +83,6 @@ public class GolemController : Controller
     }
 
     // ==================================================================
-    // The body's reports (sim/bridge/body.py posts them): arrived, bump, stuck — the robot's whole vocabulary.
-    // ==================================================================
-
-    // The body did the one thing it was told: a turn made, a point reached.
-    [HttpPost("robot/arrived")]
-    public IActionResult RobotArrived([FromBody] ArrivedReport report)
-    {
-        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3}");
-        var problems = report.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        var answer = displacer.Arrived(report.Route.Value);
-        if (answer == null) return Accepted("not the order the body was given");
-        return answer.Value.Ok ? Accepted() : Conflict(answer.Value.Refused);
-    }
-
-    // The body bumped: its motors stopped at once. It says where it stood and where on its shell it was pressed; where the
-    // touch landed, what it was and what follows are the domain's — the route the body carried is not consulted: the golem
-    // finds its route underway (g.Bump).
-    [HttpPost("robot/bump")]
-    public IActionResult RobotBump([FromBody] BumpReport report)
-    {
-        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + BumpReport.Shape);
-        var problems = report.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Bumper(out var captor, out var refusal)) return refusal;
-        var answer = captor.Bumped(report.BodyX.Value, report.BodyY.Value, report.BodyHeading.Value, report.Bearing.Value);
-        return answer.Ok ? Accepted() : Conflict(answer.Refused);
-    }
-
-    // The body could not: stalled, timed out.
-    [HttpPost("robot/stuck")]
-    public IActionResult RobotStuck([FromBody] StuckReport report)
-    {
-        if (report == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"route\": 3, \"reason\": \"stalled\"}");
-        var problems = report.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        var answer = displacer.Stuck(report.Route.Value, report.Reason.Trim());
-        if (answer == null) return Accepted("not the order the body was given");
-        return answer.Value.Ok ? Accepted() : Conflict(answer.Value.Refused);
-    }
-
-    // ==================================================================
     // Reads (queries) the panel asks
     // ==================================================================
 

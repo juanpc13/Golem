@@ -32,6 +32,7 @@ public sealed class RobotMechanics : IOutputSink
     private Order carrying;         // the order the body is carrying out now; null while it stands
     private Order held;             // the order the body was carrying when the operator held it: 'continue' resumes it
     private DateTime lingerUntil = DateTime.MinValue;   // the follower's linger: no order goes out to the body before this
+    private int tickets;            // the last ticket stamped on an order sent to the body (ajuste 55)
 
     public RobotMechanics(GolemEmbodiment golemEmbodiment, IBodyWire ros)
     {
@@ -215,11 +216,12 @@ public sealed class RobotMechanics : IOutputSink
         lock (gate)
         {
             if (carrying != null && carrying.SameAs(order)) return;
+            order = order with { Ticket = ++tickets };   // what the body echoes back — nothing of the route (ajuste 55)
             carrying = order;
             held = null;
             wait = lingerUntil - DateTime.UtcNow;
         }
-        golemEmbodiment.Note($"route {order.Route}: {note}{(wait > TimeSpan.Zero ? $" — after lingering {wait.TotalSeconds:0} s" : "")}");
+        golemEmbodiment.Told(order, $"route {order.Route}: {note}{(wait > TimeSpan.Zero ? $" — after lingering {wait.TotalSeconds:0} s" : "")}");
         if (wait > TimeSpan.Zero)
             _ = Task.Run(async () =>
             {
@@ -230,17 +232,17 @@ public sealed class RobotMechanics : IOutputSink
         else _ = PublishAsync(order);
     }
 
+    // The body's words alone travel to it (ajuste 55, 24-sep-2026: "el robot debe abstraerse tanto que no sepa casi nada de quien lo
+    // comanda"): the ticket it will echo back, the action, the amount — a millimetre, a milliradian is all it can use on its own
+    // odometry (ajuste 53) — and the cruise of the body declared. The route, the leg and the point stay the golem's: the feed shows them.
     private Task PublishAsync(Order order)
     {
-        var (speed, radius, retreat) = golemEmbodiment.BodyDeclared();
+        var (speed, _, _) = golemEmbodiment.BodyDeclared();
         return ros.PublishAsync(ros.OrderTopic, JsonSerializer.Serialize(new
         {
-            // the body measures what it did on its own odometry: a millimetre, a milliradian is all it can use (ajuste 53)
-            action = order.Action, amount = order.IsMove ? Resolution.Metres(order.Amount) : Resolution.Radians(order.Amount),
-            route = order.Route, kind = order.Kind, name = order.Name,
-            x = Resolution.Metres(order.X), y = Resolution.Metres(order.Y), heading = Resolution.Radians(order.Heading),
-            following = order.Following, stopsLeft = order.StopsLeft,
-            body = new { speed, radius, retreat }
+            order = order.Ticket, action = order.Action,
+            amount = order.IsMove ? Resolution.Metres(order.Amount) : Resolution.Radians(order.Amount),
+            speed
         }));
     }
 

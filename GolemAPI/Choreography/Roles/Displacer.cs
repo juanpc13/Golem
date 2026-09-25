@@ -226,12 +226,12 @@ public sealed class Displacer
     /// the print) — with where the body stands now. The EXPOSE carries only what the act does not say (ajuste 42): the route's
     /// id and whether the order done was a stop, so the reaction that tells the follower fires on a stop alone (the literal
     /// `true`) and announces for the right route; the pose it tells is captured from the `Pose(@…)` beside the act. The `route`
-    /// the body echoes is the host's token to tell a stale report from the order carried. A follower on its last stop lingers
+    /// the body echoes is the host's TICKET on the order (ajuste 55: it knows nothing of routes), to tell a stale report from the order carried. A follower on its last stop lingers
     /// before anything else, so the leader keeps its lead: the clock is the host's. Null: not the order the body was given.</summary>
-    public Answer? Arrived(int route)
+    public Answer? Arrived(int order)
     {
         var was = robot.Mechanics.Carrying;
-        if (was == null || was.Route != route) return null;
+        if (was == null || was.Ticket != order) return null;   // the ticket the body echoes: a word about another order is stale (ajuste 55)
         robot.Mechanics.Done();
         var here = robot.Pose ?? new Pose(was.X, was.Y, was.Heading);
         bool stop = was.IsMove && was.Kind == "stop";
@@ -280,13 +280,13 @@ public sealed class Displacer
 
     /// <summary>The body could not: stalled, timed out. The route fails in the body's words; the next route's order follows.
     /// Null: not the order the body was given.</summary>
-    public Answer? Stuck(int route, string reason)
+    public Answer? Stuck(int order, string reason)
     {
         var was = robot.Mechanics.Carrying;
-        if (was == null || was.Route != route) return null;
+        if (was == null || was.Ticket != order) return null;
         robot.Mechanics.Done();
         var answer = Failed(reason);
-        robot.Report(answer, $"route {route} failed: {reason}");
+        robot.Report(answer, $"route {was.Route} failed: {reason}");
         return answer;
     }
 

@@ -5,7 +5,8 @@ qué hacer, y cuando termina le dice al actor por un endpoint que ya terminó, p
 
 Its vocabulary is the robot's BASE ACTIONS, each with an AMOUNT (Juan, 17-sep-2026: "al robot se le dice muy
 sencillamente lo que debe moverse hacia adelante, qué tanto debe rotar"). Orders arrive on /golem/<body>/order
-(std_msgs/String: the JSON the golem's journal printed, plus the body it declared), switched on "action":
+(std_msgs/String — the body's words alone, ajuste 55: {"order": 17, "action": "advance", "amount": 1.35, "speed": 2.0};
+the order is a TICKET the golem stamped, the only thing the body echoes back), switched on "action":
   {"action": "advance",   "amount": 2.35, "route": 3, ...}   — move forward that many metres
   {"action": "back",      "amount": 0.60, "route": 3, ...}   — move that many metres IN REVERSE
   {"action": "turnLeft",  "amount": 1.57, "route": 3, ...}   — turn in place, counter-clockwise, that many radians
@@ -15,24 +16,24 @@ sencillamente lo que debe moverse hacia adelante, qué tanto debe rotar"). Order
   {"action": "continue"}                — take up what was left of what it was doing when it was stopped
 A new action replaces whatever the body was doing. The amounts are measured on the body's own odometry — how far it
 travelled since the order began, how much it turned — never against a point on the plane: the golem decides the points,
-the body only moves. Reports go back to the golem's endpoints as JSON bodies:
-  POST /robot/arrived {"route"}                                                         — the amount done
-  POST /robot/bump    {"bodyX", "bodyY", "bodyHeading", "bearing", "route", "with"}   — where it stood and where on its shell it was pressed
-  POST /robot/stuck   {"route", "reason"}
+the body only moves. What came of the order goes back on /golem/<body>/result (std_msgs/String), and nothing else — the
+body knows nothing of routes, golems or endpoints (Juan, 24-sep-2026: "sólo decir si logré lo que me dijiste que hiciera"):
+  {"order": 17, "result": "done"}                                     — the amount done
+  {"order": 17, "result": "bumped", "x", "y", "heading", "bearing"}   — where it stood and where on its shell it was pressed
+  {"order": 17, "result": "stuck", "reason"}
 The body drives /model/<body>/cmd_vel and watches its odometry — the world's truth, or its own wheels' reckoning
 anchored once to the truth (a real robot's lot) — and its contact sensor, its bumper. THE BUMPER IS A SWITCH: the moment
 it fires the motors stop and the bump is reported — where the body stood, facing which way, and where on its shell it was
 pressed. Where that lands on the plane, what it was and what to do about it (back off, go around) are the golem's to say:
 it comes as the next order. The body decides nothing.
 
-Usage: body.py <body> <golem-url> [world|wheels]
+Usage: body.py <body> <golem-url: unused since ajuste 55, kept for kiosk.sh> [world|wheels]
 """
 import json
 import math
 import sys
 import threading
 import time
-import urllib.request
 
 import rclpy
 from geometry_msgs.msg import Twist
@@ -67,7 +68,6 @@ class Body(Node):
     def __init__(self, body, golem_url, source):
         super().__init__("body_" + body)
         self.body = body
-        self.golem_url = golem_url.rstrip("/")
         self.source = source
         self.truth = None            # (x, y, theta) the world's
         self.pose = None             # what the body believes: the truth, or dead reckoning
@@ -88,13 +88,14 @@ class Body(Node):
         self.lock = threading.Lock()
 
         self.cmd = self.create_publisher(Twist, "/model/%s/cmd_vel" % body, 10)
+        self.result = self.create_publisher(String, "/golem/%s/result" % body, 10)
         self.create_subscription(String, "/golem/%s/order" % body, self.on_order, 10)
         self.create_subscription(Odometry, "/model/%s/odometry" % body, self.on_truth, 20)
         if source == "wheels":
             self.create_subscription(Odometry, "/model/%s/wheel_odometry" % body, self.on_wheels, 20)
         self.create_subscription(Contacts, "/model/%s/contacts" % body, self.on_contacts, 20)
         self.create_timer(TICK, self.tick)
-        self.get_logger().info("body %s: orders on /golem/%s/order, reporting to %s, pose from %s" % (body, body, self.golem_url, source))
+        self.get_logger().info("body %s: orders on /golem/%s/order, results on /golem/%s/result, pose from %s" % (body, body, body, source))
 
     # ---- telemetry ----
     def on_truth(self, m):
@@ -158,14 +159,14 @@ class Body(Node):
                     return
                 order, self.held = self.held, None
                 action = order.get("action")
-                self.get_logger().info("route %s: continuing — %s %.2f left" % (order.get("route"), action, float(order.get("amount", 0.0))))
+                self.get_logger().info("order %s: continuing — %s %.2f left" % (order.get("order"), action, float(order.get("amount", 0.0))))
             if action not in ("advance", "back", "turnLeft", "turnRight"):
                 self.get_logger().warning("an action I do not know: %s" % action)
                 return
             self.order = order
             self.held = None
             self.begin()
-            self.get_logger().info("route %s: %s %.2f %s" % (order.get("route"), action, float(order.get("amount", 0.0)),
+            self.get_logger().info("order %s: %s %.2f %s" % (order.get("order"), action, float(order.get("amount", 0.0)),
                                    "rad" if action.startswith("turn") else "m"))
 
     # The amount is measured from the pose the order began at; a body that has said nothing yet begins when it does.
@@ -222,7 +223,7 @@ class Body(Node):
                 self.drive(0.0, 0.0)          # the bumper fired: the motors stop at once
                 self.order = None
                 self.pressed = touch[0]
-                self.report_bump(order.get("route", 0), touch, order)
+                self.report_bump(order.get("order", 0), touch)
                 return
             if self.pose is None:
                 return
@@ -231,7 +232,7 @@ class Body(Node):
             x, y, theta = self.pose
             action = order["action"]
             amount = float(order.get("amount", 0.0))
-            route = order.get("route", 0)
+            ticket = order.get("order", 0)
             if action in ("turnLeft", "turnRight"):
                 # in place, the way the golem said (left: counter-clockwise), until the radians told are turned
                 self.turned += abs(normalize(theta - self.prev_theta))
@@ -239,11 +240,11 @@ class Body(Node):
                 left = amount - self.turned
                 if left <= DONE_WITHIN:
                     self.drive(0.0, 0.0)
-                    self.done(order, "arrived", {"route": route})
+                    self.done({"order": ticket, "result": "done"})
                     return
                 if now - self.began > TURN_TIMEOUT:
                     self.drive(0.0, 0.0)
-                    self.done(order, "stuck", {"route": route, "reason": "turn timeout"})
+                    self.done({"order": ticket, "result": "stuck", "reason": "turn timeout"})
                     return
                 sign = 1.0 if action == "turnLeft" else -1.0
                 self.drive(0.0, sign * max(0.25, min(1.5, 3.0 * left)))
@@ -253,42 +254,42 @@ class Body(Node):
             left = amount - travelled
             if left <= DONE_WITHIN:
                 self.drive(0.0, 0.0)
-                self.done(order, "arrived", {"route": route})
+                self.done({"order": ticket, "result": "done"})
                 return
             if travelled > self.best + PROGRESS:
                 self.best = travelled
                 self.improved = now
             elif now - self.improved > STALL_AFTER:
                 self.drive(0.0, 0.0)
-                self.get_logger().warning("route %s: %s stalled — travelled %.3f of %.3f (best %.3f), began at (%.2f, %.2f), now at (%.2f, %.2f)"
-                                          % (route, action, travelled, amount, self.best, self.start[0], self.start[1], x, y))
-                self.done(order, "stuck", {"route": route, "reason": "stalled: no progress for 3 s"})
+                self.get_logger().warning("order %s: %s stalled — travelled %.3f of %.3f (best %.3f), began at (%.2f, %.2f), now at (%.2f, %.2f)"
+                                          % (ticket, action, travelled, amount, self.best, self.start[0], self.start[1], x, y))
+                self.done({"order": ticket, "result": "stuck", "reason": "stalled: no progress for 3 s"})
                 return
             if now - self.began > MOVE_TIMEOUT:
                 self.drive(0.0, 0.0)
-                self.done(order, "stuck", {"route": route, "reason": "timeout"})
+                self.done({"order": ticket, "result": "stuck", "reason": "timeout"})
                 return
             angular = max(-1.0, min(1.0, 2.0 * normalize(self.start[2] - theta)))   # hold the heading the move began with
             if action == "back":
                 self.drive(-min(BACK_OFF_SPEED, 1.0 * left + 0.1), angular)
                 return
-            cruise = order.get("body", {}).get("speed", 1.0)
+            cruise = order.get("speed", 1.0)
             self.drive(min(cruise, 1.5 * left + 0.15), angular)
 
     # What a bumper knows, and no more: where the body stands, facing which way, and where on its shell it was pressed —
     # the bearing, radians from the direction it faces (0 the nose, +pi/2 the left flank). Where the touch landed on the
-    # plane is the golem's to reckon from the body it declared (18-sep-2026). The route and the world's name for what was
-    # touched ride along for the log; the golem does not read them.
-    def report_bump(self, route, touch, order):
+    # plane is the golem's to reckon from the body it declared (18-sep-2026). What the world calls the thing touched is
+    # logged here and told to nobody.
+    def report_bump(self, ticket, touch):
         pose = self.pose
         if pose is None:
             return
-        self.post("bump", {"bodyX": pose[0], "bodyY": pose[1], "bodyHeading": pose[2], "bearing": touch[2],
-                           "route": route, "with": touch[0]})
+        self.get_logger().info("order %s: bumped %s, bearing %.2f" % (ticket, touch[0], touch[2]))
+        self.say({"order": ticket, "result": "bumped", "x": pose[0], "y": pose[1], "heading": pose[2], "bearing": touch[2]})
 
-    def done(self, order, what, report):
+    def done(self, report):
         self.order = None
-        self.post(what, report)
+        self.say(report)
 
     def drive(self, linear, angular):
         t = Twist()
@@ -296,17 +297,11 @@ class Body(Node):
         t.angular.z = float(angular)
         self.cmd.publish(t)
 
-    # The report travels to the golem's endpoint as a JSON body, off the servo's beat.
-    def post(self, what, report):
-        def send():
-            data = json.dumps(report).encode("utf-8")
-            req = urllib.request.Request(self.golem_url + "/robot/" + what, data=data, headers={"Content-Type": "application/json"}, method="POST")
-            try:
-                with urllib.request.urlopen(req, timeout=5) as r:
-                    r.read()
-            except Exception as e:  # noqa: BLE001 — the golem may be rebooting; the next order will come
-                self.get_logger().warning("could not report %s to the golem: %s" % (what, e))
-        threading.Thread(target=send, daemon=True).start()
+    # The body's only word back: the result of the order, on its own topic. Whoever listens, listens.
+    def say(self, report):
+        m = String()
+        m.data = json.dumps(report)
+        self.result.publish(m)
 
 
 def main():

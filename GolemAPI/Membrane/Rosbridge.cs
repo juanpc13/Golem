@@ -68,6 +68,9 @@ public sealed class Rosbridge : IBodyWire
     private string Contacts => $"/model/{body}/contacts";
     /// <summary>Where the golem's orders travel to its body (std_msgs/String: the JSON the journal printed, as such).</summary>
     public string OrderTopic => $"/golem/{body}/order";
+    private string Results => $"/golem/{body}/result";   // the body's only word back (ajuste 55)
+
+    public event Action<string> ResultReported;
     private const string Teleport = "/sim/teleport";
 
     public Rosbridge(string url, string body, PoseSource source)
@@ -106,12 +109,13 @@ public sealed class Rosbridge : IBodyWire
         await SendAsync(new { op = "advertise", topic = CmdVel, type = "geometry_msgs/Twist" }, ct);
         await SendAsync(new { op = "advertise", topic = Teleport, type = "geometry_msgs/PoseStamped" }, ct);
         await SendAsync(new { op = "advertise", topic = OrderTopic, type = "std_msgs/String" }, ct);
+        await SendAsync(new { op = "subscribe", topic = Results, type = "std_msgs/String" }, ct);
         await SendAsync(new { op = "subscribe", topic = Odometry, type = "nav_msgs/Odometry", throttle_rate = 50 }, ct);
         if (Source == PoseSource.Wheels)
             await SendAsync(new { op = "subscribe", topic = WheelOdometry, type = "nav_msgs/Odometry", throttle_rate = 50 }, ct);
         await SendAsync(new { op = "subscribe", topic = Contacts, type = "ros_gz_interfaces/Contacts", throttle_rate = 50 }, ct);
         reader = Task.Run(() => ReadLoopAsync(readerCts.Token), CancellationToken.None);
-        Console.WriteLine($"[membrane] driving {CmdVel}; pose from {(Source == PoseSource.Wheels ? WheelOdometry + " (dead reckoning)" : Odometry + " (the world's truth)")}; contacts on {Contacts}");
+        Console.WriteLine($"[membrane] driving {CmdVel}; pose from {(Source == PoseSource.Wheels ? WheelOdometry + " (dead reckoning)" : Odometry + " (the world's truth)")}; contacts on {Contacts}; results on {Results}");
     }
 
     /// <summary>A JSON document on a std_msgs/String topic — the order to the body, as the golem printed it.</summary>
@@ -177,6 +181,11 @@ public sealed class Rosbridge : IBodyWire
                 if (name == Odometry) ReadTruth(doc.RootElement.GetProperty("msg"));
                 else if (name == WheelOdometry) ReadWheels(doc.RootElement.GetProperty("msg"));
                 else if (name == Contacts) ReadContacts(doc.RootElement.GetProperty("msg"));
+                else if (name == Results)
+                {
+                    string said = doc.RootElement.GetProperty("msg").GetProperty("data").GetString() ?? "";
+                    _ = Task.Run(() => ResultReported?.Invoke(said));   // off the reader: the act it writes pushes the next order down this same wire
+                }
             }
         }
         catch (OperationCanceledException) { }

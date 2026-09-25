@@ -17,6 +17,9 @@ public interface IBodyWire : IAsyncDisposable
     Contact LatestContact { get; }
     /// <summary>Where the golem's orders travel to its body.</summary>
     string OrderTopic { get; }
+    /// <summary>What the body reported on its result topic, as it said it (ajuste 55, 24-sep-2026): `{"order": 17, "result": "done"}`,
+    /// `{"order", "result": "bumped", "x", "y", "heading", "bearing"}`, `{"order", "result": "stuck", "reason"}` — its only word back.</summary>
+    event Action<string> ResultReported;
 
     Task ConnectAsync(CancellationToken ct);
     /// <summary>Declare what is published and subscribe what is watched: after this the body's words arrive.</summary>

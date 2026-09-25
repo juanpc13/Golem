@@ -14,6 +14,10 @@ namespace GolemAPI.Choreography;
 public sealed record Order(int Route, string Action, double Amount, string Kind, string Name, double X, double Y, double Heading,
                            bool Following, int StopsLeft)
 {
+    /// <summary>The ticket the host stamped on the order when it sent it to the body (ajuste 55, 24-sep-2026): all the body echoes
+    /// back — it knows nothing of the route. 0 on an order parsed from a print, before it was sent.</summary>
+    public int Ticket { get; init; }
+
     public bool IsLastStop => Kind == "stop" && StopsLeft <= 1;
     public bool IsTurn => Action == "turnLeft" || Action == "turnRight";
     public bool IsMove => Action == "advance" || Action == "back";

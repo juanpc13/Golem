@@ -35,6 +35,8 @@ public sealed class GazeboWorld : ILabWorld
     private readonly List<WayDecided> ways = new();
     private readonly List<ErrandSent> errands = new();
     private readonly LegTracker tracker = new();
+    private readonly BodyReports reports = new();   // what the bodies reported, paired with the orders they carried
+    private readonly List<Task> feeds = new();      // one listener per golem on its /events feed
     private Task watcher;
     private readonly HashSet<string> placed = new();
     private string crates = "";
@@ -82,9 +84,11 @@ public sealed class GazeboWorld : ILabWorld
         {
             await world.SendAsync(new { op = "subscribe", topic = $"/model/{name}/odometry", type = "nav_msgs/Odometry", throttle_rate = 100 });
             await world.SendAsync(new { op = "subscribe", topic = $"/model/{name}/contacts", type = "ros_gz_interfaces/Contacts", throttle_rate = 20 });
+            await world.SendAsync(new { op = "subscribe", topic = $"/golem/{name}/result", type = "std_msgs/String" });   // the body's word back (ajuste 55)
         }
         await world.ResetAsync(patience);
         world.watcher = Task.Run(world.WatchAsync);
+        foreach (var name in world.golems.Keys) world.feeds.Add(Task.Run(() => world.ListenAsync(name)));   // what the body reports
         return world;
     }
 
@@ -105,6 +109,7 @@ public sealed class GazeboWorld : ILabWorld
                 await PostAsync(url, "forget", new { x = mark.GetProperty("x").GetDouble(), y = mark.GetProperty("y").GetDouble() });
             }
         lock (gate) placed.Clear();
+        foreach (var name in golems.Keys) reports.Forget(name);
         await SettleAsync(golems.Keys, patience);
         lock (gate) { contacts.Clear(); trails.Clear(); ways.Clear(); errands.Clear(); }
     }
@@ -126,6 +131,7 @@ public sealed class GazeboWorld : ILabWorld
         if (!golems.ContainsKey(golem))
             throw new WorldUnavailableException($"the fleet deployed has no golem '{golem}' (answering: {string.Join(", ", golems.Keys)}): the scenario needs it");
         lock (gate) placed.Add(golem);
+        reports.Forget(golem);
         return Task.CompletedTask;
     }
 
@@ -149,6 +155,79 @@ public sealed class GazeboWorld : ILabWorld
     }
 
     public IReadOnlyList<LegReport> Legs(string golem) => tracker.Of(golem);
+
+    public IReadOnlyList<BodyReport> Reports(string golem) => reports.Of(golem);
+
+    public IReadOnlyList<LegWalked> LegsWalked(string golem) => reports.LegsOf(golem);
+
+    public async Task<BodyReport> NextReportAsync(string golem, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            var report = reports.NextReport(golem);
+            if (report != null) return report;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"{golem}'s body reported nothing in {timeout}: {Outcome(golem)}");
+    }
+
+    public async Task<LegWalked> NextLegWalkedAsync(string golem, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            var leg = reports.NextLeg(golem);
+            if (leg != null) return leg;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"{golem}'s body walked no leg to its end in {timeout}: {Outcome(golem)}");
+    }
+
+    // The golem's feed (/events, server-sent): every order the golem told its body — kind 'order', the print with the ticket the
+    // mechanics stamped — is the golem's word of what the body was asked; nothing else is read from it. The feed replays its history
+    // first: what was broadcast before this listener attached is skipped.
+
+    private async Task ListenAsync(string golem)
+    {
+        var since = DateTime.UtcNow.AddSeconds(-2);
+        try
+        {
+            using var response = await http.GetAsync(new Uri(golems[golem], "events"), HttpCompletionOption.ResponseHeadersRead, stop.Token);
+            using var stream = await response.Content.ReadAsStreamAsync(stop.Token);
+            using var reader = new StreamReader(stream);
+            while (!stop.IsCancellationRequested)
+            {
+                string line = await reader.ReadLineAsync(stop.Token);
+                if (line == null) return;
+                if (line.StartsWith("data: ", StringComparison.Ordinal)) Told(golem, line[6..], since);
+            }
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested) { Console.WriteLine($"[gazebo] listening to {golem}'s feed: {e.Message}"); }
+        catch { }
+    }
+
+    private void Told(string golem, string json, DateTime since)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var e = doc.RootElement;
+        if (e.GetProperty("Kind").GetString() != "order") return;
+        if (e.GetProperty("At").GetDateTime().ToUniversalTime() < since) return;   // the feed's replay of its history
+        lock (gate) reports.Ordered(golem, e.GetProperty("Script").GetString() ?? "{}", ++sequence);
+    }
+
+    // The body's word back on its result topic — done, bumped, stuck — with where the world says it really stands now and what it
+    // saw the body touch since its last word.
+    private void Resulted(string body, string json)
+    {
+        lock (gate)
+        {
+            var at = truth.TryGetValue(body, out var t) ? t : (double.NaN, double.NaN, double.NaN);
+            int last = reports.LastReportSequence(body);
+            var touched = contacts.Where(c => c.Golem == body && c.Sequence > last).Select(c => c.With).ToList();
+            reports.Resulted(body, json, at, touched, ++sequence);
+        }
+    }
 
     public async Task<LegReport> NextLegAsync(string golem, TimeSpan timeout)
     {
@@ -265,6 +344,7 @@ public sealed class GazeboWorld : ILabWorld
         try { if (ws.State == WebSocketState.Open) await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None); } catch { }
         if (reader != null) try { await reader; } catch { }
         if (watcher != null) try { await watcher; } catch { }
+        foreach (var feed in feeds) try { await feed; } catch { }
         ws.Dispose();
         http.Dispose();
     }
@@ -341,9 +421,14 @@ public sealed class GazeboWorld : ILabWorld
         if (!root.TryGetProperty("topic", out var t) || !root.TryGetProperty("msg", out var msg)) return;
         string topic = t.GetString();
         if (topic == "/sim/crates") { lock (gate) crates = msg.GetProperty("data").GetString() ?? ""; return; }
-        var parts = topic.Split('/');   // "", "model", <body>, odometry|contacts
+        var parts = topic.Split('/');   // "", "model", <body>, odometry|contacts — or "", "golem", <body>, order
         if (parts.Length != 4) return;
         string body = parts[2];
+        if (parts[1] == "golem" && parts[3] == "result")
+        {
+            Resulted(body, msg.GetProperty("data").GetString() ?? "{}");   // the body's word back: done, bumped, stuck
+            return;
+        }
         if (parts[3] == "odometry")
         {
             var pose = msg.GetProperty("pose").GetProperty("pose");

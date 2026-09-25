@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Threading.Channels;
 using Choreography.Transport.Brokered;
 using GolemAPI;
 using GolemAPI.Choreography;
@@ -36,6 +37,7 @@ public sealed class MockWorld : ILabWorld
     private readonly List<WayDecided> ways = new();   // guarded by `contacts`, numbered with the same sequence
     private readonly List<ErrandSent> errands = new();
     private readonly LegTracker tracker = new();
+    private readonly BodyReports reports = new();   // what the bodies reported, paired with the orders they carried
     private Task watcher;
     private readonly SemaphoreSlim wake = new(0);
     private readonly CancellationTokenSource stop = new();
@@ -48,7 +50,9 @@ public sealed class MockWorld : ILabWorld
         public string Name;
         public GolemHost Host;
         public KinematicBody Body;
+        public PanelFeed Feed;
         public Task Clock;
+        public Task Ears;   // the golem's feed, heard: every order it told its body
     }
 
     public MockWorld() : this(FloorPlan.Load()) { }
@@ -74,8 +78,10 @@ public sealed class MockWorld : ILabWorld
         var body = new KinematicBody(this, name, at.X, at.Y, 0.0);
         var settings = new GolemSettings(name, name, at, Capabilities.Parse(null), peers ?? Fleet.Where(n => n != name).ToList(),
                                          follower ?? (Followers.TryGetValue(name, out var f) ? f : null), DatabaseType.IN_MEMORY, "");
-        var host = GolemHost.Build(settings, body, new TellsInMemory(broker), new PanelFeed());
-        var golem = new Golem { Name = name, Host = host, Body = body };
+        var feed = new PanelFeed();
+        var host = GolemHost.Build(settings, body, new TellsInMemory(broker), feed);
+        var golem = new Golem { Name = name, Host = host, Body = body, Feed = feed };
+        golem.Ears = Task.Run(() => HearAsync(golem));
         lock (golems) golems[name] = golem;
         pump ??= Task.Run(PumpAsync);
         watcher ??= Task.Run(WatchAsync);
@@ -103,6 +109,63 @@ public sealed class MockWorld : ILabWorld
     }
 
     public IReadOnlyList<LegReport> Legs(string golem) => tracker.Of(golem);
+
+    public IReadOnlyList<BodyReport> Reports(string golem) => reports.Of(golem);
+
+    public IReadOnlyList<LegWalked> LegsWalked(string golem) => reports.LegsOf(golem);
+
+    public async Task<BodyReport> NextReportAsync(string golem, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            var report = reports.NextReport(golem);
+            if (report != null) return report;
+            await Task.Delay(10);
+        }
+        throw new TimeoutException($"{golem}'s body reported nothing in {timeout}: {Outcome(golem)}");
+    }
+
+    public async Task<LegWalked> NextLegWalkedAsync(string golem, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            var leg = reports.NextLeg(golem);
+            if (leg != null) return leg;
+            await Task.Delay(10);
+        }
+        throw new TimeoutException($"{golem}'s body walked no leg to its end in {timeout}: {Outcome(golem)}");
+    }
+
+    // The golem's feed, heard in-process: every order it told its body — kind 'order', the print with its ticket — is the golem's
+    // word of what the body was asked; the body's word back comes on its result topic (Resulted).
+    private async Task HearAsync(Golem golem)
+    {
+        var (replay, live, ticket) = golem.Feed.Attach();
+        using (ticket)
+        {
+            foreach (var e in replay) if (e.Kind == "order") lock (contacts) reports.Ordered(golem.Name, e.Script, ++sequence);   // told before this ear was on
+            try
+            {
+                await foreach (var e in live.ReadAllAsync(stop.Token))
+                    if (e.Kind == "order") lock (contacts) reports.Ordered(golem.Name, e.Script, ++sequence);
+            }
+            catch (OperationCanceledException) { }
+        }
+    }
+
+    // The body's word back — done, bumped, stuck — with where it really stands and what the world saw it touch since its last word.
+    internal void Resulted(string body, string json)
+    {
+        var golem = Of(body);
+        lock (contacts)
+        {
+            int last = reports.LastReportSequence(body);
+            var touched = contacts.Where(c => c.Golem == body && c.Sequence > last).Select(c => c.With).ToList();
+            reports.Resulted(body, json, (golem.Body.X, golem.Body.Y, golem.Body.Theta), touched, ++sequence);
+        }
+    }
 
     public async Task<LegReport> NextLegAsync(string golem, TimeSpan timeout)
     {
@@ -233,6 +296,7 @@ public sealed class MockWorld : ILabWorld
             await g.Host.DisposeAsync();
         }
         if (pump != null) try { await pump; } catch (OperationCanceledException) { }
+        foreach (var g in golems.Values) if (g.Ears != null) try { await g.Ears; } catch (OperationCanceledException) { }
         if (watcher != null) try { await watcher; } catch (OperationCanceledException) { }
     }
 
@@ -255,6 +319,13 @@ public sealed class MockWorld : ILabWorld
     //      inside the engine's push (which would re-enter the actor) ----
 
     internal void OrderArrived(string body) => wake.Release();
+
+    // The body finished the order it carried: its word back is the ticket and 'done', and nothing more (ajuste 55).
+    private void Arrived(Golem golem, Doing doing)
+    {
+        golem.Body.Done();
+        golem.Body.Say(JsonSerializer.Serialize(new { order = doing.Ticket, result = "done" }));
+    }
 
     private async Task PumpAsync()
     {
@@ -296,7 +367,7 @@ public sealed class MockWorld : ILabWorld
             double turn = Math.Min(TurnSpeed * dt, doing.Left);
             body.Put(body.X, body.Y, Normalize(body.Theta + (doing.Action == "turnLeft" ? turn : -turn)));
             doing.Left -= turn;
-            if (doing.Left <= 1e-9) { body.Done(); golem.Host.Embodiment.Displacer.Arrived(doing.Route); }
+            if (doing.Left <= 1e-9) Arrived(golem, doing);
             return;
         }
         double direction = doing.Action == "advance" ? body.Theta : body.Theta + Math.PI;
@@ -309,11 +380,12 @@ public sealed class MockWorld : ILabWorld
             if (hit != null)
             {
                 body.Done();                                                   // the bumper fired: the motors stop at once
-                Bumped(golem, hit.Value.With, hit.Value.PointX, hit.Value.PointY);
+                Bumped(golem, hit.Value.With, hit.Value.PointX, hit.Value.PointY, doing.Ticket);
                 if (hit.Value.Other != null)                                   // the other body's bumper fires too, moving or standing
                 {
+                    int otherTicket = hit.Value.Other.Body.Doing?.Ticket ?? 0;
                     hit.Value.Other.Body.Done();
-                    Bumped(hit.Value.Other, golem.Name, hit.Value.PointX, hit.Value.PointY);
+                    Bumped(hit.Value.Other, golem.Name, hit.Value.PointX, hit.Value.PointY, otherTicket);
                 }
                 return;
             }
@@ -321,18 +393,18 @@ public sealed class MockWorld : ILabWorld
             doing.Left -= step;
             run -= step;
         }
-        if (doing.Left <= 1e-9) { body.Done(); golem.Host.Embodiment.Displacer.Arrived(doing.Route); }
+        if (doing.Left <= 1e-9) Arrived(golem, doing);
     }
 
     // The bumper fired: the motors already stopped (the body stands where it was); it says where it stood, facing which way,
     // and where on its shell it was pressed — the bearing from the direction it faces toward the point it touched.
-    private void Bumped(Golem golem, string with, double pointX, double pointY)
+    private void Bumped(Golem golem, string with, double pointX, double pointY, int ticket)
     {
         var body = golem.Body;
         double bearing = Normalize(Math.Atan2(pointY - body.Y, pointX - body.X) - body.Theta);
         lock (contacts) contacts.Add(new WorldContact(golem.Name, with, body.X, body.Y, body.Theta, bearing, ++sequence));
         body.Touched(with, bearing);
-        golem.Host.Embodiment.Captor.Bumped(body.X, body.Y, body.Theta, bearing);
+        body.Say(JsonSerializer.Serialize(new { order = ticket, result = "bumped", x = body.X, y = body.Y, heading = body.Theta, bearing }));   // its word back (ajuste 55)
         NoteWay(golem.Name);   // the route corrected its way inside the bump
     }
 
@@ -367,7 +439,7 @@ public sealed class MockWorld : ILabWorld
         public string Action;
         public double Left;
         public double Speed;   // m/s: the cruise the journal declared for the body
-        public int Route;
+        public int Ticket;     // the order's ticket, all the body echoes back (ajuste 55)
     }
 
     internal sealed class KinematicBody : IBodyWire
@@ -402,6 +474,14 @@ public sealed class MockWorld : ILabWorld
         public Pose LatestTruth => pose;
         public Contact LatestContact => contact;
         public string OrderTopic => $"/golem/{name}/order";
+        public event Action<string> ResultReported;
+
+        // The body's word back — done, bumped, stuck — on its result topic: the world hears it first, then the golem's wire.
+        internal void Say(string json)
+        {
+            world.Resulted(name, json);
+            ResultReported?.Invoke(json);
+        }
 
         public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
         public Task BindAsync(CancellationToken ct) => Task.CompletedTask;
@@ -440,8 +520,8 @@ public sealed class MockWorld : ILabWorld
                 {
                     Action = action,
                     Left = o.TryGetProperty("amount", out var a) ? a.GetDouble() : 0.0,
-                    Route = o.TryGetProperty("route", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetInt32() : 0,
-                    Speed = o.TryGetProperty("body", out var b) && b.TryGetProperty("speed", out var v) ? v.GetDouble() : 1.0,
+                    Ticket = o.TryGetProperty("order", out var t) && t.ValueKind == JsonValueKind.Number ? t.GetInt32() : 0,
+                    Speed = o.TryGetProperty("speed", out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 1.0,
                 };
                 held = null;
             }

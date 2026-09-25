@@ -40,19 +40,31 @@ public class ScenarioTests
     public async Task AFreeWay_IsWalkedWithoutTouchingAnything()
     {
         await using var world = await OpenWorldAsync();
-        await PlaceAsync(world, "red");                             // on its mark in the living room
-        world.Send("red", (5.5, 9.5));   // to the north hall, through the centre
-        var way = WaysOf(world, "red").Single().Plan;
-        Assert.AreEqual(3, way.Split(" > ").Length, "out of the living room, into the central hall, up to the north hall: " + way);
+        await PlaceAsync(world, "red");                                 // on its mark in the living room, (2.5, 2.5)
+        world.Send("red", (5.5, 9.5));                                  // to the north hall: out of the living room's door, across the open boundary, up the centre
 
-        // every leg of the way, validated as it ends: completed, where the leg said, touching nothing
-        var legs = await WalkAsync(world, "red", AFreeLeg);
-        CollectionAssert.AreEqual(way.Split(" > ").Select(l => l[..l.IndexOf('@')]).ToArray(), legs.Select(l => l.Name).ToArray(),
-                                  "the legs walked are the legs decided, in order");
+        // THE PATTERN (Juan, 24-sep-2026): the asserts are what the emulator tells — each leg walked to its end, as the body reported
+        // its orders done — one assert per leg of the way, nothing asked of the golem's plan (the plan is the domain's tests' business)
+        var door = await LegWalkedAsync(world, "red");
+        Assert.AreEqual("living/south", door.Leg, "first, the door out of the living room — " + door.Line());
+        Assert.IsTrue(door.Reached, door.Line());
+        AssertStands(door, 4.6, 1.5, "crossed straight through, out on the south hall's side");
+
+        var bend = await LegWalkedAsync(world, "red");
+        Assert.AreEqual("center~south", bend.Leg, "then the open boundary into the centre, where the way bends — " + bend.Line());
+        Assert.IsTrue(bend.Reached, bend.Line());
+        AssertStands(bend, 4.5, 3.0, "on the pivot of the open boundary, by the block's corner");
+
+        var stop = await LegWalkedAsync(world, "red");
+        Assert.AreEqual("north", stop.Leg, "last, the stop itself, straight up the centre — " + stop.Line());
+        Assert.IsTrue(stop.Reached, stop.Line());
+        AssertStands(stop, 5.5, 9.5, "the stop");
+
+        Assert.AreEqual(0, world.Contacts("red").Count, "the world saw it touch nothing on the way");
         await world.RunUntilSettledAsync(Patience);
         string seen = Report(world, "red", (5.5, 9.5));
         Assert.AreEqual("completed", world.Outcome("red").Status, seen);
-        Assert.AreEqual(1, WaysOf(world, "red").Count, "nothing made it decide again — " + seen);
+        Assert.AreEqual(3, world.LegsWalked("red").Count, "three legs, no more — " + seen);
         AssertStandsAt(world, "red", 5.5, 9.5);
     }
 
@@ -259,6 +271,13 @@ public class ScenarioTests
                 }
             }
         }
+        var reported = world.LegsWalked(golem);
+        if (reported.Count > 0)
+        {
+            lines.Add("");
+            lines.Add($"  as the body reported it · {reported.Count} leg(s) walked, {world.Reports(golem).Count} report(s)");
+            foreach (var leg in reported) lines.Add("    " + leg.Line());
+        }
         var trail = world.Trail(golem);
         var through = new[] { ("west corridor", trail.Any(t => t.X < 1.5)), ("central hall", trail.Any(t => t.X > 4 && t.X < 7 && t.Y > 3 && t.Y < 8)),
                               ("east corridor", trail.Any(t => t.X > 9.5)) }.Where(t => t.Item2).Select(t => t.Item1);
@@ -313,6 +332,21 @@ public class ScenarioTests
             walked.Add(leg);
             if (leg.RouteStatus != "pending") return walked;
         }
+    }
+
+    // The next leg the body walked to its end, as it reported it — printed as it comes.
+    private static async Task<LegWalked> LegWalkedAsync(ILabWorld world, string golem)
+    {
+        var leg = await world.NextLegWalkedAsync(golem, Patience);
+        Console.WriteLine($"[walked] {golem} {leg.Line()}");
+        return leg;
+    }
+
+    // Where the body said it stood at the leg's end: at the point the last order toward the leg went to (a door's exit, a stop).
+    private static void AssertStands(LegWalked leg, double x, double y, string where)
+    {
+        double off = Math.Sqrt((leg.Stands.X - x) * (leg.Stands.X - x) + (leg.Stands.Y - y) * (leg.Stands.Y - y));
+        Assert.IsTrue(off <= AtTheStop, $"{leg.Golem} said it stands at ({leg.Stands.X:0.00}, {leg.Stands.Y:0.00}), {off:0.00} m from ({x}, {y}) — {where}: {leg.Line()}");
     }
 
     // A leg on a clean floor: completed, where the leg said, touching nothing.

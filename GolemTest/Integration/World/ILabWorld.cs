@@ -65,6 +65,16 @@ public interface ILabWorld : IAsyncDisposable
     Task<LegReport> NextLegAsync(string golem, TimeSpan timeout);
     /// <summary>Every leg that ended since the golem was placed, in order.</summary>
     IReadOnlyList<LegReport> Legs(string golem);
+    /// <summary>The next thing the golem's BODY reported — an order done (arrived, standing there) or a bump — as the emulator tells it,
+    /// paired with the order it carried (Juan, 24-sep-2026: "cada arrive es algo que el emulador nos está contando").</summary>
+    Task<BodyReport> NextReportAsync(string golem, TimeSpan timeout);
+    /// <summary>The next LEG the body walked to its end, told by its own reports: reached — every order toward it done and the golem's
+    /// next order headed elsewhere, or the body told to stand — or cut short by a bump. Nothing asked of the golem.</summary>
+    Task<LegWalked> NextLegWalkedAsync(string golem, TimeSpan timeout);
+    /// <summary>Every report the body made since the golem was placed, in order.</summary>
+    IReadOnlyList<BodyReport> Reports(string golem);
+    /// <summary>Every leg the body walked to its end since the golem was placed, in order.</summary>
+    IReadOnlyList<LegWalked> LegsWalked(string golem);
     /// <summary>Where the body really went: its true position, sampled along the way, from its placing to now.</summary>
     IReadOnlyList<(double X, double Y)> Trail(string golem);
     /// <summary>Where the body really is, and facing which way.</summary>

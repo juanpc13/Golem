@@ -256,7 +256,7 @@ function row(e) {
     try { const doc = JSON.parse(e.Note); note = doc.kind + (doc.actionId ? ' ' + doc.actionId : ''); } catch {}
   }
   // a runtime row has no statement: its text is the note, shown at full width instead of squeezed into the tag column
-  const body = journaled ? escapeHtml(pretty(script)) : escapeHtml(script || note || '');
+  const body = journaled ? escapeHtml(pretty(script)) : escapeHtml(e.Kind === 'order' ? (note || '') : (script || note || ''));
   const tag = journaled ? escapeHtml(note || '') : (script ? escapeHtml(note || '') : '');
   li.innerHTML = `<span class="entry">${journaled ? '#' + e.Entry : '·'}</span>` +
                  `<span class="script">${body}</span>` +
