@@ -129,6 +129,10 @@ internal sealed class Route
     internal bool IsPending() => status == RouteStatus.Pending;
     /// <summary>pending, completed, failed or abandoned.</summary>
     internal string Status => status.Name;
+    /// <summary>Why the route ended, in the domain's own words (25-sep-2026, take 6 of the recording: "the failure with its
+    /// reason"): the planner's when no road fit ("no road from … that fits a body of radius 0.25 past 5 marks"), the patience
+    /// spent, the reason an ending act gave. Empty while it is pending, and once it completed: a completed route needs no why.</summary>
+    internal string Why { get; private set; } = "";
 
     // ---- the way: decided inside, from a point, through the stops ahead ----
 
@@ -378,7 +382,7 @@ internal sealed class Route
             reached++;
             if (reached == stops.Count && Following) PullOver(me);
         }
-        if (reached == stops.Count && nextLeg >= way.Count) End(RouteStatus.Completed);
+        if (reached == stops.Count && nextLeg >= way.Count) End(RouteStatus.Completed, "");
         else if (nextLeg >= way.Count) PlanAgainFrom(me);   // the way ran out short of a stop (a retreat with no road from it): decided again from here
         return this;
     }
@@ -389,7 +393,7 @@ internal sealed class Route
     private void PlanAgainFrom(Pose me)
     {
         try { Plan(me); }
-        catch (GolemDomainException) { End(RouteStatus.Failed); }
+        catch (GolemDomainException noRoad) { End(RouteStatus.Failed, noRoad.Message); }   // the planner's words: from where, to where, what body, past how many marks
     }
 
     // A follower that reached its last stop — the leader's spot — pulls over before it is done: a courtesy step to one
@@ -444,7 +448,7 @@ internal sealed class Route
         collisions.Mark(touch);
         lastTouch = touch;
         Correct(me, replan: true);
-        if (bumps > PatienceWithThings) End(RouteStatus.Failed);   // the golem's patience with things is spent
+        if (bumps > PatienceWithThings) End(RouteStatus.Failed, $"its patience with things is spent: {bumps} bumps on this route");
         return this;
     }
 
@@ -469,7 +473,7 @@ internal sealed class Route
             return this;
         }
         try { Take(new Trajectory(PastFrom(standing, standing.Heading, lastTouch)), standing); }
-        catch (GolemDomainException) { End(RouteStatus.Failed); }
+        catch (GolemDomainException noRoad) { End(RouteStatus.Failed, noRoad.Message); }
         return this;
     }
 
@@ -485,7 +489,7 @@ internal sealed class Route
         grazes++;
         grazesOnLeg++;
         Correct(me, replan: false);
-        if (grazesOnLeg >= PatienceWithWalls) End(RouteStatus.Failed);   // patience spent: the route ends by itself
+        if (grazesOnLeg >= PatienceWithWalls) End(RouteStatus.Failed, $"its patience with walls is spent: {grazesOnLeg} grazes on one leg");   // the route ends by itself
         return this;
     }
 
@@ -536,11 +540,16 @@ internal sealed class Route
             legs.Add(new Leg(aside, Leg.Courtesy));
             from = aside;
             // then AHEAD, parallel to the way it came, until what was touched is a body's length behind - so the run on to the
-            // stop does not converge back onto it (22-sep-2026 live: the straight run from the step grazed the peer again)
+            // stop does not converge back onto it (22-sep-2026 live: the straight run from the step grazed the peer again).
+            // The RUN there is judged, not only the point: a step to the left after a second touch sent it, straight and
+            // parallel, through the face the first touch had marked (25-sep-2026 rehearsal, a third bump on the same face).
+            // No clear run: no point ahead, and the planner decides from the step, around every figure it knows.
             double dx = Math.Cos(heading), dy = Math.Sin(heading);
             double along = (touched.X - aside.X) * dx + (touched.Y - aside.Y) * dy;
             var ahead = aside.Along(heading, Math.Max(0.0, along) + 3 * radius + Collisions.MarkMargin);   // the touch is on its shell: its centre one radius beyond, then a body's length
-            if (layout.HasRoom(ahead, radius) && !collisions.Blocks(ahead, radius)) { legs.Add(new Leg(ahead, Leg.Waypoint)); from = ahead; }
+            if (layout.HasRoom(ahead, radius) && !collisions.Blocks(ahead, radius)
+                && layout.Crossings(aside, ahead, radius) != null && !collisions.Blocks(new Segment(aside, ahead), radius))
+            { legs.Add(new Leg(ahead, Leg.Waypoint)); from = ahead; }
         }
         legs.AddRange(Planner().Road(from, Ordered(from)).Legs());
         return legs;
@@ -612,7 +621,7 @@ internal sealed class Route
     {
         MustBePending();
         if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"failing route {Id} needs a reason");
-        End(RouteStatus.Failed);
+        End(RouteStatus.Failed, why);
         return this;
     }
 
@@ -621,7 +630,7 @@ internal sealed class Route
     {
         MustBePending();
         if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException($"abandoning route {Id} needs a reason");
-        End(RouteStatus.Abandoned);
+        End(RouteStatus.Abandoned, why);
         return this;
     }
 
@@ -635,9 +644,10 @@ internal sealed class Route
 
     // The route ends, one way or another: the peers met on it have moved on — bodies do — and are planned around no more
     // (Juan, 22-sep-2026: "tenerlos presentes al momento de la ruta nada más").
-    private void End(RouteStatus ending)
+    private void End(RouteStatus ending, string why)
     {
         status = ending;
+        Why = why;
         collisions.PeersMovedOn();
     }
 

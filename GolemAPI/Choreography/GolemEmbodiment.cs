@@ -194,6 +194,7 @@ public sealed class GolemEmbodiment
             return;
         }
         if (done != "") Console.WriteLine($"[golem {golem}] {done} (entry {performance.CurrentEntryId})");
+        if (answer.Order is { Why: not "" } ended) Note($"route {ended.Route} {ended.Action}: {ended.Why}");   // the route ended in this act, and says why
     }
 
     // ==================================================================

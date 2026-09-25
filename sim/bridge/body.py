@@ -217,7 +217,7 @@ class Body(Node):
                 if fresh and now - self.last_standing_touch > STANDING_TOUCH_EVERY:
                     self.last_standing_touch = now
                     self.pressed = touch[0]
-                    self.report_bump(0, touch, None)
+                    self.report_bump(0, touch)   # ticket 0: no order carried (25-sep-2026: a third argument here killed the node)
                 return
             if fresh and touch[1] > self.began:
                 self.drive(0.0, 0.0)          # the bumper fired: the motors stop at once

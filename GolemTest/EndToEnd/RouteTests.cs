@@ -438,6 +438,7 @@ public class RouteTests
         g.Bump(new Pose(0.3, 8.6, 3.1416), 0.0);
         Assert.IsFalse(route.MayRetryLeg, "three grazes on one leg: patience spent");
         Assert.AreEqual("failed", route.Status, "the route gave itself up: the third graze ended it inside, no host decides that");
+        Assert.AreEqual("its patience with walls is spent: 3 grazes on one leg", route.Why, "and it says why");
         Assert.AreEqual(1, collisions.MarkCount, "the bump's mark stays; a graze leaves none: the wall was known");
         Assert.AreEqual(3, route.Grazes, "the route remembers every graze");
     }
@@ -461,6 +462,26 @@ public class RouteTests
         Reach(route, route.NextLeg.At.X, route.NextLeg.At.Y);      // the retreat reached: the route decided again from there
         Assert.IsTrue(route.IsPending() ? route.LegsLeft >= 1 : route.Status == "failed", "either a way from the retreat, or the route ended itself: " + route.AsPlan());
         Assert.IsTrue(legs >= 1);
+    }
+
+    [TestMethod]
+    public void AfterASecondBump_NoRunOfTheWayCrossesAFaceAlreadyTouched()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body, map, collisions);
+
+        // the 25-sep rehearsal, as blue reported it: out of the kitchen's door, down the central hall to the garage
+        var route = g.Visit(new Pose(4.619, 9.534, -1.326), new Position(9.0, 1.5));
+        g.Bump(new Pose(5.44, 6.115, -1.334), -0.212);   // the crate's north face
+        g.Bump(new Pose(4.9, 5.173, -1.35), 1.333);      // its west face, on the left flank: the step goes left, then on
+        Assert.AreEqual(2, collisions.MarkCount);
+        var legs = route.LegsAhead;
+        foreach (var run in legs.Skip(1).Zip(legs, (next, prev) => new Segment(prev.At, next.At)))
+            Assert.IsFalse(collisions.Blocks(run, body.Radius.InMeters),
+                "no run of the way enters the figure the two touches outline (live, the run on from the step met the north face again): " + route.AsPlan());
+        StringAssert.EndsWith(route.AsPlan(), "garage@9,1.5", "and the way still reaches the stop: " + route.AsPlan());
     }
 
     [TestMethod]
@@ -539,6 +560,31 @@ public class RouteTests
     // ---- the ending ----
 
     [TestMethod]
+    public void ARouteWithNoRoadLeft_FailsByItself_AndKeepsThePlannersWords()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body, map, collisions);
+
+        // the 25-sep rehearsal of take 6: what blue had learned before its last touch, told as red would tell it — the big
+        // crate across the central hall (three touches on its north face) and the crate in the east corridor
+        g.HearBump("red", new Pose(4.67, 6.10, -1.565), 0.0);
+        g.HearBump("red", new Pose(5.44, 6.10, -1.572), 0.0);
+        g.HearBump("red", new Pose(6.19, 6.12, -1.554), 0.0);
+        g.HearBump("red", new Pose(10.322, 6.144, -1.549), -0.018);
+        Assert.AreEqual(4, collisions.MarkCount);
+        var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(9.0, 1.5));   // the kitchen to the garage: the west corridor is the way left
+        StringAssert.Contains(route.AsPlan(), "kitchen/west", "the way left goes down the west corridor: " + route.AsPlan());
+        g.Bump(new Pose(0.71, 6.099, -1.594), 0.021);   // and the west corridor is shut too
+        Assert.AreEqual("back", route.Order, "it backs off first");
+        WalkToTheEnd(route);                             // the retreat reached, the route decides again from there: nothing fits
+        Assert.AreEqual("failed", route.Status);
+        StringAssert.StartsWith(route.Why, "no road from (", "the planner's own words: " + route.Why);
+        StringAssert.EndsWith(route.Why, "to (9, 1.5) that fits a body of radius 0.25 past 5 marks", "to where, what body, past how many marks: " + route.Why);
+    }
+
+    [TestMethod]
     public void AFailedRoute_IsNoLongerPending_AndCannotFailAgain()
     {
         var map = Catalog.Warehouse();
@@ -547,9 +593,11 @@ public class RouteTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5));
+        Assert.AreEqual("", route.Why, "a pending route has no why");
         route.Fail("collided with crate at (10.3, 5.9): nothing on my map there");
         Assert.IsFalse(route.IsPending());
         Assert.AreEqual("failed", route.Status);
+        Assert.AreEqual("collided with crate at (10.3, 5.9): nothing on my map there", route.Why, "the reason the ending act gave, kept by the route");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Fail("again")).Message, "already failed");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).Fail("")).Message, "needs a reason");
     }

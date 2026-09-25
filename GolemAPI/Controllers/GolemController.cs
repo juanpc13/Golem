@@ -161,6 +161,10 @@ public class GolemController : Controller
                     print route.Id 'nextId', route.NextLeg.Target.X 'nextX', route.NextLeg.Target.Y 'nextY',
                           route.StopsLeft 'stopsLeft', route.Paused 'paused';
                 }
+                if (g.Routes().Count > 0) {
+                    last = g.Newest();
+                    print last.Id 'lastId', last.Status 'lastStatus', last.Why 'lastWhy';
+                }
             }
         ")
         .PerformQuery();

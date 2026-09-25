@@ -18,6 +18,10 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
     /// back — it knows nothing of the route. 0 on an order parsed from a print, before it was sent.</summary>
     public int Ticket { get; init; }
 
+    /// <summary>Why the route ended, in the domain's words (`route.Why`, 25-sep-2026): empty while it is pending or once it completed.
+    /// For the log and the panel; it never travels to the body.</summary>
+    public string Why { get; init; } = "";
+
     public bool IsLastStop => Kind == "stop" && StopsLeft <= 1;
     public bool IsTurn => Action == "turnLeft" || Action == "turnRight";
     public bool IsMove => Action == "advance" || Action == "back";
@@ -42,7 +46,7 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
             double D(string n, double d = 0) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : d;
             bool B(string n) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.True;
             string S(string n) => e.TryGetProperty(n, out var v) ? v.GetString() ?? "" : "";
-            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft"));
+            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft")) { Why = S("why") };
         }
         catch (JsonException) { return null; }
     }

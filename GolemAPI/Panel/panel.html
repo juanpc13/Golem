@@ -17,6 +17,9 @@
   h1 { font-size:1.05rem; margin:0; }
   .badge { font-family:ui-monospace, monospace; font-size:12.5px; color:var(--muted); }
   .badge b { color:var(--ink); font-weight:600; }
+  /* how the last errand ended, in the domain's words (route.Why) */
+  .badge.ending { flex-basis:100%; color:var(--warn); }
+  .badge.ending b, .badge.ending span { color:var(--warn); }
   main { display:grid; grid-template-columns:340px minmax(0, 1fr); gap:22px; padding:20px 22px;
          max-width:1280px; margin:0 auto; align-items:start; }
   @media (max-width:760px) { main { grid-template-columns:1fr; } }
@@ -57,6 +60,7 @@
   #feed.hide-tells li.tell { display:none; }
   h2 .toggle { float:right; font-size:11px; letter-spacing:0; text-transform:none; font-weight:400; color:var(--muted); cursor:pointer; }
   h2 .toggle input { vertical-align:middle; margin-right:4px; }
+  #places.hidden { display:none; }
   #events { max-height:22vh; }
   #feed li, #events li { display:flex; gap:10px; align-items:baseline; padding:7px 10px;
              border-radius:8px; background:var(--surface); border:1px solid var(--line); }
@@ -94,11 +98,12 @@
   <span class="badge">truth <b id="truth">–</b> · off by <b id="error">–</b> <span style="opacity:.7">(the world's pose, for your eyes only)</span></span>
   <span class="badge">route left <b id="left">–</b> · eta <b id="eta">–</b> · <b id="points">–</b> points</span>
   <span class="badge">last contact <b id="contact">–</b> <span style="opacity:.7">(the world's report)</span></span>
+  <span class="badge ending" id="ending" hidden>route <b id="endId">–</b> <b id="endStatus">–</b>: <span id="endWhy">–</span></span>
 </header>
 
 <main>
   <section>
-    <h2>Operations</h2>
+    <h2>Operations <label class="toggle"><input type="checkbox" id="hidePlaces"> hide places</label></h2>
     <div class="card ops">
       <canvas id="map" width="300" height="300" title="click to add a stop here"></canvas>
       <details class="hint"><summary>How the map, the stops and the marks work</summary><p>The floor plan is the golem's own map, released into its journal. Click a room or press a
@@ -281,6 +286,17 @@ hideTells.addEventListener('change', () => {
   feed.classList.toggle('hide-tells', hideTells.checked);
   try { localStorage.setItem('golem.hideTells', hideTells.checked ? '1' : '0'); } catch {}
   feed.scrollTop = feed.scrollHeight;
+});
+
+// "hide places": the "+ place" buttons folded away, so the errand's buttons stand higher — a viewing preference, kept per
+// browser like "hide tells" (Juan, 25-sep-2026: "esconder los botones de los lugares… y volver a mostrarlos")
+const hidePlaces = document.getElementById('hidePlaces');
+const placesRow = document.getElementById('places');
+try { hidePlaces.checked = localStorage.getItem('golem.hidePlaces') === '1'; } catch {}
+placesRow.classList.toggle('hidden', hidePlaces.checked);
+hidePlaces.addEventListener('change', () => {
+  placesRow.classList.toggle('hidden', hidePlaces.checked);
+  try { localStorage.setItem('golem.hidePlaces', hidePlaces.checked ? '1' : '0'); } catch {}
 });
 
 const es = new EventSource('/events');
@@ -527,6 +543,14 @@ async function poll() {
     document.getElementById('total').textContent = s.total;
     document.getElementById('pause').disabled = !s.hasNext || !!s.paused;
     document.getElementById('resume').disabled = !s.paused;
+    // the last errand's ending, while it has a why: failed or abandoned, in the domain's words; a newer errand hides it
+    const ending = document.getElementById('ending');
+    ending.hidden = !s.lastWhy;
+    if (s.lastWhy) {
+      document.getElementById('endId').textContent = s.lastId;
+      document.getElementById('endStatus').textContent = s.lastStatus;
+      document.getElementById('endWhy').textContent = s.lastWhy;
+    }
 
     document.getElementById('left').textContent = pr.distanceLeft !== undefined ? pr.distanceLeft.toFixed(2) : (pr.hasNext ? pr.routeLength.toFixed(2) : '–');
     document.getElementById('eta').textContent = pr.secondsLeft !== undefined ? pr.secondsLeft.toFixed(1) + ' s' : (pr.hasNext ? pr.routeSeconds.toFixed(1) + ' s' : '–');

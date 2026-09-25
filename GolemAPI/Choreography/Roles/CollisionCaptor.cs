@@ -40,7 +40,7 @@ public sealed class CollisionCaptor
                         me = Pose(@bodyX, @bodyY, @bodyHeading);
                         g.Bump(me, @bearing);
                     }
-                    expose @name who;
+                    expose @teller who;
                     {
                         print g.HasPendingMission() 'pending', g.Held 'held';
                         if (g.HasPendingMission()) {
@@ -59,7 +59,7 @@ public sealed class CollisionCaptor
                     p["bodyY", typeof(double)] = Resolution.Metres(bodyY);
                     p["bodyHeading", typeof(double)] = Resolution.Radians(bodyHeading);
                     p["bearing", typeof(double)] = Resolution.Radians(bearing);
-                    p["name", typeof(string)] = robot.Name;
+                    p["teller", typeof(string)] = robot.Name;   // never "name": the print's 'name' label would be rendered as the golem (25-sep-2026)
                 })
                 .PerformCommand());
         }

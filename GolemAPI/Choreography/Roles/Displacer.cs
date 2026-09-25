@@ -45,14 +45,14 @@ public sealed class Displacer
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
-                    Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
+                    Check(map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                 ",
                 @"
                     {
                         from = Pose(@fx, @fy, @ftheta);
-                        point = Position(@x, @y);
+                        point = Position(@sx, @sy);
                         route = g.Visit(from, point);
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -64,8 +64,8 @@ public sealed class Displacer
                     p["fx", typeof(double)] = Resolution.Metres(start.Value.X);
                     p["fy", typeof(double)] = Resolution.Metres(start.Value.Y);
                     p["ftheta", typeof(double)] = Resolution.Radians(start.Value.Theta);
-                    p["x", typeof(double)] = Resolution.Metres(first.X);
-                    p["y", typeof(double)] = Resolution.Metres(first.Y);
+                    p["sx", typeof(double)] = Resolution.Metres(first.X);
+                    p["sy", typeof(double)] = Resolution.Metres(first.Y);
                 })
                 .PerformCheckThenCommand());
         }
@@ -86,14 +86,14 @@ public sealed class Displacer
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
-                    Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
+                    Check(map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                 ",
                 @"
                     {
                         from = Pose(@fx, @fy, @ftheta);
-                        point = Position(@x, @y);
+                        point = Position(@sx, @sy);
                         route = g.Cover(from, point);
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -105,8 +105,8 @@ public sealed class Displacer
                     p["fx", typeof(double)] = Resolution.Metres(start.Value.X);
                     p["fy", typeof(double)] = Resolution.Metres(start.Value.Y);
                     p["ftheta", typeof(double)] = Resolution.Radians(start.Value.Theta);
-                    p["x", typeof(double)] = Resolution.Metres(first.X);
-                    p["y", typeof(double)] = Resolution.Metres(first.Y);
+                    p["sx", typeof(double)] = Resolution.Metres(first.X);
+                    p["sy", typeof(double)] = Resolution.Metres(first.Y);
                 })
                 .PerformCheckThenCommand());
         }
@@ -125,14 +125,14 @@ public sealed class Displacer
                 answer = Answer.Of(robot.Actor.Using(
                     @"
                         Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                        Check(map.IsOnMap(Position(@x, @y))) Error 'that point is nowhere on the map';
+                        Check(map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                     ",
                     @"
                         {
                             route = g.Find(@id);
-                            point = Position(@x, @y);
+                            point = Position(@sx, @sy);
                             route.Then(point);
-                            print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                            print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                             if (route.IsWalkable) {
                                 print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -142,8 +142,8 @@ public sealed class Displacer
                     ")
                     .WithParameters(p => {
                         p["id", typeof(int)] = id;
-                        p["x", typeof(double)] = Resolution.Metres(point.X);
-                        p["y", typeof(double)] = Resolution.Metres(point.Y);
+                        p["sx", typeof(double)] = Resolution.Metres(point.X);
+                        p["sy", typeof(double)] = Resolution.Metres(point.Y);
                     })
                     .PerformCheckThenCommand());
             }
@@ -170,16 +170,16 @@ public sealed class Displacer
             ",
             @"
                 {
-                    me = Pose(@x, @y, @theta);
+                    me = Pose(@px, @py, @ptheta);
                     route = g.Pause(me);
-                    print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending',
+                    print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why',
                           g.HeldAt.X 'heldX', g.HeldAt.Y 'heldY';
                 }
             ")
             .WithParameters(p => {
-                p["x", typeof(double)] = Resolution.Metres(pose.X);
-                p["y", typeof(double)] = Resolution.Metres(pose.Y);
-                p["theta", typeof(double)] = Resolution.Radians(pose.Theta);
+                p["px", typeof(double)] = Resolution.Metres(pose.X);
+                p["py", typeof(double)] = Resolution.Metres(pose.Y);
+                p["ptheta", typeof(double)] = Resolution.Radians(pose.Theta);
             })
             .PerformCheckThenCommand());
     }
@@ -197,9 +197,9 @@ public sealed class Displacer
             ",
             @"
                 {
-                    me = Pose(@x, @y, @theta);
+                    me = Pose(@px, @py, @ptheta);
                     route = g.Resume(me);
-                    print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                    print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                     if (route.IsWalkable) {
                         print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                               route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -208,9 +208,9 @@ public sealed class Displacer
                 }
             ")
             .WithParameters(p => {
-                p["x", typeof(double)] = Resolution.Metres(pose.X);
-                p["y", typeof(double)] = Resolution.Metres(pose.Y);
-                p["theta", typeof(double)] = Resolution.Radians(pose.Theta);
+                p["px", typeof(double)] = Resolution.Metres(pose.X);
+                p["py", typeof(double)] = Resolution.Metres(pose.Y);
+                p["ptheta", typeof(double)] = Resolution.Radians(pose.Theta);
             })
             .PerformCheckThenCommand());
     }
@@ -247,7 +247,7 @@ public sealed class Displacer
                         route = g.Underway();
                         me = Pose(@px, @py, @ptheta);
                         route.Arrive(me);
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -299,7 +299,7 @@ public sealed class Displacer
             {
                 route = g.Underway();
                 route.Fail(@reason);
-                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
+                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                 if (route.IsWalkable) {
                     print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                           route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
