@@ -172,6 +172,7 @@ Endpoints, per golem:
 
 | Endpoint | What it does |
 |---|---|
+| `POST /dash` `{"stops": [...]}` | The same errand as `/move`, the DASH way (ajuste 58): the doors crossed on the way when the straight run passes clean, the way bending only at their points of clearance — fewer stops (`g.Dash`); `/move` and `/cover` keep every door as a leg of its own. |
 | `POST /move` `{"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]}` | Send the golem through points in that order — points only, never places (400 when the body is malformed, 409 when the golem refuses: a point off the map, no way that fits) |
 | `POST /cover` `{"stops": [...]}` | Send it through several stops in the order it finds shortest; same body |
 | `POST /pause` · `POST /resume` · `POST /forget` `{"x": 5.2, "y": 5.8}` | Hold the route underway and let it go on; forget the obstacle standing at a point (told to the peers) |
