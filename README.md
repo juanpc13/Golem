@@ -99,8 +99,8 @@ curl -X POST localhost:8082/cover -H "Content-Type: application/json" -d "{\"sto
 
 Its shortest road from the kitchen to the garage cuts through the center hall, where a crate the map never
 heard of stands — the journal will say so: a mark, a few steps aside to feel for a way past it, and either
-the way found or another road. The panels do the same with a stop composer: click rooms or press places
-to collect stops, then *Visit* or *Cover*.
+the way found or another road. The panels do the same with a COMMAND LINE (propuesta 58): the buttons compose the line — click a room or press a place to put a
+point on it, `visit` or `cover` at its head — and *run* (or Enter) sends it to `/command`; `help` lists the language.
 
 To watch the physics without the picture (the GUI's software rendering costs five or six CPU cores),
 set `KIOSK=false` on the `sim` service in `docker-compose.yml`.
@@ -172,6 +172,7 @@ Endpoints, per golem:
 
 | Endpoint | What it does |
 |---|---|
+| `POST /command` `{"line": "golem visit 2,9.5 9,8 --with blue"}` · `GET /commands` | The golem commanded by lines like a shell's (propuesta 58; the line is this golem's own, `golem` in front optional; `--with blue,green` or `--with all` carries the same command to those peers over the tells' wire, answering one line per golem, this one first): `visit x,y …`, `cover x,y x,y …`, `dash x,y …` (the doors crossed on the way, ajuste 58), `then x,y`, `pause`, `resume`, `forget x,y`, `reset [--all]`, `state`, `route`, `where`, `obstacles`, `help [command]` — a new language translated into the embodiment's action methods, never the actor's DSL (`/query` stays apart, for the lab); `set name x,y …` and `show` are the console's own (a value kept in the browser, written as `@name`). Text back for a console, the endpoint's JSON with `Accept: application/json`; 400 when the line is no command, 409 when the domain refuses. |
 | `POST /dash` `{"stops": [...]}` | The same errand as `/move`, the DASH way (ajuste 58): the doors crossed on the way when the straight run passes clean, the way bending only at their points of clearance — fewer stops (`g.Dash`); `/move` and `/cover` keep every door as a leg of its own. |
 | `POST /move` `{"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]}` | Send the golem through points in that order — points only, never places (400 when the body is malformed, 409 when the golem refuses: a point off the map, no way that fits) |
 | `POST /cover` `{"stops": [...]}` | Send it through several stops in the order it finds shortest; same body |

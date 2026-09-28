@@ -48,6 +48,18 @@ public sealed record PointRequest(double? X, double? Y)
     }
 }
 
+/// <summary>A line of the command language (propuesta 58) — <c>{"line": "visit (2, 9.5) (9, 8)"}</c>: read by CommandLine, acted by the Commander.</summary>
+public sealed record CommandRequest(string Line)
+{
+    public const string Shape = "{\"line\": \"visit (2, 9.5) (9, 8)\"}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Line)) yield return "give a line: " + Shape;
+        else if (Line.Length > 4000) yield return "a line is at most 4000 characters";
+    }
+}
+
 /// <summary>An ad-hoc read in the golem's language — <c>{"script": "g.PendingRoutes().Count"}</c>.</summary>
 public sealed record QueryRequest(string Script)
 {

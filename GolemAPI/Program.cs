@@ -73,7 +73,7 @@ builder.Services.AddSingleton(host.Embodiment);
 builder.Services.AddSingleton(feed);
 builder.Services.AddSingleton(wire);
 builder.Services.AddSingleton<IBodyWire>(ros);
-builder.Services.AddSingleton(new GolemIdentity(golem, body));
+builder.Services.AddSingleton(new GolemIdentity(golem, body, peers));
 
 var app = builder.Build();
 app.MapControllers();

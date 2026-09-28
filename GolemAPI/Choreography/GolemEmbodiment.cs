@@ -48,9 +48,10 @@ public sealed class GolemEmbodiment
     private readonly string journalPath;
 
     public GolemEmbodiment(PerformanceV2 performance, IBodyWire ros, PanelFeed feed, ITellWire wire,
-                 string golem, (double X, double Y) home, string journalPath, Capabilities capabilities)
+                 string golem, (double X, double Y) home, string journalPath, Capabilities capabilities, IReadOnlyList<string> peers = null)
     {
         if (capabilities == null) throw new ArgumentNullException(nameof(capabilities), "the embodiment needs to know which roles its body can play");
+        Peers = peers ?? Array.Empty<string>();
         this.performance = performance;
         this.golemActor = performance.Actor;   // the golem itself, taken from the performance once
         this.ros = ros;
@@ -69,6 +70,10 @@ public sealed class GolemEmbodiment
     public ActorV2 Actor => golemActor;
     /// <summary>The golem's name: the journal's identity (env GOLEM), never domain state — what a touch is told with.</summary>
     public string Name => golem;
+    /// <summary>The peers this golem can reach by name — its tell routes; what `--with all` means.</summary>
+    public IReadOnlyList<string> Peers { get; }
+    /// <summary>A line of the command language handed to a peer's console over the wire (`visit … --with blue`); null when no such peer.</summary>
+    public Task<PeerReply> CommandPeerAsync(string peer, string line) => wire.CommandPeerAsync(peer, line);
     /// <summary>Where the body believes it stands (telemetry, never the journal's); null before the first word from it.</summary>
     public Pose Pose => ros.LatestPose;
     /// <summary>The robot's mechanics — the output target: the print the reactions emit, switched on and sent to the body over ROS.</summary>

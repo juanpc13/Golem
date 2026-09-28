@@ -88,6 +88,27 @@ public sealed class HttpBroker : ITellWire
         }
     }
 
+    // A command line carried to a peer's console: the peer is found by its tell route (`tell-<name>`), the line goes to its
+    // /command as the panel's would, and its text comes back with the status — the console that fans out shows it per golem.
+    public async Task<PeerReply> CommandPeerAsync(string peer, string line)
+    {
+        if (peer == null) throw new ArgumentNullException(nameof(peer));
+        if (line == null) throw new ArgumentNullException(nameof(line));
+        if (!routes.TryGetValue("tell-" + peer, out Uri url)) return null;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            using var body = new StringContent(JsonSerializer.Serialize(new { line }), Encoding.UTF8, "application/json");
+            using var answer = await Wire.PostAsync(new Uri(url, "command"), body, cts.Token);
+            return new PeerReply((int)answer.StatusCode, await answer.Content.ReadAsStringAsync(cts.Token));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[wire {whoAmI}] {peer} did not answer the line: {ex.Message}");
+            return new PeerReply(0, $"{peer} did not answer: {ex.Message}");
+        }
+    }
+
     public async Task ProduceAsync(string topic, string key,
         IReadOnlyDictionary<string, string> headers, string value,
         CancellationToken cancellationToken = default)

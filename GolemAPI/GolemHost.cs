@@ -74,7 +74,7 @@ public sealed class GolemHost : IAsyncDisposable
         // The golem given a body: what the body reports comes to it; every print goes out through the robot's mechanics,
         // the actor's output target.
         var embodiment = new GolemEmbodiment(performance, bodyWire, feed, tellWire, settings.Golem, settings.Home,
-                                             settings.JournalPath, settings.Capabilities);
+                                             settings.JournalPath, settings.Capabilities, settings.Peers);
         Console.WriteLine($"[golem {settings.Golem}] roles: {settings.Capabilities}");
         embodiment.Mechanics.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print
 

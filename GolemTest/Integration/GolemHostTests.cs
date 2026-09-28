@@ -47,6 +47,7 @@ public class GolemHostTests
         private readonly InProcessBroker broker = new();
         public IReadOnlyCollection<Uri> Peers => Array.Empty<Uri>();
         public Task<bool> AskPeerAsync(Uri peer, string relativePath, string json) => Task.FromResult(false);
+        public Task<PeerReply> CommandPeerAsync(string peer, string line) => Task.FromResult<PeerReply>(null);   // no peers on this wire
         public Task ProduceAsync(string topic, string key, IReadOnlyDictionary<string, string> headers, string value, CancellationToken ct) =>
             broker.ProduceAsync(topic, key, headers, value, ct);
         public IDisposable Subscribe(string topic, Action<BrokerRecord> onRecord) => broker.Subscribe(topic, onRecord);

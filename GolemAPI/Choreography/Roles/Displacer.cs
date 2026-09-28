@@ -160,6 +160,17 @@ public sealed class Displacer
         return ThenEach(robot.Newest(), points.Skip(1), answer);
     }
 
+    /// <summary>One more stop, told to the NEWEST route while it is pending — the console's `then`, the panel's next point on a route
+    /// underway (propuesta 58) — the same entry Move writes for every point after the first; the route decides its way again through
+    /// them all. Refused when there is no route, or the newest is no longer pending.</summary>
+    public Answer Then((double X, double Y) point)
+    {
+        int id;
+        try { id = robot.Newest(); }
+        catch (Exception ex) { return Answer.Refusal("no route to tell a stop to: " + GolemEmbodiment.Reason(ex)); }
+        return ThenEach(id, new[] { point }, Answer.Refusal("no route to tell a stop to"));
+    }
+
     // Every further point is told to the route just opened, one entry each; the route decides its way again through them all.
     private Answer ThenEach(int id, IEnumerable<(double X, double Y)> points, Answer answer)
     {

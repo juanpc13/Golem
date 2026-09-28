@@ -47,6 +47,27 @@
   details.hint > summary::before { content:'▸'; margin-right:6px; }
   details.hint[open] > summary::before { content:'▾'; margin-right:6px; }
   details.hint > p { margin:6px 0 0; }
+  /* the command line (propuesta 58): the line being composed, its answer, the language's table */
+  .cli { display:flex; flex-direction:column; gap:8px; max-width:1280px; margin:18px auto 0; padding:14px 22px 0; }
+  .cli-line { align-items:center; flex-wrap:nowrap; gap:12px; }
+  .cli-line input { flex:1; width:auto; font-family:ui-monospace, monospace; font-size:1.25rem; padding:12px 16px;
+                    background:var(--surface); border:2px solid #47597a; border-radius:10px; color:var(--ink); }
+  .cli-line input:focus { outline:none; border-color:#8ab4ff; box-shadow:0 0 0 3px rgba(138,180,255,.18); }
+  .cli-line #run { font-size:1rem; padding:12px 22px; }
+  .prompt { font-family:ui-monospace, monospace; font-size:1.25rem; font-weight:600; color:#8ab4ff; white-space:nowrap; }
+  .answer { font-family:ui-monospace, monospace; font-size:13px; margin:0 0 0 4px; white-space:pre-wrap; color:var(--muted); min-height:38px; }
+  /* the golems a line may name: this one and its peers (TELL_ROUTES); lit = named on the line */
+  .golems { align-items:center; gap:6px; margin-left:4px; }
+  .golems .hint { margin:0 4px 0 0; }
+  .golems button { font-family:ui-monospace, monospace; font-size:12.5px; padding:4px 12px; opacity:.6; }
+  .golems button.on { opacity:1; background:#25324f; border-color:#8ab4ff; color:var(--ink); }
+  .answer.done { color:var(--ink); }
+  .answer.refused { color:var(--warn); }
+  .answer.syntax { color:#e0b25a; }
+  #commands { font-size:12px; border-collapse:collapse; margin-top:6px; }
+  #commands td { padding:3px 10px 3px 0; vertical-align:top; }
+  #commands a { color:#8ab4ff; text-decoration:none; }
+  #commands a:hover { text-decoration:underline; }
   .stops { margin:0; padding-left:22px; font-family:ui-monospace, monospace; font-size:13px; min-height:18px; }
   .stops li { display:flex; gap:10px; align-items:center; padding:2px 0; }
   .stops li .drop { cursor:pointer; color:var(--muted); }
@@ -101,45 +122,66 @@
   <span class="badge ending" id="ending" hidden>route <b id="endId">–</b> <b id="endStatus">–</b>: <span id="endWhy">–</span></span>
 </header>
 
+<!-- THE COMMAND LINE, the first thing on the page (Juan, 28-sep-2026: "que el CLI salga en la parte de arriba como algo muy importante
+     que se va construyendo en la parte superior"): the buttons below compose it, the operator runs it -->
+<div class="cli" id="cli">
+  <div class="row cli-line">
+    <span class="prompt" id="prompt">&rsaquo;</span>
+    <input id="line" type="text" spellcheck="false" autocomplete="off"
+           placeholder="compose with the buttons below, or write: golem visit 2,9.5 9,8 --with blue &mdash; Enter runs, &uarr;&darr; history, Esc clears">
+    <button id="run" class="place">run</button>
+  </div>
+  <div class="row golems" id="golems"><span class="hint">with:</span></div>
+  <pre id="answer" class="answer">&mdash;</pre>
+</div>
+
 <main>
   <section>
     <h2>Operations <label class="toggle"><input type="checkbox" id="hidePlaces"> hide places</label></h2>
     <div class="card ops">
-      <canvas id="map" width="300" height="300" title="click to add a stop here"></canvas>
-      <details class="hint"><summary>How the map, the stops and the marks work</summary><p>The floor plan is the golem's own map, released into its journal. Click a room or press a
-      place to add a stop, then send the golem through the stops <b>in that order</b> (<code>Visit</code>) or let
-      it <b>choose the order</b> that makes the whole road shortest (<code>Cover</code>). Between stops it always
-      takes the shortest road through the doors and open boundaries, journals it, and journals every passage
-      crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body
-      bumps into there becomes a red <b>mark</b> on this map (<code>route.Bump</code>, told to the peers, who <code>g.HearBump</code>
-      it and mark it too); marks close together are joined as the vertices of one <b>obstacle</b>, the figure of the thing nobody charted.
-      The golem feels for a way past, right then left, and if none fits its body it decides the road again
-      around the marks. Only when no road fits does the mission fail.</p></details>
+      <canvas id="map" width="300" height="300" title="click to put this point on the line"></canvas>
+      <details class="hint"><summary>How the line, the map and the marks work</summary><p>The buttons <b>compose</b> the command line at the top of the page; nothing runs
+      until you press <b>run</b> or Enter. Click a room, press a place or add the pair to put a <b>point</b> on the line; <code>visit</code> sends the golem
+      through the points in that order, <code>cover</code> lets it choose the order that makes the whole road shortest, <code>dash</code> goes in that order with the doors
+      crossed on the way (fewer stops, ajuste 58), <code>then</code> tells one more
+      stop to the route underway. Between stops it always takes the shortest road through the doors and open boundaries, journals it, and journals every
+      passage crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body bumps into there becomes a red
+      <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.HearBump</code> it and mark it too); marks close together are joined as
+      the vertices of one <b>obstacle</b>, the figure of the thing nobody charted. The language is the robot's own, like a shell's &mdash; <code>visit 2,9.5 9,8</code>,
+      <code>reset --all</code>, <code>set stops 2,9.5 9,8</code> then <code>visit @stops</code> &mdash; never the actor's scripts (<code>/commands</code> lists it: the table below).
+      Add <code>--with blue</code> (or <code>--with all</code>, or press a peer under the line) to involve more than one golem: this golem does its part and carries the same command to each peer named; the answers come back per golem.</p></details>
       <div class="row" id="places"></div>
       <div class="row">
         <input id="x" type="number" step="0.5" value="5.5">
         <input id="y" type="number" step="0.5" value="5.5">
-        <button id="addpoint">Add point</button>
-      </div>
-      <ol id="stops" class="stops"></ol>
-      <div class="row">
-        <button id="move" class="place">Visit · in this order</button>
-        <button id="cover" class="place">Cover · shortest order</button>
-        <button id="dash" class="place" title="the same errand as Visit, the doors crossed on the way — fewer stops (ajuste 58)">Dash · doors on the way</button>
-        <button id="clear">Clear</button>
+        <button id="addpoint">+ point</button>
       </div>
       <div class="row">
-        <button id="pause" disabled>Pause</button>
-        <button id="resume" disabled>Resume</button>
-        <button id="reset">Let go of everything</button>
-        <button id="wipe" class="danger">Reset everything</button>
+        <button id="move" class="place">visit</button>
+        <button id="cover" class="place">cover</button>
+        <button id="dash" class="place" title="the same errand as visit, the doors crossed on the way — fewer stops (ajuste 58)">dash</button>
+        <button id="then" class="place">then</button>
+        <button id="clear">clear the line</button>
       </div>
-      <p class="hint"><b>Pause / Resume</b>: the mission underway is held — journaled as <code>g.Pause(id)</code>,
-      the body stops where it stands, the plan and the cursor keep — and let go on with <code>g.Resume(id)</code>.
-      <b>Let go</b>: every pending mission is abandoned — one command, journaled as
-      <code>g.Abandon(id, reason)</code> per mission, nothing erased — and the body is put back on its mark.
-      <b>Reset everything</b> (lab lever): wipes the journals of this golem AND its peers and reboots them reborn
-      at entry 1 — all of them, because the hearer dedups the sender's tell ids.</p>
+      <div class="row">
+        <button id="pause" disabled>pause</button>
+        <button id="resume" disabled>resume</button>
+        <button id="reset">reset</button>
+        <button id="wipe" class="danger">reset --all</button>
+      </div>
+      <div class="row">
+        <button id="state">state</button>
+        <button id="route">route</button>
+        <button id="where">where</button>
+        <button id="obst">obstacles</button>
+        <button id="show">show</button>
+        <button id="helpv">help</button>
+      </div>
+      <details class="hint"><summary>Commands &mdash; the language, one line each; click an example to put it on the line</summary><table id="commands"></table></details>
+      <p class="hint"><b>pause / resume</b>: the golem is held where its body stands &mdash; journaled as <code>g.Pause(me)</code>, the body stops, the plan and
+      the cursor keep &mdash; and let go on with <code>g.Resume(me)</code>. <b>reset</b>: every pending route is abandoned &mdash; journaled as
+      <code>route.Abandon(reason)</code>, nothing erased &mdash; and the body is put back on its mark. <b>reset --all</b> (lab lever): wipes the journals of this
+      golem AND its peers and reboots them reborn at entry 1. <b>set / show</b> are the console's: a value kept in this browser, written as <code>@name</code>.</p>
     </div>
   </section>
 
@@ -168,43 +210,6 @@
       Ephemeral facts (roads chosen, legs started, holds, membrane, lifecycle) — they never touch the journal.
     </p>
 
-    <h2 style="margin-top:20px">PerformQuery</h2>
-    <div class="card ops" style="margin-bottom:20px">
-      <div class="row">
-        <input id="q" type="text" style="flex:1; width:auto" spellcheck="false"
-               placeholder="g.PendingRoutes().Count  —  or a full block: { print g.Underway().Id 'id'; }">
-        <button id="run">Query</button>
-      </div>
-      <div class="row" id="presets">
-        <button data-q="g.PendingRoutes().Count">PendingRoutes().Count</button>
-        <button data-q="g.Routes().Count">Routes().Count</button>
-        <button data-q="body.Radius.InMeters">body.Radius.InMeters</button>
-        <button data-q="body.Speed.InMetersPerSecond">body.Speed.InMetersPerSecond</button>
-        <button data-q="body.LingerAfterTold.InSeconds">body.LingerAfterTold.InSeconds</button>
-        <button data-q="g.RouteLength()">RouteLength()</button>
-        <button data-q="g.RouteSeconds()">RouteSeconds()</button>
-        <button data-q="g.Distance(map.Find('kitchen'), map.Find('garage'))">Distance(kitchen, garage)</button>
-        <button data-q="map.ZoneAt(Position(5.5, 5.5)).Name">map.ZoneAt(Position(5.5, 5.5)).Name</button>
-        <button data-q="map.IsWallAt(Position(4.0, 8.5), 0.3)">map.IsWallAt(Position(4.0, 8.5), 0.3)</button>
-        <button data-q="collisions.MarkCount">collisions.MarkCount</button>
-        <button data-q="collisions.All().Count">collisions.All().Count</button>
-        <button data-q="collisions.HeardCount">collisions.HeardCount</button>
-        <button data-q="{ foreach (places in map.Zones) { print places.Name 'name'; foreach (doors in places.Doorways()) { print doors.To 'to'; } } }">map.Zones as objects</button>
-        <button data-q="map.AreaCount">map.AreaCount</button>
-        <button data-q="map.Connects(map.Find('north'), map.Find('center'))">map.Connects(north, center)</button>
-        <button data-q="map.ZoneOf(Position(5.5, 5.5)).Name">map.ZoneOf(5.5, 5.5)</button>
-        <button data-q="collisions.MarkCount">collisions.MarkCount</button>
-        <button data-q="body.Radius.InMeters">body.Radius.InMeters</button>
-        <button data-q="g.FitsAt(Position(10.25, 5.5))">FitsAt(Position(10.25, 5.5))</button>
-        <button data-q="{ if (g.HasPendingMission()) { print g.Underway().Id 'id', g.Underway().NextLeg.Name 'heading', g.Underway().NextLeg.IsStop 'aStop', g.Underway().LegsLeft 'legsLeft', g.Underway().StopsLeft 'stopsLeft'; } }">Next leg</button>
-      </div>
-      <pre id="qout" class="hint" style="font-family:ui-monospace,monospace; margin:0; white-space:pre-wrap">—</pre>
-      <details class="hint"><summary>Why a query must stay read-only</summary><p>Queries read the golem's in-memory state and never touch the journal.
-      Keep them read-only: a mutating call here would change memory without journaling it,
-      and the change evaporates on the next rehydration. Distances follow the map's passages:
-      <code>g.Distance(map.Find('kitchen'), map.Find('garage'))</code> is the shortest road through the doors, and the header's
-      <i>route left · eta</i> comes from <code>/progress</code>, which only adds the road from where the body stands.</p></details>
-    </div>
 
   </section>
 </main>
@@ -306,78 +311,163 @@ es.onmessage = (m) => row(JSON.parse(m.data));
 // so a golem restart doesn't duplicate rows; the map is re-read too (it may have grown a release)
 es.onopen = () => { feed.innerHTML = ''; events.innerHTML = ''; targets = []; loadMap(); };
 
-// The stops being composed: place names or points 'x,y', in the order added. One send, one mission.
-let stops = [];
-function renderStops() {
-  const ol = document.getElementById('stops');
-  ol.innerHTML = '';
-  if (stops.length === 0) { ol.innerHTML = '<li class="stops-empty">no stops yet: click a room, press a place, or add a point</li>'; return; }
-  stops.forEach((s, i) => {
-    const li = document.createElement('li');
-    li.innerHTML = `<span>${s}</span><span class="drop" title="remove">✕</span>`;
-    li.querySelector('.drop').onclick = () => { stops.splice(i, 1); renderStops(); };
-    ol.appendChild(li);
-  });
-}
-function addStop(stop) { stops.push(stop); renderStops(); }
-
-// Visit walks the stops in the order given; Cover lets the golem choose the order. Every stop travels as JSON, a
-// point {"x": 9, "y": 8} — points only, never places — and the golem validates the body before any script runs.
+// THE COMMAND LINE (propuesta 58, fase 2; Juan, 28-sep-2026: "que cuando uno presione los botones vaya construyendo el comando
+// para darle ejecutar cuando uno esté listo"): the buttons COMPOSE the line — a verb at its head, a point appended per place, per
+// click on the map, per pair — the operator reads it, edits it and runs it; the golem answers in the robot's words, from /command.
+// The language is the API's (/commands lists it): the panel knows no endpoint of the golem's but /command.
 async function post(path, body) {
   return fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 }
-function asStop(s) {
-  const [x, y] = s.split(',');
-  return {x: +x, y: +y};
+const line = document.getElementById('line');
+const answer = document.getElementById('answer');
+// THE WHOLE COMMAND is what the line shows, as the binary would take it — `golem visit 2,9.5 5.5,9.5 --with blue` (Juan, 28-sep-2026:
+// "que se vea el comando completo"; then "si yo ya soy golem, ¿debería especificarme a mí mismo?… un parámetro para los otros — sí,
+// con with"): the line is this golem's own — the prompt names it — the buttons compose the command, and `--with` at its end names the
+// peers the same command is carried to (the selector under the line composes it).
+const head = 'golem ';
+const HEAD = /^\s*golem(\s+(?!(?:visit|cover|dash|then|pause|resume|forget|reset|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
+const WITH = /\s*--with(?:\s+([A-Za-z_][A-Za-z0-9_,-]*))?/i;
+function parts() {
+  const m = line.value.match(HEAD);
+  const rest = line.value.replace(HEAD, '');
+  const w = rest.match(WITH);
+  return { head: m ? m[0].trimEnd() + ' ' : head, cmd: rest.replace(WITH, '').replace(/^\s+/, ''),
+           with: w && w[1] ? w[1].toLowerCase().split(',').filter(Boolean) : [] };
 }
-async function send(kind) {
-  const out = document.getElementById('qout');
-  if (stops.length === 0) { out.textContent = 'add a stop first'; return; }
-  const r = await post('/' + kind, {stops: stops.map(asStop)});   // /move, /cover or /dash: the three modes of the errand (ajuste 58)
-  if (!r.ok) { out.textContent = 'refused: ' + await r.text(); return; }
-  stops = []; renderStops();
+function build(p) { return p.with.length ? `${p.head}${p.cmd.trim()} --with ${p.with.join(',')}` : `${p.head}${p.cmd}`; }
+function put(text) { line.value = text; line.focus(); line.setSelectionRange(line.value.length, line.value.length); }
+function setLine(cmd) { const p = parts(); p.cmd = cmd; put(build(p)); }
+function setWhole(text) { put(text); }
+// visit / cover / then at the head of the command; the points already on it stay
+function compose(verb) {
+  const rest = parts().cmd.trim().replace(/^(visit|cover|dash|then)\b\s*/i, '');
+  setLine(rest ? `${verb} ${rest}` : `${verb} `);
 }
-
-document.getElementById('addpoint').onclick = () =>
-  addStop(`${+document.getElementById('x').value},${+document.getElementById('y').value}`);
-document.getElementById('move').onclick = () => send('move');
-document.getElementById('cover').onclick = () => send('cover');
-document.getElementById('dash').onclick = () => send('dash');
-document.getElementById('clear').onclick = () => { stops = []; renderStops(); };
-renderStops();
-
-async function runQuery(script) {
-  const out = document.getElementById('qout');
-  out.textContent = '…';
+// one more point on the command — a place's centre, a click on the map, the pair; a command with no verb yet becomes a visit
+function addPoint(x, y) {
+  const cmd = parts().cmd.trim();
+  setLine(`${cmd === '' ? 'visit' : cmd} ${x},${y}`);
+}
+// the values the console keeps (set name x,y …), written as @name on a line and put in before it is sent — kept per browser
+let values = {};
+try { values = JSON.parse(localStorage.getItem('golem.cli.values') || '{}'); } catch {}
+function keep() { try { localStorage.setItem('golem.cli.values', JSON.stringify(values)); } catch {} }
+function resolve(text) {
+  return text.replace(/@([A-Za-z_][A-Za-z0-9_-]*)/g, (m, name) => name in values ? values[name] : m);
+}
+// set and show are the console's own: nothing of them reaches the golem
+function console_(text) {
+  let m = text.match(/^set\s+([A-Za-z_][A-Za-z0-9_-]*)\s+(.+)$/i);
+  if (m) { values[m[1]] = m[2].trim(); keep(); return `${m[1]} = ${values[m[1]]}`; }
+  if (/^set\b/i.test(text)) return 'set: expected a name and its points, like set stops 2,9.5 9,8';
+  m = text.match(/^show(?:\s+([A-Za-z_][A-Za-z0-9_-]*))?$/i);
+  if (m) {
+    if (m[1]) return m[1] in values ? `${m[1]} = ${values[m[1]]}` : `${m[1]}: no such value`;
+    const names = Object.keys(values);
+    return names.length ? names.map(n => `${n} = ${values[n]}`).join('\n') : 'no values kept: set stops 2,9.5 9,8';
+  }
+  return null;
+}
+// the lines run, kept per browser: ↑ and ↓ walk them
+let history = [];
+try { history = JSON.parse(localStorage.getItem('golem.cli.history') || '[]'); } catch {}
+let cursor = history.length;
+function remember(text) {
+  if (history[history.length - 1] !== text) history.push(text);
+  if (history.length > 50) history.shift();
+  cursor = history.length;
+  try { localStorage.setItem('golem.cli.history', JSON.stringify(history)); } catch {}
+}
+async function run() {
+  const text = line.value.trim();
+  const cmd = parts().cmd.trim();   // the command, without `golem` and without --with
+  if (!cmd) return;
+  if (/^reset\s+--all$/i.test(cmd) && !confirm('Wipe the journals of this golem and its peers and reboot them from entry 1?')) return;
+  if (/^reset$/i.test(cmd) && !confirm('Abandon every pending route (journaled, one command) and put the body back on its mark?')) return;
+  remember(text);
+  const kept = console_(cmd);
+  if (kept !== null) { answer.className = 'answer done'; answer.textContent = `› ${text}\n${kept}`; setLine(''); return; }
+  const sent = resolve(text);
+  answer.className = 'answer';
+  answer.textContent = `› ${sent}\n…`;
   try {
-    const r = await post('/query', {script});
-    out.textContent = script + '\n→ ' + await r.text();
-  } catch (e) { out.textContent = 'golem unreachable: ' + e; }
+    const r = await post('/command', {line: sent});
+    const said = await r.text();
+    answer.className = 'answer ' + (r.ok ? 'done' : r.status === 409 ? 'refused' : 'syntax');
+    answer.textContent = `› ${sent}\n${said}`;
+    // done: an act's line is spent; a read, or a line refused or misread, stays to be read or edited
+    if (r.ok && /^(visit|cover|dash|then|pause|resume|reset|forget)\b/i.test(cmd)) setLine('');
+  } catch (e) {
+    answer.className = 'answer syntax';
+    answer.textContent = `› ${text}\ngolem unreachable: ${e}`;
+  }
 }
-document.getElementById('run').onclick = () => runQuery(document.getElementById('q').value);
-document.getElementById('q').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') runQuery(e.target.value);
+document.getElementById('run').onclick = run;
+line.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); run(); }
+  else if (e.key === 'Escape') setWhole(head);
+  else if (e.key === 'ArrowUp') { e.preventDefault(); if (cursor > 0) { cursor--; setWhole(history[cursor]); } }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); if (cursor < history.length - 1) { cursor++; setWhole(history[cursor]); } else { cursor = history.length; setLine(''); } }
 });
-document.querySelectorAll('#presets button').forEach(b => {
-  b.onclick = () => { document.getElementById('q').value = b.dataset.q; runQuery(b.dataset.q); };
+document.getElementById('addpoint').onclick = () => addPoint(+document.getElementById('x').value, +document.getElementById('y').value);
+document.getElementById('move').onclick = () => compose('visit');
+document.getElementById('cover').onclick = () => compose('cover');
+document.getElementById('dash').onclick = () => compose('dash');
+document.getElementById('then').onclick = () => compose('then');
+document.getElementById('clear').onclick = () => setWhole(head);
+for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],
+                          ['state', 'state'], ['route', 'route'], ['where', 'where'], ['obst', 'obstacles'], ['show', 'show'], ['helpv', 'help']])
+  document.getElementById(id).onclick = () => setLine(text);
+// THE WITH SELECTOR (Juan, 28-sep-2026: "botones de los otros golems… acorde a sus TELL_ROUTES"; then "un parámetro para los otros"):
+// one button per peer this golem can reach (its tell routes, `peers` from /body); lit = named in `--with`; a click composes the
+// `--with` at the end of the line, a `--with` written by hand lights the buttons. This golem itself is no button: the line is its own.
+const golemsRow = document.getElementById('golems');
+function peersOn() { const w = parts().with; return w.includes('all') ? [...golemsRow.querySelectorAll('button')].map(b => b.dataset.golem) : w; }
+function lightGolems() { const on = new Set(peersOn()); for (const b of golemsRow.querySelectorAll('button')) b.classList.toggle('on', on.has(b.dataset.golem)); }
+golemsRow.addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-golem]');
+  if (!b) return;
+  const order = [...golemsRow.querySelectorAll('button')].map(x => x.dataset.golem);
+  const on = peersOn();
+  const p = parts();
+  p.with = on.includes(b.dataset.golem) ? on.filter(n => n !== b.dataset.golem) : order.filter(n => on.includes(n) || n === b.dataset.golem);
+  put(build(p));
+  lightGolems();
 });
-
-document.getElementById('pause').onclick = async () => { await fetch('/pause', {method: 'POST'}); };
-document.getElementById('resume').onclick = async () => { await fetch('/resume', {method: 'POST'}); };
-document.getElementById('reset').onclick = async () => {
-  if (!confirm('Abandon every pending mission (journaled, one command) and put the body back on its mark?')) return;
-  await fetch('/reset', {method: 'POST'});
-};
-document.getElementById('wipe').onclick = async () => {
-  if (!confirm('Wipe the journals of this golem and its peers and reboot them from entry 1?')) return;
-  await post('/reset-everything', {cascade: true});
-};
+line.addEventListener('input', lightGolems);
+fetch('/body').then(r => r.json()).then(b => {
+  document.getElementById('prompt').textContent = b.golem + ' ›';
+  golemsRow.querySelectorAll('button').forEach(x => x.remove());
+  for (const name of (b.peers || [])) {
+    const btn = document.createElement('button');
+    btn.dataset.golem = name; btn.textContent = name; btn.title = `carry the command to ${name} too (--with ${name})`;
+    golemsRow.appendChild(btn);
+  }
+  golemsRow.classList.toggle('hidden', !(b.peers || []).length);
+  lightGolems();
+}).catch(() => {});
+line.value = head;
+// the language, from the API: every verb, how it is written, what it does, an example — click one to put it on the line
+(async () => {
+  try {
+    const verbs = await (await fetch('/commands')).json();
+    document.getElementById('commands').innerHTML = verbs.map(v =>
+      `<tr><td><code>${escapeHtml(v.Usage)}</code></td><td>${escapeHtml(v.What)}</td>` +
+      `<td><a href="#" data-line="${escapeHtml(v.Example)}">${escapeHtml(v.Example)}</a></td></tr>`).join('');
+  } catch { /* the golem may still be waking up */ }
+})();
+document.getElementById('commands').addEventListener('click', ev => {
+  const a = ev.target.closest('a[data-line]');
+  if (!a) return;
+  ev.preventDefault();
+  setLine(a.dataset.line);
+});
 
 map.addEventListener('click', (ev) => {
   const r = map.getBoundingClientRect();
   const x = toWx((ev.clientX - r.left) / r.width * map.width);
   const y = toWy((ev.clientY - r.top) / r.height * map.height);
-  addStop(`${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`);
+  addPoint(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
 });
 
 // The obstacles, as a table AND as the red figures on the map: one query on /obstacles, one list. The golem
@@ -407,14 +497,12 @@ async function drawObstacles() {
 drawObstacles();
 setInterval(drawObstacles, 4000);
 
-// "gone": somebody took that obstacle away. The golem forgets it with every vertex and tells its peers;
-// from here on a body may pass, and a touch there would be a NEW obstacle.
-document.getElementById('obstacles').addEventListener('click', async ev => {
+// "gone": somebody took that obstacle away — the line `forget (x, y)` is composed for the operator to run; the golem then
+// forgets it with every vertex and tells its peers, and from there on a body may pass (a touch there would be a NEW obstacle).
+document.getElementById('obstacles').addEventListener('click', ev => {
   const b = ev.target.closest('button.gone');
   if (!b) return;
-  b.disabled = true;
-  try { await post('/forget', {x: +b.dataset.x, y: +b.dataset.y}); } catch (e) {}
-  drawObstacles();
+  setLine(`forget ${(+b.dataset.x).toFixed(2)},${(+b.dataset.y).toFixed(2)}`);
 });
 
 // The floor plan, as the golem knows it: one query on /map walks the golem's Place objects and prints their
@@ -429,7 +517,7 @@ async function loadMap() {
     for (const p of plan.places) {
       const b = document.createElement('button');
       b.className = 'place'; b.textContent = '+ ' + p.name;
-      b.onclick = () => addStop(`${+p.cx},${+p.cy}`);   // a place is its centre: the golem is sent to points only
+      b.onclick = () => addPoint(+p.cx, +p.cy);   // a place is its centre: the golem is sent to points only
       holder.appendChild(b);
     }
   } catch { /* the golem may still be waking up */ }

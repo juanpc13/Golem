@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Choreography.Transport.Brokered;
 using GolemAPI;
 using GolemAPI.Choreography;
+using GolemAPI.Commanding;
 using GolemAPI.Membrane;
 using GolemAPI.Panel;
 using Puppeteer;
@@ -79,7 +80,7 @@ public sealed class MockWorld : ILabWorld
         var settings = new GolemSettings(name, name, at, Capabilities.Parse(null), peers ?? Fleet.Where(n => n != name).ToList(),
                                          follower ?? (Followers.TryGetValue(name, out var f) ? f : null), DatabaseType.IN_MEMORY, "");
         var feed = new PanelFeed();
-        var host = GolemHost.Build(settings, body, new TellsInMemory(broker), feed);
+        var host = GolemHost.Build(settings, body, new TellsInMemory(broker, this), feed);
         var golem = new Golem { Name = name, Host = host, Body = body, Feed = feed };
         golem.Ears = Task.Run(() => HearAsync(golem));
         lock (golems) golems[name] = golem;
@@ -91,6 +92,9 @@ public sealed class MockWorld : ILabWorld
     }
 
     public Task PlaceGolemAsync(string golem) => AddGolemAsync(golem);
+
+    /// <summary>The golem's host — the same GolemHost the containers run — for a test that commands it directly (the console).</summary>
+    public GolemHost HostOf(string golem) => Of(golem).Host;
 
     public string Send(string golem, params (double X, double Y)[] stops)
     {
@@ -544,9 +548,18 @@ public sealed class MockWorld : ILabWorld
     private sealed class TellsInMemory : ITellWire
     {
         private readonly InProcessBroker broker;
-        public TellsInMemory(InProcessBroker broker) { this.broker = broker; }
+        private readonly MockWorld world;
+        public TellsInMemory(InProcessBroker broker, MockWorld world) { this.broker = broker; this.world = world; }
         public IReadOnlyCollection<Uri> Peers => Array.Empty<Uri>();
         public Task<bool> AskPeerAsync(Uri peer, string relativePath, string json) => Task.FromResult(false);
+        // a line for a peer reaches its console in process, as /command would over HTTP
+        public async Task<PeerReply> CommandPeerAsync(string peer, string line)
+        {
+            Golem other;
+            lock (world.golems) if (!world.golems.TryGetValue(peer, out other)) return null;
+            var reply = await new Commander(other.Host.Embodiment).ExecuteAsync(line);
+            return new PeerReply(reply.Kind == "done" ? 200 : reply.Kind == "refused" ? 409 : 400, reply.Text);
+        }
         public Task ProduceAsync(string topic, string key, IReadOnlyDictionary<string, string> headers, string value, CancellationToken ct) =>
             broker.ProduceAsync(topic, key, headers, value, ct);
         public IDisposable Subscribe(string topic, Action<BrokerRecord> onRecord) => broker.Subscribe(topic, onRecord);

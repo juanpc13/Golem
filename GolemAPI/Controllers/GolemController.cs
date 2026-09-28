@@ -1,4 +1,5 @@
 using GolemAPI.Choreography;
+using GolemAPI.Commanding;
 using GolemAPI.Choreography.Roles;
 using Microsoft.AspNetCore.Mvc;
 
@@ -82,6 +83,17 @@ public class GolemController : Controller
     [HttpPost("resume")]
     public IActionResult Resume() => Motors(out var displacer, out var refusal) ? Answered(displacer.Resume()) : refusal;
 
+    // One more stop, told to the newest route while it is pending — {"x": 5.5, "y": 5.5} (propuesta 58: the console's `then`).
+    [HttpPost("then")]
+    public IActionResult Then([FromBody] PointRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PointRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Then((request.X.Value, request.Y.Value)));
+    }
+
     // Somebody took an obstacle away: the golem forgets it, with every mark that outlined it, and tells the peers.
     [HttpPost("forget")]
     public IActionResult Forget([FromBody] PointRequest request)
@@ -117,19 +129,7 @@ public class GolemController : Controller
 
     // The obstacles the golem hypothesizes: one row per obstacle and, under it, one per vertex — the touches that outlined it.
     [HttpGet("obstacles")]
-    public IActionResult Obstacles() =>
-        Content(golemEmbodiment.Actor.Using(@"
-            print collisions.All().Count 'total', collisions.Things().Count 'things',
-                  collisions.EncounterCount 'met', collisions.MarkCount 'marks';
-            foreach (obstacles in collisions.All()) {
-                print obstacles.Kind 'kind', map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
-                      obstacles.Who 'who', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
-                foreach (vertices in obstacles.Vertices()) {
-                    print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal', vertices.Reach 'reach';
-                }
-            }
-        ")
-        .PerformQuery(), "application/json");
+    public IActionResult Obstacles() => Content(Readings.Obstacles(golemEmbodiment.Actor), "application/json");
 
     [HttpGet("state")]
     public IActionResult MissionBoard() => Content(Board(), "application/json");
@@ -162,23 +162,8 @@ public class GolemController : Controller
         .PerformQuery(), "application/json");
     }
 
-    // One query, one document: the board the panel paints from — the route underway found once, held in a local.
-    private string Board() =>
-        golemEmbodiment.Actor.Using(@"
-            {
-                print g.PendingRoutes().Count 'pending', g.Routes().Count 'total', g.HasPendingMission() 'hasNext';
-                if (g.HasPendingMission()) {
-                    route = g.Underway();
-                    print route.Id 'nextId', route.NextLeg.Target.X 'nextX', route.NextLeg.Target.Y 'nextY',
-                          route.StopsLeft 'stopsLeft', route.Paused 'paused';
-                }
-                if (g.Routes().Count > 0) {
-                    last = g.Newest();
-                    print last.Id 'lastId', last.Status 'lastStatus', last.Why 'lastWhy';
-                }
-            }
-        ")
-        .PerformQuery();
+    // One query, one document: the board the panel paints from (Readings.Board: the console reads the same one).
+    private string Board() => Readings.Board(golemEmbodiment.Actor);
 
     // The action's answer becomes the response: refused → 409 in the domain's words; done → the board back to the
     // operator. The next order is already on its way to the body: the reaction on the act pushed it.

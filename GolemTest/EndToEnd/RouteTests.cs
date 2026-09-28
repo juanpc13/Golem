@@ -415,6 +415,30 @@ public class RouteTests
     }
 
     [TestMethod]
+    public void GrazesSpendThePatience_EvenWhenTheBodyWalksTheRetreatBetweenThem()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body, map, collisions);
+
+        // the 28-sep lab: a body whose count of steps had drifted took every touch for the west corridor's wall; each graze
+        // backed it off, it walked the retreat, retried the same leg and grazed again - 39 times, the route never gave up
+        var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));
+        for (int graze = 1; graze <= 3; graze++)
+        {
+            Assert.IsTrue(route.IsPending(), $"patient still before graze {graze}: " + route.AsPlan());
+            g.Bump(new Pose(0.3, 8.5, 3.1416), 0.0);   // the west corridor's outer wall, a wall the map knows
+            Assert.AreEqual(graze, route.Grazes);
+            if (!route.IsPending()) break;
+            Assert.AreEqual("back", route.Order, "a graze backs the body off first");
+            Step(route);                               // and the body walks that retreat before it tries again
+        }
+        Assert.AreEqual("failed", route.Status, "three grazes on one leg spend the patience, retreats walked or not");
+        Assert.AreEqual("its patience with walls is spent: 3 grazes on one leg", route.Why);
+    }
+
+    [TestMethod]
     public void ATouch_CorrectsTheWayInside_AndGrazesSpendThePatienceOnTheLeg_UntilTheRouteFailsItself()
     {
         var map = Catalog.Warehouse();

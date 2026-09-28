@@ -381,7 +381,10 @@ internal sealed class Route
         if (!leg.IsReverse && !linedUp && !Same(leg.Approach, leg.Exit)) { linedUp = true; return this; }   // lined up in front of the door: now through it
         linedUp = false;
         nextLeg++;
-        grazesOnLeg = 0;
+        // the patience with walls is spent since the last leg OF THE PLAN reached: a correction reached (the retreat a graze
+        // inserted, a way around, a step aside) is the same leg being tried again, not a new one (28-sep-2026: reset on the
+        // retreat, a body off its count grazed "a wall" 39 times and never gave up)
+        if (!leg.IsCorrection) grazesOnLeg = 0;
         if (leg.IsStop)
         {
             reached++;

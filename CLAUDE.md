@@ -353,9 +353,29 @@ whether it could or not, so the domain resolves what follows. Consequences:
   rented Out lease (found empty under the panel's concurrent polls). **What the operator sends arrives as a
   JSON body, typed and validated before any script runs** (Juan, 16-sep: "debería ser por JSON… y validar que venga
   correcta"): `Controllers/Requests.cs` — `ErrandRequest` (`{"stops": [{"x": 2.0, "y": 9.5}, {"x": 9.0, "y": 8.0}]}` — points only, never places: Juan, 16-sep),
-  `PointRequest`, `QueryRequest`, `ResetRequest` — each says what is wrong with it and the endpoint answers 400 with
+  `PointRequest`, `QueryRequest`, `ResetRequest`, `CommandRequest` — each says what is wrong with it and the endpoint answers 400 with
   that; no `[FromQuery]` anywhere. Each endpoint writes its own script whole, in place (no `Held(verb)`, no templates
-  with the verb interpolated): Juan, 16-sep, "el controller en el endpoint debe explicar el script como tal".
+  with the verb interpolated): Juan, 16-sep, "el controller en el endpoint debe explicar el script como tal". **The golem is also
+  commanded by LINES** (propuesta 58, 28-sep-2026; Juan: "el API se convierte en un command line también… una sintaxis rica… documentación en
+  el panel… los botones van construyendo el comando"; afternoon: "un lenguaje NUEVO para comandar el robot… como si fuera un comando de linux, un
+  binario haciendo las acciones que ya tenemos: el api traduce eso llamando a la clase del GolemEmbodiment para que ejecute los scripts ya hechos"):
+  the language is a SHELL-LIKE one of its own — NEVER the actor's DSL on a line (`query` is gone from it; `/query` stays apart for the lab) — and
+  lives in the API: `Commanding/CommandLine.cs` reads a line (`golem red visit 2,9.5 5.5,9.5 9,9.5` — the binary's name, then the GOLEM's, both
+  optional on its own console and the name only after `golem` (Juan, 28-sep: "que se vea el comando completo"; `Command.Golem`, refused on another golem's console: "this is red: 'blue' is commanded on its own
+  console — write --with blue…"), a command, its points, and `--with blue,green` / `--with all` — the line is always THIS golem's own, `--with` carries the
+  SAME command to those peers over the tells' wire (Juan, 28-sep: "si yo ya soy golem, ¿debería especificarme a mí mismo? quizás un parámetro tipo --
+  para los otros" — "sí, con with"; not `--tell`: a tell is a lived fact between actors, paper 04, an operator's order passed on is host plumbing):
+  `ITellWire.CommandPeerAsync` → the peer's `/command` by its `tell-<name>` route, the line rewritten `golem blue visit …`; `GolemEmbodiment.Peers`
+  is what `all` means; one line per golem comes back, this one first, `red › …`, `blue › …`; a name not on the wire is refused, "this is red: no
+  golem named 'green' among its peers") — a command, points as `x,y`
+  tokens, options with `--`: `visit`, `cover`, `then x,y`, `pause`, `resume`, `forget x,y`, `reset [--all]`, `state`, `route`, `where`,
+  `obstacles`, `help [command]`; `set name x,y …` / `show` are the CONSOLE's — the value lives in the browser and is written as `@name`, put on
+  the line before it is sent, never in the golem) and says what it expected and where when it is no command; `Commanding/Commander.cs` turns it
+  into the SAME validated request and the same role call the endpoint makes (it decides nothing) and answers in the robot's words for a
+  console and in the endpoint's JSON for a program; `Commanding/Readings.cs` holds the fixed reads the panel and the console share
+  (`Board`, `Obstacles`, `Route`, `Where`), each written once. `POST /command` (`{"line": "…"}`: 200 text, or JSON with `Accept:
+  application/json`; 400 no command; 409 refused), `GET /commands` (the help). The panel's console (fase 2): a full-width bar at the TOP of the page, under the header — the first thing seen, "algo muy importante que se va construyendo en la parte superior" (Juan, 28-sep) — and the buttons under the map COMPOSE it — a `with:` SELECTOR under the line (the PEERS alone, `GolemIdentity.Peers` = its `tell-<name>` routes, served as `peers` by `/body`; lit = named in `--with`, a click composes `--with blue` at the end of the line; this golem is no button, the line is its own), a place, a click on the map or the pair append a point, `visit`/`cover`/`then` set the verb, the levers and the reads set the line, an obstacle's `gone` composes `forget x,y` — and nothing runs until `run` or Enter; the line always shows the WHOLE command, `golem visit 2,9.5 --with blue` (the prompt names this golem, `red ›`; the buttons compose the command); the help table comes from `/commands`; the query console is gone from the panel. A binary, when it comes, is a thin CLIENT of `/command`
+  — never a process that hunts the golem's: the golem lives in its container. Points only, never places, in a line too.
 - The journal (`./journal/<golem>/`, FileSystem backend) is the only truth: pose and
   contacts are ephemeral telemetry, transitions are journaled — entrusting (`route = g.Visit(from, point)` /
   `g.Cover(from, point)` / `g.Follow(point)`, more stops with `route.Then(point)`, one entry each — the route decides

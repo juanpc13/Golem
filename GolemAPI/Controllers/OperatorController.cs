@@ -2,6 +2,7 @@ using System.Text.Json;
 using Choreography.Theater;
 using Puppeteer;
 using GolemAPI.Choreography;
+using GolemAPI.Commanding;
 using GolemAPI.Membrane;
 using GolemAPI.Panel;
 using Microsoft.AspNetCore.Mvc;
@@ -47,6 +48,7 @@ public class OperatorController : Controller
         {
             golem = identity.Golem,
             body = identity.Body,
+            peers = identity.Peers,   // the golems a line may name besides this one (its tell routes)
             entry = performance.CurrentEntryId,
             poseSource = ros.Source == PoseSource.Wheels ? "wheels" : "world",
             pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta },
@@ -77,6 +79,31 @@ public class OperatorController : Controller
             return BadRequest(ex.Message);
         }
     }
+
+    // THE COMMAND LINE (propuesta 58): one line of the language — {"line": "visit (2, 9.5) (9, 8)"} — read and acted as the buttons
+    // would; text back for a console (the default), the endpoint's JSON for a program (Accept: application/json). 400 when the
+    // line is no command (what was expected, where), 409 when the domain refused, in its words.
+    [HttpPost("command")]
+    public async Task<IActionResult> Command([FromBody] CommandRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + CommandRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        var reply = await new Commander(golemEmbodiment).ExecuteAsync(request.Line);
+        bool asJson = Request.Headers.Accept.Any(a => a != null && a.Contains("application/json", StringComparison.OrdinalIgnoreCase));
+        string body = asJson && reply.Json != "" ? reply.Json : reply.Text;
+        string type = asJson && reply.Json != "" ? "application/json" : "text/plain; charset=utf-8";
+        return reply.Kind switch
+        {
+            "done" => Content(body, type),
+            "refused" => StatusCode(409, reply.Text),
+            _ => BadRequest(reply.Text),
+        };
+    }
+
+    // The language, for the panel's help and anyone else: every verb, how it is written, what it does, an example.
+    [HttpGet("commands")]
+    public IActionResult Commands() => Content(JsonSerializer.Serialize(CommandLine.Help), "application/json");
 
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
