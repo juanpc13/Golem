@@ -125,6 +125,7 @@
       <div class="row">
         <button id="move" class="place">Visit · in this order</button>
         <button id="cover" class="place">Cover · shortest order</button>
+        <button id="dash" class="place" title="the same errand as Visit, the doors crossed on the way — fewer stops (ajuste 58)">Dash · doors on the way</button>
         <button id="clear">Clear</button>
       </div>
       <div class="row">
@@ -332,7 +333,7 @@ function asStop(s) {
 async function send(kind) {
   const out = document.getElementById('qout');
   if (stops.length === 0) { out.textContent = 'add a stop first'; return; }
-  const r = await post(kind === 'move' ? '/move' : '/cover', {stops: stops.map(asStop)});
+  const r = await post('/' + kind, {stops: stops.map(asStop)});   // /move, /cover or /dash: the three modes of the errand (ajuste 58)
   if (!r.ok) { out.textContent = 'refused: ' + await r.text(); return; }
   stops = []; renderStops();
 }
@@ -341,6 +342,7 @@ document.getElementById('addpoint').onclick = () =>
   addStop(`${+document.getElementById('x').value},${+document.getElementById('y').value}`);
 document.getElementById('move').onclick = () => send('move');
 document.getElementById('cover').onclick = () => send('cover');
+document.getElementById('dash').onclick = () => send('dash');
 document.getElementById('clear').onclick = () => { stops = []; renderStops(); };
 renderStops();
 

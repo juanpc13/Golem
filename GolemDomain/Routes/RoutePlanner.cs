@@ -32,19 +32,26 @@ internal sealed class RoutePlanner
     private readonly Collisions collisions;
     private readonly double radius;
     private readonly EdgeCost cost;
+    private readonly Navigation navigation;   // how the doors are taken: door by door, or crossed on the way (ajuste 58)
 
-    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius) : this(layout, collisions, radius, new DistanceCost()) { }
+    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius) : this(layout, collisions, radius, new DistanceCost(), Navigation.DoorByDoor) { }
 
-    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost)
+    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, Navigation navigation) : this(layout, collisions, radius, new DistanceCost(), navigation) { }
+
+    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost) : this(layout, collisions, radius, cost, Navigation.DoorByDoor) { }
+
+    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost, Navigation navigation)
     {
         if (layout == null) throw new GolemDomainException("a planner needs a layout");
         if (collisions == null) throw new GolemDomainException("a planner needs to know what the bodies learned");
         if (cost == null) throw new GolemDomainException("a planner needs to know what an edge costs");
+        if (navigation == null) throw new GolemDomainException("a planner needs to know how the doors are taken");
         this.layout = layout;
         this.collisions = collisions;
         if (radius < 0) throw new GolemDomainException("a body's radius cannot be negative");
         this.cost = cost;
         this.radius = radius;
+        this.navigation = navigation;
     }
 
     private IReadOnlyList<Thing> things = Array.Empty<Thing>();            // the things the marks outline, for one road
@@ -76,7 +83,7 @@ internal sealed class RoutePlanner
             raw.AddRange(RawRoad(here, stop));
             here = stop;
         }
-        return new Trajectory(raw);
+        return navigation.AsWalked(layout, from, new Trajectory(raw));
     }
 
     /// <summary>How long the shortest road from one point to another is, leg to leg.</summary>
@@ -151,15 +158,13 @@ internal sealed class RoutePlanner
         var start = new Node(from, NodeKind.Start);
         var goal = new Node(to, NodeKind.Goal);
         var nodes = new List<Node> { start };
-        // a door offers its two points of clearance — DoorClearance into each of its areas, square to the wall — where a body lines
-        // up before it and stands clear past it (ajuste 57, 28-sep-2026): the way bends THERE, never in the doorway, and a straight
+        // a door offers what the navigation says (ajuste 58): its point alone — door by door, the road then walked with an approach
+        // and an exit at every door — or its two points of clearance, DoorClearance into each of its areas, square to the wall, where
+        // a body lines up before it and stands clear past it (ajuste 57): the way bends THERE, never in the doorway, and a straight
         // run crosses the door itself anywhere within its clear window without a node (Crossings), as an opening is crossed
         foreach (var d in layout.PlacedDoors)
-        {
-            var step = layout.StepInto(d.Door, d.Door.AreaA);   // a unit step through the door into its first area
-            nodes.Add(new Node(new Position(d.At.X + step.X * MapLayout.DoorClearance, d.At.Y + step.Y * MapLayout.DoorClearance), d.Door));
-            nodes.Add(new Node(new Position(d.At.X - step.X * MapLayout.DoorClearance, d.At.Y - step.Y * MapLayout.DoorClearance), d.Door));
-        }
+            foreach (var at in navigation.DoorPoints(layout, d))
+                nodes.Add(new Node(at, d.Door));
         // an opening offers its pivots — where a body may turn on it when the way is not straight; a straight run crosses
         // it anywhere away from the corners without a node (Crossings)
         foreach (var o in layout.Openings)
@@ -195,7 +200,7 @@ internal sealed class RoutePlanner
             {
                 if (done.Contains(v) || v == u) continue;
                 if (!Sees(u, v)) continue;
-                double edge = cost.Between(u.At, v.At) + HopCost;   // a hair per stop: at equal length, the way with fewer stops
+                double edge = cost.Between(u.At, v.At) + navigation.HopCost;   // a hair per stop when the navigation says so: at equal length, the way with fewer stops
                 if (dist[u] + edge < dist[v]) { dist[v] = dist[u] + edge; prev[v] = u; }
             }
         }
@@ -227,8 +232,6 @@ internal sealed class RoutePlanner
 
     // ---- the graph ----
 
-    private const double HopCost = 0.001;   // metres, as if: what a stop costs the way (ajuste 57)
-
     private enum NodeKind { Start, Passage, Detour, Goal }
 
     private sealed class Node
@@ -253,7 +256,7 @@ internal sealed class RoutePlanner
     private bool Sees(Node u, Node v)
     {
         if (u.At.DistanceTo(v.At) < 1e-9) return true;
-        if (layout.Crossings(u.At, v.At, radius) == null) return false;
+        if (layout.Crossings(u.At, v.At, radius, navigation.ThroughDoors) == null) return false;
         var run = new Segment(u.At, v.At);
         for (int i = 0; i < figures.Count; i++)
         {

@@ -30,9 +30,8 @@ public class RouteTests
 
         var route = g.Visit(new Pose(2.0, 1.5, 0.0), map.Find("kitchen"));   // from the living room, facing east
         Assert.IsTrue(route.IsRouted, "the errand decided the way");
-        Assert.AreEqual("west/living@0.75,2.4 > kitchen/west@0.75,8.6 > kitchen@2,9.5", route.AsPlan(),
-            "the whole way, held by the route: the approach of the door out of the living room, the corridor in one run through both doors to the kitchen door's exit, the stop (ajuste 57)");
-        Assert.AreEqual("west/living", route.NextLeg.Name, "the first thing is the door out of the living room: its approach, where the way bends");
+        Assert.AreEqual("west/living@0.75,3 > kitchen/west@0.75,8 > kitchen@2,9.5", route.AsPlan(), "the whole way, held by the route");
+        Assert.AreEqual("west/living", route.NextLeg.Name, "the first thing is the door out of the living room");
         Assert.AreEqual("door", route.NextLeg.Kind);
         Assert.IsTrue(route.NextLeg.HasHeading, "the first leg has its heading too: the start is known");
         // the robot's words (17-sep-2026): an action and an amount, measured from where the body stands and faces
@@ -40,15 +39,17 @@ public class RouteTests
         Assert.IsTrue(route.Amount > 0.1, "how much to turn, in radians: " + route.Amount);
         double toApproach = new Position(2.0, 1.5).DistanceTo(route.Target);
         Step(route);
-        Assert.AreEqual("advance", route.Order, "turned: now advance to the door's approach");
+        Assert.AreEqual("advance", route.Order, "turned: now advance to line up in front of the door");
         Assert.AreEqual(toApproach, route.Amount, 0.001, "how far, in metres, from where the body stands");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Turn(new Pose(2.0, 1.5, 0.0))).Message, "asked no turn now");
         Step(route);
-        Assert.AreEqual("kitchen/west", route.NextLeg.Name, "at the approach the way bends north: the next leg is the kitchen door's exit, the corridor's two doors crossed on the way");
-        StringAssert.StartsWith(route.Order, "turn", "to face north up the corridor");
+        Assert.AreEqual("west/living", route.NextLeg.Name, "lined up in front of the door: the door is still the leg");
+        if (route.Order.StartsWith("turn")) Step(route);
+        Assert.AreEqual("advance", route.Order, "straight through the door to its exit");
         Step(route);
-        Assert.AreEqual("advance", route.Order, "one advance up the corridor, through both doors, to the kitchen door's exit");
-        Assert.AreEqual(6.2, route.Amount, 0.001, "from (0.75, 2.4) to (0.75, 8.6)");
+        Assert.AreEqual("kitchen/west", route.NextLeg.Name, "the door is behind: the next leg");
+        Assert.AreEqual("advance", route.Order, "out of the door the body already faces north up the corridor: no turn, an advance");
+        Assert.IsTrue(route.Amount > 3.0, "the corridor's length to the next door's approach: " + route.Amount);
         Assert.AreEqual(1, route.StopsLeft);
     }
 
@@ -60,9 +61,9 @@ public class RouteTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
-        Assert.AreEqual("kitchen/west@0.75,8.6 > west/living@0.75,2.4 > living@2,1.5", g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5)).AsPlan());
-        Assert.AreEqual("kitchen/north@4.6,9.5 > south/garage@6.4,1.5 > garage@9,1.5", g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(),
-            "from one door's exit to the other's approach in one straight run through the centre: the openings are crossed, not bent on, and the doors on the way (ajuste 57)");
+        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5)).AsPlan());
+        Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(),
+            "door to door in one straight run through the centre: the openings are crossed, not bent on");
     }
 
     [TestMethod]
@@ -77,8 +78,8 @@ public class RouteTests
         route.Then(map.Find("kitchen")).Then(map.Find("storage"));
         Assert.AreEqual(3, route.StopsLeft);
         string plan = route.AsPlan();
-        Assert.AreEqual("garage@9,1.5 > south/garage@6.4,1.5 > kitchen/north@4.6,9.5 > kitchen@2,9.5 > storage@9,9.5", plan,
-            "the garage in one run through two doors, back to its door's approach, the centre to the kitchen door's exit, the kitchen, the storage in one run (ajuste 57)");
+        StringAssert.StartsWith(plan, "living/south@4,1.5 > south/garage@7,1.5 > garage@9,1.5 > south/garage@7,1.5 > ");
+        StringAssert.EndsWith(plan, "> kitchen@2,9.5 > kitchen/north@4,9.5 > north/storage@7,9.5 > storage@9,9.5");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Then(new Position(3.0, 5.0))).Message, "nowhere on the map");
         Step(route);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Then(map.Find("north"))).Message, "already underway: no stop can be added");
@@ -111,17 +112,17 @@ public class RouteTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));
-        Assert.AreEqual(3, route.LegsLeft, "the two doors' points of clearance and the stop: the whole way");
+        Assert.AreEqual(3, route.LegsLeft, "two doors and the stop: the whole way");
         Assert.AreEqual("kitchen/west", route.NextLeg.Name);
         Assert.IsFalse(route.NextLeg.IsStop);
         Assert.AreEqual(0.75, route.Target.X, 0.001, "the body heads to the first door's approach, not to the stop");
         Assert.IsTrue(route.IsStopAhead(new Position(2.0, 1.5)));
-        Assert.IsFalse(route.IsStopAhead(new Position(0.75, 2.4)), "a door's point of clearance is not a stop");
+        Assert.IsFalse(route.IsStopAhead(new Position(0.75, 3.0)), "a door is not a stop");
 
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Reach(new Pose(2.0, 2.0, 0.0))).Message, "asked no move now");   // the route asks a turn first
-        Reach(route, 0.75, 8.6);                                                 // the first door's approach, reported
+        Reach(route, 0.75, 8.0);                                                 // the first door: lined up, crossed, reported
         Assert.AreEqual(2, route.LegsLeft);
-        Assert.AreEqual("west/living", route.NextLeg.Name, "the route hands out the next leg: the exit of the second door, both doors crossed on the way");
+        Assert.AreEqual("west/living", route.NextLeg.Name, "the route hands out the next leg");
         Assert.IsTrue(route.NextLeg.HasHeading, "with the heading to walk it, from the previous point");
         Assert.AreEqual(-1.5708, route.NextLeg.Target.Heading, 0.001, "straight south down the west corridor");
 
@@ -224,25 +225,18 @@ public class RouteTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
-        // the living room's mark (2.5,2.5) -> door living/south at (4,1.5) on a vertical wall, where the way BENDS -> the north hall:
-        // the door is one leg with two points, lined up 0.6 m before it, crossed straight to 0.6 m past it (ajuste 57: a door the way
-        // bends at keeps its approach and its exit; a door crossed on the way is no leg at all)
-        var legs = g.Visit(new Position(2.5, 2.5), new Position(5.5, 9.5)).LegsAhead;
-        Assert.AreEqual(2, legs.Count, "the door, then the stop: from the door's exit the run to the north hall is straight");
-        Assert.AreEqual(4.0, legs[0].At.X, 0.001, "the leg IS the door");
-        Assert.AreEqual(1.5, legs[0].At.Y, 0.001);
-        Assert.AreEqual(3.4, legs[0].Approach.X, 0.001, "the approach stands right in front of the door: 0.6 into the living room, the side the body comes from");
-        Assert.AreEqual(1.5, legs[0].Approach.Y, 0.001);
-        Assert.AreEqual(4.6, legs[0].Exit.X, 0.001, "0.6 into the south hall, the side it goes to");
-        Assert.AreEqual(5.5, legs[1].Approach.X, 0.001, "a stop has no wall to clear: approach, exit and point coincide");
-        Assert.AreEqual(9.5, legs[1].Exit.Y, 0.001);
-        // a door the way runs straight through is crossed on the way — no leg; one the way bends after is its exit alone
-        Assert.AreEqual("north@5.5,9.5", g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5)).AsPlan(), "the kitchen to the middle of the north hall: one straight run through the door");
-        var bent = g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).LegsAhead[0];
-        Assert.AreEqual("kitchen/north", bent.Name);
-        Assert.AreEqual(4.6, bent.At.X, 0.001, "the door's exit, where the way bends south");
-        Assert.AreEqual(bent.At, bent.Approach, "one point: nothing to line up, the door was crossed on the way there");
-        Assert.AreEqual(bent.At, bent.Exit);
+        // kitchen (2,9.5) -> door kitchen/west at (0.75,8) on a horizontal wall -> west corridor -> door (0.75,3) -> living
+        var legs = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5)).LegsAhead;
+        Assert.AreEqual(3, legs.Count);
+        Assert.AreEqual(0.75, legs[0].At.X, 0.001, "the leg IS the door");
+        Assert.AreEqual(8.0, legs[0].At.Y, 0.001);
+        Assert.AreEqual(0.75, legs[0].Approach.X, 0.001, "the approach stands right in front of the door");
+        Assert.AreEqual(8.6, legs[0].Approach.Y, 0.001, "0.6 into the kitchen, the side the body comes from");
+        Assert.AreEqual(7.4, legs[0].Exit.Y, 0.001, "0.6 into the corridor, the side it goes to");
+        Assert.AreEqual(3.6, legs[1].Approach.Y, 0.001, "the next door, west/living at y=3, is approached from the corridor");
+        Assert.AreEqual(2.4, legs[1].Exit.Y, 0.001);
+        Assert.AreEqual(2.0, legs[2].Approach.X, 0.001, "a stop has no wall to clear: approach, exit and point coincide");
+        Assert.AreEqual(1.5, legs[2].Exit.Y, 0.001);
     }
 
     [TestMethod]
@@ -258,10 +252,10 @@ public class RouteTests
         // hall's boundary. 17-sep-2026 live: the door got no approach and no exit, the body turned in the doorway and grazed the jamb.
         var route = g.Visit(new Pose(3.0, 9.5, 0.0), new Position(5.5, 1.5));
         Assert.AreEqual("kitchen/north", route.NextLeg.Name);
-        Assert.AreEqual("kitchen/north@4.6,9.5 > south@5.5,1.5", route.AsPlan(),
-            "the door crossed on the way to its exit, the turn made there — and from there the run to the south hall is straight, the openings crossed away from the corners (ajuste 57): " + route.AsPlan());
-        Assert.AreEqual(4.6, route.NextLeg.At.X, 0.001, "out into the north hall, off the wall: the turn toward the south is made there, not in the doorway");
-        Assert.AreEqual(4.6, route.Target.X, 0.001, "the first thing headed to is the door's exit, straight through");
+        StringAssert.StartsWith(route.AsPlan(), "kitchen/north@4,9.5 > north~center@", "the door is followed by the bend: " + route.AsPlan());
+        Assert.AreEqual(3.4, route.NextLeg.Approach.X, 0.001, "lined up inside the kitchen, off the wall");
+        Assert.AreEqual(4.6, route.NextLeg.Exit.X, 0.001, "out into the north hall, off the wall: the turn toward the opening is made there, not in the doorway");
+        Assert.AreEqual(3.4, route.Target.X, 0.001, "the first thing headed to is the approach");
     }
 
     [TestMethod]
@@ -276,7 +270,7 @@ public class RouteTests
         Assert.AreEqual(0.75, route.NextLeg.Target.X, 1e-9);
         Assert.AreEqual(2.0, route.PlannedEnd.X, 1e-9, "where the way ends…");
         Assert.AreEqual(1.5, route.PlannedEnd.Y, 1e-9);
-        Assert.AreEqual(new Position(0.75, 2.4).HeadingTo(new Position(2.0, 1.5)), route.PlannedEnd.Heading, 1e-9, "…facing the last leg's heading: from the living room's door's exit to its centre");
+        Assert.AreEqual(new Position(0.75, 3.0).HeadingTo(new Position(2.0, 1.5)), route.PlannedEnd.Heading, 1e-9, "…facing the last leg's heading: from the living room's door to its centre");
     }
 
     // ---- the touches: the route concludes what it was and corrects its way inside ----
@@ -767,5 +761,39 @@ public class RouteTests
     {
         for (int step = 0; step < 200 && route.IsPending(); step++) Step(route);
         Assert.IsFalse(route.IsPending(), $"route {route.Id}: too many steps without ending — {route.AsPlan()}");
+    }
+
+    // A DASH'S LEGS (ajuste 58): a door the way BENDS at is one leg with two points — lined up 0.6 m before it, crossed straight to 0.6 m
+    // past it; a door the way runs straight through is crossed on the way and is no leg at all; a door the way bends after is its exit alone.
+    [TestMethod]
+    public void ADashsDoor_IsOneLegWithItsApproachAndExit_WhereTheWayBends_AndNoLegWhereItRunsStraightThrough()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body, map, collisions);
+
+        // the living room's mark (2.5,2.5) -> door living/south at (4,1.5) on a vertical wall, where the way bends -> the north hall
+        var legs = g.Dash(new Position(2.5, 2.5), new Position(5.5, 9.5)).LegsAhead;
+        Assert.AreEqual(2, legs.Count, "the door, then the stop: from the door's exit the run to the north hall is straight");
+        Assert.AreEqual(4.0, legs[0].At.X, 0.001, "the leg IS the door");
+        Assert.AreEqual(1.5, legs[0].At.Y, 0.001);
+        Assert.AreEqual(3.4, legs[0].Approach.X, 0.001, "the approach stands right in front of the door: 0.6 into the living room, the side the body comes from");
+        Assert.AreEqual(1.5, legs[0].Approach.Y, 0.001);
+        Assert.AreEqual(4.6, legs[0].Exit.X, 0.001, "0.6 into the south hall, the side it goes to");
+        Assert.AreEqual(5.5, legs[1].Approach.X, 0.001, "a stop has no wall to clear: approach, exit and point coincide");
+        Assert.AreEqual(9.5, legs[1].Exit.Y, 0.001);
+        Assert.AreEqual(3, g.Visit(new Position(2.5, 2.5), new Position(5.5, 9.5)).LegsAhead.Count, "the visit of the same errand bends on the open boundary too: door, bend, stop");
+        // a door the way runs straight through is crossed on the way — no leg; one the way bends after is its exit alone
+        Assert.AreEqual("north@5.5,9.5", g.Dash(new Position(2.0, 9.5), new Position(5.5, 9.5)).AsPlan(), "the kitchen to the middle of the north hall: one straight run through the door");
+        var bent = g.Dash(new Position(2.0, 9.5), new Position(9.0, 1.5)).LegsAhead[0];
+        Assert.AreEqual("kitchen/north", bent.Name);
+        Assert.AreEqual(4.6, bent.At.X, 0.001, "the door's exit, where the way bends south");
+        Assert.AreEqual(bent.At, bent.Approach, "one point: nothing to line up, the door was crossed on the way there");
+        Assert.AreEqual(bent.At, bent.Exit);
+        // the mode is the route's own: a stop told later is planned the same way
+        var route = g.Dash(new Position(2.0, 9.5), new Position(5.5, 9.5));
+        route.Then(new Position(9.0, 1.5));
+        Assert.AreEqual("north@5.5,9.5 > south/garage@6.4,1.5 > garage@9,1.5", route.AsPlan(), "decided again through both stops, the doors still crossed on the way");
     }
 }

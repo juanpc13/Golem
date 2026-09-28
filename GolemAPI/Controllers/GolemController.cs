@@ -53,6 +53,17 @@ public class GolemController : Controller
         return Answered(displacer.Move(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
+    // Send the golem through points in THIS order the dash way: the doors crossed on the way, fewer stops (ajuste 58).
+    [HttpPost("dash")]
+    public IActionResult Dash([FromBody] ErrandRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ErrandRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Dash(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
+    }
+
     // Send the golem through several points and let it choose the order that makes the way shortest.
     [HttpPost("cover")]
     public IActionResult Cover([FromBody] ErrandRequest request)

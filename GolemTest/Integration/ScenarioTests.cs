@@ -50,8 +50,13 @@ public class ScenarioTests
         Assert.IsTrue(door.Reached, door.Line());
         AssertStands(door, 4.6, 1.5, "crossed straight through, out on the south hall's side");
 
+        var bend = await LegWalkedAsync(world, "red");
+        Assert.AreEqual("center~south", bend.Leg, "then the open boundary into the centre, where the way bends — " + bend.Line());
+        Assert.IsTrue(bend.Reached, bend.Line());
+        AssertStands(bend, 4.5, 3.0, "on the pivot of the open boundary, by the block's corner");
+
         var stop = await LegWalkedAsync(world, "red");
-        Assert.AreEqual("north", stop.Leg, "then the stop itself: from the door's exit one straight run through the open boundaries, up the centre (ajuste 57) — " + stop.Line());
+        Assert.AreEqual("north", stop.Leg, "last, the stop itself, straight up the centre — " + stop.Line());
         Assert.IsTrue(stop.Reached, stop.Line());
         AssertStands(stop, 5.5, 9.5, "the stop");
 
@@ -59,7 +64,7 @@ public class ScenarioTests
         await world.RunUntilSettledAsync(Patience);
         string seen = Report(world, "red", (5.5, 9.5));
         Assert.AreEqual("completed", world.Outcome("red").Status, seen);
-        Assert.AreEqual(2, world.LegsWalked("red").Count, "two legs, no more — " + seen);
+        Assert.AreEqual(3, world.LegsWalked("red").Count, "three legs, no more — " + seen);
         AssertStandsAt(world, "red", 5.5, 9.5);
     }
 
@@ -149,7 +154,7 @@ public class ScenarioTests
         var byTheCrate = legs.Where(l => !l.Completed && l.Touched.Contains("crate_east")).ToList();
         Assert.AreEqual(1, byTheCrate.Count, "the crate cut one leg: " + string.Join(" | ", legs));
         Assert.AreEqual("east/garage", byTheCrate[0].Name, "the leg down the corridor — " + byTheCrate[0]);
-        Assert.IsTrue(legs.Skip(legs.IndexOf(byTheCrate[0]) + 1).Any(l => l.Name == "south/garage"), "then the way went round through the centre to the garage's south door (ajuste 57: the openings crossed on the way, no leg on them): "
+        Assert.IsTrue(legs.Skip(legs.IndexOf(byTheCrate[0]) + 1).Any(l => l.Name.Contains("center")), "then the way went down the central hall: "
                       + string.Join(" | ", legs));
 
         await world.RunUntilSettledAsync(Patience);

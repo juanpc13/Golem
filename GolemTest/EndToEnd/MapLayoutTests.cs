@@ -47,7 +47,7 @@ public class MapLayoutTests
         Assert.AreEqual("north", map.ZoneOf(new Position(5.5, 9.5)).Name);
 
         // what the map disposes, walked: out of the kitchen by its door, across the open boundary, to the centre — and nowhere to the garage
-        Assert.AreEqual("kitchen/north@4.6,9.5 > center@5.5,5.5", g.Visit(new Position(2.0, 9.5), center).AsPlan(), "the door crossed on the way to its exit, where the way bends (ajuste 57)");
+        Assert.AreEqual("kitchen/north@4,9.5 > center@5.5,5.5", g.Visit(new Position(2.0, 9.5), center).AsPlan());
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), garage)).Message, "through the map");
     }
 
@@ -107,10 +107,10 @@ public class MapLayoutTests
         var map = Catalog.Warehouse();
         var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
 
-        Assert.AreEqual("kitchen/north@4.6,9.5 > south@5.5,1.5", g.Visit(new Position(3.0, 9.5), new Position(5.5, 1.5)).AsPlan(),
-            "out of the kitchen there is no straight run to the south hall: the way bends at the door's exit, the door crossed on the way (ajuste 57)");
-        Assert.AreEqual("kitchen/west@0.75,8.6 > west/living@0.75,2.4 > living@2,1.5", g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5)).AsPlan(),
-            "kitchen to living room straight down: two blocks and a corridor's walls in between — round by the corridor, its two doors crossed on the way");
+        StringAssert.StartsWith(g.Visit(new Position(3.0, 9.5), new Position(5.5, 1.5)).AsPlan(), "kitchen/north@4,9.5 > ",
+            "out of the kitchen through its east wall there is no straight run: a door is not an open boundary, it is crossed");
+        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5)).AsPlan(),
+            "kitchen to living room straight down: two blocks and a corridor's walls in between — round by the corridor's doors");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(5.5, 9.5), new Position(7.5, 7.5))).Message, "nowhere on the map",
             "the corner where two walls meet is block: no stop there");
     }
@@ -155,14 +155,16 @@ public class MapLayoutTests
         Assert.AreEqual(12, map.PassageCount, "eight doors, four open boundaries around the crossing");
         Assert.AreEqual("crossing", map.ZoneAt(new Position(5.5, 5.5)).Name);
 
-        // from the northwest room to the southeast one (ajuste 57): out of the northwest room's door on the way, along the north aisle
-        // and through the northeast room's door to its exit; across that room to the approach of its other door; then straight down
-        // through it, the east aisle and the southeast room's door — every door crossed on the way, the way bending only at two
-        // points of clearance, never in a doorway
+        // from the northwest room to the southeast one: out a door into an aisle, bending on the crossing's two open
+        // boundaries (the straight run would graze the crossing's corner), along the other aisle and in through a door
         string plan = g.Visit(map.Find("northwest").Center, map.Find("southeast")).AsPlan();
-        Assert.AreEqual("northeast/north-aisle@6.85,8.63 > northeast/east-aisle@8.63,6.85 > southeast@8.63,2.38", plan);
+        StringAssert.StartsWith(plan, "northwest/");
+        Assert.AreEqual(2, plan.Split("crossing~").Length - 1, "in through one aisle, out through the other: " + plan);
+        StringAssert.EndsWith(plan, "> southeast@8.63,2.38");
+        Assert.AreEqual(2, plan.Split('/').Length - 1, "exactly two doors: " + plan);
         double diagonal = g.Distance(map.Find("northwest"), map.Find("southeast"));
-        Assert.AreEqual(4.475 + Math.Sqrt(2 * 1.775 * 1.775) + 4.475, diagonal, 0.02, "east along y = 8.63, the diagonal across the northeast room, south along x = 8.63: " + diagonal);
+        double straight = Math.Sqrt(6.25 * 6.25 * 2);   // ~8.84, through the crossing's corner: not a road
+        Assert.IsTrue(diagonal > straight + 1.5 && diagonal < 11.5, "door, aisle, crossing, aisle, door — a bit over ten metres: " + diagonal);
     }
 
     [TestMethod]

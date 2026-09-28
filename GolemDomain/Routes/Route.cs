@@ -26,6 +26,9 @@ namespace GolemDomain.Routes;
 internal sealed class Route
 {
     internal int Id { get; }
+    /// <summary>How this route takes the doors — door by door (Visit, Cover, Follow) or crossed on the way (Dash): the mode the
+    /// golem's verb chose, kept for every way decided again (ajuste 58).</summary>
+    internal Navigation Navigation { get; }
     private readonly MapLayout layout;         // where its doors stand and its stops lie
     private readonly Collisions collisions;    // what a bump on the way teaches, and what the planner skirts
     private readonly double radius;            // the body the way is planned for
@@ -77,9 +80,10 @@ internal sealed class Route
     /// radius yet — a heterogeneous fleet would need it).</summary>
     internal double FollowerStandoff => 2 * radius + FollowerClearance;
 
-    internal Route(int id, Position stop, bool following, bool choosesOrder, MapLayout layout, Collisions collisions, double radius, double retreat, Action<Pose> stood)
+    internal Route(int id, Position stop, bool following, bool choosesOrder, Navigation navigation, MapLayout layout, Collisions collisions, double radius, double retreat, Action<Pose> stood)
     {
         if (stop == null) throw new GolemDomainException("Route.Route: 'stop' was not given");
+        if (navigation == null) throw new GolemDomainException($"route {id} needs to know how it takes the doors");
         if (layout == null) throw new GolemDomainException($"route {id} is decided on a layout");
         if (collisions == null) throw new GolemDomainException($"route {id} needs the collisions module, even empty");
         if (stood == null) throw new GolemDomainException("Route.Route: 'stood' was not given");
@@ -90,6 +94,7 @@ internal sealed class Route
         this.radius = radius;
         this.retreat = retreat;
         this.stood = stood;
+        Navigation = navigation;
         Id = id;
         Following = following;
         ChoosesOrder = choosesOrder;
@@ -176,7 +181,7 @@ internal sealed class Route
         return this;
     }
 
-    private RoutePlanner Planner() => new(layout, collisions, radius);
+    private RoutePlanner Planner() => new(layout, collisions, radius, Navigation);
 
     // The stops still ahead, in the order they will be reached: a Cover route lets the planner choose it, and keeps
     // that order as its own from then on (so what it reached and what lies ahead read from one list).
@@ -548,7 +553,7 @@ internal sealed class Route
             double along = (touched.X - aside.X) * dx + (touched.Y - aside.Y) * dy;
             var ahead = aside.Along(heading, Math.Max(0.0, along) + 3 * radius + Collisions.MarkMargin);   // the touch is on its shell: its centre one radius beyond, then a body's length
             if (layout.HasRoom(ahead, radius) && !collisions.Blocks(ahead, radius)
-                && layout.Crossings(aside, ahead, radius) != null && !collisions.Blocks(new Segment(aside, ahead), radius))
+                && layout.Crossings(aside, ahead, radius, Navigation.ThroughDoors) != null && !collisions.Blocks(new Segment(aside, ahead), radius))
             { legs.Add(new Leg(ahead, Leg.Waypoint)); from = ahead; }
         }
         legs.AddRange(Planner().Road(from, Ordered(from)).Legs());
