@@ -34,6 +34,8 @@ internal sealed class MapLayout : Map
     internal const double DoorGap = DoorWidth / 2 - 0.15;
     // How far from a wall's line a touched point may fall and still be that wall (its thickness, the pose's error).
     internal const double WallTolerance = 0.3;
+    // The world's walls (build_world.py, WALL_T): what an oblique run through a door has to clear on both faces of the wall.
+    internal const double WallThickness = 0.15;
 
     private readonly Dictionary<string, Position> doorPoints = new();   // by the door's name
 
@@ -206,12 +208,15 @@ internal sealed class MapLayout : Map
         return Of(opening.AreaA).SharedEdgeWith(Of(opening.AreaB));
     }
 
-    /// <summary>Where the straight run from one point to another CROSSES the openings on its way — one point per boundary
+    /// <summary>Where the straight run from one point to another CROSSES the passages on its way — one point per boundary
     /// it passes — for a body of this radius; null when a wall cuts it. The run leaves each zone through an open boundary,
     /// never through a wall nor through a corner where two walls meet, and crosses that boundary OpeningMargin away from the
-    /// corners of the blocks (a narrow boundary: with room for the body). Empty when both points share a zone. This is the
-    /// calculation the planner asks (Juan, 21-sep-2026: "si tiene paso libre, que llegue directo"): a run through the north
-    /// hall, the centre and the south hall is one straight run, not three.</summary>
+    /// corners of the blocks (a narrow boundary: with room for the body) — or through a DOOR, within the clear window of its
+    /// point (ajuste 57, 28-sep-2026: the gap less the body and its margin, less what the obliquity eats through the wall's
+    /// thickness). Empty when both points share a zone. This is the calculation the planner asks (Juan, 21-sep-2026: "si tiene
+    /// paso libre, que llegue directo"; 28-sep: "que no tenga que estar parando tanto si los tramos se pueden hacer en línea
+    /// recta"): a run through the north hall, the centre and the south hall is one straight run, not three; the kitchen to the
+    /// middle of the north hall is one straight run through the door.</summary>
     internal IReadOnlyList<Position> Crossings(Position from, Position to, double radius)
     {
         if (from == null) throw new GolemDomainException("MapLayout.Crossings: 'from' was not given");
@@ -245,7 +250,7 @@ internal sealed class MapLayout : Map
             if (t >= 1 - 1e-9) return crossings;               // the end lies on this zone's boundary
             var exit = new Position(p.X + t * dx, p.Y + t * dy);
             bool vertical = tx < ty;
-            Opening through = null;
+            Passage through = null;
             foreach (var o in OpeningsOf(zone))
             {
                 if (!Touches(o)) continue;
@@ -259,6 +264,22 @@ internal sealed class MapLayout : Map
                 if (along < lo + clearance - 1e-9 || along > hi - clearance + 1e-9) continue;   // by the block's corner: a wall
                 through = o;
                 break;
+            }
+            if (through == null)
+            {
+                // a DOOR on that wall, crossed on the way when the run passes its point within the clear window: the gap less the
+                // body and its margin, less what the obliquity eats through the wall's thickness (tan of the angle from the wall's normal)
+                double obliquity = vertical ? Math.Abs(dy / dx) : Math.Abs(dx / dy);
+                double window = DoorGap - (radius + BodyMargin) - WallThickness / 2 * obliquity;
+                double here = vertical ? exit.Y : exit.X;
+                foreach (var d in PlacedDoors)
+                {
+                    if (!d.Door.Joins(zone)) continue;
+                    if (vertical ? Math.Abs(d.At.X - exit.X) > 1e-6 : Math.Abs(d.At.Y - exit.Y) > 1e-6) continue;
+                    if (Math.Abs(here - (vertical ? d.At.Y : d.At.X)) > window + 1e-9) continue;
+                    through = d.Door;
+                    break;
+                }
             }
             if (through == null) return null;
             crossings.Add(exit);
@@ -298,66 +319,6 @@ internal sealed class MapLayout : Map
         if (side == null) throw new GolemDomainException("MapLayout.StepInto: 'side' was not given");
         if (door == null || !door.Joins(side)) throw new GolemDomainException($"the door {door?.Name} does not open into '{side?.Name}'");
         return Of(door.OtherSide(side)).StepInto(Of(side));
-    }
-
-    // ---- the road, as the body walks it ----
-
-    /// <summary>
-    /// Every door on a road is crossed straight: its leg gains an approach point in front of the door
-    /// (DoorClearance into the area the body comes from) and an exit point behind it (into the area it
-    /// goes to). The side it is crossed TO is the door's area the road does not come from — the previous
-    /// point's side, or where the road starts for its first leg (17-sep-2026 lab: with the next point in a
-    /// third zone beyond an opening neither side held it, the door got no crossing, and the body turned in
-    /// the doorway and grazed the jamb); when the previous point tells nothing, the next one is consulted.
-    /// Derived from the map alone, so a road decided act by act gets the same crossings.
-    /// </summary>
-    internal Trajectory WithDoorCrossings(Position from, Trajectory road)
-    {
-        if (from == null) throw new GolemDomainException("MapLayout.WithDoorCrossings: 'from' was not given");
-        if (road == null) throw new GolemDomainException("MapLayout.WithDoorCrossings: 'road' was not given");
-        var legs = road.Legs();
-        var result = new List<Leg>();
-        for (int i = 0; i < legs.Count; i++)
-        {
-            var leg = legs[i];
-            var door = PlacedDoors.FirstOrDefault(d => d.Name == leg.Name && d.At.DistanceTo(leg.At) < 1e-6);
-            Area toSide = door == null ? null : SideAwayFrom(door.Door, i == 0 ? from : legs[i - 1].Exit);
-            if (door != null && toSide == null && i + 1 < legs.Count) toSide = SideOf(door.Door, legs[i + 1]);
-            if (toSide == null || !Touches(door.Door.OtherSide(toSide), toSide)) { result.Add(leg); continue; }
-            var step = StepInto(door.Door, toSide);
-            result.Add(new Leg(leg.At, leg.Name,
-                new Position(leg.At.X - step.X * DoorClearance, leg.At.Y - step.Y * DoorClearance),
-                new Position(leg.At.X + step.X * DoorClearance, leg.At.Y + step.Y * DoorClearance)));
-        }
-        return new Trajectory(result);
-    }
-
-    // The side of a door the road continues on: the door's area that holds the next leg's point. When both hold
-    // it (the next point sits on a wall they share, e.g. another door) OR NEITHER DOES (the next point sits on the
-    // area's boundary — an opening's crossing point, 17-sep-2026 lab: the body left the kitchen's door without a crossing,
-    // turned in the doorway and grazed the jamb), the next leg's own passage decides: the door's side it joins.
-    // The side of a door the road crosses TO, told by where it comes from: the door's other area. Null when the point
-    // it comes from lies in both areas or in neither (on their shared wall, or somewhere else).
-    private Area SideAwayFrom(Door door, Position previous)
-    {
-        Area a = door.AreaA, b = door.AreaB;
-        bool inA = Of(a).Contains(previous), inB = Of(b).Contains(previous);
-        if (inA && !inB) return b;
-        if (inB && !inA) return a;
-        return null;
-    }
-
-    private Area SideOf(Door door, Leg next)
-    {
-        Area a = door.AreaA, b = door.AreaB;
-        bool inA = Of(a).Contains(next.At), inB = Of(b).Contains(next.At);
-        if (inA && !inB) return a;
-        if (inB && !inA) return b;
-        if (!KnowsPassage(next.Name)) return null;
-        var onward = FindPassage(next.Name);
-        if (onward.Joins(a) && !onward.Joins(b)) return a;
-        if (onward.Joins(b) && !onward.Joins(a)) return b;
-        return null;
     }
 
     // ---- the map as the journal builds it ----

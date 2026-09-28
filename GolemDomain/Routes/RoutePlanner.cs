@@ -76,7 +76,7 @@ internal sealed class RoutePlanner
             raw.AddRange(RawRoad(here, stop));
             here = stop;
         }
-        return layout.WithDoorCrossings(from, new Trajectory(raw));
+        return new Trajectory(raw);
     }
 
     /// <summary>How long the shortest road from one point to another is, leg to leg.</summary>
@@ -151,8 +151,15 @@ internal sealed class RoutePlanner
         var start = new Node(from, NodeKind.Start);
         var goal = new Node(to, NodeKind.Goal);
         var nodes = new List<Node> { start };
+        // a door offers its two points of clearance — DoorClearance into each of its areas, square to the wall — where a body lines
+        // up before it and stands clear past it (ajuste 57, 28-sep-2026): the way bends THERE, never in the doorway, and a straight
+        // run crosses the door itself anywhere within its clear window without a node (Crossings), as an opening is crossed
         foreach (var d in layout.PlacedDoors)
-            nodes.Add(new Node(d.At, d.Door));
+        {
+            var step = layout.StepInto(d.Door, d.Door.AreaA);   // a unit step through the door into its first area
+            nodes.Add(new Node(new Position(d.At.X + step.X * MapLayout.DoorClearance, d.At.Y + step.Y * MapLayout.DoorClearance), d.Door));
+            nodes.Add(new Node(new Position(d.At.X - step.X * MapLayout.DoorClearance, d.At.Y - step.Y * MapLayout.DoorClearance), d.Door));
+        }
         // an opening offers its pivots — where a body may turn on it when the way is not straight; a straight run crosses
         // it anywhere away from the corners without a node (Crossings)
         foreach (var o in layout.Openings)
@@ -188,7 +195,7 @@ internal sealed class RoutePlanner
             {
                 if (done.Contains(v) || v == u) continue;
                 if (!Sees(u, v)) continue;
-                double edge = cost.Between(u.At, v.At);
+                double edge = cost.Between(u.At, v.At) + HopCost;   // a hair per stop: at equal length, the way with fewer stops
                 if (dist[u] + edge < dist[v]) { dist[v] = dist[u] + edge; prev[v] = u; }
             }
         }
@@ -197,18 +204,30 @@ internal sealed class RoutePlanner
                 ? $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) through the map"
                 : $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) that fits a body of radius {Fmt(radius)} past {collisions.MarkCount} marks");
 
+        var path = new List<Node>();
+        for (Node n = goal; n != start; n = prev[n]) path.Insert(0, n);
         var legs = new List<Leg>();
-        for (Node n = goal; n != start; n = prev[n])
+        for (int i = 0; i < path.Count; i++)
         {
-            if (n == goal) legs.Insert(0, new Leg(n.At, layout.ZoneAt(to).Name));   // a stop: named by its zone alone
-            else if (n.Kind == NodeKind.Detour) legs.Insert(0, new Leg(n.At, Leg.Detour));
-            else legs.Insert(0, new Leg(n.At, n.Via.Name));   // a door, or an opening the way bends on
+            var n = path[i];
+            if (n == goal) legs.Add(new Leg(n.At, layout.ZoneAt(to).Name));   // a stop: named by its zone alone
+            else if (n.Kind == NodeKind.Detour) legs.Add(new Leg(n.At, Leg.Detour));
+            else if (n.Via is Door && i + 1 < path.Count && path[i + 1].Via == n.Via)
+            {
+                // both points of clearance of one door in a row: ONE leg, the door itself — lined up at the first, crossed straight to the second
+                var door = layout.PlacedDoors.First(d => d.Door == n.Via);
+                legs.Add(new Leg(door.At, n.Via.Name, n.At, path[i + 1].At));
+                i++;
+            }
+            else legs.Add(new Leg(n.At, n.Via.Name));   // a point of clearance the way bends at (the door then crossed on the way), or an opening's pivot
         }
         if (legs.Count == 0) legs.Add(new Leg(to, layout.ZoneAt(to).Name));         // already there: the stop alone
         return legs;
     }
 
     // ---- the graph ----
+
+    private const double HopCost = 0.001;   // metres, as if: what a stop costs the way (ajuste 57)
 
     private enum NodeKind { Start, Passage, Detour, Goal }
 

@@ -51,10 +51,12 @@ public class RoutePlannerTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
-        // kitchen (2,9.5) -> door (4,9.5) -> ONE straight run through the north hall, the centre and the south hall -> door (7,1.5) -> garage (9,1.5)
-        Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", g.Visit(map.Find("kitchen").Center, map.Find("garage")).AsPlan());
-        double throughTheCentre = 2.0 + Math.Sqrt(9.0 + 64.0) + 2.0;                       // ~12.54
-        double aroundByTheWest = 2 * Math.Sqrt(3.8125) + 5.0 + Math.Sqrt(12.8125) + 3.0 + 2.0; // ~15.5
+        // kitchen (2,9.5) -> straight through its door to the exit (4.6,9.5) -> ONE straight run through the north hall, the centre and the
+        // south hall to the garage door's approach (6.4,1.5) -> straight through that door to the garage (9,1.5): the way bends at the
+        // doors' points of clearance, never in a doorway, and every door is crossed on the way (ajuste 57)
+        Assert.AreEqual("kitchen/north@4.6,9.5 > south/garage@6.4,1.5 > garage@9,1.5", g.Visit(map.Find("kitchen").Center, map.Find("garage")).AsPlan());
+        double throughTheCentre = 2.6 + Math.Sqrt(1.8 * 1.8 + 64.0) + 2.6;                    // 13.4
+        double aroundByTheWest = 9.28 + 7.0;                                                    // the west corridor to the living room, then east
         Assert.AreEqual(throughTheCentre, g.Distance(map.Find("kitchen"), map.Find("garage")), 0.01, "centre to centre through the passages, for this body");
         Assert.IsTrue(g.Distance(map.Find("kitchen"), map.Find("garage")) < aroundByTheWest, "the ring is the long way round");
     }
@@ -67,9 +69,10 @@ public class RoutePlannerTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
-        // kitchen (2,9.5) -> door (0.75,8) -> west corridor -> door (0.75,3) -> living (2,1.5)
-        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", g.Visit(map.Find("kitchen").Center, map.Find("living")).AsPlan());
-        Assert.AreEqual(2 * Math.Sqrt(3.8125) + 5.0, g.Distance(map.Find("kitchen"), map.Find("living")), 0.01, "~8.9, against ~13.2 through the centre");
+        // kitchen (2,9.5) -> the approach of its west door (0.75,8.6) -> straight down the corridor through both doors -> the exit of
+        // the living room's door (0.75,2.4) -> living (2,1.5)
+        Assert.AreEqual("kitchen/west@0.75,8.6 > west/living@0.75,2.4 > living@2,1.5", g.Visit(map.Find("kitchen").Center, map.Find("living")).AsPlan());
+        Assert.AreEqual(2 * Math.Sqrt(1.25 * 1.25 + 0.9 * 0.9) + 6.2, g.Distance(map.Find("kitchen"), map.Find("living")), 0.01, "~9.3, against 13.4 through the centre");
     }
 
     [TestMethod]
@@ -94,10 +97,10 @@ public class RoutePlannerTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body, map, collisions);
 
-        // from the living room: garage first, back out through the same door, the centre shortcut to the kitchen, then the storage
+        // from the living room: the garage in one straight run through two doors, back out to the garage door's approach, the centre
+        // shortcut to the kitchen door's exit and in, then the storage in one straight run through two doors
         string plan = g.Visit(map.Find("living").Center, map.Find("garage")).Then(map.Find("kitchen")).Then(map.Find("storage")).AsPlan();
-        StringAssert.StartsWith(plan, "living/south@4,1.5 > south/garage@7,1.5 > garage@9,1.5 > south/garage@7,1.5 > ");
-        StringAssert.Contains(plan, "> kitchen@2,9.5 > kitchen/north@4,9.5 > north/storage@7,9.5 > storage@9,9.5");
+        Assert.AreEqual("garage@9,1.5 > south/garage@6.4,1.5 > kitchen/north@4.6,9.5 > kitchen@2,9.5 > storage@9,9.5", plan);
         Assert.IsTrue(plan.IndexOf("garage@9,1.5") < plan.IndexOf("kitchen@2,9.5") && plan.IndexOf("kitchen@2,9.5") < plan.IndexOf("storage@9,9.5"), "the order is the caller's");
     }
 
@@ -115,7 +118,7 @@ public class RoutePlannerTests
         var given = obeys.Visit(map.Find("living").Center, map.Find("garage")).Then(map.Find("kitchen")).Then(map.Find("storage"));
         CollectionAssert.AreEqual(new[] { "garage", "storage", "kitchen" }, chosen.StopsAhead.Select(s => map.ZoneAt(s).Name).ToList(), "garage, storage, kitchen — not the order given");
         CollectionAssert.AreEqual(new[] { "garage", "kitchen", "storage" }, given.StopsAhead.Select(s => map.ZoneAt(s).Name).ToList(), "a Visit keeps the operator's order");
-        Assert.AreEqual(2 * Math.Sqrt(3.8125) + 5.0 + 7.0, chooses.RouteLength(), 0.05, "stop to stop: the east corridor to the storage, then west along the north to the kitchen");
+        Assert.AreEqual(2 * Math.Sqrt(1.25 * 1.25 + 0.9 * 0.9) + 6.2 + 7.0, chooses.RouteLength(), 0.05, "stop to stop: the east corridor to the storage (its two doors' points of clearance), then west along the north in one run to the kitchen");
         Assert.IsTrue(chooses.RouteLength() < obeys.RouteLength(), "the golem's order makes the whole road shorter: " + chooses.RouteLength() + " against " + obeys.RouteLength());
     }
 
@@ -130,14 +133,15 @@ public class RoutePlannerTests
         var g = new Golem(body, map, collisions);
 
         var before = g.Visit(map.Find("storage").Center, map.Find("garage"));
-        StringAssert.Contains(before.AsPlan(), "storage/east@10.25,8 > east/garage@10.25,3", "the east corridor is the shortest road");
+        Assert.AreEqual("storage/east@10.25,8.6 > east/garage@10.25,2.4 > garage@9,1.5", before.AsPlan(), "the east corridor is the shortest road: down it in one run through both doors");
         before.Abandon("planned again once the corridor is known shut");
 
         g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);   // a peer bumped into something in the middle of the corridor: (10.25, 5.85)
 
         string after = g.Visit(map.Find("storage").Center, map.Find("garage")).AsPlan();
         Assert.IsFalse(after.Contains("east/garage"), "between the mark and the corridor's walls the body does not fit: " + after);
-        StringAssert.EndsWith(after, "> south/garage@7,1.5 > garage@9,1.5");
+        Assert.AreEqual("north/storage@6.4,9.5 > south/garage@6.4,1.5 > garage@9,1.5", after,
+            "round by the north hall and down the centre: out of the storage's door on the way to its exit, the run down to the garage door's approach, and through");
     }
 
     [TestMethod]
@@ -189,7 +193,7 @@ public class RoutePlannerTests
         // a body 0.15 north of that mark (it just backed off the crate; the touch was estimated a little short) leaves the way it
         // came and takes the long way round — never straight down through the mark (the 8-sep live run)
         string outNorth = g.Visit(new Position(10.25, 6.0), map.Find("garage")).AsPlan();
-        StringAssert.StartsWith(outNorth, "storage/east@10.25,8 > ", "back out through the door it came in by: " + outNorth);
+        StringAssert.StartsWith(outNorth, "storage/east@10.25,8.6 > ", "back out through the door it came in by, to its approach: " + outNorth);
         Assert.IsFalse(outNorth.Contains("east/garage"), "not through the crate: " + outNorth);
     }
 

@@ -151,8 +151,7 @@ public class GolemTests
         g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5));   // to the living room, from the kitchen
         var followed = g.Follow(new Position(9.0, 1.5));                 // the leader is in the garage
         Assert.IsTrue(followed.IsRouted);
-        StringAssert.Contains(followed.AsPlan(), "@4,1.5", "from where route 1 ends — the living room — through its door to the south: " + followed.AsPlan());
-        StringAssert.EndsWith(followed.AsPlan(), "garage@9,1.5");
+        Assert.AreEqual("garage@9,1.5", followed.AsPlan(), "from where route 1 ends — the living room — one straight run along y = 1.5 through the living room's door and the garage's (ajuste 57): " + followed.AsPlan());
     }
 
     [TestMethod]
@@ -176,11 +175,11 @@ public class GolemTests
         var g = new Golem(body, map, collisions);
 
         var route = g.Visit(new Position(2.0, 9.5), new Position(9.0, 9.5));   // to the storage, from the kitchen: east through the north hall
-        StringAssert.StartsWith(route.AsPlan(), "kitchen/");
+        Assert.AreEqual("storage@9,9.5", route.AsPlan(), "one straight run along y = 9.5 through two doors (ajuste 57)");
         Assert.IsTrue(g.Wake(new Pose(2.0, 1.5, 1.5708)), "reborn: the body was carried to the living room meanwhile — the plan was decided again");
         Assert.AreEqual(2.0, g.Standing.X, 1e-9);
         Assert.AreEqual(1.5, g.Standing.Y, 1e-9);
-        StringAssert.StartsWith(route.AsPlan(), "living/", "the way underway was decided again from the living room, inside: " + route.AsPlan());
+        StringAssert.StartsWith(route.AsPlan(), "living/south@", "the way underway was decided again from the living room, inside: " + route.AsPlan());
         StringAssert.StartsWith(route.Order, "turn", "facing north, the way east asks a turn first");
     }
 
@@ -567,7 +566,7 @@ public class GolemTests
         Assert.AreEqual(2.0, g.PlannedEnd().X, 1e-9);
         Assert.AreEqual(1.5, g.PlannedEnd().Y, 1e-9);
         var next = g.Visit(g.PlannedEnd(), new Position(9.0, 1.5));       // the host opens the next errand from there
-        StringAssert.StartsWith(next.AsPlan(), "living/south@4,1.5", "planned from the living room, where the first errand ends");
+        Assert.AreEqual("garage@9,1.5", next.AsPlan(), "planned from the living room, where the first errand ends: one straight run through two doors (ajuste 57)");
     }
 
     // ---- the reads where the body enters the answer ----
@@ -626,7 +625,8 @@ public class GolemTests
         Assert.IsTrue(g.HasRoomAt(new Position(10.25, 5.5)));
         g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);   // red bumped into something there: (10.25, 5.85)
         Assert.IsFalse(g.FitsAt(new Position(10.25, 5.5)), "the walls leave room, the mark does not");
-        Assert.AreEqual(2.0 + Math.Sqrt(9.0 + 64.0) + 2.0, g.Distance(map.Find("kitchen"), map.Find("garage")), 0.01, "centre to centre through the passages");
+        Assert.AreEqual(2.6 + Math.Sqrt(1.8 * 1.8 + 64.0) + 2.6, g.Distance(map.Find("kitchen"), map.Find("garage")), 0.01,
+            "centre to centre through the passages, as the body walks it: to the kitchen's door's exit, the run down to the garage's door's approach, and through (ajuste 57)");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Distance(map.Find("kitchen"), map.Find("kitchen"))).Message, "the same area");
         Assert.AreEqual(4.6, g.Aside(new Pose(4.6, 9.5, 0.0)).X, 1e-9, "the courtesy step: two radii to the right of where it faces…");
         Assert.AreEqual(9.0, g.Aside(new Pose(4.6, 9.5, 0.0)).Y, 1e-9, "…which facing east is south");
