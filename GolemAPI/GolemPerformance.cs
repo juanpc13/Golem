@@ -61,10 +61,12 @@ internal sealed class GolemPerformance : PerformanceV2
     // act by act (Route, Via, Around, Aside, Stop). Journals born before that day were archived
     // as journal-legacy-20260910-*; they do not rehydrate.)
     // (29-sep-2026, ajuste 60: the golem is born with its body alone and ENTERS a scenario — a map with its own
-    // collisions: `g = Golem(body); g.Know(Scenario(map, Collisions())); g.Enter(g.Scenario('warehouse'))` — and the
-    // globals `map` and `collisions` are the CURRENT scenario's, reassigned whenever the golem enters another; every map
-    // release writes `map = …`, so each map is learned right after its release. Journals before that day were archived as
-    // journal-legacy-20260929-scenarios/; they do not rehydrate.)
+    // collisions. The golem is born right after its body (`init`, second); every map release names its map's own variable
+    // (`warehouse`, `openFloor`) and ends with the golem STAGING it (`warehouseScenario = g.Stage(warehouse)`, its collisions
+    // born empty inside) — the warehouse's release enters it too, the golem's home scenario. There is NO global `map` or
+    // `collisions` any more: every script reads the scenario the golem is in — `g.Current.Map`, `g.Current.Collisions`
+    // (Juan: "no serían necesarios… ya quedaron seteados al momento de g.Enter"). Journals before that day were archived
+    // as journal-legacy-20260929-scenarios/ and -variables/; they do not rehydrate.)
     // RULE: an applied release is never edited (the engine guards its body signature) —
     // evolve the golem by APPENDING the next release.
     protected override void OnHydrated()
@@ -77,18 +79,21 @@ internal sealed class GolemPerformance : PerformanceV2
                 retreat = Meters(0.6);
                 body = Body(radius, speed, linger, retreat);
             }
+            upgrade('init') {
+                g = Golem(body);
+            }
             upgrade('warehouse_v1') {
-                map = MapLayout('warehouse');
+                warehouse = MapLayout('warehouse');
                 {
-                    kitchen = map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);
-                    north = map.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0);
-                    storage = map.Area('storage').At(Position(7.0, 8.0)).Size(4.0, 3.0);
-                    west = map.Area('west').At(Position(0.0, 3.0)).Size(1.5, 5.0);
-                    center = map.Area('center').At(Position(4.0, 3.0)).Size(3.0, 5.0);
-                    east = map.Area('east').At(Position(9.5, 3.0)).Size(1.5, 5.0);
-                    living = map.Area('living').At(Position(0.0, 0.0)).Size(4.0, 3.0);
-                    south = map.Area('south').At(Position(4.0, 0.0)).Size(3.0, 3.0);
-                    garage = map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);
+                    kitchen = warehouse.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);
+                    north = warehouse.Area('north').At(Position(4.0, 8.0)).Size(3.0, 3.0);
+                    storage = warehouse.Area('storage').At(Position(7.0, 8.0)).Size(4.0, 3.0);
+                    west = warehouse.Area('west').At(Position(0.0, 3.0)).Size(1.5, 5.0);
+                    center = warehouse.Area('center').At(Position(4.0, 3.0)).Size(3.0, 5.0);
+                    east = warehouse.Area('east').At(Position(9.5, 3.0)).Size(1.5, 5.0);
+                    living = warehouse.Area('living').At(Position(0.0, 0.0)).Size(4.0, 3.0);
+                    south = warehouse.Area('south').At(Position(4.0, 0.0)).Size(3.0, 3.0);
+                    garage = warehouse.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);
                     kitchen.DoorAt(north, Position(4.0, 9.5));
                     kitchen.DoorAt(west, Position(0.75, 8.0));
                     north.DoorAt(storage, Position(7.0, 9.5));
@@ -100,22 +105,15 @@ internal sealed class GolemPerformance : PerformanceV2
                     living.DoorAt(south, Position(4.0, 1.5));
                     south.DoorAt(garage, Position(7.0, 1.5));
                 }
-            }
-            upgrade('init') {
-                g = Golem(body);
-                g.Know(Scenario(map, Collisions()));
+                warehouseScenario = g.Stage(warehouse);
+                g.Enter(warehouseScenario);
             }
             upgrade('open-floor_v1') {
-                map = MapLayout('open-floor');
+                openFloor = MapLayout('open-floor');
                 {
-                    floor = map.Area('floor').At(Position(0.0, 0.0)).Size(11.0, 11.0);
+                    floor = openFloor.Area('floor').At(Position(0.0, 0.0)).Size(11.0, 11.0);
                 }
-            }
-            upgrade('scenarios_v1') {
-                g.Know(Scenario(map, Collisions()));
-                g.Enter(g.Scenario('warehouse'));
-                map = g.Current.Map;
-                collisions = g.Current.Collisions;
+                openFloorScenario = g.Stage(openFloor);
             }
         ")
         .PerformCommand();

@@ -38,9 +38,9 @@ public class JournalAcceptanceTests
             + Catalog.Warehouse().AsRelease()
             + @"
                 upgrade('init') {
-                    collisions = Collisions();
                     g = Golem(body);
-                    g.Enter(Scenario(map, collisions));
+                    scenario = g.Stage(warehouse);
+                    g.Enter(scenario);
                 }
             ").PerformCommand();
     }
@@ -52,14 +52,14 @@ public class JournalAcceptanceTests
     public void TheReleases_BuildTheThreeGlobals_AndTheMapsVariablesDieWithTheirBlock()
     {
         Assert.AreEqual(0.25, Double("body.Radius.InMeters"), 1e-9, "the body, a magnitude read in its base unit");
-        Assert.AreEqual(9, Int("map.ZoneCount"), "the map, laid out");
-        Assert.AreEqual(10, Int("map.PassageCount"));
-        Assert.AreEqual(0, Int("collisions.MarkCount"), "the collisions module, empty");
+        Assert.AreEqual(9, Int("g.Current.Map.ZoneCount"), "the map, laid out");
+        Assert.AreEqual(10, Int("g.Current.Map.PassageCount"));
+        Assert.AreEqual(0, Int("g.Current.Collisions.MarkCount"), "the collisions module, empty");
         Assert.IsFalse(Bool("g.HasPendingMission()"), "the golem, idle");
         bool leaked = true;
         try { Text("kitchen.Name"); } catch (Exception) { leaked = false; }
-        Assert.IsFalse(leaked, "the areas' variables die with their block: only map, body, collisions and g are globals");
-        Assert.AreEqual("center", Text("map.ZoneAt(Position(5.5, 5.5)).Name"), "a query builds the object from literals with a decimal point");
+        Assert.IsFalse(leaked, "the areas' variables die with their block: only body, the maps, the scenarios and g are globals");
+        Assert.AreEqual("center", Text("g.Current.Map.ZoneAt(Position(5.5, 5.5)).Name"), "a query builds the object from literals with a decimal point");
     }
 
     [TestMethod]
@@ -74,7 +74,7 @@ public class JournalAcceptanceTests
     {
         Refuses("{ point = Position(5.5, 9.5); g.Follow(point); }", "does not know where its body stands");
         Refuses("{ route = g.Pause(Pose(10.25, 6.1, -1.5708)); }", "no pending mission");
-        Refuses("g.Visit(Position(2.0, 9.5), map.Find('attic'));", "attic");
+        Refuses("g.Visit(Position(2.0, 9.5), g.Current.Map.Find('attic'));", "attic");
     }
 
     [TestMethod]
@@ -111,7 +111,7 @@ public class JournalAcceptanceTests
     public void ThePanelsQuery_RendersThePlacesWithTheirDoorsAndOpenings_AsTheEngineLaysOutAForeach()
     {
         string json = perf.Actor.Using(@"
-            foreach (places in map.Zones) {
+            foreach (places in g.Current.Map.Zones) {
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h', places.Center.X 'cx', places.Center.Y 'cy';
                 foreach (doors in places.Doorways()) { print doors.To 'to', doors.At.X 'x', doors.At.Y 'y'; }
                 foreach (opens in places.OpenSides()) { print opens.To 'to'; }
@@ -133,7 +133,7 @@ public class JournalAcceptanceTests
     public void ThePanelsQuery_RendersCornersWallsDoorsAndJambs_InheritedMembersIncluded()
     {
         string json = perf.Actor.Using(@"
-            foreach (places in map.Zones) {
+            foreach (places in g.Current.Map.Zones) {
                 print places.Name 'name';
                 foreach (corners in places.Corners()) { print corners.Label 'label', corners.X 'x', corners.Y 'y'; }
                 foreach (walls in places.Walls()) {
@@ -166,16 +166,16 @@ public class JournalAcceptanceTests
     public void ThePanelsQuery_RendersTheObstaclesAsAFlatList_ThingsFirstThenPeers()
     {
         perf.Actor.Using(@"
-            collisions.Mark(Pose(10.25, 5.85, -1.5708));
-            collisions.Mark(Pose(10.25, 5.15, 1.5708));
-            collisions.Mark(Pose(9.9, 5.5, 0.0));
-            collisions.Mark(Pose(2.0, 9.5, 0.0));
+            g.Current.Collisions.Mark(Pose(10.25, 5.85, -1.5708));
+            g.Current.Collisions.Mark(Pose(10.25, 5.15, 1.5708));
+            g.Current.Collisions.Mark(Pose(9.9, 5.5, 0.0));
+            g.Current.Collisions.Mark(Pose(2.0, 9.5, 0.0));
             g.Met('blue', Position(4.7, 9.5));
         ").PerformCommand();
         string json = perf.Actor.Using(@"
-            print collisions.All().Count 'total';
-            foreach (obstacles in collisions.All()) {
-                print obstacles.Kind 'kind', map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size', obstacles.Who 'who';
+            print g.Current.Collisions.All().Count 'total';
+            foreach (obstacles in g.Current.Collisions.All()) {
+                print obstacles.Kind 'kind', g.Current.Map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size', obstacles.Who 'who';
                 foreach (vertices in obstacles.Vertices()) { print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal'; }
             }
         ").PerformQuery();

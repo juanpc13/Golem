@@ -73,7 +73,7 @@ public class GolemHostTests
         await host.ConnectAsync(cancel.Token);                       // reborn: the body is put back on its mark
         var clock = host.RunAsync(cancel.Token);                     // the clock wakes the golem where its body stands
         await Until(() => Read(host, "print g.KnowsWhereItStands 'v';").GetBoolean(), cancel.Token);
-        Assert.AreEqual("warehouse", Read(host, "print map.Name 'v';").GetString(), "the releases the host carries built the map");
+        Assert.AreEqual("warehouse", Read(host, "print g.Current.Map.Name 'v';").GetString(), "the releases the host carries built the map");
 
         // the pose the body reported entered the journal at its resolution: to the millimetre (ajuste 53)
         body.Nudge(2.0004, 9.5006, 0.00049);

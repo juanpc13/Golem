@@ -733,10 +733,18 @@ public class GolemTests
 
         var warehouse = new Scenario(Catalog.Warehouse(), new Collisions());
         var openFloor = new Scenario(Catalog.OpenFloor(), new Collisions());
-        g.Know(warehouse).Know(openFloor);
+        g.Enter(openFloor);                                                          // a scenario built outside is learned as it is entered
+        g.Enter(warehouse);
         Assert.AreEqual(2, g.Scenarios().Count);
+        var again = new Golem(body);
+        var staged = again.Stage(Catalog.Warehouse());
+        Assert.AreEqual("warehouse", staged.Name, "the golem stages a map: the scenario of it, its collisions born empty inside");
+        Assert.AreEqual(0, staged.Collisions.MarkCount);
+        Assert.AreSame(staged, again.Stage(staged.Map), "the same map staged again answers the scenario it made");
+        Assert.AreSame(staged, again.Scenario("warehouse"));
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => again.Stage(Catalog.Warehouse())).Message, "already knows a scenario named 'warehouse'", "another instance of the map under a known name");
         Assert.AreSame(warehouse, g.Scenario("warehouse"), "found by its map's name");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Know(new Scenario(Catalog.Warehouse(), new Collisions()))).Message, "already knows a scenario named 'warehouse'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Enter(new Scenario(Catalog.Warehouse(), new Collisions()))).Message, "already knows a scenario named 'warehouse'");
 
         g.Enter(g.Scenario("warehouse"));
         Assert.AreEqual("warehouse", g.Current.Name);

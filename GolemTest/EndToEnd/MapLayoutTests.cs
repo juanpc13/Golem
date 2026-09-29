@@ -80,9 +80,9 @@ public class MapLayoutTests
     {
         string release = Catalog.Warehouse().AsRelease();
 
-        StringAssert.StartsWith(release, "upgrade('warehouse_v1') {\n    map = MapLayout('warehouse');\n    {\n");
-        StringAssert.Contains(release, "        kitchen = map.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);\n");
-        StringAssert.Contains(release, "        garage = map.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);\n");
+        StringAssert.StartsWith(release, "upgrade('warehouse_v1') {\n    warehouse = MapLayout('warehouse');\n    {\n", "the map in its own variable, named after it");
+        StringAssert.Contains(release, "        kitchen = warehouse.Area('kitchen').At(Position(0.0, 8.0)).Size(4.0, 3.0);\n");
+        StringAssert.Contains(release, "        garage = warehouse.Area('garage').At(Position(7.0, 0.0)).Size(4.0, 3.0);\n");
         StringAssert.Contains(release, "        kitchen.DoorAt(north, Position(4.0, 9.5));\n        kitchen.DoorAt(west, Position(0.75, 8.0));\n");
         StringAssert.Contains(release, "        north.DoorAt(storage, Position(7.0, 9.5));\n        north.OpenTo(center);\n");
         StringAssert.Contains(release, "        south.DoorAt(garage, Position(7.0, 1.5));\n    }\n}\n");
@@ -276,7 +276,7 @@ public class MapLayoutTests
 
         Assert.AreEqual("open-floor", map.Name);
         Assert.AreEqual(1, map.ZoneCount);
-        Assert.AreEqual("upgrade('open-floor_v1') {\n    map = MapLayout('open-floor');\n    {\n        floor = map.Area('floor').At(Position(0.0, 0.0)).Size(11.0, 11.0);\n    }\n}\n", map.AsRelease());
+        Assert.AreEqual("upgrade('open-floor_v1') {\n    openFloor = MapLayout('open-floor');\n    {\n        floor = openFloor.Area('floor').At(Position(0.0, 0.0)).Size(11.0, 11.0);\n    }\n}\n", map.AsRelease(), "a hyphenated name becomes a camelCase variable");
         Assert.AreEqual("floor@9,1.5", g.Dash(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(), "the kitchen's corner to the garage's in one straight run: no wall, no door, no block");
         Assert.AreEqual("floor@9,1.5", g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(), "door by door too: there is no door");
         Assert.IsTrue(g.FitsAt(new Position(2.75, 5.5)), "where the warehouse has a solid block, the open floor has room");

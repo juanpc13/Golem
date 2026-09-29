@@ -82,9 +82,9 @@ public sealed class ReactionPatternLabTests
             + Catalog.Warehouse().AsRelease()
             + @"
                 upgrade('init') {
-                    collisions = Collisions();
                     g = Golem(body);
-                    g.Enter(Scenario(map, collisions));
+                    scenario = g.Stage(warehouse);
+                    g.Enter(scenario);
                 }
             ")
         .PerformCommand();
@@ -94,7 +94,7 @@ public sealed class ReactionPatternLabTests
         // first act is not the first entry after the releases
         perf.Actor.Using(@"
             {
-                warm = map.Find(@area);
+                warm = g.Current.Map.Find(@area);
             }
         ").WithParameters(p => {
             p["area", typeof(string)] = "kitchen";

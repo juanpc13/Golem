@@ -45,7 +45,7 @@ public sealed class Displacer
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
-                    Check(map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
+                    Check(g.Current.Map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                 ",
                 @"
                     {
@@ -90,7 +90,7 @@ public sealed class Displacer
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
-                    Check(map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
+                    Check(g.Current.Map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                 ",
                 @"
                     {
@@ -131,7 +131,7 @@ public sealed class Displacer
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
-                    Check(map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
+                    Check(g.Current.Map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                 ",
                 @"
                     {
@@ -181,7 +181,7 @@ public sealed class Displacer
                 answer = Answer.Of(robot.Actor.Using(
                     @"
                         Check(g.Knows(@id) && g.Find(@id).IsPending()) Error 'the route is no longer pending';
-                        Check(map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
+                        Check(g.Current.Map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                     ",
                     @"
                         {

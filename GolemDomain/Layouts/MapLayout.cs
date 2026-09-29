@@ -403,11 +403,11 @@ internal sealed class MapLayout : Map
     {
         var text = new StringBuilder();
         text.Append("upgrade('").Append(Name).Append("_v1') {\n");
-        text.Append("    map = MapLayout('").Append(Name).Append("');\n");
+        text.Append("    ").Append(Identifier(Name)).Append(" = MapLayout('").Append(Name).Append("');\n");   // the map's own variable (ajuste 60, 29-sep: no global `map`)
         text.Append("    {\n");
         foreach (var z in areas.Cast<Zone>())
         {
-            text.Append("        ").Append(Identifier(z.Name)).Append(" = map.Area('").Append(z.Name).Append("')");
+            text.Append("        ").Append(Identifier(z.Name)).Append(" = ").Append(Identifier(Name)).Append(".Area('").Append(z.Name).Append("')");
             if (z.IsLaidOut)
                 text.Append(".At(Position(").Append(Lit(z.X)).Append(", ").Append(Lit(z.Y)).Append(")).Size(").Append(Lit(z.Width)).Append(", ").Append(Lit(z.Height)).Append(')');
             text.Append(";\n");

@@ -113,8 +113,8 @@ public class GolemController : Controller
     [HttpGet("map")]
     public IActionResult Map() =>
         Content(golemEmbodiment.Actor.Using(@"
-            print map.Name 'map';
-            foreach (places in map.Zones) {
+            print g.Current.Map.Name 'map';
+            foreach (places in g.Current.Map.Zones) {
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h',
                       places.Center.X 'cx', places.Center.Y 'cy';
                 foreach (doors in places.Doorways()) {
@@ -149,8 +149,8 @@ public class GolemController : Controller
                     route = g.Underway();
                     here = Position(@px, @py);
                     print route.Id 'mission', route.StopsLeft 'stopsLeft', g.RouteLength() 'routeLength', g.RouteSeconds() 'routeSeconds';
-                    if (map.IsOnMap(here)) {
-                        print g.DistanceLeft(here) 'distanceLeft', g.SecondsLeft(here) 'secondsLeft', map.ZoneAt(here).Name 'here';
+                    if (g.Current.Map.IsOnMap(here)) {
+                        print g.DistanceLeft(here) 'distanceLeft', g.SecondsLeft(here) 'secondsLeft', g.Current.Map.ZoneAt(here).Name 'here';
                     }
                 }
             }

@@ -73,7 +73,7 @@ public sealed class CollisionCaptor
     /// forget it too. No order changes: the way stands.</summary>
     public Answer Forget(double x, double y) => Answer.Of(robot.Actor.Using(
         @"
-            Check(collisions.KnowsAt(Position(@x, @y))) Error 'the golem holds no obstacle there';
+            Check(g.Current.Collisions.KnowsAt(Position(@x, @y))) Error 'the golem holds no obstacle there';
         ",
         @"
             {

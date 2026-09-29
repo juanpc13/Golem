@@ -241,12 +241,12 @@ public sealed class MockWorld : ILabWorld
     }
 
     public ErrandOutcome Outcome(string golem) => Read(golem, "print g.Routes().Count 'v';").GetInt32() == 0
-        ? new("none", 0, Read(golem, "print collisions.MarkCount 'v';").GetInt32(), Read(golem, "print collisions.EncounterCount 'v';").GetInt32())
+        ? new("none", 0, Read(golem, "print g.Current.Collisions.MarkCount 'v';").GetInt32(), Read(golem, "print g.Current.Collisions.EncounterCount 'v';").GetInt32())
         : new(
         Read(golem, "print g.Newest().Status 'v';").GetString(),
         Read(golem, "print g.Newest().Bumps 'v';").GetInt32(),
-        Read(golem, "print collisions.MarkCount 'v';").GetInt32(),
-        Read(golem, "print collisions.EncounterCount 'v';").GetInt32());
+        Read(golem, "print g.Current.Collisions.MarkCount 'v';").GetInt32(),
+        Read(golem, "print g.Current.Collisions.EncounterCount 'v';").GetInt32());
 
     public IReadOnlyList<WorldContact> Contacts(string golem)
     {

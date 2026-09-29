@@ -36,8 +36,8 @@ internal sealed class Golem
     private Route lastBumpRoute; // …and the route that took it
     private int lastHandle;      // a handle names one route forever — even after letting go (idempotency keys hang on it)
 
-    /// <summary>The golem is born with its body alone (ajuste 60): the scenarios it may be in are learned and entered afterwards —
-    /// <c>g = Golem(body); g.Know(Scenario(map, Collisions())); g.Enter(g.Scenario('warehouse'));</c>.</summary>
+    /// <summary>The golem is born with its body alone (ajuste 60): the scenarios it may be in are staged and entered afterwards —
+    /// <c>g = Golem(body); warehouseScenario = g.Stage(warehouse); g.Enter(warehouseScenario);</c>.</summary>
     internal Golem(Body body)
     {
         if (body == null) throw new GolemDomainException("a golem needs a body to drive");
@@ -49,10 +49,27 @@ internal sealed class Golem
     /// <summary>The scenario the golem is in: what every way, distance and touch is decided on. Refused before it entered one.</summary>
     internal Scenario Current => current ?? throw new GolemDomainException("the golem is in no scenario yet: it enters one first — g.Enter(scenario)");
 
-    /// <summary>The golem learns a scenario it may enter later — <c>g.Know(Scenario(map, Collisions()))</c>. One per name.</summary>
-    internal Golem Know(Scenario scenario)
+    /// <summary>The golem STAGES a map: it makes the scenario of it — the map, with collisions born empty, the place where what
+    /// its body learns there will gather — keeps it among the scenarios it knows and hands it back to be entered:
+    /// <c>warehouseScenario = g.Stage(warehouse); g.Enter(warehouseScenario);</c> (Juan, 29-sep-2026: "que el mismo golem tenga un
+    /// método que termine creando el escenario en base al mapa e internamente cree el wrapper junto a las colisiones… algo como
+    /// que termina recreando en base a ese mapa un lugar donde combinaremos las colisiones"). A map already staged answers its
+    /// scenario, what was learned in it kept.</summary>
+    internal Scenario Stage(MapLayout map)
     {
-        if (scenario == null) throw new GolemDomainException("Golem.Know: 'scenario' was not given");
+        if (map == null) throw new GolemDomainException("Golem.Stage: 'map' was not given");
+        var known = scenarios.FirstOrDefault(k => k.Name == map.Name);
+        if (known != null && !ReferenceEquals(known.Map, map)) throw new GolemDomainException($"the golem already knows a scenario named '{map.Name}'");
+        if (known != null) return known;
+        var scenario = new Scenario(map, new Collisions());
+        scenarios.Add(scenario);
+        return scenario;
+    }
+
+    // A scenario built outside — its map with collisions of its own — learned as it is (the tests' way, through Enter). One per name.
+    private Golem Learn(Scenario scenario)
+    {
+        if (scenario == null) throw new GolemDomainException("Golem.Enter: 'scenario' was not given");
         var known = scenarios.FirstOrDefault(k => k.Name == scenario.Name);
         if (known != null && !ReferenceEquals(known, scenario)) throw new GolemDomainException($"the golem already knows a scenario named '{scenario.Name}'");
         if (known == null) scenarios.Add(scenario);
@@ -68,14 +85,14 @@ internal sealed class Golem
     }
 
     /// <summary>The golem enters a scenario: from here on its ways, distances and touches are decided on that map and its
-    /// collisions — <c>g.Enter(scenario)</c>. Learned on the way if it was not known. Refused while a route is pending: a way
+    /// collisions — <c>g.Enter(scenario)</c>. One staged by the golem (<see cref="Stage"/>), or built outside and learned on the way. Refused while a route is pending: a way
     /// underway belongs to the scenario it was decided in.</summary>
     internal Golem Enter(Scenario scenario)
     {
         if (scenario == null) throw new GolemDomainException("Golem.Enter: 'scenario' was not given");
         var pending = routes.FirstOrDefault(r => r.IsPending());
         if (pending != null) throw new GolemDomainException($"route {pending.Id} is pending: the golem enters a scenario when it stands free");
-        Know(scenario);
+        Learn(scenario);
         current = scenarios.First(k => k.Name == scenario.Name);
         return this;
     }

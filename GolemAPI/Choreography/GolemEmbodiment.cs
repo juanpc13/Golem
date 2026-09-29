@@ -237,8 +237,8 @@ public sealed class GolemEmbodiment
     // ==================================================================
 
     /// <summary>The golem ENTERS a scenario it knows (ajuste 60): from here on its ways, distances and touches are decided on that
-    /// map and its collisions, and the journal's globals `map` and `collisions` become that scenario's, so every read and check
-    /// reads the map the golem is in. The mind's own act, no role's. Refused while a route is pending, or for a name it does not know.</summary>
+    /// map and its collisions — every script reads them through `g.Current` (no global map or collisions since 29-sep). The
+    /// mind's own act, no role's. Refused while a route is pending, or for a name it does not know.</summary>
     public Answer Enter(string scenario)
     {
         if (string.IsNullOrWhiteSpace(scenario)) return Answer.Refusal("a scenario needs a name");
@@ -249,10 +249,8 @@ public sealed class GolemEmbodiment
                     {
                         scenario = g.Scenario(@into);
                         g.Enter(scenario);
+                        print g.Current.Name 'scenario', g.Scenarios().Count 'known';
                     }
-                    map = g.Current.Map;
-                    collisions = g.Current.Collisions;
-                    print g.Current.Name 'scenario', g.Scenarios().Count 'known';
                 ")
                 .WithParameters(p => { p["into", typeof(string)] = scenario.Trim(); })
                 .PerformCommand());

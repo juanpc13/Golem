@@ -52,7 +52,7 @@ public sealed class GazeboWorld : ILabWorld
     /// <summary>Connects to rosbridge and to the golems that answer — the fleet deployed may be a part of the one configured
     /// (24-sep-2026: a demo with blue and red, green commented out in the compose); a golem that does not answer is left out, and a
     /// scenario that places it is inconclusive — and leaves the world clean: no crates, every golem let go (its body back on its
-    /// mark, awake there) and nothing it learned by touching left in its collisions. No simulator, or no golem at all: WorldUnavailableException.</summary>
+    /// mark, awake there) and nothing it learned by touching left in its g.Current.Collisions. No simulator, or no golem at all: WorldUnavailableException.</summary>
     public static async Task<GazeboWorld> OpenAsync(Uri rosbridge, IReadOnlyDictionary<string, Uri> golems, TimeSpan patience)
     {
         var world = new GazeboWorld(rosbridge, golems);
@@ -283,7 +283,7 @@ public sealed class GazeboWorld : ILabWorld
         {
             // a full block runs verbatim at /query (a bare expression would be wrapped as one print)
             script = @"{
-                print collisions.MarkCount 'marks', collisions.EncounterCount 'met';
+                print g.Current.Collisions.MarkCount 'marks', g.Current.Collisions.EncounterCount 'met';
                 if (g.Routes().Count > 0) {
                     route = g.Newest();
                     print route.Status 'status', route.Bumps 'bumps';

@@ -112,9 +112,9 @@ public sealed class NestedCaptureLabTests
                 }
             " + Catalog.Warehouse().AsRelease() + @"
                 upgrade('init') {
-                    collisions = Collisions();
                     g = Golem(body);
-                    g.Enter(Scenario(map, collisions));
+                    scenario = g.Stage(warehouse);
+                    g.Enter(scenario);
                 }
             ").PerformCommand();
             perf.Actor.Using(@"

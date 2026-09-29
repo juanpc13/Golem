@@ -28,10 +28,10 @@ public static class Readings
     /// <summary>The obstacles the golem hypothesizes: one row per obstacle — its zone the map's answer (ajuste 54) — and, under it, one per vertex.</summary>
     public static string Obstacles(ActorV2 actor) =>
         actor.Using(@"
-            print collisions.All().Count 'total', collisions.Things().Count 'things',
-                  collisions.EncounterCount 'met', collisions.MarkCount 'marks';
-            foreach (obstacles in collisions.All()) {
-                print obstacles.Kind 'kind', map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
+            print g.Current.Collisions.All().Count 'total', g.Current.Collisions.Things().Count 'things',
+                  g.Current.Collisions.EncounterCount 'met', g.Current.Collisions.MarkCount 'marks';
+            foreach (obstacles in g.Current.Collisions.All()) {
+                print obstacles.Kind 'kind', g.Current.Map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
                       obstacles.Who 'who', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
                 foreach (vertices in obstacles.Vertices()) {
                     print vertices.At.X 'x', vertices.At.Y 'y', vertices.Heading 'normal', vertices.Reach 'reach';
@@ -63,7 +63,7 @@ public static class Readings
             {
                 print g.KnowsWhereItStands 'knows', g.Held 'held', g.Current.Name 'scenario';
                 if (g.KnowsWhereItStands) {
-                    print g.Standing.X 'x', g.Standing.Y 'y', g.Standing.Heading 'heading', map.ZoneNameOf(g.Standing) 'zone';
+                    print g.Standing.X 'x', g.Standing.Y 'y', g.Standing.Heading 'heading', g.Current.Map.ZoneNameOf(g.Standing) 'zone';
                 }
             }
         ")
