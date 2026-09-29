@@ -2,6 +2,7 @@ using GolemDomain;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Robots;
+using GolemDomain.Scenarios;
 using GolemDomain.Routes;
 using GolemDomain.Touches;
 using GolemDomain.Units;
@@ -22,15 +23,18 @@ public class BodyTests
     public void TheRadius_IsWhereTheBodyFits_AndHowFarAFollowerStopsShortOfItsLeader()
     {
         var map = Catalog.Warehouse();
-        var slim = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
-        var wide = new Golem(new Body(new Meters(0.8), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var slim = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        slim.Enter(new Scenario(map, new Collisions()));
+        var wide = new Golem(new Body(new Meters(0.8), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        wide.Enter(new Scenario(map, new Collisions()));
 
         Assert.IsTrue(slim.FitsAt(new Position(10.25, 5.5)), "the east corridor is 1.5 m wide: a body of radius 0.25 fits in the middle of it");
         Assert.IsFalse(wide.FitsAt(new Position(10.25, 5.5)), "a body of radius 0.8 does not: its shell would be in the walls");
         Assert.IsTrue(wide.FitsAt(new Position(5.5, 5.5)), "in the middle of the centre hall, 3 m wide, both fit");
 
         // a follower meets its leader's spot a standoff short: two radii of ITS body and a clearance
-        var stout = new Golem(new Body(new Meters(0.35), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var stout = new Golem(new Body(new Meters(0.35), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        stout.Enter(new Scenario(map, new Collisions()));
         slim.Wake(new Pose(5.0, 9.5, 0.0));                                   // both in the north hall, facing east…
         stout.Wake(new Pose(5.0, 9.5, 0.0));
         Assert.AreEqual(1.6 - (2 * 0.25 + Route.FollowerClearance), slim.Follow(new Position(6.6, 9.5)).Amount, 1e-6,
@@ -42,8 +46,10 @@ public class BodyTests
     public void TheRetreat_IsHowFarTheBodyBacksOff_AfterATouch()
     {
         var map = Catalog.Warehouse();
-        var bold = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
-        var timid = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(1.0)), map, new Collisions());
+        var bold = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        bold.Enter(new Scenario(map, new Collisions()));
+        var timid = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(1.0)));
+        timid.Enter(new Scenario(map, new Collisions()));
 
         // both drive south down the centre hall and are pressed on the nose halfway, standing at (5.5, 6.1)
         var boldRoute = bold.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
@@ -61,8 +67,10 @@ public class BodyTests
     public void TheSpeedAndTheLinger_AreHowLongTheRoadAheadTakes()
     {
         var map = Catalog.Warehouse();
-        var quick = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
-        var slow = new Golem(new Body(new Meters(0.25), new MetersPerSecond(1.0), new Seconds(3.0), new Meters(0.6)), map, new Collisions());
+        var quick = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        quick.Enter(new Scenario(map, new Collisions()));
+        var slow = new Golem(new Body(new Meters(0.25), new MetersPerSecond(1.0), new Seconds(3.0), new Meters(0.6)));
+        slow.Enter(new Scenario(map, new Collisions()));
         foreach (var g in new[] { quick, slow })
         {
             g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5));   // the north hall, from the kitchen
@@ -79,8 +87,10 @@ public class BodyTests
     public void AMagnitude_ReadsInItsBaseUnit_WhateverUnitWroteIt_SoTheGolemDrivesTheSameBody()
     {
         var map = Catalog.Warehouse();
-        var inMetres = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
-        var inOtherUnits = new Golem(new Body(new Centimeters(25.0), new MetersPerSecond(2.0), new Minutes(0.1), new Centimeters(60.0)), map, new Collisions());
+        var inMetres = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        inMetres.Enter(new Scenario(map, new Collisions()));
+        var inOtherUnits = new Golem(new Body(new Centimeters(25.0), new MetersPerSecond(2.0), new Minutes(0.1), new Centimeters(60.0)));
+        inOtherUnits.Enter(new Scenario(map, new Collisions()));
         foreach (var g in new[] { inMetres, inOtherUnits })
         {
             g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5));
@@ -99,6 +109,6 @@ public class BodyTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Body(new Meters(0.0), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6))).Message, "a body needs a radius above zero");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Body(new Meters(0.25), new MetersPerSecond(0.0), new Seconds(6.0), new Meters(0.6))).Message, "a body needs a cruise speed above zero");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Body(null, new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6))).Message, "a body needs a radius");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(null, map, new Collisions())).Message, "a golem needs a body to drive");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(null)).Message, "a golem needs a body to drive");
     }
 }

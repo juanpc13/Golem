@@ -68,7 +68,8 @@ public sealed class LocalVariableLabTests
             + @"
                 upgrade('init') {
                     collisions = Collisions();
-                    g = Golem(body, map, collisions);
+                    g = Golem(body);
+                    g.Enter(Scenario(map, collisions));
                 }
             ").PerformCommand();
 

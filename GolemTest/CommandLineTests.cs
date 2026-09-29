@@ -86,12 +86,12 @@ public class CommandLineTests
     {
         Assert.AreEqual("", CommandLine.Parse("help").Text);
         Assert.AreEqual("visit", CommandLine.Parse("help VISIT").Text);
-        CollectionAssert.AreEqual(new[] { "visit", "cover", "dash", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "set", "show", "help", "--with" },
+        CollectionAssert.AreEqual(new[] { "visit", "cover", "dash", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "enter", "scenarios", "set", "show", "help", "--with" },
                                   CommandLine.Help.Select(h => h.Verb).ToList(), "every command the language has, in the help's order — no script of the actor's among them");
         Assert.IsTrue(CommandLine.Help.All(h => h.Usage != "" && h.What != "" && h.Example != ""), "each with how it is written, what it does and an example");
         StringAssert.Contains(Refused("help fly"), "help: 'fly' is no command; the commands are visit, cover, dash");
         Assert.AreEqual(2, CommandLine.Parse("dash 9,1.5 2,9.5").Points.Count, "the dash takes its points as a visit does");
-        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, dash, then, pause, resume, forget, reset, state, route, where, obstacles, set, show, help, --with — help tells each");
+        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, dash, then, pause, resume, forget, reset, state, route, where, obstacles, enter, scenarios, set, show, help, --with — help tells each");
         StringAssert.Contains(Refused("query { print g.Standing.X 'x'; }"), "'query' is no command", "the actor's scripts never travel on a line");
         StringAssert.Contains(Refused(""), "nothing to do: write a command, or help");
         StringAssert.Contains(Refused("golem"), "nothing to do");

@@ -48,6 +48,17 @@ public sealed record PointRequest(double? X, double? Y)
     }
 }
 
+/// <summary>The scenario the golem enters (ajuste 60) — <c>{"scenario": "open-floor"}</c>.</summary>
+public sealed record ScenarioRequest(string Scenario)
+{
+    public const string Shape = "{\"scenario\": \"open-floor\"}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Scenario)) yield return "give the scenario's name: " + Shape;
+    }
+}
+
 /// <summary>A line of the command language (propuesta 58) — <c>{"line": "visit (2, 9.5) (9, 8)"}</c>: read by CommandLine, acted by the Commander.</summary>
 public sealed record CommandRequest(string Line)
 {

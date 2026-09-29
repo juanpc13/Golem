@@ -2,6 +2,7 @@ using GolemDomain;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Robots;
+using GolemDomain.Scenarios;
 using GolemDomain.Touches;
 using GolemDomain.Units;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -25,7 +26,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // Juan, 21-sep-2026: "¿por qué el dominio no une esos puntos y llega directo?"
         Assert.AreEqual("south@5.5,1.5", g.Visit(new Position(6.3, 10.4), new Position(5.5, 1.5)).AsPlan(), "one leg: the two open boundaries are crossed on the way");
@@ -37,7 +39,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // the straight run would cross north~center 0.46 m from the block's corner: the way bends on the pivots by the corners
         Assert.AreEqual("north~center@4.5,8 > center~south@6.5,3 > south@6.9,2.4", g.Visit(new Position(4.2, 8.6), new Position(6.9, 2.4)).AsPlan());
@@ -49,7 +52,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // kitchen (2,9.5) -> door (4,9.5) -> ONE straight run through the north hall, the centre and the south hall -> door (7,1.5) -> garage (9,1.5)
         Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", g.Visit(map.Find("kitchen").Center, map.Find("garage")).AsPlan());
@@ -65,7 +69,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // kitchen (2,9.5) -> door (0.75,8) -> west corridor -> door (0.75,3) -> living (2,1.5)
         Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", g.Visit(map.Find("kitchen").Center, map.Find("living")).AsPlan());
@@ -78,7 +83,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Position(3.0, 9.0), new Position(2.0, 9.5));
         Assert.AreEqual("kitchen@2,9.5", route.AsPlan(), "same room, nothing in between");
@@ -92,7 +98,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // from the living room: garage first, back out through the same door, the centre shortcut to the kitchen, then the storage
         string plan = g.Visit(map.Find("living").Center, map.Find("garage")).Then(map.Find("kitchen")).Then(map.Find("storage")).AsPlan();
@@ -106,8 +113,10 @@ public class RoutePlannerTests
     {
         var map = Catalog.Warehouse();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var chooses = new Golem(body, map, new Collisions());
-        var obeys = new Golem(body, map, new Collisions());
+        var chooses = new Golem(body);
+        chooses.Enter(new Scenario(map, new Collisions()));
+        var obeys = new Golem(body);
+        obeys.Enter(new Scenario(map, new Collisions()));
 
         // from the living room the shortest round is garage (7), then storage by the east corridor (8.9), then kitchen (7);
         // the order given would cost 7 + 12.5 + 7
@@ -127,7 +136,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var before = g.Visit(map.Find("storage").Center, map.Find("garage"));
         StringAssert.Contains(before.AsPlan(), "storage/east@10.25,8 > east/garage@10.25,3", "the east corridor is the shortest road");
@@ -146,7 +156,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.HearBump("red", new Pose(8.75, 9.5, 0.0), 0.0);   // something in the middle of the storage room, touched heading east: (9.0, 9.5)
         var route = g.Visit(new Position(7.6, 9.5), new Position(10.2, 9.5));
@@ -163,7 +174,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(9.0, 9.5, -1.5708), map.Find("garage"));   // down the east corridor
         g.Bump(new Pose(10.25, 6.1, -1.5708), 0.0);                                // the crate, met halfway down
@@ -179,7 +191,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.HearBump("red", new Pose(8.2, 9.55, -1.5708), 0.0);   // two touches on something right beside the body — a thing 0.6 wide: (8.2, 9.3)…
         g.HearBump("red", new Pose(8.8, 9.55, -1.5708), 0.0);   // …and (8.8, 9.3)
@@ -199,7 +212,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // From the 8-sep live run: red grazed the crate's corner with its side; the touch was estimated head-on, so the mark fell
         // inside the body's own radius. A body cannot be inside a thing: the mark forbids walking further in, not leaving.
@@ -215,7 +229,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.HearBump("red", new Pose(6.75, 1.5, 0.0), 0.0);        // something in the south/garage door: (7.0, 1.5)
         g.HearBump("red", new Pose(10.25, 2.75, 1.5708), 0.0);   // and something in the east/garage door: (10.25, 3.0)
@@ -231,7 +246,8 @@ public class RoutePlannerTests
         var island = new MapLayout("islands");
         var a = island.Area("a").At(new Position(0, 0)).Size(2, 2);
         island.Area("b").At(new Position(5, 5)).Size(2, 2);
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), island, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(island, new Collisions()));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(a.Center, new Position(6, 6))).Message, "through the map");
     }
 
@@ -241,7 +257,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Road(null, new Position(1, 1))).Message, "'route' was not given");
@@ -259,7 +276,8 @@ public class RoutePlannerTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // kitchen (2,9.5) -> straight through its door to the exit (4.6,9.5) -> ONE straight run through the north hall, the centre and the
         // south hall to the garage door's approach (6.4,1.5) -> straight through that door to the garage (9,1.5)

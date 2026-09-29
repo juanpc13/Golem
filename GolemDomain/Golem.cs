@@ -1,5 +1,6 @@
 using System.Globalization;
 using GolemDomain.Geometry;
+using GolemDomain.Scenarios;
 using GolemDomain.Layouts;
 using GolemDomain.Maps;
 using GolemDomain.Robots;
@@ -22,8 +23,11 @@ internal sealed class Golem
 {
     private readonly List<Route> routes = new();
     private readonly Body body;
-    private readonly MapLayout layout;
-    private readonly Collisions collisions;
+    private readonly List<Scenario> scenarios = new();   // every scenario the golem knows, in the order it learned them
+    private Scenario current;                             // the one it is in: what every way, distance and touch is decided on
+    // the map and the collisions the golem reads are the CURRENT scenario's (ajuste 60): a route born in one keeps its own
+    private MapLayout layout => Current.Map;
+    private Collisions collisions => Current.Collisions;
     private int idleBumps;       // times something touched the body while it stood without a mission
     private Pose held;           // where the body stood when the operator held the golem; null while it is free to move
     private Pose standing;       // where the body last stood, facing which way, as the acts brought it; null until the first act with a pose
@@ -32,15 +36,52 @@ internal sealed class Golem
     private Route lastBumpRoute; // …and the route that took it
     private int lastHandle;      // a handle names one route forever — even after letting go (idempotency keys hang on it)
 
-    internal Golem(Body body, MapLayout map, Collisions collisions)
+    /// <summary>The golem is born with its body alone (ajuste 60): the scenarios it may be in are learned and entered afterwards —
+    /// <c>g = Golem(body); g.Know(Scenario(map, Collisions())); g.Enter(g.Scenario('warehouse'));</c>.</summary>
+    internal Golem(Body body)
     {
         if (body == null) throw new GolemDomainException("a golem needs a body to drive");
-        if (map == null) throw new GolemDomainException("a golem needs its map, laid out");
-        if (collisions == null) throw new GolemDomainException("a golem needs its collisions module, even empty");
         this.body = body;
-        layout = map;
-        this.collisions = collisions;
     }
+
+    // ---- the scenarios: the maps the golem knows, each with what was learned in it, and the one it is in ----
+
+    /// <summary>The scenario the golem is in: what every way, distance and touch is decided on. Refused before it entered one.</summary>
+    internal Scenario Current => current ?? throw new GolemDomainException("the golem is in no scenario yet: it enters one first — g.Enter(scenario)");
+
+    /// <summary>The golem learns a scenario it may enter later — <c>g.Know(Scenario(map, Collisions()))</c>. One per name.</summary>
+    internal Golem Know(Scenario scenario)
+    {
+        if (scenario == null) throw new GolemDomainException("Golem.Know: 'scenario' was not given");
+        var known = scenarios.FirstOrDefault(k => k.Name == scenario.Name);
+        if (known != null && !ReferenceEquals(known, scenario)) throw new GolemDomainException($"the golem already knows a scenario named '{scenario.Name}'");
+        if (known == null) scenarios.Add(scenario);
+        return this;
+    }
+
+    /// <summary>A scenario the golem knows, by its name — <c>g.Scenario('warehouse')</c>; the one place the name enters.</summary>
+    internal Scenario Scenario(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new GolemDomainException("Golem.Scenario: 'name' was not given");
+        return scenarios.FirstOrDefault(k => k.Name == name.Trim())
+            ?? throw new GolemDomainException($"the golem knows no scenario named '{name}': {(scenarios.Count == 0 ? "none yet" : string.Join(", ", scenarios.Select(k => k.Name)))}");
+    }
+
+    /// <summary>The golem enters a scenario: from here on its ways, distances and touches are decided on that map and its
+    /// collisions — <c>g.Enter(scenario)</c>. Learned on the way if it was not known. Refused while a route is pending: a way
+    /// underway belongs to the scenario it was decided in.</summary>
+    internal Golem Enter(Scenario scenario)
+    {
+        if (scenario == null) throw new GolemDomainException("Golem.Enter: 'scenario' was not given");
+        var pending = routes.FirstOrDefault(r => r.IsPending());
+        if (pending != null) throw new GolemDomainException($"route {pending.Id} is pending: the golem enters a scenario when it stands free");
+        Know(scenario);
+        current = scenarios.First(k => k.Name == scenario.Name);
+        return this;
+    }
+
+    /// <summary>Every scenario the golem knows, in the order it learned them.</summary>
+    internal IReadOnlyList<Scenario> Scenarios() => scenarios.ToList();
 
     // ---- the body, in base units, for the golem's own sums (the journal reads the module: body.Radius.InMeters) ----
 

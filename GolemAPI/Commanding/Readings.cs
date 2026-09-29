@@ -61,9 +61,21 @@ public static class Readings
     public static string Where(ActorV2 actor) =>
         actor.Using(@"
             {
-                print g.KnowsWhereItStands 'knows', g.Held 'held';
+                print g.KnowsWhereItStands 'knows', g.Held 'held', g.Current.Name 'scenario';
                 if (g.KnowsWhereItStands) {
                     print g.Standing.X 'x', g.Standing.Y 'y', g.Standing.Heading 'heading', map.ZoneNameOf(g.Standing) 'zone';
+                }
+            }
+        ")
+        .PerformQuery();
+
+    /// <summary>The scenarios the golem knows — each with what was learned in it — and the one it is in (ajuste 60).</summary>
+    public static string Scenarios(ActorV2 actor) =>
+        actor.Using(@"
+            {
+                print g.Current.Name 'current';
+                foreach (known in g.Scenarios()) {
+                    print known.Name 'name', known.Map.ZoneCount 'zones', known.Collisions.MarkCount 'marks';
                 }
             }
         ")

@@ -2,6 +2,7 @@ using GolemDomain;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Robots;
+using GolemDomain.Scenarios;
 using GolemDomain.Touches;
 using GolemDomain.Units;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -23,7 +24,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.Visit(new Pose(9.0, 9.5, -1.5708), new Position(9.0, 1.5));   // the garage, down the east corridor
         g.Bump(new Pose(10.25, 6.1, -1.5708), 0.0);                       // standing there facing south, pressed on the nose
@@ -43,7 +45,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // red felt its way around the crate in the east corridor (the 8-sep-2026 run) and told every bump: three faces
         g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);    // its north face, touched heading south: the touch at (10.25, 5.85)
@@ -73,7 +76,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // 14-sep-2026: one figure per thing, so the second way around a crate takes the width the crate showed between the touches
         g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));   // south, down the centre hall
@@ -95,7 +99,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         Assert.AreEqual(1, g.HearBump("blue", new Pose(5.1, 9.5, 3.1416), 0.0), "blue says it bumped just past the kitchen's doorway, facing west, pressed on the nose: its touch reckoned at (4.85, 9.5)");
         int heard = collisions.HeardCount;
@@ -114,7 +119,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), map.Find("north"));   // east across the kitchen, out of its door
         g.HearBump("blue", new Pose(5.1, 9.5, 3.1416), 0.0);    // blue says it bumped just past the doorway, facing west: learned as a mark at (4.85, 9.5)
@@ -152,7 +158,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);   // red's three touches on the crate of the east corridor…
         g.HearBump("red", new Pose(10.25, 4.9, 1.5708), 0.0);
@@ -180,7 +187,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.Met("blue", new Position(4.7, 9.5));
         g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);
@@ -198,7 +206,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.HearBump("red", new Pose(10.25, 6.1, -1.5708), 0.0);   // the crate in the east corridor
         g.HearBump("red", new Pose(1.75, 9.5, 0.0), 0.0);        // something in the kitchen
@@ -213,7 +222,8 @@ public class CollisionsTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Bump(null, 0.0)).Message, "'me' was not given");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.HearBump("blue", null, 0.0)).Message, "'peerAt' was not given");

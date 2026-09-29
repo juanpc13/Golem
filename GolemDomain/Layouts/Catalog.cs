@@ -13,8 +13,9 @@ internal static class Catalog
     internal const string WarehouseName = "warehouse";
     internal const string CrossCorridorsName = "cross-corridors";
     internal const string RingCorridorName = "ring-corridor";
+    internal const string OpenFloorName = "open-floor";
 
-    internal static string[] Names() => new[] { WarehouseName, CrossCorridorsName, RingCorridorName };
+    internal static string[] Names() => new[] { WarehouseName, CrossCorridorsName, RingCorridorName, OpenFloorName };
 
     internal static MapLayout Named(string name)
     {
@@ -23,6 +24,7 @@ internal static class Catalog
             case WarehouseName: return Warehouse();
             case CrossCorridorsName: return CrossCorridors();
             case RingCorridorName: return RingCorridor();
+            case OpenFloorName: return OpenFloor();
         }
         throw new GolemDomainException($"no map named '{name}': {string.Join(", ", Names())}");
     }
@@ -51,6 +53,16 @@ internal static class Catalog
         east.DoorAt(garage, P(10.25, 3));
         living.DoorAt(south, P(4, 1.5));
         south.DoorAt(garage, P(7, 1.5));
+        return l;
+    }
+
+    /// <summary>The open floor (ajuste 60, 29-sep-2026): the arena's whole interior as ONE area, `floor`, 11 × 11 from the origin —
+    /// what the kiosk leaves when it takes every inner wall and block out of the world (the `Open floor` lever). The scenario of
+    /// the choreographies: no door, no wall but the perimeter, every straight run a road.</summary>
+    internal static MapLayout OpenFloor()
+    {
+        var l = new MapLayout(OpenFloorName);
+        l.Area("floor").At(P(0, 0)).Size(11, 11);
         return l;
     }
 

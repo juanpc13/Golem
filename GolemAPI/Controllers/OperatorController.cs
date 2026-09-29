@@ -105,6 +105,21 @@ public class OperatorController : Controller
     [HttpGet("commands")]
     public IActionResult Commands() => Content(JsonSerializer.Serialize(CommandLine.Help), "application/json");
 
+    // The golem enters a scenario it knows (ajuste 60): {"scenario": "open-floor"} — its map and its collisions from here on.
+    [HttpPost("enter")]
+    public IActionResult Enter([FromBody] ScenarioRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ScenarioRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        var answer = golemEmbodiment.Enter(request.Scenario);
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
+    // The scenarios the golem knows, and the one it is in.
+    [HttpGet("scenarios")]
+    public IActionResult Scenarios() => Content(Readings.Scenarios(golemEmbodiment.Actor), "application/json");
+
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
     {

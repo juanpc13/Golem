@@ -2,6 +2,7 @@ using GolemDomain;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Robots;
+using GolemDomain.Scenarios;
 using GolemDomain.Routes;
 using GolemDomain.Touches;
 using GolemDomain.Units;
@@ -26,7 +27,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 1.5, 0.0), map.Find("kitchen"));   // from the living room, facing east
         Assert.IsTrue(route.IsRouted, "the errand decided the way");
@@ -59,7 +61,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5)).AsPlan());
         Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(),
@@ -72,7 +75,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Position(2.0, 1.5), map.Find("garage"));
         route.Then(map.Find("kitchen")).Then(map.Find("storage"));
@@ -91,7 +95,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Cover(new Position(2.0, 1.5), map.Find("garage"));
         route.Then(map.Find("kitchen")).Then(map.Find("storage"));
@@ -109,7 +114,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));
         Assert.AreEqual(3, route.LegsLeft, "two doors and the stop: the whole way");
@@ -139,7 +145,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // 22-sep-2026 live: a turn measured from a stale pose left blue facing the north wall, the route took it as done and advanced
         var route = g.Visit(new Pose(6.3, 10.4, 0.0), new Position(5.5, 1.5));
@@ -166,7 +173,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));
         StringAssert.StartsWith(route.Order, "turn");
@@ -185,7 +193,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(5.5, 5.5, 1.5708), map.Find("north")).Then(map.Find("south"));   // from the centre
         Assert.AreEqual(2, route.StopsLeft);
@@ -204,7 +213,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 9.5)).Then(new Position(3.0, 10.5));   // two points of the kitchen, from the first of them
         Assert.AreEqual(2, route.StopsLeft);
@@ -223,7 +233,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // kitchen (2,9.5) -> door kitchen/west at (0.75,8) on a horizontal wall -> west corridor -> door (0.75,3) -> living
         var legs = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5)).LegsAhead;
@@ -245,7 +256,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // kitchen (3, 9.5) -> door kitchen/north at (4, 9.5) -> south (5.5, 1.5): the straight run from the door would cross
         // north~center too close to the block's corner, so the way bends on the opening's pivot (4.5, 8) — a leg ON the north
@@ -264,7 +276,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));
         Assert.AreEqual(0.75, route.NextLeg.Target.X, 1e-9);
@@ -281,7 +294,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));   // kitchen/west > west/living > living
         g.Bump(new Pose(0.3, 8.5, 3.1416), 0.0);   // standing a radius off the west corridor's outer wall, facing it, pressed on the nose: the touch at (0.05, 8.5)
@@ -297,7 +311,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(9.0, 9.5, -1.5708), new Position(9.0, 1.5));  // down the east corridor
         g.Bump(new Pose(10.25, 6.1, -1.5708), 0.0);   // the touch at (10.25, 5.85): the middle of the corridor
@@ -312,7 +327,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(9.0, 9.5, -1.5708), new Position(9.0, 1.5));  // the garage, down the east corridor
         Assert.IsTrue(g.FitsAt(new Position(10.25, 5.5)), "the corridor is clear as far as the map knows");
@@ -332,7 +348,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // north → south through the centre hall; the body meets the crate's north face head-on, halfway down
         var route = g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
@@ -355,7 +372,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // north hall to south hall, straight down the centre: ONE leg, the stop itself (ajuste 45: a free run is one leg)
         var route = g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
@@ -389,10 +407,12 @@ public class RouteTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));   // the fleet shares one body
         var redMap = Catalog.Warehouse();
         var redCollisions = new Collisions();
-        var red = new Golem(body, redMap, redCollisions);
+        var red = new Golem(body);
+        red.Enter(new Scenario(redMap, redCollisions));
         var greenMap = Catalog.Warehouse();
         var greenCollisions = new Collisions();
-        var green = new Golem(body, greenMap, greenCollisions);
+        var green = new Golem(body);
+        green.Enter(new Scenario(greenMap, greenCollisions));
         var south = red.Visit(new Pose(5.4, 9.5, -1.5708), new Position(5.5, 1.5));   // red comes down the centre hall…
         var north = green.Visit(new Pose(5.6, 1.5, 1.5708), new Position(5.5, 9.5));     // …green comes up it
         red.Bump(new Pose(5.5, 5.8, -1.5708), 0.0);                            // they touch head-on at y ≈ 5.5
@@ -420,7 +440,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // the 28-sep lab: a body whose count of steps had drifted took every touch for the west corridor's wall; each graze
         // backed it off, it walked the retreat, retried the same leg and grazed again - 39 times, the route never gave up
@@ -444,7 +465,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 1.5));
         Assert.IsFalse(route.BumpedSinceRoute);
@@ -473,7 +495,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // marks close the kitchen's doors except a sliver; a bump right by the kitchen/north door leaves only the retreat, and
         // once the body backed off, the route plans again from the real pose — or fails by itself when no road exists
@@ -494,7 +517,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // the 25-sep rehearsal, as blue reported it: out of the kitchen's door, down the central hall to the garage
         var route = g.Visit(new Pose(4.619, 9.534, -1.326), new Position(9.0, 1.5));
@@ -514,7 +538,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
         g.Bump(new Pose(5.5, 6.1, -1.5708), 0.0);
@@ -541,7 +566,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(5.5, 9.5, -1.5708), new Position(5.5, 1.5));
         g.Bump(new Pose(5.5, 6.1, -1.5708), 0.0);
@@ -560,7 +586,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 9.5));   // already there: the stop alone, west of where it will be held
         Assert.IsFalse(route.Paused);
@@ -589,7 +616,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // the 25-sep rehearsal of take 6: what blue had learned before its last touch, told as red would tell it — the big
         // crate across the central hall (three touches on its north face) and the crate in the east corridor
@@ -614,7 +642,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5));
         Assert.AreEqual("", route.Why, "a pending route has no why");
@@ -632,7 +661,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Abandon("")).Message, "needs a reason");
@@ -648,7 +678,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var reached = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 9.5));
         Reach(reached, 2.0, 9.5);
@@ -667,7 +698,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.Wake(new Pose(4.5, 9.5, 0.0));                                // in the north hall, facing east
         var route = g.Follow(new Position(6.6, 9.5));   // the leader's spot, 2.1 m ahead in the same hall
@@ -682,7 +714,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         g.Wake(new Pose(5.5, 8.5, 0.0));   // just south of the north hall's centre, facing east
         var route = g.Follow(new Position(5.5, 9.5));   // the leader's spot: planned from there at once
@@ -703,7 +736,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // red drives east across the kitchen toward the north hall; blue stands just past the doorway. Knowing where blue is,
         // red's way starts by stepping out of the way — to its own right, facing east, is south — and then the errand goes on
@@ -727,7 +761,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), map.Find("north"));
         g.HearBump("blue", new Pose(5.1, 9.5, 3.1416), 0.0);
@@ -743,7 +778,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), (Position)null)).Message, "Golem.Visit: 'stop' was not given");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), new Position(3.0, 5.0))).Message, "nowhere on the map");
@@ -795,7 +831,8 @@ public class RouteTests
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var g = new Golem(body, map, collisions);
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
 
         // the living room's mark (2.5,2.5) -> door living/south at (4,1.5) on a vertical wall, where the way bends -> the north hall
         var legs = g.Dash(new Position(2.5, 2.5), new Position(5.5, 9.5)).LegsAhead;

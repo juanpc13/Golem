@@ -83,7 +83,8 @@ public sealed class ReactionPatternLabTests
             + @"
                 upgrade('init') {
                     collisions = Collisions();
-                    g = Golem(body, map, collisions);
+                    g = Golem(body);
+                    g.Enter(Scenario(map, collisions));
                 }
             ")
         .PerformCommand();

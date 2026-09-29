@@ -3,6 +3,7 @@ using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Maps;
 using GolemDomain.Robots;
+using GolemDomain.Scenarios;
 using GolemDomain.Touches;
 using GolemDomain.Units;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -31,7 +32,8 @@ public class MapLayoutTests
         var garage = map.Area("garage").At(new Position(7, 0)).Size(4, 3);
         kitchen.DoorAt(north, new Position(4, 9.5));
         north.OpenTo(center);
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
 
         Assert.AreEqual(4, map.ZoneCount, "every area laid out");
         Assert.AreEqual(2, map.PassageCount, "one door, one open boundary");
@@ -55,7 +57,8 @@ public class MapLayoutTests
     public void TheCatalogsWarehouse_IsTheOneTheWorldBuilds_NineAreasAroundTwoBlocks()
     {
         var map = Catalog.Warehouse();
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
 
         Assert.AreEqual(9, map.AreaCount, "what the maquette disposes");
         Assert.AreEqual(9, map.ZoneCount, "every area laid out");
@@ -94,7 +97,8 @@ public class MapLayoutTests
     public void AStraightRun_IsOneLeg_WhereTheMapLetsItThrough_ItsOpenBoundariesCrossedOnTheWay()
     {
         var map = Catalog.Warehouse();
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
 
         Assert.AreEqual("north@6.5,10.5", g.Visit(new Position(4.5, 9.0), new Position(6.5, 10.5)).AsPlan(), "both points in the north hall: one leg, nothing crossed");
         Assert.AreEqual("south@5.5,1.5", g.Visit(new Position(6.3, 10.4), new Position(5.5, 1.5)).AsPlan(),
@@ -105,7 +109,8 @@ public class MapLayoutTests
     public void AStraightRun_IsCutByAWall_ByADoor_AndByABlock_SoTheWayGoesByThePassages()
     {
         var map = Catalog.Warehouse();
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
 
         StringAssert.StartsWith(g.Visit(new Position(3.0, 9.5), new Position(5.5, 1.5)).AsPlan(), "kitchen/north@4,9.5 > ",
             "out of the kitchen through its east wall there is no straight run: a door is not an open boundary, it is crossed");
@@ -122,12 +127,14 @@ public class MapLayoutTests
 
         // the warehouse: the straight run would cross north~center 0.46 m from the block's corner, so the way bends on the pivots by
         // the corners — the ends of the 3 m boundaries, inset by the margin: (4.5, 8) and (6.5, 3)
-        var warehouse = new Golem(body, Catalog.Warehouse(), new Collisions());
+        var warehouse = new Golem(body);
+        warehouse.Enter(new Scenario(Catalog.Warehouse(), new Collisions()));
         Assert.AreEqual("north~center@4.5,8 > center~south@6.5,3 > south@6.9,2.4", warehouse.Visit(new Position(4.2, 8.6), new Position(6.9, 2.4)).AsPlan());
 
         // the ring corridor: up the west corridor and round the corner into the north one — the corner is an open boundary 1.5 m long,
         // and the margin still leaves three places to turn on it
-        var ring = new Golem(body, Catalog.RingCorridor(), new Collisions());
+        var ring = new Golem(body);
+        ring.Enter(new Scenario(Catalog.RingCorridor(), new Collisions()));
         string corner = ring.Visit(new Position(0.75, 9.0), new Position(3.0, 10.25)).AsPlan();
         StringAssert.Contains(corner, "~");
         StringAssert.Contains(corner, "@1.5,10", "the way bends on a pivot of the corner opening, at x = 1.5: " + corner);
@@ -138,7 +145,8 @@ public class MapLayoutTests
         var a = tight.Area("a").At(new Position(0, 0)).Size(0.8, 2);
         var b = tight.Area("b").At(new Position(0, 2)).Size(0.8, 2);
         a.OpenTo(b);
-        var narrow = new Golem(body, tight, new Collisions());
+        var narrow = new Golem(body);
+        narrow.Enter(new Scenario(tight, new Collisions()));
         Assert.AreEqual("b@0.2,3", narrow.Visit(new Position(0.2, 1.0), new Position(0.2, 3.0)).AsPlan(), "a straight run still passes wherever the body fits");
         StringAssert.StartsWith(narrow.Visit(new Position(0.05, 1.0), new Position(0.05, 3.0)).AsPlan(), "a~b@0.4,2 > ", "but not hugging the wall: the way bends on the middle");
     }
@@ -149,7 +157,8 @@ public class MapLayoutTests
     public void CrossCorridors_FourRoomsInTheCorners_TwoAislesThatCross()
     {
         var map = Catalog.Named("cross-corridors");
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
 
         Assert.AreEqual(9, map.ZoneCount, "four rooms, four aisles, one crossing");
         Assert.AreEqual(12, map.PassageCount, "eight doors, four open boundaries around the crossing");
@@ -171,7 +180,8 @@ public class MapLayoutTests
     public void RingCorridor_FourRoomsInTheMiddle_OneCorridorAllTheWayRound()
     {
         var map = Catalog.Named("ring-corridor");
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
 
         Assert.AreEqual(8, map.ZoneCount, "four rooms, four stretches of corridor");
         Assert.AreEqual(16, map.PassageCount, "eight doors to the corridor, four between the rooms, four open stretches");
@@ -189,7 +199,7 @@ public class MapLayoutTests
     [TestMethod]
     public void TheCatalog_NamesItsPlans_AndRefusesAnUnknownOne()
     {
-        CollectionAssert.AreEqual(new[] { "warehouse", "cross-corridors", "ring-corridor" }, Catalog.Names());
+        CollectionAssert.AreEqual(new[] { "warehouse", "cross-corridors", "ring-corridor", "open-floor" }, Catalog.Names());
         var refused = Assert.ThrowsException<GolemDomainException>(() => Catalog.Named("attic"));
         StringAssert.Contains(refused.Message, "no map named 'attic'");
     }
@@ -202,13 +212,14 @@ public class MapLayoutTests
         // Juan, 14-sep-2026: every method that takes an object checks it first, with an if, and refuses in the domain's voice
         var map = Catalog.Warehouse();
         var kitchen = map.Find("kitchen");
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
         Assert.AreEqual("Map.Connects: 'a' was not given", Assert.ThrowsException<GolemDomainException>(() => map.Connects(null, kitchen)).Message);
         Assert.AreEqual("Zone.Contains: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => kitchen.Contains(null)).Message);
         Assert.AreEqual("MapLayout.ZoneNameOf: 'at' was not given", Assert.ThrowsException<GolemDomainException>(() => map.ZoneNameOf(null)).Message);
         Assert.AreEqual("Golem.Visit: 'area' was not given", Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), (Area)null)).Message);
         Assert.AreEqual("Golem.Distance: 'to' was not given", Assert.ThrowsException<GolemDomainException>(() => g.Distance(kitchen, null)).Message);
-        Assert.AreEqual("a golem needs its map, laid out", Assert.ThrowsException<GolemDomainException>(() => new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), null, new Collisions())).Message);
+        Assert.AreEqual("a scenario needs its map, laid out", Assert.ThrowsException<GolemDomainException>(() => new Scenario(null, new Collisions())).Message);
     }
 
     [TestMethod]
@@ -217,7 +228,8 @@ public class MapLayoutTests
         // Juan, 14-sep-2026: an act that takes two areas (two points, two ends) refuses the same object twice
         var map = Catalog.Warehouse();
         var kitchen = map.Find("kitchen");
-        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)), map, new Collisions());
+        var g = new Golem(new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6)));
+        g.Enter(new Scenario(map, new Collisions()));
         var p = new Position(1.0, 1.0);
         Assert.AreEqual("Map.Connects: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.Connects(kitchen, kitchen)).Message);
         Assert.AreEqual("Map.DoorBetween: 'a' and 'b' are the same area", Assert.ThrowsException<GolemDomainException>(() => map.DoorBetween(kitchen, kitchen)).Message);
@@ -249,5 +261,24 @@ public class MapLayoutTests
         Assert.AreEqual("storage", map.ZoneNameOf(new Position(8.0, 9.5)));
         Assert.AreEqual("north", map.ZoneNameOf(new Position(4.7, 9.5)), "where a peer was met, in the north hall");
         Assert.AreEqual("", map.ZoneNameOf(new Position(2.0, 5.5)), "a solid block: nowhere the map holds, and no refusal — a table prints it");
+    }
+
+    // THE OPEN FLOOR (ajuste 60): the arena's interior as one area — what the kiosk leaves when it opens the floor; the scenario of
+    // the choreographies. Its release is one area, and on it every straight run is a road.
+    [TestMethod]
+    public void TheOpenFloor_IsOneArea_ItsReleaseSaysSo_AndAcrossItEveryStraightRunIsARoad()
+    {
+        var map = Catalog.OpenFloor();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+
+        Assert.AreEqual("open-floor", map.Name);
+        Assert.AreEqual(1, map.ZoneCount);
+        Assert.AreEqual("upgrade('open-floor_v1') {\n    map = MapLayout('open-floor');\n    {\n        floor = map.Area('floor').At(Position(0.0, 0.0)).Size(11.0, 11.0);\n    }\n}\n", map.AsRelease());
+        Assert.AreEqual("floor@9,1.5", g.Dash(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(), "the kitchen's corner to the garage's in one straight run: no wall, no door, no block");
+        Assert.AreEqual("floor@9,1.5", g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(), "door by door too: there is no door");
+        Assert.IsTrue(g.FitsAt(new Position(2.75, 5.5)), "where the warehouse has a solid block, the open floor has room");
     }
 }

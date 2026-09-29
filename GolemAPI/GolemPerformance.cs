@@ -60,6 +60,11 @@ internal sealed class GolemPerformance : PerformanceV2
     // Stops, orders and roads are objects (Position, the map's passages); the road is written
     // act by act (Route, Via, Around, Aside, Stop). Journals born before that day were archived
     // as journal-legacy-20260910-*; they do not rehydrate.)
+    // (29-sep-2026, ajuste 60: the golem is born with its body alone and ENTERS a scenario — a map with its own
+    // collisions: `g = Golem(body); g.Know(Scenario(map, Collisions())); g.Enter(g.Scenario('warehouse'))` — and the
+    // globals `map` and `collisions` are the CURRENT scenario's, reassigned whenever the golem enters another; every map
+    // release writes `map = …`, so each map is learned right after its release. Journals before that day were archived as
+    // journal-legacy-20260929-scenarios/; they do not rehydrate.)
     // RULE: an applied release is never edited (the engine guards its body signature) —
     // evolve the golem by APPENDING the next release.
     protected override void OnHydrated()
@@ -97,8 +102,20 @@ internal sealed class GolemPerformance : PerformanceV2
                 }
             }
             upgrade('init') {
-                collisions = Collisions();
-                g = Golem(body, map, collisions);
+                g = Golem(body);
+                g.Know(Scenario(map, Collisions()));
+            }
+            upgrade('open-floor_v1') {
+                map = MapLayout('open-floor');
+                {
+                    floor = map.Area('floor').At(Position(0.0, 0.0)).Size(11.0, 11.0);
+                }
+            }
+            upgrade('scenarios_v1') {
+                g.Know(Scenario(map, Collisions()));
+                g.Enter(g.Scenario('warehouse'));
+                map = g.Current.Map;
+                collisions = g.Current.Collisions;
             }
         ")
         .PerformCommand();

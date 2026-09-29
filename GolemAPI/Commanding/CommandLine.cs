@@ -44,6 +44,8 @@ public static class CommandLine
         new CommandHelp("route", "route", "the newest route: its way, the legs ahead, what it asks the body now", "route"),
         new CommandHelp("where", "where", "where the golem knows its body stands, facing which way, in which zone", "where"),
         new CommandHelp("obstacles", "obstacles", "what the bodies learned by touching: the things outlined, the peers met", "obstacles"),
+        new CommandHelp("enter", "enter <scenario>", "the golem enters a scenario it knows — its map and its collisions from here on (warehouse, open-floor); refused while a route is pending", "enter open-floor"),
+        new CommandHelp("scenarios", "scenarios", "the scenarios the golem knows, and the one it is in", "scenarios"),
         new CommandHelp("set", "set name x,y [x,y …]", "the console keeps a value under that name, to write @name on a line (visit @stops)", "set stops 2,9.5 9,8"),
         new CommandHelp("show", "show [name]", "the values the console keeps", "show"),
         new CommandHelp("help", "help [command]", "this table, or one command of it", "help visit"),
@@ -97,12 +99,16 @@ public static class CommandLine
             case "then":
             case "forget":
                 return new Command(named, with, verb, Points(verb, args, exactly: 1), noOptions, "");
+            case "enter":
+                if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("enter: expected the scenario's name, like enter open-floor");
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
             case "pause":
             case "resume":
             case "state":
             case "route":
             case "where":
             case "obstacles":
+            case "scenarios":
                 if (args.Count > 0) throw new CommandSyntaxException($"{verb} takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");
             case "reset":

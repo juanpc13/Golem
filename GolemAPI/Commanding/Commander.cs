@@ -93,6 +93,8 @@ public sealed class Commander
             "route" => Route(),
             "where" => Where(),
             "obstacles" => Obstacles(),
+            "enter" => Answered(golem.Enter(command.Text), $"in {command.Text}"),
+            "scenarios" => Scenarios(),
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),
             "help" => Help(command),
             _ => Reply.Syntax($"'{command.Verb}' is no command"),
@@ -181,10 +183,27 @@ public sealed class Commander
     {
         string json = Readings.Where(golem.Actor);
         var e = JsonDocument.Parse(json).RootElement;
-        if (!Bool(e, "knows")) return Reply.Done("the golem does not know where its body stands yet: no act brought its pose", json);
+        string scenario = Str(e, "scenario") != "" ? $" · scenario {Str(e, "scenario")}" : "";
+        if (!Bool(e, "knows")) return Reply.Done("the golem does not know where its body stands yet: no act brought its pose" + scenario, json);
         string zone = Str(e, "zone");
-        return Reply.Done($"standing at ({Num(e, "x")}, {Num(e, "y")}) facing {Num(e, "heading")} rad" + (zone != "" ? $", in {zone}" : ", nowhere on the map") + (Bool(e, "held") ? " — held" : ""), json);
+        return Reply.Done($"standing at ({Num(e, "x")}, {Num(e, "y")}) facing {Num(e, "heading")} rad" + (zone != "" ? $", in {zone}" : ", nowhere on the map") + (Bool(e, "held") ? " — held" : "") + scenario, json);
     }
+
+    // the scenarios the golem knows, the one it is in marked: the query's loop renders as an array named after its variable, `known`
+    private Reply Scenarios()
+    {
+        string json = Readings.Scenarios(golem.Actor);
+        var e = JsonDocument.Parse(json).RootElement;
+        string current = Str(e, "current");
+        var lines = new List<string>();
+        if (e.TryGetProperty("known", out var known) && known.ValueKind == JsonValueKind.Array)
+            foreach (var k in known.EnumerateArray())
+                lines.Add($"{(Str(k, "name") == current ? "› " : "  ")}{Str(k, "name")} · {Int(k, "zones")} zone(s), {Int(k, "marks")} mark(s)");
+        return Reply.Done($"in {current}" + (lines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, lines) : ""), json);
+    }
+
+    // an act of the mind (no route to print): done in a few words, or refused in the domain's
+    private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
 
     private Reply Obstacles()
     {
