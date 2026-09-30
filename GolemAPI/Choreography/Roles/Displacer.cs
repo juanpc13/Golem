@@ -85,6 +85,9 @@ public sealed class Displacer
     // the fleet's names sorted, each golem the corner of its own, no word exchanged; ajuste 69: the formation made by the golem's own
     // choreographies module, by its name — `formation = g.Choreography.Formation(@figure, center, side);` — so ONE template per effect
     // serves every shape). The side enters as @sideLength, never @side: a local named like a parameter would resolve to the parameter.
+    // The call SPREADS BY TELL (ajuste 71): the act ends with an expose of what the peers need — the labels never a parameter's name —
+    // and GolemSpeech's echo-called tells each peer it was called; the peers' own Join (UptakeCalledTo) carries no expose, so it spreads
+    // nothing further.
     private const string JoinCheck = @"
                     Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
                     Check(g.Current.Map.IsOnMap(Position(@cx, @cy))) Error 'the centre is nowhere on the map';
@@ -115,6 +118,7 @@ public sealed class Displacer
                             }
                         }
                     }
+                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call;
                 ";
     private const string TurnFormation = @"
                     {
@@ -144,6 +148,7 @@ public sealed class Displacer
                             }
                         }
                     }
+                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @direction sense, @seconds span;
                 ";
 
     /// <summary>The fleet is called to a FORMATION — the square, today — and this golem takes its place BY RANK (propuesta 59, paso 1;
@@ -152,6 +157,7 @@ public sealed class Displacer
     public Answer Join(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet)
     {
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
+        string callId = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // one call, frozen as a parameter: the once of every tell that spreads it
         try
         {
             return Answer.Of(robot.Actor.Using(JoinCheck, JoinFormation)
@@ -160,6 +166,7 @@ public sealed class Displacer
                     p["cy", typeof(double)] = Resolution.Metres(center.Y);
                     p["sideLength", typeof(double)] = Resolution.Metres(side);
                     p["figure", typeof(string)] = figure;   // the formation's name: the module makes it (ajuste 69)
+                    p["callId", typeof(string)] = callId;   // this call, for the tells that carry it to the peers (ajuste 71)
                     p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
                     p["member", typeof(string)] = robot.Name;
                 })
@@ -173,6 +180,7 @@ public sealed class Displacer
     public Answer Join(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet, (string Direction, double Seconds) turn)
     {
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
+        string callId = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // one call, frozen as a parameter: the once of every tell that spreads it
         try
         {
             return Answer.Of(robot.Actor.Using(JoinCheck, TurnFormation)
@@ -181,6 +189,7 @@ public sealed class Displacer
                     p["cy", typeof(double)] = Resolution.Metres(center.Y);
                     p["sideLength", typeof(double)] = Resolution.Metres(side);
                     p["figure", typeof(string)] = figure;   // the formation's name: the module makes it (ajuste 69)
+                    p["callId", typeof(string)] = callId;   // this call, for the tells that carry it to the peers (ajuste 71)
                     p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
                     p["member", typeof(string)] = robot.Name;
                     p["direction", typeof(string)] = turn.Direction;

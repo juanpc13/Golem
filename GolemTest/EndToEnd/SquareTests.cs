@@ -83,6 +83,9 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("square", null, side)).Message, "'center' was not given");
 
         var fleet = new Fleet("blue,red,green,yellow");
+        Assert.IsTrue(fleet.Knows("Red"), "a name of the fleet, any case (ajuste 71: a golem that hears a call joins only if it was called)");
+        Assert.IsFalse(fleet.Knows("purple"));
+        Assert.IsFalse(fleet.Knows(""));
         var route = g.Choreography.Join(new Pose(2.5, 2.5, 0.0), formation, fleet.Member("red"));
         StringAssert.EndsWith(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }

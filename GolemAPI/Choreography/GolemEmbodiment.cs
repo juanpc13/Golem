@@ -124,6 +124,42 @@ public sealed class GolemEmbodiment
             g.LearnForget(at);
         }
         ";
+    // A peer was called to a formation and told me I was called too (ajuste 71): if I am in its fleet, I join — my own Join, from where
+    // I will stand, by the same rank; the next-order-join reaction pushes the first order to my body. No expose: my join spreads nothing.
+    public const string UptakeCalledTo = @"
+        {
+            fleet = Fleet(@names);
+            if (fleet.Knows(@member)) {
+                from = g.Destination;
+                center = Position(@cx, @cy);
+                side = Meters(@sideLength);
+                formation = g.Choreography.Formation(@figure, center, side);
+                me = fleet.Member(@member);
+                route = g.Choreography.Join(from, formation, me);
+                if (g.Strategy.OnTheWay.IsActive) {
+                    route = g.Dash(route);
+                }
+            }
+        }
+        ";
+    public const string UptakeCalledToTurn = @"
+        {
+            fleet = Fleet(@names);
+            if (fleet.Knows(@member)) {
+                from = g.Destination;
+                center = Position(@cx, @cy);
+                side = Meters(@sideLength);
+                formation = g.Choreography.Formation(@figure, center, side);
+                me = fleet.Member(@member);
+                lasting = Seconds(@seconds);
+                turn = Rotation(@direction, lasting);
+                route = g.Choreography.Join(from, formation, me, turn);
+                if (g.Strategy.OnTheWay.IsActive) {
+                    route = g.Dash(route);
+                }
+            }
+        }
+        ";
 
     // ==================================================================
     // THE WAKING: the golem wakes where its body stands — ONE act, the first of every boot, once the membrane brought the pose

@@ -156,11 +156,11 @@ public class CommandConsoleTests
         StringAssert.Contains(mixed.Text, "green › refused: this is red: no golem named 'green' among its peers");
     }
 
-    // THE FLEET TAKES A SQUARE BY RANK (propuesta 59, paso 1; ajuste 65): the line carried to each peer names the fleet outright, every
-    // golem computes the same ranks alone and goes to its own corner — blue and red, two places of one square (a fleet of two stands half
-    // the perimeter apart: the north-east corner and the south-west one).
+    // THE CALL SPREADS BY TELL (propuesta 59; ajustes 65, 71): the operator commands ONE golem — red — and red's act is told to every peer;
+    // blue hears it and joins by itself, its own Join to its own corner by rank. The fleet is red and all its peers (blue, green, red,
+    // yellow sorted): blue first (north-east), red third (south-west). A choreography's --with is refused.
     [TestMethod]
-    public async Task AChoreography_SendsEveryGolemOfTheFleet_ToItsOwnCornerOfTheSquare_ByRank()
+    public async Task AChoreography_CommandedToOneGolem_SpreadsByTell_AndEveryPeerJoinsItsOwnCorner()
     {
         await using var world = new MockWorld();
         await world.PlaceGolemAsync("red");
@@ -168,23 +168,35 @@ public class CommandConsoleTests
         var red = new Commander(world.HostOf("red").Embodiment);
         var blue = new Commander(world.HostOf("blue").Embodiment);
 
-        var both = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --with blue");
-        Assert.IsTrue(both.Ok, both.Text);
-        StringAssert.Contains(both.Text, "red › route 1 · ");
-        StringAssert.Contains(both.Text, "blue › route 1 · ");
-        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "center@4.5,4.5", "red, second of the two names: the south-west corner, half the perimeter on");
-        StringAssert.Contains((await blue.ExecuteAsync("route")).Text, "center@6.5,6.5", "blue, first: the north-east corner");
+        var call = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank");
+        Assert.IsTrue(call.Ok, call.Text);
+        StringAssert.StartsWith(call.Text, "route 1 · ", "one golem commanded: one answer, red's own");
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "center@4.5,4.5", "red, third of the four names: the south-west corner");
+        string blueWay = await Until(blue, "center@6.5,6.5");
+        StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard the call and joined by itself: first of the four, the north-east corner — " + blueWay);
 
-        var alone = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0");
-        Assert.IsTrue(alone.Ok, alone.Text);
-        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "center@6.5,6.5", "with nobody named and no policy said, the fleet is red alone, by rank: the first corner");
-        Assert.AreEqual("refused", (await red.ExecuteAsync("choreograph square --center 0.75,5.5 --side 2.0")).Kind, "a square the corridor cannot hold: its corners fall in the walls");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --with blue")).Kind, "a choreography spreads by itself");
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by distance")).Kind, "the other policy is propuesta 64");
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph circle --center 5.5,5.5 --radius 1.0")).Kind, "the square alone for now");
+        Assert.AreEqual("refused", (await red.ExecuteAsync("choreograph square --center 0.75,5.5 --side 2.0")).Kind, "a square the corridor cannot hold: red's corner falls in the wall");
 
-        var turning = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --effect rotate-clockwise --for 10s --with blue");
+        var turning = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --effect rotate-clockwise --for 10s");
         Assert.IsTrue(turning.Ok, turning.Text);
-        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "8 stop(s) left", "its corner and seven stages: two bodies stand 2.83 m apart across the square, 1.41 s at 2 m/s");
-        StringAssert.Contains((await blue.ExecuteAsync("route")).Text, "8 stop(s) left", "blue turns the same square");
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "11 stop(s) left", "its corner and ten stages: a side of 2 m is 1 s at 2 m/s");
+        string blueTurn = await Until(blue, "11 stop(s) left");
+        StringAssert.Contains(blueTurn, "11 stop(s) left", "blue heard the turning call and turns the same square — " + blueTurn);
+    }
+
+    // The newest route of a golem, read until it says what a tell should have made it do (a tell is delivered, not instant).
+    private static async Task<string> Until(Commander golem, string expected)
+    {
+        string text = "";
+        for (int i = 0; i < 60; i++)
+        {
+            text = (await golem.ExecuteAsync("route")).Text;
+            if (text.Contains(expected)) return text;
+            await Task.Delay(200);
+        }
+        return text;
     }
 }

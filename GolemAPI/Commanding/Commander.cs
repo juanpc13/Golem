@@ -43,18 +43,17 @@ public sealed class Commander
         // `golem blue …` on red's console: the line is another golem's — a console commands its own golem; the peers ride along with --with
         if (command.Golem != "" && !IsMe(command.Golem))
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
+        // a choreography spreads by itself, by tell (ajuste 71): this golem is called, its peers are told — never a line carried to them
+        if (command.Verb == "choreograph" && command.With.Count > 0)
+            return Reply.Syntax("choreograph: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, adopt)");
         if (command.With.Count == 0) return await MineAsync(command, line);
 
         var peers = command.With.Contains("all") ? golem.Peers.Concat(command.With.Where(w => w != "all")).Distinct().ToList() : command.With.ToList();
         if (peers.Count == 0) return Reply.Refused($"this is {golem.Name}: --with all, but it has no peers on the wire");
-        // a formation is the whole fleet's: the peers must know it too, so the line carried to them names it outright (paso 1)
-        string carried = command.Verb == "choreograph" && !command.Values.ContainsKey("fleet")
-            ? line.Trim() + " --fleet " + string.Join(",", FleetOf(command, peers))
-            : line;
         var replies = new List<(string Who, Reply Reply)> { (golem.Name, await MineAsync(command, line)) };
         foreach (var who in peers.Where(w => !IsMe(w)))
         {
-            var peer = await golem.CommandPeerAsync(who, ForPeer(carried, who));
+            var peer = await golem.CommandPeerAsync(who, ForPeer(line, who));
             replies.Add((who, peer == null ? Reply.Refused($"this is {golem.Name}: no golem named '{who}' among its peers")
                             : peer.Status == 200 ? Reply.Done(peer.Text, "")
                             : peer.Status == 409 ? new Reply("refused", peer.Text, "")
@@ -121,7 +120,7 @@ public sealed class Commander
     // the fleet takes a square (propuesta 59; ajuste 65): this golem's part — its corner, by the policy asked (rank, the only one built)
     private Reply Choreograph(Command command)
     {
-        var peers = command.With.Contains("all") ? golem.Peers.Concat(command.With.Where(w => w != "all")).Distinct().ToList() : command.With.ToList();
+        var peers = golem.Peers.ToList();   // the fleet, unless told outright: this golem and every peer it can reach (ajuste 71)
         var request = new FormationRequest(command.Text, new PointRequest(command.Points[0].X, command.Points[0].Y),
                                            double.Parse(command.Values["side"], CultureInfo.InvariantCulture), FleetOf(command, peers).ToList(),
                                            command.Values.TryGetValue("effect", out var effect) ? effect : null,

@@ -17,6 +17,10 @@ internal sealed class Fleet
     }
 
     internal int Count => names.Count;
+
+    /// <summary>Whether that name is in the fleet — asked before its member is found (ajuste 71: a golem that hears a call joins only
+    /// if it was called): <c>if (fleet.Knows(@member)) { me = fleet.Member(@member); … }</c>.</summary>
+    internal bool Knows(string name) => !string.IsNullOrWhiteSpace(name) && names.Contains(name.Trim().ToLowerInvariant());
     internal IReadOnlyList<string> Names => names;
 
     /// <summary>The member of that name: its rank among the fleet's names, and how many they are.</summary>
