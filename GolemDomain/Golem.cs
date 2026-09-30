@@ -1,4 +1,5 @@
 using System.Globalization;
+using GolemDomain.Formations;
 using GolemDomain.Geometry;
 using GolemDomain.Scenarios;
 using GolemDomain.Layouts;
@@ -178,6 +179,36 @@ internal sealed class Golem
         if (from == null) throw new GolemDomainException("Golem.Visit: 'from' was not given");
         if (area == null) throw new GolemDomainException("Golem.Visit: 'area' was not given");
         return Entrust(from, Centre(area), following: false, choosesOrder: false);
+    }
+
+    /// <summary>The golem takes its place in a formation AND TURNS with the fleet around it (paso 3): the same route, its place first,
+    /// then every stage of the rotation told to it — <c>turn = Rotation('clockwise', Seconds(10.0)); route = g.Join(from, figure, me, turn);</c>.</summary>
+    internal Route Join(Position from, Formation figure, Member me, Rotation turn)
+    {
+        if (from == null) throw new GolemDomainException("Golem.Join: 'from' was not given");
+        if (figure == null) throw new GolemDomainException("Golem.Join: 'figure' was not given");
+        if (me == null) throw new GolemDomainException("Golem.Join: 'me' was not given");
+        if (turn == null) throw new GolemDomainException("Golem.Join: 'turn' was not given");
+        var stages = figure.Stages(me, turn, Speed());   // decided before the route is minted: a refusal mints nothing
+        var route = Join(from, figure, me);
+        foreach (var stage in stages) route.Then(stage);
+        return route;
+    }
+
+    /// <summary>The golem takes ITS PLACE in a formation the fleet was called to (propuesta 59, paso 1): the place of its rank in the
+    /// figure's places for as many as the fleet are — <c>{ from = Pose(@fx, @fy, @ftheta); figure = Circle(Position(@cx, @cy), Meters(@r));
+    /// me = Fleet(@fleet).Member(@member); route = g.Join(from, figure, me); }</c> — a route to it the Dash way, decided inside. Refused
+    /// when the place is nowhere on the map or leaves no room for this body.</summary>
+    internal Route Join(Position from, Formation figure, Member me)
+    {
+        if (from == null) throw new GolemDomainException("Golem.Join: 'from' was not given");
+        if (figure == null) throw new GolemDomainException("Golem.Join: 'figure' was not given");
+        if (me == null) throw new GolemDomainException("Golem.Join: 'me' was not given");
+        var place = figure.Place(me);
+        string where = $"place {me.Rank + 1} of {me.Of} of the {figure.Name} at ({Fmt(place.X)}, {Fmt(place.Y)})";
+        if (!layout.IsOnMap(place)) throw new GolemDomainException($"{where} is nowhere on the map");
+        if (!layout.HasRoom(place, Radius())) throw new GolemDomainException($"{where} leaves no room for a body of radius {Fmt(Radius())}");
+        return Entrust(from, place, following: false, choosesOrder: false);
     }
 
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
@@ -573,4 +604,5 @@ internal sealed class Golem
         throw new GolemDomainException("no pending mission: consult HasPendingMission() first");
     }
 
+    private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 }

@@ -6,18 +6,6 @@ namespace GolemAPI.Controllers;
 // 16-sep-2026: "la data debería llegar por JSON… y hay que validar que venga correcta"). Each request says what is
 // wrong with it in plain words; the endpoint answers 400 with that and performs nothing.
 
-/// <summary>The strategy of navigation the golem adopts (ajuste 61) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
-public sealed record NavigationRequest(string Navigation)
-{
-    public const string Shape = "{\"navigation\": \"on-the-way\"}";
-    public static readonly string[] Strategies = { "on-the-way", "door-by-door" };
-
-    public IEnumerable<string> Problems()
-    {
-        if (string.IsNullOrWhiteSpace(Navigation) || !Strategies.Contains(Navigation.Trim().ToLowerInvariant())) yield return "the navigation must be one of " + string.Join(", ", Strategies) + ": " + Shape;
-    }
-}
-
 /// <summary>One stop of an errand: a point on the floor — <c>{"x": 9.0, "y": 8.0}</c> (Juan, 16-sep-2026: "solo serán puntos, ya no places").</summary>
 public sealed record StopRequest(double? X, double? Y)
 {
@@ -60,6 +48,18 @@ public sealed record PointRequest(double? X, double? Y)
     }
 }
 
+/// <summary>The strategy of navigation the golem adopts (ajuste 61) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
+public sealed record NavigationRequest(string Navigation)
+{
+    public const string Shape = "{\"navigation\": \"on-the-way\"}";
+    public static readonly string[] Strategies = { "on-the-way", "door-by-door" };
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Navigation) || !Strategies.Contains(Navigation.Trim().ToLowerInvariant())) yield return "the navigation must be one of " + string.Join(", ", Strategies) + ": " + Shape;
+    }
+}
+
 /// <summary>The scenario the golem enters (ajuste 60) — <c>{"scenario": "open-floor"}</c>.</summary>
 public sealed record ScenarioRequest(string Scenario)
 {
@@ -68,6 +68,39 @@ public sealed record ScenarioRequest(string Scenario)
     public IEnumerable<string> Problems()
     {
         if (string.IsNullOrWhiteSpace(Scenario)) yield return "give the scenario's name: " + Shape;
+    }
+}
+
+/// <summary>The fleet called to a SQUARE (propuesta 59; ajuste 65) — <c>{"figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
+/// "by": "rank", "fleet": ["blue", "red"]}</c>: said by its side; the places taken by rank (the only policy built: "distance" is propuesta
+/// 64); the fleet may be left out (this golem and every peer it can reach).</summary>
+public sealed record FormationRequest(string Figure, PointRequest Center, double? Side, List<string> Fleet, string Effect = null, double? For = null,
+                                      string By = null, double? Radius = null)
+{
+    public const string Shape = "{\"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"by\": \"rank\", \"fleet\": [\"blue\", \"red\"], \"effect\": \"rotate-clockwise\", \"for\": 10}";
+    public static readonly string[] Effects = { "rotate-clockwise", "rotate-counterclockwise" };
+    public static readonly string[] Figures = { "square" };   // the circle and the triangle set aside for now (ajuste 65)
+
+    /// <summary>The rotation asked, as the domain takes it: its sense and its seconds; null when no effect was asked.</summary>
+    public (string Direction, double Seconds)? Turn => string.IsNullOrWhiteSpace(Effect) ? null : (Effect.Trim().ToLowerInvariant()["rotate-".Length..], For ?? 0);
+
+    /// <summary>How the places are shared: by rank, the default and the only one built.</summary>
+    public string Policy => string.IsNullOrWhiteSpace(By) ? "rank" : By.Trim().ToLowerInvariant();
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square for now (the circle and the triangle are set aside): " + Shape;
+        if (Center == null) yield return "give the centre: " + Shape;
+        else foreach (var p in Center.Problems()) yield return "centre: " + p;
+        if (Radius.HasValue) yield return "a square is said by its side, \"side\": 2.0 — not by a radius";
+        if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
+        if (Policy == "distance") yield return "\"by\": \"distance\" is not built yet (propuesta 64): \"by\": \"rank\" takes the places by the fleet's names";
+        else if (Policy != "rank") yield return "the policy is \"rank\" (\"distance\" is propuesta 64)";
+        if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
+        bool effect = !string.IsNullOrWhiteSpace(Effect);
+        if (effect && !Effects.Contains(Effect.Trim().ToLowerInvariant())) yield return "the effect must be one of " + string.Join(", ", Effects);
+        if (effect && (!For.HasValue || !double.IsFinite(For.Value) || For.Value <= 0)) yield return "an effect lasts a number of seconds greater than zero: \"for\": 10";
+        if (!effect && For.HasValue) yield return "\"for\" says how long an effect lasts: give the effect too";
     }
 }
 

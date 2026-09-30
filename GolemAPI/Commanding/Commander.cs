@@ -47,10 +47,14 @@ public sealed class Commander
 
         var peers = command.With.Contains("all") ? golem.Peers.Concat(command.With.Where(w => w != "all")).Distinct().ToList() : command.With.ToList();
         if (peers.Count == 0) return Reply.Refused($"this is {golem.Name}: --with all, but it has no peers on the wire");
+        // a formation is the whole fleet's: the peers must know it too, so the line carried to them names it outright (paso 1)
+        string carried = command.Verb == "choreograph" && !command.Values.ContainsKey("fleet")
+            ? line.Trim() + " --fleet " + string.Join(",", FleetOf(command, peers))
+            : line;
         var replies = new List<(string Who, Reply Reply)> { (golem.Name, await MineAsync(command, line)) };
         foreach (var who in peers.Where(w => !IsMe(w)))
         {
-            var peer = await golem.CommandPeerAsync(who, ForPeer(line, who));
+            var peer = await golem.CommandPeerAsync(who, ForPeer(carried, who));
             replies.Add((who, peer == null ? Reply.Refused($"this is {golem.Name}: no golem named '{who}' among its peers")
                             : peer.Status == 200 ? Reply.Done(peer.Text, "")
                             : peer.Status == 409 ? new Reply("refused", peer.Text, "")
@@ -84,6 +88,7 @@ public sealed class Commander
         Reply reply = command.Verb switch
         {
             "visit" or "cover" => Errand(command),
+            "choreograph" => Choreograph(command),
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
@@ -94,8 +99,8 @@ public sealed class Commander
             "where" => Where(),
             "obstacles" => Obstacles(),
             "enter" => Answered(golem.Enter(command.Text), $"in {command.Text}"),
-            "scenarios" => Scenarios(),
             "adopt" => Answered(golem.Adopt(command.Text), $"navigating {command.Text.Replace('-', ' ')}"),
+            "scenarios" => Scenarios(),
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),
             "help" => Help(command),
             _ => Reply.Syntax($"'{command.Verb}' is no command"),
@@ -105,6 +110,30 @@ public sealed class Commander
     }
 
     // ---- the operator's verbs: the same validation as the endpoint, the same role ----
+
+    // the fleet of a formation: told outright (--fleet), or this golem and the peers named with --with (all: every peer on the wire)
+    private IReadOnlyList<string> FleetOf(Command command, IReadOnlyList<string> peers)
+    {
+        if (command.Values.TryGetValue("fleet", out var told)) return told.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList();
+        return new[] { golem.Name.ToLowerInvariant() }.Concat(peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
+    }
+
+    // the fleet takes a square (propuesta 59; ajuste 65): this golem's part — its corner, by the policy asked (rank, the only one built)
+    private Reply Choreograph(Command command)
+    {
+        var peers = command.With.Contains("all") ? golem.Peers.Concat(command.With.Where(w => w != "all")).Distinct().ToList() : command.With.ToList();
+        var request = new FormationRequest(command.Text, new PointRequest(command.Points[0].X, command.Points[0].Y),
+                                           double.Parse(command.Values["side"], CultureInfo.InvariantCulture), FleetOf(command, peers).ToList(),
+                                           command.Values.TryGetValue("effect", out var effect) ? effect : null,
+                                           command.Values.TryGetValue("for", out var lasting) ? double.Parse(lasting, CultureInfo.InvariantCulture) : null,
+                                           command.Values.TryGetValue("by", out var by) ? by : null);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        var center = (request.Center.X.Value, request.Center.Y.Value);
+        var turn = request.Turn;
+        return Answered(turn == null ? displacer.Join(center, request.Side.Value, request.Fleet) : displacer.Join(center, request.Side.Value, request.Fleet, turn.Value));
+    }
 
     // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)
     private Reply Errand(Command command)

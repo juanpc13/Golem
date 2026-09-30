@@ -64,6 +64,8 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-find",   "[_:Golem].Find($id)"),        // a route in hand by its handle: Then
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
+            ("next-order-join",   "[_:Golem].Join(_, _, _)"),   // the golem takes its place in a formation (propuesta 59)
+            ("next-order-join-turn", "[_:Golem].Join(_, _, _, _)"),   // …and turns with the fleet around it (paso 3)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),
             ("next-order-resume", "[_:Golem].Resume(_)"),   // a zero-argument pattern on the golem did not fire (17-sep lab): the pose rides along, and it is true

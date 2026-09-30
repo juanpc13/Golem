@@ -86,14 +86,14 @@ public class CommandLineTests
     {
         Assert.AreEqual("", CommandLine.Parse("help").Text);
         Assert.AreEqual("visit", CommandLine.Parse("help VISIT").Text);
-        CollectionAssert.AreEqual(new[] { "visit", "cover", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "adopt", "enter", "scenarios", "set", "show", "help", "--with" },
+        CollectionAssert.AreEqual(new[] { "visit", "cover", "choreograph", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "adopt", "enter", "scenarios", "set", "show", "help", "--with" },
                                   CommandLine.Help.Select(h => h.Verb).ToList(), "every command the language has, in the help's order — no script of the actor's among them");
         Assert.IsTrue(CommandLine.Help.All(h => h.Usage != "" && h.What != "" && h.Example != ""), "each with how it is written, what it does and an example");
-        StringAssert.Contains(Refused("help fly"), "help: 'fly' is no command; the commands are visit, cover, then");
+        StringAssert.Contains(Refused("help fly"), "help: 'fly' is no command; the commands are visit, cover, choreograph");
         Assert.AreEqual("on-the-way", CommandLine.Parse("adopt On-The-Way").Text, "the strategy adopted (ajuste 61)");
         StringAssert.Contains(Refused("adopt fast"), "adopt: expected the strategy, on-the-way or door-by-door");
         StringAssert.Contains(Refused("dash 9,1.5"), "'dash' is no command", "the dash is a strategy now, not a verb");
-        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, then, pause, resume, forget, reset, state, route, where, obstacles, adopt, enter, scenarios, set, show, help, --with — help tells each");
+        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, choreograph, then, pause, resume, forget, reset, state, route, where, obstacles, adopt, enter, scenarios, set, show, help, --with — help tells each");
         StringAssert.Contains(Refused("query { print g.Standing.X 'x'; }"), "'query' is no command", "the actor's scripts never travel on a line");
         StringAssert.Contains(Refused(""), "nothing to do: write a command, or help");
         StringAssert.Contains(Refused("golem"), "nothing to do");
@@ -117,5 +117,39 @@ public class CommandLineTests
         StringAssert.Contains(Refused("visit 2,9.5 --with 3,4"), "--with: expected the peers");
         CollectionAssert.AreEqual(new[] { "--all" }, CommandLine.Parse("reset --with blue --all").Options.ToList());
         Assert.IsTrue(CommandLine.Help.Any(h => h.Verb == "--with"), "documented once, with the commands");
+    }
+
+    [TestMethod]
+    public void Choreograph_TheSquare_SaidByItsSide_ItsCentre_ThePolicyByRank_AndTheFleetWhenTold()
+    {
+        var square = CommandLine.Parse("golem choreograph square --center 5.5,5.5 --side 2.0 --with all");
+        Assert.AreEqual("choreograph", square.Verb);
+        Assert.AreEqual("square", square.Text, "the figure");
+        Assert.AreEqual((5.5, 5.5), square.Points[0], "the centre, a point like any other");
+        Assert.AreEqual("2.0", square.Values["side"]);
+        Assert.IsFalse(square.Values.ContainsKey("by"), "no policy said: rank, the default");
+        CollectionAssert.AreEqual(new[] { "all" }, square.With.ToList(), "the fleet is this golem and those");
+        Assert.IsFalse(square.Values.ContainsKey("fleet"));
+        Assert.AreEqual("rank", CommandLine.Parse("choreograph square --center 5.5,5.5 --side 2 --by Rank").Values["by"], "the policy, said outright");
+        Assert.AreEqual("blue,red", CommandLine.Parse("choreograph square --side 2 --fleet blue,red --center 5.5,5.5").Values["fleet"], "the options in any order");
+        // the square alone for now, said by its side; the other policy not built yet
+        StringAssert.Contains(Refused("choreograph circle --center 5.5,5.5 --radius 1"), "the square alone for now — the circle is set aside");
+        StringAssert.Contains(Refused("choreograph triangle --center 5.5,5.5 --side 2"), "the triangle is set aside");
+        StringAssert.Contains(Refused("choreograph hexagon --center 5.5,5.5 --side 1"), "expected the figure, square");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --radius 2.0"), "a square is said by its side; --radius is the circle's");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5"), "choreograph square: expected --center x,y and --side s");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side"), "--side needs a value");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side -2"), "--side expects metres greater than zero");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 2 --by distance"), "--by distance is not built yet (propuesta 64)");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 2 --by luck"), "--by is rank");
+        StringAssert.Contains(Refused("choreograph square --center kitchen --side 1"), "expected a point like 2,9.5 at 'kitchen'");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 1 --spin"), "'--spin' is no option");
+        var turning = CommandLine.Parse("choreograph square --center 5.5,5.5 --side 2.0 --by rank --effect Rotate-Clockwise --for 10s --with all");
+        Assert.AreEqual("rotate-clockwise", turning.Values["effect"]);
+        Assert.AreEqual("10", turning.Values["for"], "seconds, the s taken off");
+        Assert.AreEqual("2.5", CommandLine.Parse("choreograph square --center 5.5,5.5 --side 1 --effect rotate-counterclockwise --for 2.5").Values["for"]);
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 1 --for 10s"), "an effect and its time go together");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 1 --effect spin --for 10s"), "--effect is rotate-clockwise or rotate-counterclockwise");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 1 --effect rotate-clockwise --for soon"), "--for expects seconds greater than zero");
     }
 }

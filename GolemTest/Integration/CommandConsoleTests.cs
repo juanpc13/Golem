@@ -156,4 +156,35 @@ public class CommandConsoleTests
         StringAssert.Contains(mixed.Text, "green › refused: this is red: no golem named 'green' among its peers");
     }
 
+    // THE FLEET TAKES A SQUARE BY RANK (propuesta 59, paso 1; ajuste 65): the line carried to each peer names the fleet outright, every
+    // golem computes the same ranks alone and goes to its own corner — blue and red, two places of one square (a fleet of two stands half
+    // the perimeter apart: the north-east corner and the south-west one).
+    [TestMethod]
+    public async Task AChoreography_SendsEveryGolemOfTheFleet_ToItsOwnCornerOfTheSquare_ByRank()
+    {
+        await using var world = new MockWorld();
+        await world.PlaceGolemAsync("red");
+        await world.PlaceGolemAsync("blue");
+        var red = new Commander(world.HostOf("red").Embodiment);
+        var blue = new Commander(world.HostOf("blue").Embodiment);
+
+        var both = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --with blue");
+        Assert.IsTrue(both.Ok, both.Text);
+        StringAssert.Contains(both.Text, "red › route 1 · ");
+        StringAssert.Contains(both.Text, "blue › route 1 · ");
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "center@4.5,4.5", "red, second of the two names: the south-west corner, half the perimeter on");
+        StringAssert.Contains((await blue.ExecuteAsync("route")).Text, "center@6.5,6.5", "blue, first: the north-east corner");
+
+        var alone = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0");
+        Assert.IsTrue(alone.Ok, alone.Text);
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "center@6.5,6.5", "with nobody named and no policy said, the fleet is red alone, by rank: the first corner");
+        Assert.AreEqual("refused", (await red.ExecuteAsync("choreograph square --center 0.75,5.5 --side 2.0")).Kind, "a square the corridor cannot hold: its corners fall in the walls");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by distance")).Kind, "the other policy is propuesta 64");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph circle --center 5.5,5.5 --radius 1.0")).Kind, "the square alone for now");
+
+        var turning = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --effect rotate-clockwise --for 10s --with blue");
+        Assert.IsTrue(turning.Ok, turning.Text);
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "8 stop(s) left", "its corner and seven stages: two bodies stand 2.83 m apart across the square, 1.41 s at 2 m/s");
+        StringAssert.Contains((await blue.ExecuteAsync("route")).Text, "8 stop(s) left", "blue turns the same square");
+    }
 }

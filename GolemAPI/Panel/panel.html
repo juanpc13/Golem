@@ -159,6 +159,8 @@
         <button id="move" class="place">visit</button>
         <button id="cover" class="place">cover</button>
         <button id="then" class="place">then</button>
+        <button id="square" class="place" title="the fleet takes a square, said by its side, each golem the corner of its rank among the names (--by rank) — add --with all or press the peers">square</button>
+        <button id="sqspin" class="place" title="the fleet takes the square by rank and turns clockwise along its sides for ten seconds">square · rotate 10s</button>
         <button id="clear">clear the line</button>
       </div>
       <div class="row">
@@ -328,7 +330,7 @@ const answer = document.getElementById('answer');
 // con with"): the line is this golem's own — the prompt names it — the buttons compose the command, and `--with` at its end names the
 // peers the same command is carried to (the selector under the line composes it).
 const head = 'golem ';
-const HEAD = /^\s*golem(\s+(?!(?:visit|cover|then|pause|resume|forget|reset|adopt|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
+const HEAD = /^\s*golem(\s+(?!(?:visit|cover|choreograph|then|pause|resume|forget|reset|adopt|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
 const WITH = /\s*--with(?:\s+([A-Za-z_][A-Za-z0-9_,-]*))?/i;
 function parts() {
   const m = line.value.match(HEAD);
@@ -399,7 +401,7 @@ async function run() {
     answer.className = 'answer ' + (r.ok ? 'done' : r.status === 409 ? 'refused' : 'syntax');
     answer.textContent = `› ${sent}\n${said}`;
     // done: an act's line is spent; a read, or a line refused or misread, stays to be read or edited
-    if (r.ok && /^(visit|cover|then|pause|resume|reset|forget|enter|adopt)\b/i.test(cmd)) setLine('');
+    if (r.ok && /^(visit|cover|choreograph|then|pause|resume|reset|forget|enter|adopt)\b/i.test(cmd)) setLine('');
   } catch (e) {
     answer.className = 'answer syntax';
     answer.textContent = `› ${text}\ngolem unreachable: ${e}`;
@@ -415,6 +417,8 @@ line.addEventListener('keydown', (e) => {
 document.getElementById('addpoint').onclick = () => addPoint(+document.getElementById('x').value, +document.getElementById('y').value);
 document.getElementById('move').onclick = () => compose('visit');
 document.getElementById('cover').onclick = () => compose('cover');
+document.getElementById('square').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank');
+document.getElementById('sqspin').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank --effect rotate-clockwise --for 10s');
 document.getElementById('then').onclick = () => compose('then');
 document.getElementById('clear').onclick = () => setWhole(head);
 for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],

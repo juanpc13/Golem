@@ -65,6 +65,23 @@ public class GolemController : Controller
         return Answered(displacer.Cover(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
+    // The fleet takes a square, this golem its corner by rank (propuesta 59; ajuste 65) — {"figure": "square", "center": {"x": 5.5,
+    // "y": 5.5}, "side": 2.0, "by": "rank", "fleet": ["blue", "red"]}; left out, the fleet is this golem and every peer it can reach.
+    // It moves THIS golem alone: the line's --with is what carries the call to the peers.
+    [HttpPost("choreograph")]
+    public IActionResult Choreograph([FromBody] FormationRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + FormationRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
+                                                    : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
+        var center = (request.Center.X.Value, request.Center.Y.Value);
+        var turn = request.Turn;
+        return Answered(turn == null ? displacer.Join(center, request.Side.Value, fleet) : displacer.Join(center, request.Side.Value, fleet, turn.Value));
+    }
+
     // The operator holds the golem where its body stands, or lets it go on.
     [HttpPost("pause")]
     public IActionResult Pause() => Motors(out var displacer, out var refusal) ? Answered(displacer.Pause()) : refusal;

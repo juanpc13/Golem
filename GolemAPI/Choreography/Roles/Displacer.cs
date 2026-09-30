@@ -81,6 +81,113 @@ public sealed class Displacer
         return ThenEach(robot.Newest(), points.Skip(1), answer);
     }
 
+    // THE SQUARE (propuesta 59; ajuste 65, 30-sep-2026: the square alone on the command line for now, said by its side, the places
+    // taken BY RANK — the fleet's names sorted, each golem the corner of its own, no word exchanged). One fixed template per effect; the
+    // side enters as @sideLength, never @side: a local named like a parameter would resolve to the parameter (the lesson of @names).
+    private const string JoinCheck = @"
+                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
+                    Check(g.Current.Map.IsOnMap(Position(@cx, @cy))) Error 'the centre is nowhere on the map';
+                ";
+    private const string JoinSquare = @"
+                    {
+                        from = g.Destination;
+                        center = Position(@cx, @cy);
+                        side = Meters(@sideLength);
+                        figure = Square(center, side);
+                        fleet = Fleet(@names);
+                        me = fleet.Member(@member);
+                        route = g.Join(from, figure, me);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ";
+    private const string TurnSquare = @"
+                    {
+                        from = g.Destination;
+                        center = Position(@cx, @cy);
+                        side = Meters(@sideLength);
+                        figure = Square(center, side);
+                        fleet = Fleet(@names);
+                        me = fleet.Member(@member);
+                        lasting = Seconds(@seconds);
+                        turn = Rotation(@direction, lasting);
+                        route = g.Join(from, figure, me, turn);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ";
+
+    /// <summary>The fleet is called to a SQUARE and this golem takes its corner BY RANK (propuesta 59, paso 1; ajuste 65): a square at a
+    /// centre with a side, the fleet's names (this golem among them), and the route to its place — the place of its rank among the names,
+    /// sorted — decided inside. The first order is pushed to the body by the reaction on the act.</summary>
+    public Answer Join((double X, double Y) center, double side, IReadOnlyList<string> fleet)
+    {
+        if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
+        try
+        {
+            return Answer.Of(robot.Actor.Using(JoinCheck, JoinSquare)
+                .WithParameters(p => {
+                    p["cx", typeof(double)] = Resolution.Metres(center.X);
+                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
+                    p["sideLength", typeof(double)] = Resolution.Metres(side);
+                    p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
+                    p["member", typeof(string)] = robot.Name;
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"square at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}: " + GolemEmbodiment.Reason(ex)); }   // no place, no way, or the domain refused inside
+    }
+
+    /// <summary>The same, TURNING with the fleet (paso 3): the rotation's sense and its seconds become the stages the route is told —
+    /// the next corner, and the next, as many as fit at the body's cruise speed — <c>route = g.Join(from, figure, me, turn)</c>.</summary>
+    public Answer Join((double X, double Y) center, double side, IReadOnlyList<string> fleet, (string Direction, double Seconds) turn)
+    {
+        if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
+        try
+        {
+            return Answer.Of(robot.Actor.Using(JoinCheck, TurnSquare)
+                .WithParameters(p => {
+                    p["cx", typeof(double)] = Resolution.Metres(center.X);
+                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
+                    p["sideLength", typeof(double)] = Resolution.Metres(side);
+                    p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
+                    p["member", typeof(string)] = robot.Name;
+                    p["direction", typeof(string)] = turn.Direction;
+                    p["seconds", typeof(double)] = turn.Seconds;
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"square at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}, rotating {turn.Direction} for {turn.Seconds:0.#} s: " + GolemEmbodiment.Reason(ex)); }
+    }
+
     /// <summary>Send the golem through several points and let it choose the order that makes the way shortest: the same
     /// errand, opened with g.Cover — the route reorders the points still ahead every time one is told to it.</summary>
     public Answer Cover(IReadOnlyList<(double X, double Y)> points)
