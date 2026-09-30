@@ -25,7 +25,19 @@ if pgrep -f "ign gazebo -s" >/dev/null; then
     exec sleep infinity
   fi
   echo "[sim] the world runs but its picture died: starting the GUI alone"
+  if ! pgrep -x Xvfb >/dev/null; then
+    # the display died with the picture (29-sep-2026): a stale lock would keep Xvfb from :2 and the GUI
+    # would abort on no display, session after session, for ever
+    rm -f /tmp/.X2-lock /tmp/.X11-unix/X2
+    Xvfb :2 -screen 0 720x720x24 +extension GLX +render -noreset &
+    sleep 2
+    export DISPLAY=:2
+    xsetroot -solid "#14161f"
+    openbox &
+    pgrep -x x11vnc >/dev/null || x11vnc -display :2 -rfbport 5902 -forever -shared -nopw -noxdamage -quiet &
+  fi
   export DISPLAY=:2
+  ( for i in $(seq 1 90); do sleep 1; wmctrl -r "Gazebo" -b add,maximized_vert,maximized_horz && break; done ) &
   exec nice -n 10 ign gazebo -g -v 1
 fi
 
@@ -53,6 +65,7 @@ if [ "${KIOSK:-true}" != "true" ]; then
   exit 0
 fi
 
+rm -f /tmp/.X2-lock /tmp/.X11-unix/X2   # a lock left by an earlier life of the container (a restart keeps /tmp)
 Xvfb :2 -screen 0 720x720x24 +extension GLX +render -noreset &
 sleep 2
 export DISPLAY=:2
