@@ -97,7 +97,7 @@ public sealed class Displacer
                         formation = g.Choreography.Formation(@figure, center, side);
                         fleet = Fleet(@names);
                         me = fleet.Member(@member);
-                        route = g.Join(from, formation, me);
+                        route = g.Choreography.Join(from, formation, me);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -126,7 +126,7 @@ public sealed class Displacer
                         me = fleet.Member(@member);
                         lasting = Seconds(@seconds);
                         turn = Rotation(@direction, lasting);
-                        route = g.Join(from, formation, me, turn);
+                        route = g.Choreography.Join(from, formation, me, turn);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -169,7 +169,7 @@ public sealed class Displacer
     }
 
     /// <summary>The same, TURNING with the fleet (paso 3): the rotation's sense and its seconds become the stages the route is told —
-    /// the next corner, and the next, as many as fit at the body's cruise speed — <c>route = g.Join(from, figure, me, turn)</c>.</summary>
+    /// the next corner, and the next, as many as fit at the body's cruise speed — <c>route = g.Choreography.Join(from, formation, me, turn)</c>.</summary>
     public Answer Join(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet, (string Direction, double Seconds) turn)
     {
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");

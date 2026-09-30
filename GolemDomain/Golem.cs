@@ -27,7 +27,7 @@ internal sealed class Golem
     private readonly List<Scenario> scenarios = new();   // every scenario the golem knows, in the order it learned them
     private Scenario current;                             // the one it is in: what every way, distance and touch is decided on
     private readonly Strategies strategies = new();      // its strategies of navigation, born with it (ajuste 63): g.Strategy.DoorByDoor (active at birth), g.Strategy.OnTheWay
-    private readonly Choreographies choreography = new(); // its choreographies, born with it (ajuste 69): g.Choreography.Formation(@figure, center, side)
+    private readonly Choreographies choreography;         // its choreographies, born with it (ajustes 69, 70): the formation by name, and the route to its place
     // the map and the collisions the golem reads are the CURRENT scenario's (ajuste 60): a route born in one keeps its own
     private MapLayout layout => Current.Map;
     private Collisions collisions => Current.Collisions;
@@ -45,6 +45,7 @@ internal sealed class Golem
     {
         if (body == null) throw new GolemDomainException("a golem needs a body to drive");
         this.body = body;
+        choreography = new Choreographies(TakePlace, Speed);   // the module asks its golem for the route to a place (ajuste 70)
     }
 
     // ---- the scenarios: the maps the golem knows, each with what was learned in it, and the one it is in ----
@@ -116,8 +117,8 @@ internal sealed class Golem
     internal Strategies Strategy => strategies;
 
     /// <summary>The golem's choreographies module, its own from birth (ajuste 69; Juan: "el módulo asociado a coreografías…
-    /// g.coreografia.formacion('cuadrado')"): the formations it knows how to take, made by name — <c>formation =
-    /// g.Choreography.Formation(@figure, center, side); route = g.Join(from, formation, me);</c>.</summary>
+    /// g.coreografia.formacion('cuadrado')"): the formations it knows how to take, made by name, and the route to its place — <c>formation =
+    /// g.Choreography.Formation(@figure, center, side); route = g.Choreography.Join(from, formation, me);</c> (ajustes 69, 70).</summary>
     internal Choreographies Choreography => choreography;
 
     /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here
@@ -187,31 +188,10 @@ internal sealed class Golem
         return Entrust(from, Centre(area), following: false, choosesOrder: false);
     }
 
-    /// <summary>The golem takes its place in a formation AND TURNS with the fleet around it (paso 3): the same route, its place first,
-    /// then every stage of the rotation told to it — <c>turn = Rotation('clockwise', Seconds(10.0)); route = g.Join(from, figure, me, turn);</c>.</summary>
-    internal Route Join(Position from, Formation figure, Member me, Rotation turn)
+    // A PLACE of a choreography, asked by the golem's own module (ajuste 70: Choreographies.Join decides the place, the golem opens the
+    // route to it, so every route stays the golem's): refused when the place is nowhere on the map or leaves no room for this body.
+    private Route TakePlace(Position from, Position place, string where)
     {
-        if (from == null) throw new GolemDomainException("Golem.Join: 'from' was not given");
-        if (figure == null) throw new GolemDomainException("Golem.Join: 'figure' was not given");
-        if (me == null) throw new GolemDomainException("Golem.Join: 'me' was not given");
-        if (turn == null) throw new GolemDomainException("Golem.Join: 'turn' was not given");
-        var stages = figure.Stages(me, turn, Speed());   // decided before the route is minted: a refusal mints nothing
-        var route = Join(from, figure, me);
-        foreach (var stage in stages) route.Then(stage);
-        return route;
-    }
-
-    /// <summary>The golem takes ITS PLACE in a formation the fleet was called to (propuesta 59, paso 1): the place of its rank in the
-    /// figure's places for as many as the fleet are — <c>{ from = Pose(@fx, @fy, @ftheta); figure = Circle(Position(@cx, @cy), Meters(@r));
-    /// me = Fleet(@fleet).Member(@member); route = g.Join(from, figure, me); }</c> — a route to it the Dash way, decided inside. Refused
-    /// when the place is nowhere on the map or leaves no room for this body.</summary>
-    internal Route Join(Position from, Formation figure, Member me)
-    {
-        if (from == null) throw new GolemDomainException("Golem.Join: 'from' was not given");
-        if (figure == null) throw new GolemDomainException("Golem.Join: 'figure' was not given");
-        if (me == null) throw new GolemDomainException("Golem.Join: 'me' was not given");
-        var place = figure.Place(me);
-        string where = $"place {me.Rank + 1} of {me.Of} of the {figure.Name} at ({Fmt(place.X)}, {Fmt(place.Y)})";
         if (!layout.IsOnMap(place)) throw new GolemDomainException($"{where} is nowhere on the map");
         if (!layout.HasRoom(place, Radius())) throw new GolemDomainException($"{where} leaves no room for a body of radius {Fmt(Radius())}");
         return Entrust(from, place, following: false, choosesOrder: false);

@@ -50,11 +50,11 @@ public class SquareTests
         CollectionAssert.AreEqual(new[] { "blue", "green", "red", "yellow" }, fleet.Names.ToList());
 
         // by rank: the names sorted, the corners counter-clockwise from the north-east — wherever each body stands
-        StringAssert.EndsWith(g.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("blue")).AsPlan(), "floor@6.5,6.5", "blue, first: the north-east corner");
-        StringAssert.EndsWith(g.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("green")).AsPlan(), "floor@4.5,6.5", "green, second: north-west");
-        StringAssert.EndsWith(g.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("red")).AsPlan(), "floor@4.5,4.5", "red, third: south-west");
-        StringAssert.EndsWith(g.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("yellow")).AsPlan(), "floor@6.5,4.5", "yellow, fourth: the south-east corner");
-        var turning = g.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("green"), new Rotation("clockwise", new Seconds(10.0)));
+        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("blue")).AsPlan(), "floor@6.5,6.5", "blue, first: the north-east corner");
+        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("green")).AsPlan(), "floor@4.5,6.5", "green, second: north-west");
+        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("red")).AsPlan(), "floor@4.5,4.5", "red, third: south-west");
+        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("yellow")).AsPlan(), "floor@6.5,4.5", "yellow, fourth: the south-east corner");
+        var turning = g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("green"), new Rotation("clockwise", new Seconds(10.0)));
         Assert.AreEqual(11, turning.StopsLeft, "its corner and ten stages: a side of 2 m is 1 s at 2 m/s");
         StringAssert.StartsWith(turning.AsPlan(), "floor@4.5,6.5 > floor@6.5,6.5 > floor@6.5,4.5", "green from the north-west corner clockwise: north-east, then south-east");
     }
@@ -83,7 +83,7 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("square", null, side)).Message, "'center' was not given");
 
         var fleet = new Fleet("blue,red,green,yellow");
-        var route = g.Join(new Pose(2.5, 2.5, 0.0), formation, fleet.Member("red"));
+        var route = g.Choreography.Join(new Pose(2.5, 2.5, 0.0), formation, fleet.Member("red"));
         StringAssert.EndsWith(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }
 }
