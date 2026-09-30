@@ -426,15 +426,29 @@ for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'r
 // one button per peer this golem can reach (its tell routes, `peers` from /body); lit = named in `--with`; a click composes the
 // `--with` at the end of the line, a `--with` written by hand lights the buttons. This golem itself is no button: the line is its own.
 const golemsRow = document.getElementById('golems');
-function peersOn() { const w = parts().with; return w.includes('all') ? [...golemsRow.querySelectorAll('button')].map(b => b.dataset.golem) : w; }
-function lightGolems() { const on = new Set(peersOn()); for (const b of golemsRow.querySelectorAll('button')) b.classList.toggle('on', on.has(b.dataset.golem)); }
+// the peers' buttons alone (the `all` button is the whole fleet in one word)
+const peerButtons = () => [...golemsRow.querySelectorAll('button[data-golem]')].filter(b => b.dataset.golem !== 'all');
+function peersOn() { const w = parts().with; return w.includes('all') ? peerButtons().map(b => b.dataset.golem) : w; }
+function lightGolems() {
+  const w = parts().with;
+  const on = new Set(peersOn());
+  for (const b of peerButtons()) b.classList.toggle('on', on.has(b.dataset.golem));
+  const all = golemsRow.querySelector('button[data-golem="all"]');
+  if (all) all.classList.toggle('on', w.includes('all') || (peerButtons().length > 0 && peerButtons().every(b => on.has(b.dataset.golem))));
+}
 golemsRow.addEventListener('click', ev => {
   const b = ev.target.closest('button[data-golem]');
   if (!b) return;
-  const order = [...golemsRow.querySelectorAll('button')].map(x => x.dataset.golem);
-  const on = peersOn();
   const p = parts();
-  p.with = on.includes(b.dataset.golem) ? on.filter(n => n !== b.dataset.golem) : order.filter(n => on.includes(n) || n === b.dataset.golem);
+  if (b.dataset.golem === 'all') {
+    // the whole fleet in one word: `--with all`; pressed again, nobody
+    p.with = p.with.includes('all') || peerButtons().every(x => p.with.includes(x.dataset.golem)) ? [] : ['all'];
+  } else {
+    const order = peerButtons().map(x => x.dataset.golem);
+    const on = peersOn();
+    p.with = on.includes(b.dataset.golem) ? on.filter(n => n !== b.dataset.golem) : order.filter(n => on.includes(n) || n === b.dataset.golem);
+    if (p.with.length === order.length) p.with = ['all'];   // every peer named is the fleet: said in one word
+  }
   put(build(p));
   lightGolems();
 });
@@ -442,12 +456,18 @@ line.addEventListener('input', lightGolems);
 fetch('/body').then(r => r.json()).then(b => {
   document.getElementById('prompt').textContent = b.golem + ' ›';
   golemsRow.querySelectorAll('button').forEach(x => x.remove());
-  for (const name of (b.peers || [])) {
+  const peers = b.peers || [];
+  if (peers.length) {
+    const all = document.createElement('button');
+    all.dataset.golem = 'all'; all.textContent = 'all'; all.title = 'carry the command to every peer on the wire (--with all)';
+    golemsRow.appendChild(all);
+  }
+  for (const name of peers) {
     const btn = document.createElement('button');
     btn.dataset.golem = name; btn.textContent = name; btn.title = `carry the command to ${name} too (--with ${name})`;
     golemsRow.appendChild(btn);
   }
-  golemsRow.classList.toggle('hidden', !(b.peers || []).length);
+  golemsRow.classList.toggle('hidden', !peers.length);
   lightGolems();
 }).catch(() => {});
 line.value = head;
