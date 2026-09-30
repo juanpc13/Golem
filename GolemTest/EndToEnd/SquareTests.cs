@@ -83,10 +83,16 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("square", null, side)).Message, "'center' was not given");
 
         var fleet = new Fleet("blue,red,green,yellow");
-        Assert.IsTrue(fleet.Knows("Red"), "a name of the fleet, any case (ajuste 71: a golem that hears a call joins only if it was called)");
-        Assert.IsFalse(fleet.Knows("purple"));
-        Assert.IsFalse(fleet.Knows(""));
-        var route = g.Choreography.Join(new Pose(2.5, 2.5, 0.0), formation, fleet.Member("red"));
+        var red = new Golem(body, "Red");                                          // born with its name (ajuste 72)
+        red.Enter(new Scenario(map, collisions));
+        Assert.AreEqual("red", red.Name, "lower case, like a fleet's names");
+        Assert.IsTrue(fleet.Has(red), "the golem is in the fleet: it joins when it hears a call");
+        Assert.IsFalse(fleet.Has(new Golem(body, "purple")), "a golem of another fleet");
+        Assert.IsFalse(fleet.Has(g), "a golem born without a name is in no fleet");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => fleet.Member(g)).Message, "a golem without a name is in no fleet");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, " ")).Message, "a golem's name must be a name");
+        Assert.AreEqual(2, fleet.Member(red).Rank, "its member, by the name it was born with: blue, green, red, yellow");
+        var route = red.Choreography.Join(new Pose(2.5, 2.5, 0.0), formation, fleet.Member(red));
         StringAssert.EndsWith(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }
 }

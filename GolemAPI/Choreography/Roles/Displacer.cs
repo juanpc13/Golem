@@ -99,7 +99,7 @@ public sealed class Displacer
                         side = Meters(@sideLength);
                         formation = g.Choreography.Formation(@figure, center, side);
                         fleet = Fleet(@names);
-                        me = fleet.Member(@member);
+                        me = fleet.Member(g);
                         route = g.Choreography.Join(from, formation, me);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
@@ -127,7 +127,7 @@ public sealed class Displacer
                         side = Meters(@sideLength);
                         formation = g.Choreography.Formation(@figure, center, side);
                         fleet = Fleet(@names);
-                        me = fleet.Member(@member);
+                        me = fleet.Member(g);
                         lasting = Seconds(@seconds);
                         turn = Rotation(@direction, lasting);
                         route = g.Choreography.Join(from, formation, me, turn);
@@ -168,7 +168,6 @@ public sealed class Displacer
                     p["figure", typeof(string)] = figure;   // the formation's name: the module makes it (ajuste 69)
                     p["callId", typeof(string)] = callId;   // this call, for the tells that carry it to the peers (ajuste 71)
                     p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
-                    p["member", typeof(string)] = robot.Name;
                 })
                 .PerformCheckThenCommand());
         }
@@ -191,7 +190,6 @@ public sealed class Displacer
                     p["figure", typeof(string)] = figure;   // the formation's name: the module makes it (ajuste 69)
                     p["callId", typeof(string)] = callId;   // this call, for the tells that carry it to the peers (ajuste 71)
                     p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
-                    p["member", typeof(string)] = robot.Name;
                     p["direction", typeof(string)] = turn.Direction;
                     p["seconds", typeof(double)] = turn.Seconds;
                 })

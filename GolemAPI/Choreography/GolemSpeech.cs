@@ -72,12 +72,12 @@ public sealed class GolemSpeech
                     .OnMatch("Position($x, $y) [_:Golem].Forget(_)")   // the point built beside the act: no expose at all
                 .Causation.Continue(forgotten);
 
-            // The operator called this golem to a formation: every peer is told it was called too (ajuste 71) — the formation, the fleet,
-            // and the PEER'S OWN NAME, a literal fixed in the tell to that peer (one text per peer, written once here, like `to blue`:
-            // an uptake takes nothing but what its tell carries). Only the act with the expose is told: a peer's own join carries none,
-            // so the call spreads one hop, no loop. The once is per call and peer: the same square called again is another call.
+            // The operator called this golem to a formation: every peer is told it was called too (ajustes 71, 72) — the formation and
+            // the fleet; each peer knows who it is (born with its name) and joins if it is in the fleet. Only the act with the expose is
+            // told: a peer's own join carries none, so the call spreads one hop, no loop. The once is per call and peer: the same square
+            // called again is another call.
             string called = string.Join("\n", peers.Select(p => $@"
-                tell CalledTo with @figure, @cx, @cy, @sideLength, @names, '{p}'
+                tell CalledTo with @figure, @cx, @cy, @sideLength, @names
                     to {p}
                     once 'called-' + @callId + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-called")
@@ -86,7 +86,7 @@ public sealed class GolemSpeech
                     .OnMatch("[_:Choreographies].Join(_, _, _) expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call;")
                 .Causation.Continue(called);
             string calledToTurn = string.Join("\n", peers.Select(p => $@"
-                tell CalledToTurn with @figure, @cx, @cy, @sideLength, @names, @direction, @seconds, '{p}'
+                tell CalledToTurn with @figure, @cx, @cy, @sideLength, @names, @direction, @seconds
                     to {p}
                     once 'called-' + @callId + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-called-turn")
@@ -129,10 +129,10 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
-            .Told("CalledTo").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names").With<string>("member")
+            .Told("CalledTo").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
                 .Command(GolemEmbodiment.UptakeCalledTo)
             .Told("CalledToTurn").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
-                .With<string>("direction").With<double>("seconds").With<string>("member")
+                .With<string>("direction").With<double>("seconds")
                 .Command(GolemEmbodiment.UptakeCalledToTurn)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));

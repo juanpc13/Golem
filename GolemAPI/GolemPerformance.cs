@@ -14,9 +14,13 @@ internal sealed class GolemPerformance : PerformanceV2
     // OnFirstHydration exactly then). Used for the panel's birth announcement.
     internal bool BornThisBoot { get; private set; }
 
-    internal GolemPerformance(string actorName, params Assembly[] libraryAssemblies)
+    private readonly string golemName;   // who the golem is (env GOLEM) — handed to the init release as a parameter (ajuste 72)
+
+    internal GolemPerformance(string actorName, string golemName, params Assembly[] libraryAssemblies)
         : base(actorName, libraryAssemblies)
     {
+        if (string.IsNullOrWhiteSpace(golemName)) throw new ArgumentException("a golem needs a name to be born with", nameof(golemName));
+        this.golemName = golemName;
     }
 
     protected override void OnFirstHydration()
@@ -67,6 +71,8 @@ internal sealed class GolemPerformance : PerformanceV2
     // `collisions` any more: every script reads the scenario the golem is in — `g.Current.Map`, `g.Current.Collisions`
     // (Juan: "no serían necesarios… ya quedaron seteados al momento de g.Enter"). Journals before that day were archived
     // as journal-legacy-20260929-scenarios/ and -variables/; they do not rehydrate.)
+    // (30-sep-2026, ajuste 72: the golem is born with its NAME too — `g = Golem(body, @golemName)`, the name from GOLEM as a
+    // parameter of the release; the init's body changed, so journals before that day were archived as journal-legacy-20260930-name/.)
     // RULE: an applied release is never edited (the engine guards its body signature) —
     // evolve the golem by APPENDING the next release.
     protected override void OnHydrated()
@@ -80,7 +86,7 @@ internal sealed class GolemPerformance : PerformanceV2
                 body = Body(radius, speed, linger, retreat);
             }
             upgrade('init') {
-                g = Golem(body);
+                g = Golem(body, @golemName);
             }
             upgrade('warehouse_v1') {
                 warehouse = MapLayout('warehouse');
@@ -116,6 +122,7 @@ internal sealed class GolemPerformance : PerformanceV2
                 openFloorScenario = g.Stage(openFloor);
             }
         ")
+        .WithParameters(p => { p["golemName", typeof(string)] = golemName; })   // the same release for every golem; only who it is changes
         .PerformCommand();
     }
 }

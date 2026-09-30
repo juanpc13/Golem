@@ -48,6 +48,18 @@ internal sealed class Golem
         choreography = new Choreographies(TakePlace, Speed);   // the module asks its golem for the route to a place (ajuste 70)
     }
 
+    /// <summary>The golem born with its body AND ITS NAME (ajuste 72, 30-sep-2026; Juan: "que g sepa quién es él, el dominio debería
+    /// conocerlo"): <c>g = Golem(body, @golemName);</c> in the init release, the name from the environment (GOLEM). A golem without a name
+    /// (<c>Golem(body)</c>, the tests' and the labs') belongs to no fleet.</summary>
+    internal Golem(Body body, string name) : this(body)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new GolemDomainException("a golem's name must be a name");
+        Name = name.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>Who this golem is — the name it was born with, lower case like a fleet's names; empty for a golem born without one.</summary>
+    internal string Name { get; } = "";
+
     // ---- the scenarios: the maps the golem knows, each with what was learned in it, and the one it is in ----
 
     /// <summary>The scenario the golem is in: what every way, distance and touch is decided on. Refused before it entered one.</summary>

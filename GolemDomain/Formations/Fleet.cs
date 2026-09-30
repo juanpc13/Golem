@@ -17,11 +17,23 @@ internal sealed class Fleet
     }
 
     internal int Count => names.Count;
-
-    /// <summary>Whether that name is in the fleet — asked before its member is found (ajuste 71: a golem that hears a call joins only
-    /// if it was called): <c>if (fleet.Knows(@member)) { me = fleet.Member(@member); … }</c>.</summary>
-    internal bool Knows(string name) => !string.IsNullOrWhiteSpace(name) && names.Contains(name.Trim().ToLowerInvariant());
     internal IReadOnlyList<string> Names => names;
+
+    /// <summary>Whether that golem is in the fleet — asked before its member is found (ajuste 72; Juan: "si el golem existe dentro de
+    /// la fleet ejecutar el if"): <c>if (fleet.Has(g)) { me = fleet.Member(g); … }</c>. A golem without a name is in no fleet.</summary>
+    internal bool Has(Golem golem)
+    {
+        if (golem == null) throw new GolemDomainException("Fleet.Has: 'golem' was not given");
+        return golem.Name != "" && names.Contains(golem.Name);
+    }
+
+    /// <summary>The member that golem is in the fleet — by the name it was born with (ajuste 72): <c>me = fleet.Member(g);</c>.</summary>
+    internal Member Member(Golem golem)
+    {
+        if (golem == null) throw new GolemDomainException("Fleet.Member: 'golem' was not given");
+        if (golem.Name == "") throw new GolemDomainException("a golem without a name is in no fleet: it is born with one, Golem(body, name)");
+        return Member(golem.Name);
+    }
 
     /// <summary>The member of that name: its rank among the fleet's names, and how many they are.</summary>
     internal Member Member(string name)

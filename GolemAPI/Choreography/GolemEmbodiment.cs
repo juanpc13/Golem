@@ -124,20 +124,35 @@ public sealed class GolemEmbodiment
             g.LearnForget(at);
         }
         ";
-    // A peer was called to a formation and told me I was called too (ajuste 71): if I am in its fleet, I join — my own Join, from where
-    // I will stand, by the same rank; the next-order-join reaction pushes the first order to my body. No expose: my join spreads nothing.
+    // A peer was called to a formation and told me I was called too (ajustes 71, 72): if I am in its fleet — the golem knows who it is —
+    // I join: my own Join, from where I will stand, by my rank. The script ends with its print, like every script that changes what the
+    // body must do; what pushes the order to my body at once is the next-order-join reaction on the Join (a uptake's print returns to
+    // nobody). No expose: my join spreads nothing.
     public const string UptakeCalledTo = @"
         {
             fleet = Fleet(@names);
-            if (fleet.Knows(@member)) {
+            if (fleet.Has(g)) {
                 from = g.Destination;
                 center = Position(@cx, @cy);
                 side = Meters(@sideLength);
                 formation = g.Choreography.Formation(@figure, center, side);
-                me = fleet.Member(@member);
+                me = fleet.Member(g);
                 route = g.Choreography.Join(from, formation, me);
                 if (g.Strategy.OnTheWay.IsActive) {
                     route = g.Dash(route);
+                }
+                if (route.IsPending()) {
+                    print route.Id 'route', route.Order 'action';
+                    if (route.IsWalkable) {
+                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
+                } else {
+                    print route.Id 'route', route.Status 'ended';
+                    if (route.EndedShort) {
+                        print route.Why 'why';
+                    }
                 }
             }
         }
@@ -145,17 +160,30 @@ public sealed class GolemEmbodiment
     public const string UptakeCalledToTurn = @"
         {
             fleet = Fleet(@names);
-            if (fleet.Knows(@member)) {
+            if (fleet.Has(g)) {
                 from = g.Destination;
                 center = Position(@cx, @cy);
                 side = Meters(@sideLength);
                 formation = g.Choreography.Formation(@figure, center, side);
-                me = fleet.Member(@member);
+                me = fleet.Member(g);
                 lasting = Seconds(@seconds);
                 turn = Rotation(@direction, lasting);
                 route = g.Choreography.Join(from, formation, me, turn);
                 if (g.Strategy.OnTheWay.IsActive) {
                     route = g.Dash(route);
+                }
+                if (route.IsPending()) {
+                    print route.Id 'route', route.Order 'action';
+                    if (route.IsWalkable) {
+                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
+                } else {
+                    print route.Id 'route', route.Status 'ended';
+                    if (route.EndedShort) {
+                        print route.Why 'why';
+                    }
                 }
             }
         }
