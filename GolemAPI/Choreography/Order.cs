@@ -18,8 +18,14 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
     /// back — it knows nothing of the route. 0 on an order parsed from a print, before it was sent.</summary>
     public int Ticket { get; init; }
 
-    /// <summary>Why the route ended, in the domain's words (`route.Why`, 25-sep-2026): empty while it is pending or once it completed.
-    /// For the log and the panel; it never travels to the body.</summary>
+    /// <summary>How the route ended — completed, failed, abandoned — when the act's print was of a route no longer pending (ajuste
+    /// 66: the print branches by outcome, `ended` instead of `action`); empty for an order. An ended route is no order for the body:
+    /// it never reaches the dispatch (the pushes speak of the route underway).</summary>
+    public string Ended { get; init; } = "";
+    public bool IsEnded => Ended != "";
+
+    /// <summary>Why the route ended short of its last stop, in the domain's words (`route.Why`, printed only when `route.EndedShort`):
+    /// empty otherwise. For the log and the panel; it never travels to the body.</summary>
     public string Why { get; init; } = "";
 
     public bool IsLastStop => Kind == "stop" && StopsLeft <= 1;
@@ -40,13 +46,16 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
         {
             using var doc = JsonDocument.Parse(json);
             var e = doc.RootElement;
-            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("route", out var route) || !e.TryGetProperty("action", out var action)) return null;
-            string a = action.GetString() ?? "";
-            if (e.TryGetProperty("held", out var held) && held.ValueKind == JsonValueKind.True) a = "stop";
+            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("route", out var route)) return null;
             double D(string n, double d = 0) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : d;
             bool B(string n) => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.True;
             string S(string n) => e.TryGetProperty(n, out var v) ? v.GetString() ?? "" : "";
-            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft")) { Why = S("why") };
+            // a route no longer pending: how it ended, and why when it ended short — no action, no amount (ajuste 66)
+            if (!e.TryGetProperty("action", out var action))
+                return e.TryGetProperty("ended", out var ended) ? new Order(route.GetInt32(), "", 0, "", "", 0, 0, 0, false, 0) { Ended = ended.GetString() ?? "", Why = S("why") } : null;
+            string a = action.GetString() ?? "";
+            if (e.TryGetProperty("held", out var held) && held.ValueKind == JsonValueKind.True) a = "stop";
+            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft"));
         }
         catch (JsonException) { return null; }
     }

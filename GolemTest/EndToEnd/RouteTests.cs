@@ -784,7 +784,8 @@ public class RouteTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), (Position)null)).Message, "Golem.Visit: 'stop' was not given");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Visit(new Position(2.0, 9.5), new Position(3.0, 5.0))).Message, "nowhere on the map");
         var route = g.Visit(new Position(2.0, 9.5), new Position(2.0, 1.5));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Arrive(null)).Message, "Route.Arrive: 'me' was not given");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Arrive((Pose)null)).Message, "Route.Arrive: 'me' was not given");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Arrive((Leg)null)).Message, "Route.Arrive: 'leg' was not given");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Bump(null, 0.0)).Message, "Golem.Bump: 'me' was not given");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Bump(new Pose(1.0, 1.0, 0.0), double.NaN)).Message, "must be an angle");
     }
@@ -934,4 +935,73 @@ public class RouteTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => other.Dash(underway)).Message, "is not this golem's");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Dash(null)).Message, "'route' was not given");
     }
+
+    // THE ELSE OF THE PRINT (ajuste 66): a route that ended says how, and has a why only when it ended SHORT of its last stop — failed
+    // or abandoned; pending or completed, there is no why to tell.
+    [TestMethod]
+    public void EndedShort_IsAFailedOrAbandonedRoute_NeverAPendingOrCompletedOne()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+
+        var walked = g.Visit(new Pose(2.5, 2.5, 0.0), new Position(3.0, 2.5));
+        Assert.IsFalse(walked.EndedShort, "pending: nothing ended");
+        WalkToTheEnd(walked);
+        Assert.AreEqual("completed", walked.Status);
+        Assert.IsFalse(walked.EndedShort, "completed: it reached its last stop");
+        Assert.AreEqual("", walked.Why);
+
+        var dropped = g.Visit(new Pose(3.0, 2.5, 0.0), new Position(5.5, 1.5));
+        dropped.Abandon("the operator lets go");
+        Assert.IsTrue(dropped.EndedShort, "abandoned: ended short");
+        Assert.AreEqual("the operator lets go", dropped.Why);
+
+        var broken = g.Visit(new Pose(3.0, 2.5, 0.0), new Position(5.5, 1.5));
+        broken.Fail("the body got stuck");
+        Assert.IsTrue(broken.EndedShort, "failed: ended short");
+        Assert.AreEqual("the body got stuck", broken.Why);
+    }
+
+    // THE ARRIVAL SAYS THE LEG THE BODY DID (ajuste 68; Juan: "que llegué al leg propuesto al que tenía que llegar, para decir que hice
+    // arrive"): the host writes `leg = route.NextLeg; route.Arrive(leg);` — no pose; the route knows what it asked: a turn leaves the body
+    // where it stood, facing the way told; an advance puts it on the point. A way through a door is walked to the end that way alone, and
+    // a report about a leg already behind is refused.
+    [TestMethod]
+    public void AnArrivalSaysTheLeg_ATurnKeepsTheBodyInPlace_AnAdvancePutsItOnThePoint_AndALegBehindIsRefused()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+        var route = g.Visit(new Pose(2.5, 2.5, 0.0), new Position(5.5, 1.5));   // the living room to the south hall, through living/south
+
+        var door = route.NextLeg;
+        Assert.AreEqual("living/south", door.Name);
+        Assert.AreEqual("turnRight", route.Order);
+        double heading = route.Target.Heading;
+        route.Arrive(door);
+        Assert.AreEqual(2.5, route.Standing.X, 1e-9, "a turn is made in place: the body stands where it stood");
+        Assert.AreEqual(2.5, route.Standing.Y, 1e-9);
+        Assert.AreEqual(heading, route.Standing.Heading, 1e-9, "facing the way it was told");
+        Assert.AreEqual("advance", route.Order, "turned: now the advance, measured from where it stands");
+
+        var approach = route.Target;
+        route.Arrive(route.NextLeg);
+        Assert.AreEqual(approach.X, route.Standing.X, 1e-9, "an advance puts the body on the point it was sent to: the door's approach");
+        Assert.AreEqual(approach.Y, route.Standing.Y, 1e-9);
+
+        for (int step = 0; step < 10 && ReferenceEquals(route.NextLeg, door); step++) route.Arrive(route.NextLeg);   // straight through, out past it
+        Assert.AreNotSame(door, route.NextLeg, "the door is behind");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => route.Arrive(door)).Message, "the report is of another leg");
+
+        for (int step = 0; step < 40 && route.IsPending(); step++) route.Arrive(route.NextLeg);
+        Assert.AreEqual("completed", route.Status, "the whole way, said leg by leg: " + route.AsPlan());
+        Assert.AreEqual(5.5, g.Destination.X, 1e-9, "and the golem stands on its stop, as it was asked");
+        Assert.AreEqual(1.5, g.Destination.Y, 1e-9);
+    }
 }
+

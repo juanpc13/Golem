@@ -45,9 +45,9 @@ public sealed class CollisionCaptor
                         print g.HasPendingMission() 'pending', g.Held 'held';
                         if (g.HasPendingMission()) {
                             route = g.Underway();
-                            print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                            print route.Id 'route', route.Order 'action';
                             if (route.IsWalkable) {
-                                print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                                       route.Following 'following', route.StopsLeft 'stopsLeft';
                             }

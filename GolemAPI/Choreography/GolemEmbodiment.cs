@@ -147,9 +147,9 @@ public sealed class GolemEmbodiment
                     print g.HasPendingMission() 'pending', g.Held 'held';
                     if (g.HasPendingMission()) {
                         route = g.Underway();
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                        print route.Id 'route', route.Order 'action';
                         if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }
@@ -177,9 +177,9 @@ public sealed class GolemEmbodiment
                 print g.HasPendingMission() 'pending', g.Held 'held';
                 if (g.HasPendingMission()) {
                     route = g.Underway();
-                    print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                    print route.Id 'route', route.Order 'action';
                     if (route.IsWalkable) {
-                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                               route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                               route.Following 'following', route.StopsLeft 'stopsLeft';
                     }
@@ -202,7 +202,7 @@ public sealed class GolemEmbodiment
             return;
         }
         if (done != "") Console.WriteLine($"[golem {golem}] {done} (entry {performance.CurrentEntryId})");
-        if (answer.Order is { Why: not "" } ended) Note($"route {ended.Route} {ended.Action}: {ended.Why}");   // the route ended in this act, and says why
+        if (answer.Order is { IsEnded: true, Why: not "" } ended) Note($"route {ended.Route} {ended.Ended}: {ended.Why}");   // the route ended short in this act, and says why
     }
 
     // ==================================================================
@@ -445,20 +445,6 @@ public sealed class GolemEmbodiment
     // concurrency ("Unknown parameter v", 16-sep-2026 lab).
     // ------------------------------------------------------------------
 
-    // Where an errand starts: where the body stands — or, when the golem is busy, where its last pending route ends
-    // (it will stand there when the new errand comes up). Null with no telemetry yet.
-    internal (double X, double Y, double Theta)? WhereTheErrandStarts()
-    {
-        using var busy = JsonDocument.Parse(golemActor.Using(@"
-            print g.HasPendingMission() 'busy';
-            if (g.HasPendingMission()) { print g.PlannedEnd().X 'x', g.PlannedEnd().Y 'y', g.PlannedEnd().Heading 'theta'; }
-        ").PerformQuery());
-        if (busy.RootElement.GetProperty("busy").GetBoolean())
-            return (busy.RootElement.GetProperty("x").GetDouble(), busy.RootElement.GetProperty("y").GetDouble(), busy.RootElement.GetProperty("theta").GetDouble());
-        var pose = ros.LatestPose;
-        return pose == null ? null : (pose.X, pose.Y, pose.Theta);
-    }
-
     // The handle of the route just opened, to tell it the rest.
     internal int Newest() => Read("print g.Newest().Id 'v';").GetInt32();
 
@@ -472,9 +458,9 @@ public sealed class GolemEmbodiment
                     print g.HasPendingMission() 'pending', g.Held 'held';
                     if (g.HasPendingMission()) {
                         route = g.Underway();
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount';
+                        print route.Id 'route', route.Order 'action';
                         if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
                                   route.Following 'following', route.StopsLeft 'stopsLeft';
                         }

@@ -32,41 +32,45 @@ public sealed class Displacer
     // ==================================================================
 
     /// <summary>Send the golem through points in THIS order (points only, never places). The first point opens the route from
-    /// where the errand starts — where the body stands, or where its last pending route ends — and the route decides its
+    /// where the errand starts — the domain's own answer, `g.Destination` (ajuste 67): where the body stands, or where its last
+    /// pending route ends — and the route decides its
     /// whole way inside; every further point is told to it, one entry each, and it decides again through them all. The
     /// first order is pushed to the body by the reaction on the act. Returns the last answer, or the first refusal.</summary>
     public Answer Move(IReadOnlyList<(double X, double Y)> points)
     {
-        var start = robot.WhereTheErrandStarts();
-        if (start == null) return Answer.Refusal("no telemetry from the body yet: the errand needs a starting point");
         var first = points[0];
         Answer answer;
         try
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
+                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
                     Check(g.Current.Map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                 ",
                 @"
                     {
-                        from = Pose(@fx, @fy, @ftheta);
+                        from = g.Destination;
                         point = Position(@sx, @sy);
                         route = g.Visit(from, point);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
                         }
                     }
                 ")
                 .WithParameters(p => {
-                    p["fx", typeof(double)] = Resolution.Metres(start.Value.X);
-                    p["fy", typeof(double)] = Resolution.Metres(start.Value.Y);
-                    p["ftheta", typeof(double)] = Resolution.Radians(start.Value.Theta);
                     p["sx", typeof(double)] = Resolution.Metres(first.X);
                     p["sy", typeof(double)] = Resolution.Metres(first.Y);
                 })
@@ -81,36 +85,39 @@ public sealed class Displacer
     /// errand, opened with g.Cover — the route reorders the points still ahead every time one is told to it.</summary>
     public Answer Cover(IReadOnlyList<(double X, double Y)> points)
     {
-        var start = robot.WhereTheErrandStarts();
-        if (start == null) return Answer.Refusal("no telemetry from the body yet: the errand needs a starting point");
         var first = points[0];
         Answer answer;
         try
         {
             answer = Answer.Of(robot.Actor.Using(
                 @"
+                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
                     Check(g.Current.Map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
                 ",
                 @"
                     {
-                        from = Pose(@fx, @fy, @ftheta);
+                        from = g.Destination;
                         point = Position(@sx, @sy);
                         route = g.Cover(from, point);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
                         }
                     }
                 ")
                 .WithParameters(p => {
-                    p["fx", typeof(double)] = Resolution.Metres(start.Value.X);
-                    p["fy", typeof(double)] = Resolution.Metres(start.Value.Y);
-                    p["ftheta", typeof(double)] = Resolution.Radians(start.Value.Theta);
                     p["sx", typeof(double)] = Resolution.Metres(first.X);
                     p["sy", typeof(double)] = Resolution.Metres(first.Y);
                 })
@@ -152,11 +159,18 @@ public sealed class Displacer
                             if (g.Strategy.OnTheWay.IsActive) {
                                 route = g.Dash(route);
                             }
-                            print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
-                            if (route.IsWalkable) {
-                                print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            if (route.IsPending()) {
+                                print route.Id 'route', route.Order 'action';
+                                if (route.IsWalkable) {
+                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                                }
+                            } else {
+                                print route.Id 'route', route.Status 'ended';
+                                if (route.EndedShort) {
+                                    print route.Why 'why';
+                                }
                             }
                         }
                     ")
@@ -192,8 +206,14 @@ public sealed class Displacer
                 {
                     me = Pose(@px, @py, @ptheta);
                     route = g.Pause(me);
-                    print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why',
-                          g.HeldAt.X 'heldX', g.HeldAt.Y 'heldY';
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action', g.HeldAt.X 'heldX', g.HeldAt.Y 'heldY';
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
+                    }
                 }
             ")
             .WithParameters(p => {
@@ -219,11 +239,18 @@ public sealed class Displacer
                 {
                     me = Pose(@px, @py, @ptheta);
                     route = g.Resume(me);
-                    print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
-                    if (route.IsWalkable) {
-                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
                     }
                 }
             ")
@@ -265,26 +292,32 @@ public sealed class Displacer
                 @"
                     {
                         route = g.Underway();
-                        me = Pose(@px, @py, @ptheta);
-                        route.Arrive(me);
+                        leg = route.NextLeg;
+                        route.Arrive(leg);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
                         }
                     }
-                    expose @id rid, @stop reached;
+                    expose @id rid, @stop reached, @sx x, @sy y;
                 ")
                 .WithParameters(p => {
                     p["id", typeof(int)] = was.Route;
                     p["stop", typeof(bool)] = stop;
-                    p["px", typeof(double)] = Resolution.Metres(here.X);
-                    p["py", typeof(double)] = Resolution.Metres(here.Y);
-                    p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
+                    p["sx", typeof(double)] = Resolution.Metres(was.X);   // the point the order the body did headed to — told to a follower when it was a stop
+                    p["sy", typeof(double)] = Resolution.Metres(was.Y);
                 })
                 .PerformCheckThenCommand());
         }
@@ -322,11 +355,18 @@ public sealed class Displacer
             {
                 route = g.Underway();
                 route.Fail(@reason);
-                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
-                if (route.IsWalkable) {
-                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                if (route.IsPending()) {
+                    print route.Id 'route', route.Order 'action';
+                    if (route.IsWalkable) {
+                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
+                } else {
+                    print route.Id 'route', route.Status 'ended';
+                    if (route.EndedShort) {
+                        print route.Why 'why';
+                    }
                 }
             }
         ")

@@ -80,21 +80,30 @@ public class JournalAcceptanceTests
     [TestMethod]
     public void AnErrand_WrittenAsTheHostWritesIt_PrintsTheRobotsWords()
     {
+        perf.Actor.Using("{ me = Pose(@px, @py, @ptheta); g.Wake(me); }")
+            .WithParameters(p => { p["px", typeof(double)] = 6.3; p["py", typeof(double)] = 10.4; p["ptheta", typeof(double)] = 0.0; })
+            .PerformCommand();   // the golem wakes on its mark, as the host wakes it: the errand then starts where the domain says (ajuste 67)
         string print = perf.Actor.Using(@"
             {
-                from = Pose(@fx, @fy, @ftheta);
+                from = g.Destination;
                 point = Position(@x, @y);
                 route = g.Visit(from, point);
-                print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending';
-                if (route.IsWalkable) {
-                    print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                if (route.IsPending()) {
+                    print route.Id 'route', route.Order 'action';
+                    if (route.IsWalkable) {
+                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
+                } else {
+                    print route.Id 'route', route.Status 'ended';
+                    if (route.EndedShort) {
+                        print route.Why 'why';
+                    }
                 }
             }
         ")
         .WithParameters(p => {
-            p["fx", typeof(double)] = 6.3; p["fy", typeof(double)] = 10.4; p["ftheta", typeof(double)] = 0.0;
             p["x", typeof(double)] = 5.5; p["y", typeof(double)] = 1.5;
         })
         .PerformCommand();
@@ -105,6 +114,44 @@ public class JournalAcceptanceTests
         Assert.IsTrue(e.GetProperty("amount").GetDouble() > 1.5, "radians to turn");
         Assert.AreEqual("stop", e.GetProperty("kind").GetString(), "north hall to south hall: one leg");
         Assert.AreEqual(5.5, e.GetProperty("x").GetDouble(), 1e-9);
+        Assert.IsFalse(e.TryGetProperty("why", out _), "a pending route has no why to tell (ajuste 66)");
+        Assert.IsFalse(e.TryGetProperty("ended", out _));
+    }
+
+    // THE ELSE (ajuste 66): a route no longer pending prints how it ended, and why only when it ended short — never an action or an amount.
+    [TestMethod]
+    public void ARouteThatEnded_PrintsHowItEnded_AndWhyOnlyWhenItEndedShort()
+    {
+        perf.Actor.Using("{ me = Pose(@px, @py, @ptheta); g.Wake(me); }")
+            .WithParameters(p => { p["px", typeof(double)] = 6.3; p["py", typeof(double)] = 10.4; p["ptheta", typeof(double)] = 0.0; })
+            .PerformCommand();   // the golem wakes on its mark, as the host wakes it: the errand then starts where the domain says (ajuste 67)
+        string print = perf.Actor.Using(@"
+            {
+                from = g.Destination;
+                point = Position(@x, @y);
+                route = g.Visit(from, point);
+                route.Abandon(@reason);
+                if (route.IsPending()) {
+                    print route.Id 'route', route.Order 'action';
+                } else {
+                    print route.Id 'route', route.Status 'ended';
+                    if (route.EndedShort) {
+                        print route.Why 'why';
+                    }
+                }
+            }
+        ")
+        .WithParameters(p => {
+            p["x", typeof(double)] = 5.5; p["y", typeof(double)] = 1.5;
+            p["reason", typeof(string)] = "the lab lets it go";
+        })
+        .PerformCommand();
+        using var doc = System.Text.Json.JsonDocument.Parse(print);
+        var e = doc.RootElement;
+        Assert.AreEqual("abandoned", e.GetProperty("ended").GetString());
+        Assert.AreEqual("the lab lets it go", e.GetProperty("why").GetString(), "it ended short: the why is said");
+        Assert.IsFalse(e.TryGetProperty("action", out _), "an ended route asks the body nothing");
+        Assert.IsFalse(e.TryGetProperty("amount", out _));
     }
 
     [TestMethod]

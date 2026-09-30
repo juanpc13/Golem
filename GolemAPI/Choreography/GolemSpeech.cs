@@ -83,7 +83,7 @@ public sealed class GolemSpeech
         golemActor.Reactions.DefineReaction("echo-reached")
             .Cue().Company().WithSharedHydration()
             .Seek("Reached").One()
-                .OnMatch("Pose($x, $y, _) [_:Route].Arrive(_) expose $missionId rid, true reached;")
+                .OnMatch("[_:Route].Arrive(_) expose $missionId rid, true reached, $x x, $y y;")   // the point the stop order headed to (ajuste 68: the arrival says the leg, no pose built beside it)
             .Causation.Continue($@"
                 {{
                     route = g.Find(@missionId);

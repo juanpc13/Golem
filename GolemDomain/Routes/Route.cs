@@ -139,6 +139,9 @@ internal sealed class Route
     /// reason"): the planner's when no road fit ("no road from … that fits a body of radius 0.25 past 5 marks"), the patience
     /// spent, the reason an ending act gave. Empty while it is pending, and once it completed: a completed route needs no why.</summary>
     internal string Why { get; private set; } = "";
+    /// <summary>The route ended WITHOUT reaching its last stop — failed or abandoned — and so has a why to tell (ajuste 66): what the
+    /// print asks before it says the why — <c>} else { print route.Id 'route', route.Status 'ended'; if (route.EndedShort) { print route.Why 'why'; } }</c>.</summary>
+    internal bool EndedShort => status == RouteStatus.Failed || status == RouteStatus.Abandoned;
 
     // ---- the way: decided inside, from a point, through the stops ahead ----
 
@@ -352,6 +355,23 @@ internal sealed class Route
     internal bool MayRetryLeg => IsPending() && grazesOnLeg < PatienceWithWalls;
 
     // ---- the walk: the body reports each thing done, WHERE IT STANDS NOW, and the route moves its cursor and asks the next ----
+
+    /// <summary>The body did what the route asked of it ON THIS LEG (ajuste 68, 30-sep-2026; Juan: "que llegué al leg propuesto al que
+    /// tenía que llegar, para decir que hice arrive") — <c>leg = route.NextLeg; route.Arrive(leg);</c>. No pose comes with it: the route
+    /// asked the order and so knows where the body was left — after a turn, where it stood, facing the way it was told; after an
+    /// advance or a back, on the point it was sent to (a door's approach, its exit, the leg's point). The leg is also the receipt: a
+    /// report about any other leg than the one underway is refused. The body's own pose enters by the touch, the hold and the waking.</summary>
+    internal Route Arrive(Leg leg)
+    {
+        if (leg == null) throw new GolemDomainException("Route.Arrive: 'leg' was not given");
+        MustBePending();
+        if (!IsRouted || nextLeg >= way.Count) throw new GolemDomainException($"route {Id} has no leg underway to arrive at");
+        if (!ReferenceEquals(leg, NextLeg)) throw new GolemDomainException($"route {Id} is on the leg '{NextLeg.Name}', not on '{leg.Name}': the report is of another leg");
+        var asked = Target;   // what the order asked: the point and the heading to face it from where the body stands
+        if (Order == "turnLeft" || Order == "turnRight") return Turn(new Pose(standing.X, standing.Y, asked.Heading));   // a turn is made in place
+        if (Order == "advance" || Order == "back") return Reach(asked);
+        throw new GolemDomainException($"route {Id} asked nothing of the body's motors now: it asks '{Order}'");
+    }
 
     /// <summary>The body did the one thing the route asked of its motors and says where it stands: the route itself knows
     /// whether that was the turn (<see cref="Turn"/>) or the move (<see cref="Reach"/>) — the one act the robot's report

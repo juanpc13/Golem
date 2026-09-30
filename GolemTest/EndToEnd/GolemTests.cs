@@ -765,4 +765,40 @@ public class GolemTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()))).Message,
             "already knows a scenario named 'open-floor'", "another instance under a known name is refused: the known one holds what was learned");
     }
+
+    // WHERE THE NEXT ERRAND STARTS IS THE DOMAIN'S (ajuste 67; Juan: "el from que salga del dominio, no del host… el dominio sabe en todo
+    // momento dónde anda"): refused before any act brought the pose; free, where the body stands as its last act brought it; busy, where
+    // the last pending route's way ends.
+    [TestMethod]
+    public void Destination_IsWhereTheBodyStands_WhenFree_AndWhereTheLastPendingWayEnds_WhenBusy()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+
+        Assert.IsFalse(g.KnowsWhereItStands);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Destination).Message, "does not know yet where its body stands");
+
+        g.Wake(new Pose(2.5, 2.5, 0.0));                                          // reborn on its mark: the only pose from outside so far
+        Assert.AreEqual(2.5, g.Destination.X, 1e-9, "free: where the body woke");
+        Assert.AreEqual(2.5, g.Destination.Y, 1e-9);
+        Assert.AreEqual(0.0, g.Destination.Heading, 1e-9, "facing the way it faced");
+
+        var first = g.Visit(g.Destination, new Position(3.0, 1.5));
+        Assert.AreEqual(3.0, g.Destination.X, 1e-9, "busy: where the pending route's way ends — the next errand starts there");
+        Assert.AreEqual(1.5, g.Destination.Y, 1e-9);
+        var second = g.Visit(g.Destination, new Position(1.0, 1.5));
+        Assert.AreEqual(1.0, g.Destination.X, 1e-9, "the LAST pending route's end");
+        Assert.AreEqual(3.0, second.Standing.X, 1e-9, "and the second errand was planned from the first one's end");
+
+        first.Turn(new Pose(2.5, 2.5, first.Target.Heading));                    // the body turns as asked…
+        first.Reach(new Pose(3.02, 1.49, first.Target.Heading));                 // …and says where it really stood when it arrived
+        second.Abandon("the lab lets it go");
+        Assert.IsFalse(g.HasPendingMission());
+        Assert.AreEqual(3.02, g.Destination.X, 1e-9, "free again: where the body REPORTED it arrived, not where it was asked to go");
+        Assert.AreEqual(1.49, g.Destination.Y, 1e-9);
+    }
 }
+

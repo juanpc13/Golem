@@ -245,7 +245,7 @@ public sealed class Commander
     {
         var o = answer.Order;
         if (o == null) return string.IsNullOrWhiteSpace(answer.Print) ? "done" : "done: nothing pending — the body stands";
-        string said = $"route {o.Route} · {o.Action}";
+        string said = $"route {o.Route} · {(o.IsEnded ? o.Ended : o.Action)}";   // an order in the robot's words, or how the route ended (ajuste 66)
         if (o.IsMove || o.IsTurn) said += " " + Amount(o.Action, o.Amount);
         if (o.Name != "") said += $", toward {o.Name} ({Fmt(o.X)}, {Fmt(o.Y)})";
         if (o.Why != "") said += " — " + o.Why;

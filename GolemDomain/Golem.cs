@@ -231,6 +231,23 @@ internal sealed class Golem
     /// <summary>Whether any act has brought the golem where its body stands.</summary>
     internal bool KnowsWhereItStands => standing != null;
 
+    /// <summary>The golem's DESTINATION — where it will stand once it has done what it holds, and so where its next errand starts
+    /// (ajuste 67, 30-sep-2026; Juan: "el from que salga del dominio, no del host… el dominio sabe en todo momento dónde anda"; the name
+    /// his: "para indicar que el from está posicionado en la posición destino, que ya está ahí"): while it is busy, where the way of its
+    /// last pending route ends, facing that way's last leg; while it is free, where its body stands, as its last act brought it — the
+    /// destination reached, or, when the last route failed or was let go on the way, where the body was left. The errand's start is
+    /// the domain's knowledge, never a number from outside: <c>from = g.Destination; route = g.Visit(from, point);</c>. Not the
+    /// route's Target (the pose the body heads to NOW). Refused before any act brought the pose — consult KnowsWhereItStands.</summary>
+    internal Pose Destination
+    {
+        get
+        {
+            if (HasPendingMission()) return PlannedEnd();
+            if (standing == null) throw new GolemDomainException("the golem does not know yet where its body stands: it wakes on its mark first");
+            return standing;
+        }
+    }
+
     /// <summary>A route the golem already holds, by its handle — to act on it later: <c>route = g.Find(@id); route.Reach(point);</c>.</summary>
     internal Route Find(int id)
     {

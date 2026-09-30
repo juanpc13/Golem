@@ -19,7 +19,10 @@ public static class Readings
                 }
                 if (g.Routes().Count > 0) {
                     last = g.Newest();
-                    print last.Id 'lastId', last.Status 'lastStatus', last.Why 'lastWhy';
+                    print last.Id 'lastId', last.Status 'lastStatus';
+                    if (last.EndedShort) {
+                        print last.Why 'lastWhy';
+                    }
                 }
             }
         ")
@@ -47,10 +50,17 @@ public static class Readings
                 print g.Routes().Count 'total';
                 if (g.Routes().Count > 0) {
                     route = g.Newest();
-                    print route.Id 'route', route.Status 'status', route.Why 'why', route.AsPlan() 'plan', route.LegsAhead.Count 'ahead',
-                          route.StopsLeft 'stopsLeft', route.Order 'action', route.Amount 'amount', route.Paused 'paused';
-                    if (route.IsWalkable) {
-                        print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name', route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading';
+                    print route.Id 'route', route.Status 'status', route.AsPlan() 'plan', route.LegsAhead.Count 'ahead', route.StopsLeft 'stopsLeft';
+                    if (route.IsPending()) {
+                        print route.Order 'action', route.Paused 'paused';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading';
+                        }
+                    } else {
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
                     }
                 }
             }
