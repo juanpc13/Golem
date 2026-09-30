@@ -61,6 +61,7 @@
   .golems .hint { margin:0 4px 0 0; }
   .golems button { font-family:ui-monospace, monospace; font-size:12.5px; padding:4px 12px; opacity:.6; }
   .golems button.on { opacity:1; background:#25324f; border-color:#8ab4ff; color:var(--ink); }
+  .golems button:disabled { opacity:.25; cursor:not-allowed; background:none; border-color:var(--line); }
   .answer.done { color:var(--ink); }
   .answer.refused { color:var(--warn); }
   .answer.syntax { color:#e0b25a; }
@@ -341,7 +342,9 @@ function parts() {
 }
 function build(p) { return p.with.length ? `${p.head}${p.cmd.trim()} --with ${p.with.join(',')}` : `${p.head}${p.cmd}`; }
 function put(text) { line.value = text; line.focus(); line.setSelectionRange(line.value.length, line.value.length); }
-function setLine(cmd) { const p = parts(); p.cmd = cmd; put(build(p)); }
+// a choreography spreads by itself, by tell (ajuste 71): its line never carries --with, and the selector is off while it is on the line
+const isChoreography = (cmd) => /^choreograph\b/i.test((cmd ?? parts().cmd).trim());
+function setLine(cmd) { const p = parts(); p.cmd = cmd; if (isChoreography(cmd)) p.with = []; put(build(p)); lightGolems(); }
 function setWhole(text) { put(text); }
 // visit / cover / then at the head of the command; the points already on it stay
 function compose(verb) {
@@ -439,10 +442,18 @@ function lightGolems() {
   for (const b of peerButtons()) b.classList.toggle('on', on.has(b.dataset.golem));
   const all = golemsRow.querySelector('button[data-golem="all"]');
   if (all) all.classList.toggle('on', w.includes('all') || (peerButtons().length > 0 && peerButtons().every(b => on.has(b.dataset.golem))));
+  // a choreography's line: the selector is off — every peer of the fleet is told and joins by itself
+  const off = isChoreography();
+  const hint = golemsRow.querySelector('.hint');
+  if (hint) hint.textContent = off ? 'with: — a choreography spreads by itself' : 'with:';
+  for (const b of golemsRow.querySelectorAll('button[data-golem]')) {
+    b.disabled = off;
+    b.title = off ? 'a choreography spreads by itself: every peer of the fleet is told and joins' : (b.dataset.tip || b.title);
+  }
 }
 golemsRow.addEventListener('click', ev => {
   const b = ev.target.closest('button[data-golem]');
-  if (!b) return;
+  if (!b || b.disabled) return;
   const p = parts();
   if (b.dataset.golem === 'all') {
     // the whole fleet in one word: `--with all`; pressed again, nobody
@@ -463,12 +474,12 @@ fetch('/body').then(r => r.json()).then(b => {
   const peers = b.peers || [];
   if (peers.length) {
     const all = document.createElement('button');
-    all.dataset.golem = 'all'; all.textContent = 'all'; all.title = 'carry the command to every peer on the wire (--with all)';
+    all.dataset.golem = 'all'; all.textContent = 'all'; all.title = all.dataset.tip = 'carry the command to every peer on the wire (--with all)';
     golemsRow.appendChild(all);
   }
   for (const name of peers) {
     const btn = document.createElement('button');
-    btn.dataset.golem = name; btn.textContent = name; btn.title = `carry the command to ${name} too (--with ${name})`;
+    btn.dataset.golem = name; btn.textContent = name; btn.title = btn.dataset.tip = `carry the command to ${name} too (--with ${name})`;
     golemsRow.appendChild(btn);
   }
   golemsRow.classList.toggle('hidden', !peers.length);
