@@ -6,6 +6,7 @@
 #            (Gazebo's picture IS the screen, straight above the floor, scaled to the browser)
 # Operate:   http://localhost:8081 (blue-golem) · http://localhost:8082 (red-golem)
 #            http://localhost:8083 (green-golem: lives on its wheels' reckoning, like a real robot)
+#            http://localhost:8084 (yellow-golem) — the fleet of four (29-sep-2026)
 # Membrane:  ws://localhost:9090  (rosbridge: the bodies' topics as JSON)
 services:
   sim:
@@ -18,8 +19,8 @@ services:
     environment:
       - KIOSK=true   # false = headless: physics and bridges only, no picture (saves ~5 cores of software rendering)
       # The bodies' nodes (sim/bridge/body.py): each body takes its golem's orders and reports to its golem's endpoints
-      - GOLEMS=blue=http://blue-golem:8080;red=http://red-golem:8080;green=http://green-golem:8080
-      - POSE_SOURCES=green=wheels   # green's body lives on its wheels' reckoning, like its golem
+      - GOLEMS=blue=http://blue-golem:8080;red=http://red-golem:8080;green=http://green-golem:8080;yellow=http://yellow-golem:8080
+      - POSE_SOURCES=   # every body on the world's pose for now (29-sep-2026); green=wheels puts green's body on its wheels' reckoning
     shm_size: 512m
     security_opt:
       - seccomp=unconfined
@@ -64,7 +65,7 @@ services:
       - PANEL_PORT=8080
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller);
       # the route to green carries no tells — it only lets "reset everything" reach green too
-      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080,tell-green=http://green-golem:8080
+      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
@@ -90,9 +91,9 @@ services:
       - PANEL_PORT=8080
       # tells TO blue go to blue; acks for tells addressed to ME return to blue;
       # the route to green carries no tells — it only lets "reset everything" reach green too
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080,tell-green=http://green-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080
       - TELL_RETRY_SECONDS=30
-      - TELL_DONE_TO=blue  # red tells blue every visited point
+      # - TELL_DONE_TO=blue  # red tells blue every visited point — off for the choreographies (29-sep-2026): a follower leaves its place
     volumes:
       - ./journal:/golem/journal
     depends_on:
@@ -118,9 +119,35 @@ services:
       - BODY=green
       - ROLES=displacer,collision-captor   # the capabilities of this body: the motors and the bumper (18-sep-2026)   # the capabilities of this body: the motors and the bumper (18-sep-2026)
       - HOME_AT=10,10.5
-      - POSE_SOURCE=wheels
+      - POSE_SOURCE=world   # for now (29-sep-2026); wheels = dead reckoning, anchored once, like a real robot
       - PANEL_PORT=8080
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_RETRY_SECONDS=30
+    volumes:
+      - ./journal:/golem/journal
+    depends_on:
+      - sim
+    restart: unless-stopped
+
+  # yellow (29-sep-2026, the fleet of four for the choreographies): the same golem, on the world's pose, told everything.
+  yellow-golem:
+    build:
+      context: .
+      dockerfile: GolemAPI/Dockerfile
+    image: golemapi
+    container_name: yellow-golem
+    ports:
+      - "8084:8080"  # yellow's endpoints + panel
+    environment:
+      - ROSBRIDGE_URL=ws://sim:9090
+      - JOURNAL_PATH=/golem/journal
+      - GOLEM=yellow
+      - BODY=yellow
+      - ROLES=displacer,collision-captor
+      - HOME_AT=9.5,1.5
+      - POSE_SOURCE=world
+      - PANEL_PORT=8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal

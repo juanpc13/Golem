@@ -28,7 +28,7 @@ public sealed class MockWorld : ILabWorld
     private const double BackSpeed = 0.4;    // m/s, body.py's back-off speed
     private const double TimeScale = 4.0;    // the world runs this many times faster than life
     private const int TrailEvery = 10;       // a trail point every that many steps of motion
-    private static readonly string[] Fleet = { "blue", "red", "green" };                             // docker-compose.yml
+    private static readonly string[] Fleet = { "blue", "red", "green", "yellow" };                   // docker-compose.yml (four since 29-sep-2026)
     private static readonly IReadOnlyDictionary<string, string> Followers = new Dictionary<string, string> { ["red"] = "blue" };
     private readonly FloorPlan plan;
     private readonly List<Box> crates = new();

@@ -2,34 +2,159 @@
   "_": "Reality, as the simulator builds it (see build_world.py). Obstacles are EMPTY on purpose since 10-sep: the kiosk's four buttons (bridge/crates.py, :6081) put a crate in the west corridor, the central hall or the east corridor while the world RUNS, and take them away, so every test starts from a clean floor. The golems carry their OWN copy of places, doors and opens in their journal (release map_v1) — the obstacles they do not know: hitting one is a real collision the map never contemplated.",
   "world": "arena",
   "places": [
-    { "name": "kitchen", "x": 0,   "y": 8, "w": 4,   "h": 3 },
-    { "name": "north",   "x": 4,   "y": 8, "w": 3,   "h": 3 },
-    { "name": "storage", "x": 7,   "y": 8, "w": 4,   "h": 3 },
-    { "name": "west",    "x": 0,   "y": 3, "w": 1.5, "h": 5 },
-    { "name": "center",  "x": 4,   "y": 3, "w": 3,   "h": 5 },
-    { "name": "east",    "x": 9.5, "y": 3, "w": 1.5, "h": 5 },
-    { "name": "living",  "x": 0,   "y": 0, "w": 4,   "h": 3 },
-    { "name": "south",   "x": 4,   "y": 0, "w": 3,   "h": 3 },
-    { "name": "garage",  "x": 7,   "y": 0, "w": 4,   "h": 3 }
+    {
+      "name": "kitchen",
+      "x": 0,
+      "y": 8,
+      "w": 4,
+      "h": 3
+    },
+    {
+      "name": "north",
+      "x": 4,
+      "y": 8,
+      "w": 3,
+      "h": 3
+    },
+    {
+      "name": "storage",
+      "x": 7,
+      "y": 8,
+      "w": 4,
+      "h": 3
+    },
+    {
+      "name": "west",
+      "x": 0,
+      "y": 3,
+      "w": 1.5,
+      "h": 5
+    },
+    {
+      "name": "center",
+      "x": 4,
+      "y": 3,
+      "w": 3,
+      "h": 5
+    },
+    {
+      "name": "east",
+      "x": 9.5,
+      "y": 3,
+      "w": 1.5,
+      "h": 5
+    },
+    {
+      "name": "living",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "h": 3
+    },
+    {
+      "name": "south",
+      "x": 4,
+      "y": 0,
+      "w": 3,
+      "h": 3
+    },
+    {
+      "name": "garage",
+      "x": 7,
+      "y": 0,
+      "w": 4,
+      "h": 3
+    }
   ],
   "doors": [
-    { "a": "kitchen", "b": "north",   "x": 4,     "y": 9.5 },
-    { "a": "kitchen", "b": "west",    "x": 0.75,  "y": 8 },
-    { "a": "north",   "b": "storage", "x": 7,     "y": 9.5 },
-    { "a": "storage", "b": "east",    "x": 10.25, "y": 8 },
-    { "a": "west",    "b": "living",  "x": 0.75,  "y": 3 },
-    { "a": "east",    "b": "garage",  "x": 10.25, "y": 3 },
-    { "a": "living",  "b": "south",   "x": 4,     "y": 1.5 },
-    { "a": "south",   "b": "garage",  "x": 7,     "y": 1.5 }
+    {
+      "a": "kitchen",
+      "b": "north",
+      "x": 4,
+      "y": 9.5
+    },
+    {
+      "a": "kitchen",
+      "b": "west",
+      "x": 0.75,
+      "y": 8
+    },
+    {
+      "a": "north",
+      "b": "storage",
+      "x": 7,
+      "y": 9.5
+    },
+    {
+      "a": "storage",
+      "b": "east",
+      "x": 10.25,
+      "y": 8
+    },
+    {
+      "a": "west",
+      "b": "living",
+      "x": 0.75,
+      "y": 3
+    },
+    {
+      "a": "east",
+      "b": "garage",
+      "x": 10.25,
+      "y": 3
+    },
+    {
+      "a": "living",
+      "b": "south",
+      "x": 4,
+      "y": 1.5
+    },
+    {
+      "a": "south",
+      "b": "garage",
+      "x": 7,
+      "y": 1.5
+    }
   ],
   "opens": [
-    { "a": "north",  "b": "center" },
-    { "a": "center", "b": "south" }
+    {
+      "a": "north",
+      "b": "center"
+    },
+    {
+      "a": "center",
+      "b": "south"
+    }
   ],
   "bodies": [
-    { "name": "blue",  "x": 6.3,  "y": 10.4, "yaw": 0, "color": "0.10 0.25 0.85" },
-    { "name": "red",   "x": 2.5,  "y": 2.5,  "yaw": 0, "color": "0.85 0.20 0.20" },
-    { "name": "green", "x": 10.0, "y": 10.5, "yaw": 0, "color": "0.15 0.65 0.30" }
+    {
+      "name": "blue",
+      "x": 6.3,
+      "y": 10.4,
+      "yaw": 0,
+      "color": "0.10 0.25 0.85"
+    },
+    {
+      "name": "red",
+      "x": 2.5,
+      "y": 2.5,
+      "yaw": 0,
+      "color": "0.85 0.20 0.20"
+    },
+    {
+      "name": "green",
+      "x": 10.0,
+      "y": 10.5,
+      "yaw": 0,
+      "color": "0.15 0.65 0.30"
+    },
+    {
+      "name": "yellow",
+      "x": 9.5,
+      "y": 1.5,
+      "yaw": 0,
+      "color": "0.90 0.75 0.15"
+    }
   ],
   "obstacles": []
 }
