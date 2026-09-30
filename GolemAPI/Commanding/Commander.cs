@@ -132,7 +132,7 @@ public sealed class Commander
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
         var turn = request.Turn;
-        return Answered(turn == null ? displacer.Join(center, request.Side.Value, request.Fleet) : displacer.Join(center, request.Side.Value, request.Fleet, turn.Value));
+        return Answered(turn == null ? displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet) : displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet, turn.Value));
     }
 
     // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)

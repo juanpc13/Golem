@@ -79,7 +79,7 @@ public class GolemController : Controller
                                                     : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
         var center = (request.Center.X.Value, request.Center.Y.Value);
         var turn = request.Turn;
-        return Answered(turn == null ? displacer.Join(center, request.Side.Value, fleet) : displacer.Join(center, request.Side.Value, fleet, turn.Value));
+        return Answered(turn == null ? displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet) : displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet, turn.Value));
     }
 
     // The operator holds the golem where its body stands, or lets it go on.

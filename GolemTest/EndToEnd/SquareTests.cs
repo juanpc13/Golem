@@ -58,4 +58,33 @@ public class SquareTests
         Assert.AreEqual(11, turning.StopsLeft, "its corner and ten stages: a side of 2 m is 1 s at 2 m/s");
         StringAssert.StartsWith(turning.AsPlan(), "floor@4.5,6.5 > floor@6.5,6.5 > floor@6.5,4.5", "green from the north-west corner clockwise: north-east, then south-east");
     }
+
+    // THE FORMATION BY NAME (ajuste 69; Juan: "el módulo asociado a coreografías… g.coreografia.formacion('cuadrado'), y ese creará el
+    // objeto… que puede ser cualquier forma al final"): the golem's choreographies module makes it, with its natural measure; the golem
+    // joins it whatever shape it is.
+    [TestMethod]
+    public void TheGolemsChoreographies_MakeTheFormationByName_WithItsMeasure_AndTheGolemJoinsIt()
+    {
+        var map = Catalog.OpenFloor();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+        var center = new Position(5.5, 5.5);
+        var side = new Meters(2.0);
+
+        var formation = g.Choreography.Formation("square", center, side);
+        Assert.IsInstanceOfType(formation, typeof(Square), "square: a square");
+        Assert.AreEqual(2.0, ((Square)formation).Side.InMeters, 1e-9, "said by its side");
+        Assert.IsInstanceOfType(g.Choreography.Formation("Circle", center, new Meters(1.0)), typeof(Circle), "any case; a circle by its radius");
+        Assert.IsInstanceOfType(g.Choreography.Formation("triangle", center, side), typeof(Triangle));
+        CollectionAssert.AreEqual(new[] { "square", "triangle", "circle" }, g.Choreography.Names().ToList());
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("hexagon", center, side)).Message, "knows no formation named 'hexagon'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("square", null, side)).Message, "'center' was not given");
+
+        var fleet = new Fleet("blue,red,green,yellow");
+        var route = g.Join(new Pose(2.5, 2.5, 0.0), formation, fleet.Member("red"));
+        StringAssert.EndsWith(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
+    }
 }
+

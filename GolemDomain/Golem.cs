@@ -27,6 +27,7 @@ internal sealed class Golem
     private readonly List<Scenario> scenarios = new();   // every scenario the golem knows, in the order it learned them
     private Scenario current;                             // the one it is in: what every way, distance and touch is decided on
     private readonly Strategies strategies = new();      // its strategies of navigation, born with it (ajuste 63): g.Strategy.DoorByDoor (active at birth), g.Strategy.OnTheWay
+    private readonly Choreographies choreography = new(); // its choreographies, born with it (ajuste 69): g.Choreography.Formation(@figure, center, side)
     // the map and the collisions the golem reads are the CURRENT scenario's (ajuste 60): a route born in one keeps its own
     private MapLayout layout => Current.Map;
     private Collisions collisions => Current.Collisions;
@@ -113,6 +114,11 @@ internal sealed class Golem
     /// each switched on with <c>Activate()</c> (<c>strategy = g.Strategy.OnTheWay; strategy.Activate();</c>) and asked with <c>IsActive</c>.
     /// Nothing is built, nothing found by a name.</summary>
     internal Strategies Strategy => strategies;
+
+    /// <summary>The golem's choreographies module, its own from birth (ajuste 69; Juan: "el módulo asociado a coreografías…
+    /// g.coreografia.formacion('cuadrado')"): the formations it knows how to take, made by name — <c>formation =
+    /// g.Choreography.Formation(@figure, center, side); route = g.Join(from, formation, me);</c>.</summary>
+    internal Choreographies Choreography => choreography;
 
     /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here
     /// on it crosses the doors on the way — by the golem's own on-the-way strategy, the same object — and its way is decided again from
