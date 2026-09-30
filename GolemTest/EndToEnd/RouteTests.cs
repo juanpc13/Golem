@@ -826,16 +826,17 @@ public class RouteTests
     // A DASH'S LEGS (ajuste 58): a door the way BENDS at is one leg with two points — lined up 0.6 m before it, crossed straight to 0.6 m
     // past it; a door the way runs straight through is crossed on the way and is no leg at all; a door the way bends after is its exit alone.
     [TestMethod]
-    public void ADashsDoor_IsOneLegWithItsApproachAndExit_WhereTheWayBends_AndNoLegWhereItRunsStraightThrough()
+    public void OnTheWay_ADoor_IsOneLegWithItsApproachAndExit_WhereTheWayBends_AndNoLegWhereItRunsStraightThrough()
     {
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body);
         g.Enter(new Scenario(map, collisions));
+        g.Strategy.OnTheWay.Activate();                                                  // the strategy is the golem's (ajuste 61); the script applies it: g.Dash(g.Dash(g.Visit(…))) (ajuste 62)
 
         // the living room's mark (2.5,2.5) -> door living/south at (4,1.5) on a vertical wall, where the way bends -> the north hall
-        var legs = g.Dash(new Position(2.5, 2.5), new Position(5.5, 9.5)).LegsAhead;
+        var legs = g.Dash(g.Visit(new Position(2.5, 2.5), new Position(5.5, 9.5))).LegsAhead;
         Assert.AreEqual(2, legs.Count, "the door, then the stop: from the door's exit the run to the north hall is straight");
         Assert.AreEqual(4.0, legs[0].At.X, 0.001, "the leg IS the door");
         Assert.AreEqual(1.5, legs[0].At.Y, 0.001);
@@ -844,17 +845,93 @@ public class RouteTests
         Assert.AreEqual(4.6, legs[0].Exit.X, 0.001, "0.6 into the south hall, the side it goes to");
         Assert.AreEqual(5.5, legs[1].Approach.X, 0.001, "a stop has no wall to clear: approach, exit and point coincide");
         Assert.AreEqual(9.5, legs[1].Exit.Y, 0.001);
-        Assert.AreEqual(3, g.Visit(new Position(2.5, 2.5), new Position(5.5, 9.5)).LegsAhead.Count, "the visit of the same errand bends on the open boundary too: door, bend, stop");
+        var dbd = new Golem(body);
+        dbd.Enter(new Scenario(map, collisions));
+        Assert.AreEqual(3, dbd.Visit(new Position(2.5, 2.5), new Position(5.5, 9.5)).LegsAhead.Count, "door by door, the same errand bends on the open boundary too: door, bend, stop");
         // a door the way runs straight through is crossed on the way — no leg; one the way bends after is its exit alone
-        Assert.AreEqual("north@5.5,9.5", g.Dash(new Position(2.0, 9.5), new Position(5.5, 9.5)).AsPlan(), "the kitchen to the middle of the north hall: one straight run through the door");
-        var bent = g.Dash(new Position(2.0, 9.5), new Position(9.0, 1.5)).LegsAhead[0];
+        Assert.AreEqual("north@5.5,9.5", g.Dash(g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5))).AsPlan(), "the kitchen to the middle of the north hall: one straight run through the door");
+        var bent = g.Dash(g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5))).LegsAhead[0];
         Assert.AreEqual("kitchen/north", bent.Name);
         Assert.AreEqual(4.6, bent.At.X, 0.001, "the door's exit, where the way bends south");
         Assert.AreEqual(bent.At, bent.Approach, "one point: nothing to line up, the door was crossed on the way there");
         Assert.AreEqual(bent.At, bent.Exit);
-        // the mode is the route's own: a stop told later is planned the same way
-        var route = g.Dash(new Position(2.0, 9.5), new Position(5.5, 9.5));
+        // once dashed the route stays on the way: a stop told later is planned the same way, and adopting another leaves it as it is
+        var route = g.Dash(g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5)));
         route.Then(new Position(9.0, 1.5));
         Assert.AreEqual("north@5.5,9.5 > south/garage@6.4,1.5 > garage@9,1.5", route.AsPlan(), "decided again through both stops, the doors still crossed on the way");
+        g.Strategy.DoorByDoor.Activate();
+        Assert.AreEqual("on the way", route.Navigation.Name, "a route already dashed keeps it: nothing undashes");
+        Assert.AreEqual("door by door", g.Navigation.Name, "the golem goes by the direct way again");
+    }
+
+    // THE DASH IS THE SCRIPT'S IMPROVEMENT OF A ROUTE IN HAND (ajuste 62; Juan: "este route pregunte por esos if para ver las estrategias para
+    // optimizar la route con dash, si no directo al print"): every route is born door by door; g.Dash(route) makes it take the doors on the way and
+    // decides its way again from where it stands — at birth from the errand's start, underway from the pose the last arrival brought — through the
+    // same stops; a route already on the way, or ended, comes back untouched, so the if after every arrival changes nothing twice.
+    [TestMethod]
+    public void Dash_ImprovesARouteFromWhereItStands_AtBirthOrUnderway_AndLeavesOneOnTheWayOrEndedAsItIs()
+    {
+        var map = Catalog.Warehouse();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+        Assert.IsFalse(g.Strategy.OnTheWay.IsActive, "door by door at birth: the script goes straight to the print");
+        // the strategies live in the golem from birth (ajuste 63): its own objects, a property each — never a name, never built — one active at a time, a toggle
+        Assert.AreEqual(2, g.Strategy.All().Count, "the direct way and the way on the way, the golem's own objects");
+        Assert.IsTrue(g.Strategy.DoorByDoor.IsActive, "the direct way is active at birth");
+        Assert.AreSame(g.Strategy.OnTheWay, g.Strategy.OnTheWay, "the same object every time it is asked");
+        Assert.AreSame(g.Navigation, g.Strategy.DoorByDoor, "what the golem goes by is the strategy active");
+        g.Strategy.OnTheWay.Activate();
+        Assert.IsTrue(g.Strategy.OnTheWay.IsActive);
+        Assert.IsFalse(g.Strategy.DoorByDoor.IsActive, "activating one switches the other off");
+        Assert.AreSame(g.Navigation, g.Strategy.OnTheWay);
+        g.Strategy.OnTheWay.Deactivate();
+        Assert.IsTrue(g.Strategy.DoorByDoor.IsActive, "switched off, the direct way stays");
+        Assert.IsFalse(g.Strategy.OnTheWay.IsActive);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Strategy.DoorByDoor.Deactivate()).Message, "cannot be switched off", "the direct way is what stays when nothing else is active");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new OnTheWay().Activate()).Message, "belongs to no golem", "a strategy built outside is nobody's: it is found, never built");
+
+        // at birth: the living room's mark to the north hall, born door by door (door, bend, stop), improved to door and stop
+        var born = g.Visit(new Pose(2.5, 2.5, 0.0), new Position(5.5, 9.5));
+        Assert.AreEqual(3, born.LegsAhead.Count);
+        Assert.AreEqual("door by door", born.Navigation.Name);
+        g.Strategy.OnTheWay.Activate();
+        Assert.IsTrue(g.Strategy.OnTheWay.IsActive, "what the script's if asks once the strategy is adopted");
+        var dashed = g.Dash(born);
+        Assert.AreSame(born, dashed, "the same route, improved — handed back for the print");
+        Assert.AreEqual("on the way", born.Navigation.Name);
+        Assert.AreEqual(2, born.LegsAhead.Count, "the door where the way bends, then the stop in one straight run: " + born.AsPlan());
+        Assert.AreEqual(3.4, born.NextLeg.Approach.X, 0.001, "decided again from the errand's start: lined up before the door");
+        Assert.AreEqual("turnRight", born.Order, "and the first order measured from where the body faces, as before");
+        var plan = born.AsPlan();
+        Assert.AreSame(born, g.Dash(born), "dashed again: nothing to improve");
+        Assert.AreEqual(plan, born.AsPlan(), "idempotent — the if after every arrival touches nothing twice");
+        born.Abandon("the lab moves on");
+
+        // underway: a door-by-door route walked past its first door, improved from where the body stands
+        var dbd = new Golem(body);
+        dbd.Enter(new Scenario(map, collisions));
+        var underway = dbd.Visit(new Pose(2.5, 2.5, 0.0), new Position(9.0, 1.5));
+        Assert.AreEqual("living/south@4,1.5 > south/garage@7,1.5 > garage@9,1.5", underway.AsPlan());
+        Reach(underway, 4.0, 1.5);                                                   // the door living/south walked: lined up, crossed straight, out to its exit
+        Assert.AreEqual("south/garage", underway.NextLeg.Name);
+        dbd.Strategy.OnTheWay.Activate();
+        Assert.AreSame(underway, dbd.Dash(underway));
+        Assert.AreEqual("on the way", underway.Navigation.Name);
+        Assert.AreEqual(4.6, underway.Standing.X, 0.001, "decided again from where the body stands, the pose its last arrival brought");
+        Assert.AreEqual(1.5, underway.Standing.Y, 0.001);
+        Assert.AreEqual("garage@9,1.5", underway.AsPlan(), "from the door's exit the garage is one straight run through its door, crossed on the way");
+        Assert.AreEqual(1, underway.StopsLeft);
+        Assert.IsTrue(underway.IsPending());
+
+        // ended: untouched
+        WalkToTheEnd(underway);
+        Assert.AreSame(underway, dbd.Dash(underway));
+        Assert.AreEqual("completed", underway.Order, "a route no longer pending comes back as it is");
+        var other = new Golem(body);
+        other.Enter(new Scenario(map, collisions));
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => other.Dash(underway)).Message, "is not this golem's");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Dash(null)).Message, "'route' was not given");
     }
 }

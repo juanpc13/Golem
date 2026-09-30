@@ -6,6 +6,18 @@ namespace GolemAPI.Controllers;
 // 16-sep-2026: "la data debería llegar por JSON… y hay que validar que venga correcta"). Each request says what is
 // wrong with it in plain words; the endpoint answers 400 with that and performs nothing.
 
+/// <summary>The strategy of navigation the golem adopts (ajuste 61) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
+public sealed record NavigationRequest(string Navigation)
+{
+    public const string Shape = "{\"navigation\": \"on-the-way\"}";
+    public static readonly string[] Strategies = { "on-the-way", "door-by-door" };
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Navigation) || !Strategies.Contains(Navigation.Trim().ToLowerInvariant())) yield return "the navigation must be one of " + string.Join(", ", Strategies) + ": " + Shape;
+    }
+}
+
 /// <summary>One stop of an errand: a point on the floor — <c>{"x": 9.0, "y": 8.0}</c> (Juan, 16-sep-2026: "solo serán puntos, ya no places").</summary>
 public sealed record StopRequest(double? X, double? Y)
 {

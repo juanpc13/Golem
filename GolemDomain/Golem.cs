@@ -25,6 +25,7 @@ internal sealed class Golem
     private readonly Body body;
     private readonly List<Scenario> scenarios = new();   // every scenario the golem knows, in the order it learned them
     private Scenario current;                             // the one it is in: what every way, distance and touch is decided on
+    private readonly Strategies strategies = new();      // its strategies of navigation, born with it (ajuste 63): g.Strategy.DoorByDoor (active at birth), g.Strategy.OnTheWay
     // the map and the collisions the golem reads are the CURRENT scenario's (ajuste 60): a route born in one keeps its own
     private MapLayout layout => Current.Map;
     private Collisions collisions => Current.Collisions;
@@ -100,6 +101,30 @@ internal sealed class Golem
     /// <summary>Every scenario the golem knows, in the order it learned them.</summary>
     internal IReadOnlyList<Scenario> Scenarios() => scenarios.ToList();
 
+    // ---- the strategies: how the golem takes the doors — its own objects from birth, one active at a time, asked by the script ----
+
+    /// <summary>The strategy the golem goes by now: the direct one (door by door) at birth, or the one switched on. The reads where the
+    /// body enters (Distance, RouteLength, Road) measure by it.</summary>
+    internal Navigation Navigation => strategies.Active;
+
+    /// <summary>The golem's strategies of navigation, its own objects from birth (ajuste 63; Juan: "esos objetos ya existen dentro del
+    /// golem… `if (g.Strategy.OnTheWay.IsActive)`, así déjalo, no como string"): <c>g.Strategy.OnTheWay</c>, <c>g.Strategy.DoorByDoor</c> —
+    /// each switched on with <c>Activate()</c> (<c>strategy = g.Strategy.OnTheWay; strategy.Activate();</c>) and asked with <c>IsActive</c>.
+    /// Nothing is built, nothing found by a name.</summary>
+    internal Strategies Strategy => strategies;
+
+    /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here
+    /// on it crosses the doors on the way — by the golem's own on-the-way strategy, the same object — and its way is decided again from
+    /// where it stands; handed back for the print. Idempotent — a route already on the way, or ended, comes back as it is — so the script
+    /// asks it after every act that hands a route out or finds the one underway:
+    /// <c>route = g.Visit(from, point); if (g.Strategy.OnTheWay.IsActive) { route = g.Dash(route); }</c>.</summary>
+    internal Route Dash(Route route)
+    {
+        if (route == null) throw new GolemDomainException("Golem.Dash: 'route' was not given");
+        if (!routes.Contains(route)) throw new GolemDomainException($"route {route.Id} is not this golem's");
+        return route.Dash(strategies.OnTheWay);
+    }
+
     // ---- the body, in base units, for the golem's own sums (the journal reads the module: body.Radius.InMeters) ----
 
     private double Radius() => body.Radius.InMeters;
@@ -144,7 +169,7 @@ internal sealed class Golem
         if (from == null) throw new GolemDomainException("Golem.Visit: 'from' was not given");
         if (stop == null) throw new GolemDomainException("Golem.Visit: 'stop' was not given");
         if (ReferenceEquals(from, stop)) throw new GolemDomainException("Golem.Visit: 'from' and 'stop' are the same position");
-        return Entrust(from, stop, following: false, choosesOrder: false, Navigation.DoorByDoor);
+        return Entrust(from, stop, following: false, choosesOrder: false);
     }
 
     /// <summary>The operator sends the golem to a place: its centre — <c>route = g.Visit(from, map.Find(@area))</c>.</summary>
@@ -152,27 +177,7 @@ internal sealed class Golem
     {
         if (from == null) throw new GolemDomainException("Golem.Visit: 'from' was not given");
         if (area == null) throw new GolemDomainException("Golem.Visit: 'area' was not given");
-        return Entrust(from, Centre(area), following: false, choosesOrder: false, Navigation.DoorByDoor);
-    }
-
-    /// <summary>The operator sends the golem to a point the DASH way (ajuste 58, 28-sep-2026; Juan: "un nuevo método como el visit
-    /// pero que se llame diferente, ese modo de navegar… manejaríamos 3 modos: visit, cover y este nuevo"): the same errand as
-    /// Visit — the stops in this order, the way decided inside from the start — but the doors are crossed ON THE WAY when the straight
-    /// run passes clean, the way bending only at their points of clearance (the ajuste 57 way, fewer stops) — <c>route = g.Dash(from, point)</c>.</summary>
-    internal Route Dash(Position from, Position stop)
-    {
-        if (from == null) throw new GolemDomainException("Golem.Dash: 'from' was not given");
-        if (stop == null) throw new GolemDomainException("Golem.Dash: 'stop' was not given");
-        if (ReferenceEquals(from, stop)) throw new GolemDomainException("Golem.Dash: 'from' and 'stop' are the same position");
-        return Entrust(from, stop, following: false, choosesOrder: false, Navigation.OnTheWay);
-    }
-
-    /// <summary>The dash to a place: its centre — <c>route = g.Dash(from, map.Find(@area))</c>.</summary>
-    internal Route Dash(Position from, Area area)
-    {
-        if (from == null) throw new GolemDomainException("Golem.Dash: 'from' was not given");
-        if (area == null) throw new GolemDomainException("Golem.Dash: 'area' was not given");
-        return Entrust(from, Centre(area), following: false, choosesOrder: false, Navigation.OnTheWay);
+        return Entrust(from, Centre(area), following: false, choosesOrder: false);
     }
 
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
@@ -181,7 +186,7 @@ internal sealed class Golem
         if (from == null) throw new GolemDomainException("Golem.Cover: 'from' was not given");
         if (stop == null) throw new GolemDomainException("Golem.Cover: 'stop' was not given");
         if (ReferenceEquals(from, stop)) throw new GolemDomainException("Golem.Cover: 'from' and 'stop' are the same position");
-        return Entrust(from, stop, following: false, choosesOrder: true, Navigation.DoorByDoor);
+        return Entrust(from, stop, following: false, choosesOrder: true);
     }
 
     /// <summary>The operator opens a route through areas whose order the golem may choose.</summary>
@@ -189,7 +194,7 @@ internal sealed class Golem
     {
         if (from == null) throw new GolemDomainException("Golem.Cover: 'from' was not given");
         if (area == null) throw new GolemDomainException("Golem.Cover: 'area' was not given");
-        return Entrust(from, Centre(area), following: false, choosesOrder: true, Navigation.DoorByDoor);
+        return Entrust(from, Centre(area), following: false, choosesOrder: true);
     }
 
     /// <summary>The golem follows its leader to a point a peer says it reached — a route of its own, handle minted here,
@@ -203,7 +208,7 @@ internal sealed class Golem
         if (at == null) throw new GolemDomainException("Golem.Follow: 'at' was not given");
         var from = Whereabouts();
         if (from == null) throw new GolemDomainException("the golem does not know where its body stands yet: no act brought its pose");
-        return Entrust(from, at, following: true, choosesOrder: false, Navigation.DoorByDoor);
+        return Entrust(from, at, following: true, choosesOrder: false);
     }
 
     /// <summary>The golem wakes where its body stands — <c>g.Wake(Pose(@x, @y, @theta))</c>, the first act of every boot once
@@ -500,16 +505,17 @@ internal sealed class Golem
     // ---- inside ----
 
     // The planner for this body: the layout says where the walls and doors stand, the collisions module what
-    // nobody charted, and between the two it finds the shortest road — door by door, the reads' way (Distance, RouteLength).
-    private RoutePlanner Planner() => new(layout, collisions, Radius(), Navigation.DoorByDoor);
+    // nobody charted, and between the two it finds the shortest road — by the strategy active (the reads: Distance, RouteLength).
+    private RoutePlanner Planner() => new(layout, collisions, Radius(), Navigation);
 
     // A new route with this stop, its way decided from `from` at once: the handle is the next one, minted here (a
     // deterministic function of the routes the golem holds, so the same on replay), and never reused — the idempotency
     // keys of the host hang on it. Opened while the golem is free, `from` is where its body stands: kept.
-    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder, Navigation navigation)
+    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder)
     {
         if (!HasPendingMission()) collisions.PeersMovedOn();   // an idle golem sets out afresh: whoever it met while standing has moved on
-        var route = new Route(lastHandle + 1, stop, following, choosesOrder, navigation, layout, collisions, Radius(), body.Retreat.InMeters, Stood);
+        // born with the golem's direct way, whatever is active (ajuste 62): the script improves it with a dash when the strategy says so
+        var route = new Route(lastHandle + 1, stop, following, choosesOrder, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, Stood);
         route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
         if (!HasPendingMission()) standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
         routes.Add(route);
@@ -550,5 +556,4 @@ internal sealed class Golem
         throw new GolemDomainException("no pending mission: consult HasPendingMission() first");
     }
 
-    private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 }

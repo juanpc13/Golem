@@ -61,7 +61,7 @@ public static class Readings
     public static string Where(ActorV2 actor) =>
         actor.Using(@"
             {
-                print g.KnowsWhereItStands 'knows', g.Held 'held', g.Current.Name 'scenario';
+                print g.KnowsWhereItStands 'knows', g.Held 'held', g.Current.Name 'scenario', g.Navigation.Name 'navigation';
                 if (g.KnowsWhereItStands) {
                     print g.Standing.X 'x', g.Standing.Y 'y', g.Standing.Heading 'heading', g.Current.Map.ZoneNameOf(g.Standing) 'zone';
                 }

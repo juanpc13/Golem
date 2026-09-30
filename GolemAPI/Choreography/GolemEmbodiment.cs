@@ -106,7 +106,10 @@ public sealed class GolemEmbodiment
     public const string UptakePointVisited = @"
         {
             point = Position(@x, @y);
-            g.Follow(point);
+            route = g.Follow(point);
+            if (g.Strategy.OnTheWay.IsActive) {
+                route = g.Dash(route);
+            }
         }
         ";
     public const string UptakeBumpedAt = @"
@@ -256,6 +259,39 @@ public sealed class GolemEmbodiment
                 .PerformCommand());
         }
         catch (Exception ex) { return Answer.Refusal($"enter {scenario}: " + Reason(ex)); }
+    }
+
+    // THE STRATEGIES OF NAVIGATION (ajuste 63): the golem's own objects, one fixed template per strategy — a property, never a name,
+    // never a constructor (Juan: "if (g.Strategy.OnTheWay.IsActive), así déjalo, no como string")
+    private const string ActivateOnTheWay = @"
+                    {
+                        strategy = g.Strategy.OnTheWay;
+                        strategy.Activate();
+                        print strategy.Name 'navigation', strategy.IsActive 'active';
+                    }
+                ";
+    private const string ActivateDoorByDoor = @"
+                    {
+                        strategy = g.Strategy.DoorByDoor;
+                        strategy.Activate();
+                        print strategy.Name 'navigation', strategy.IsActive 'active';
+                    }
+                ";
+
+    /// <summary>The golem SWITCHES ON one of its strategies of navigation (ajuste 63; Juan: "más bien es como un toggle y esos objetos
+    /// ya existen dentro del golem"): `on-the-way` (the doors crossed on the way, fewer stops) or `door-by-door` (every door a leg of
+    /// its own, the direct way). The strategies live in the golem from birth — `g.Strategy.OnTheWay`, `g.Strategy.DoorByDoor` — and the
+    /// operator's word picks the template that activates one; nothing is built, nothing found by a name. Every route is born direct and
+    /// improved by the script while on-the-way is active (ajuste 62). The mind's own act, no role's.</summary>
+    public Answer Adopt(string navigation)
+    {
+        string which = (navigation ?? "").Trim().ToLowerInvariant();
+        if (which is not ("on-the-way" or "door-by-door")) return Answer.Refusal($"a strategy of navigation is on-the-way or door-by-door, not '{navigation}'");
+        try
+        {
+            return Answer.Of(Actor.Using(which == "on-the-way" ? ActivateOnTheWay : ActivateDoorByDoor).PerformCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"adopt {which}: " + Reason(ex)); }
     }
 
     // ==================================================================

@@ -112,10 +112,14 @@ public class CommandConsoleTests
         StringAssert.StartsWith(reset.Text, "let go: every pending route abandoned, the body back on its mark");
         StringAssert.StartsWith((await console.ExecuteAsync("state")).Text, "0 of 1 route(s) pending", "the route abandoned, kept as history");
         StringAssert.Contains((await console.ExecuteAsync("state")).Text, "last: route 1 abandoned");
-        var dash = await console.ExecuteAsync("dash 9,1.5");
+        var adopt = await console.ExecuteAsync("adopt on-the-way");
+        Assert.IsTrue(adopt.Ok, adopt.Text);
+        StringAssert.Contains((await console.ExecuteAsync("where")).Text, "navigating on the way", "the strategy adopted, read where the golem stands");
+        var dash = await console.ExecuteAsync("visit 9,1.5");
         Assert.IsTrue(dash.Ok, dash.Text);
         var way = (await console.ExecuteAsync("route")).Text;
-        StringAssert.Contains(way, "living/south@3.4,1.5", "from the mark, the dash's way: the door where it bends, then the garage in one run through its door (ajuste 58): " + way);
+        StringAssert.Contains(way, "living/south@3.4,1.5", "from the mark, on the way: the door where it bends, then the garage in one run through its door — the script's if improved the route born door by door (ajuste 62): " + way);
+        Assert.AreEqual("syntax", (await console.ExecuteAsync("adopt sideways")).Kind, "a strategy that is none is no command");
     }
 
     // MORE THAN ONE GOLEM ON ONE LINE (Juan, 28-sep-2026: "para involucrar más de uno a la vez… que el visit viaje al otro golem"; then "si

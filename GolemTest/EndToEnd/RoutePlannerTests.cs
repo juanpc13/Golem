@@ -2,6 +2,7 @@ using GolemDomain;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Robots;
+using GolemDomain.Routes;
 using GolemDomain.Scenarios;
 using GolemDomain.Touches;
 using GolemDomain.Units;
@@ -267,35 +268,41 @@ public class RoutePlannerTests
         Assert.AreEqual(route.AsPlan(), g.Road(route, new Position(2.0, 9.5)).AsPlan(), "the way the golem would walk, read as objects: the same the route decided");
     }
 
-    // THE DASH (ajuste 58, 28-sep-2026; Juan: "mantener la lógica anterior que tomaba hasta 5 legs con el visit, y este nuevo verbo que lo
-    // haga como lo solucionamos con 2 legs"): the same errand as Visit, the doors crossed ON THE WAY when the straight run passes clean
-    // and the way bending only at their points of clearance (ajuste 57) — while Visit keeps every door as a leg of its own.
+    // THE STRATEGY ADOPTED (ajuste 58 → 61, 29-sep-2026; Juan: "el dash se quitará, porque ahora es más una política de estrategia para
+    // navegar… poder cambiarle al golem cuál deseamos que utilice"): with OnTheWay adopted, the script improves every route it hands out with a
+    // dash (ajuste 62: `if (g.Strategy.OnTheWay.IsActive) { route = g.Dash(route); }`) — the doors crossed ON THE WAY when the straight run passes
+    // clean, the way bending only at their points of clearance (ajuste 57) — while a golem door by door keeps every door as a leg.
     [TestMethod]
-    public void ADash_CrossesTheDoorsOnTheWay_AndBendsAtTheirPointsOfClearance_WhileAVisitTakesThemDoorByDoor()
+    public void WithOnTheWayAdopted_AVisitCrossesTheDoorsOnTheWay_AndBendsAtTheirPointsOfClearance_WhileDoorByDoorTakesThemAsLegs()
     {
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body);
         g.Enter(new Scenario(map, collisions));
+        g.Strategy.OnTheWay.Activate();                                                  // the strategy is the golem's (ajuste 61); the script applies it with the route in hand (ajuste 62): g.Dash(g.Visit(…))
+        var dbd = new Golem(body);                                                // another golem on the same scenario, door by door as at birth
+        dbd.Enter(new Scenario(map, collisions));
 
         // kitchen (2,9.5) -> straight through its door to the exit (4.6,9.5) -> ONE straight run through the north hall, the centre and the
         // south hall to the garage door's approach (6.4,1.5) -> straight through that door to the garage (9,1.5)
-        Assert.AreEqual("kitchen/north@4.6,9.5 > south/garage@6.4,1.5 > garage@9,1.5", g.Dash(map.Find("kitchen").Center, map.Find("garage")).AsPlan());
-        Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", g.Visit(map.Find("kitchen").Center, map.Find("garage")).AsPlan(),
-            "the visit keeps the doors as legs of their own: lined up, crossed, out");
-        var dash = g.Dash(map.Find("kitchen").Center, map.Find("garage"));
+        Assert.AreEqual("kitchen/north@4.6,9.5 > south/garage@6.4,1.5 > garage@9,1.5", g.Dash(g.Visit(map.Find("kitchen").Center, map.Find("garage"))).AsPlan());
+        Assert.AreEqual("kitchen/north@4,9.5 > south/garage@7,1.5 > garage@9,1.5", dbd.Visit(map.Find("kitchen").Center, map.Find("garage")).AsPlan(),
+            "door by door, the doors are legs of their own: lined up, crossed, out");
+        var dash = g.Dash(g.Visit(map.Find("kitchen").Center, map.Find("garage")));
         Assert.AreEqual(2.6 + Math.Sqrt(1.8 * 1.8 + 64.0) + 2.6, g.Road(dash, map.Find("kitchen").Center).Length(map.Find("kitchen").Center), 0.01,
             "as the body walks it: to the kitchen's door's exit, the run down to the garage's door's approach, and through — the golem's Road read takes the route's own mode");
         // kitchen to the middle of the north hall: one straight run through the door, no leg on it
-        Assert.AreEqual("north@5.5,9.5", g.Dash(new Position(2.0, 9.5), new Position(5.5, 9.5)).AsPlan());
-        StringAssert.StartsWith(g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5)).AsPlan(), "kitchen/north@4,9.5 > ", "the visit stops at the door");
+        Assert.AreEqual("north@5.5,9.5", g.Dash(g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5))).AsPlan());
+        StringAssert.StartsWith(dbd.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5)).AsPlan(), "kitchen/north@4,9.5 > ", "door by door, the way stops at the door");
         // out of the kitchen there is no straight run to the south hall: the way bends at the door's exit, the door crossed on the way there
-        Assert.AreEqual("kitchen/north@4.6,9.5 > south@5.5,1.5", g.Dash(new Position(3.0, 9.5), new Position(5.5, 1.5)).AsPlan());
+        Assert.AreEqual("kitchen/north@4.6,9.5 > south@5.5,1.5", g.Dash(g.Visit(new Position(3.0, 9.5), new Position(5.5, 1.5))).AsPlan());
         // kitchen to the living room: the approach of its west door, straight down the corridor through both doors, the exit of the living room's
-        Assert.AreEqual("kitchen/west@0.75,8.6 > west/living@0.75,2.4 > living@2,1.5", g.Dash(map.Find("kitchen").Center, map.Find("living")).AsPlan());
-        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", g.Visit(map.Find("kitchen").Center, map.Find("living")).AsPlan());
-        Assert.AreEqual("on the way", g.Dash(new Position(2.0, 9.5), new Position(5.5, 9.5)).Navigation.Name);
-        Assert.AreEqual("door by door", g.Cover(new Position(2.0, 9.5), new Position(5.5, 9.5)).Navigation.Name, "cover keeps the doors as legs too");
+        Assert.AreEqual("kitchen/west@0.75,8.6 > west/living@0.75,2.4 > living@2,1.5", g.Dash(g.Visit(map.Find("kitchen").Center, map.Find("living"))).AsPlan());
+        Assert.AreEqual("kitchen/west@0.75,8 > west/living@0.75,3 > living@2,1.5", dbd.Visit(map.Find("kitchen").Center, map.Find("living")).AsPlan());
+        Assert.AreEqual("on the way", g.Dash(g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5))).Navigation.Name);
+        Assert.AreEqual("on the way", g.Dash(g.Cover(new Position(2.0, 9.5), new Position(5.5, 9.5))).Navigation.Name, "a cover route is improved the same way");
+        Assert.AreEqual("door by door", dbd.Cover(new Position(2.0, 9.5), new Position(5.5, 9.5)).Navigation.Name, "and the golem that adopted nothing keeps the doors as legs");
+        Assert.AreEqual("door by door", g.Visit(new Position(2.0, 9.5), new Position(5.5, 9.5)).Navigation.Name, "a route not yet dashed is door by door, whatever the golem adopted: the script asks g.Strategy.OnTheWay.IsActive first");
     }
 }

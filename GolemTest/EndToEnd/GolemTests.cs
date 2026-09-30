@@ -756,7 +756,7 @@ public class GolemTests
         g.Enter(openFloor);
         Assert.AreEqual("open-floor", g.Current.Name);
         Assert.IsTrue(g.FitsAt(new Position(2.75, 5.5)), "the same point, room on the open floor");
-        var dash = g.Dash(new Pose(2.5, 2.5, 0.0), new Position(9.0, 1.5));
+        var dash = g.Visit(new Pose(2.5, 2.5, 0.0), new Position(9.0, 1.5));
         Assert.AreEqual("floor@9,1.5", dash.AsPlan(), "decided on the scenario the golem is in now");
         g.Bump(new Pose(5.5, 5.5, 0.0), 0.0);
         Assert.AreEqual(1, openFloor.Collisions.MarkCount, "a touch is learned in the scenario it happened in");

@@ -335,7 +335,7 @@ internal sealed class MapLayout : Map
     /// third zone beyond an opening neither side held it, the door got no crossing, and the body turned in
     /// the doorway and grazed the jamb); when the previous point tells nothing, the next one is consulted.
     /// Derived from the map alone, so a road decided act by act gets the same crossings. The DoorByDoor navigation's walk
-    /// (ajuste 58: what Visit and Cover keep; Dash bends at the points of clearance instead and crosses the doors on the way).
+    /// (ajuste 58; the OnTheWay strategy bends at the points of clearance instead and crosses the doors on the way).
     /// </summary>
     internal Trajectory WithDoorCrossings(Position from, Trajectory road)
     {

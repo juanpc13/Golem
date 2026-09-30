@@ -83,7 +83,7 @@ public sealed class Commander
     {
         Reply reply = command.Verb switch
         {
-            "visit" or "cover" or "dash" => Errand(command),
+            "visit" or "cover" => Errand(command),
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
@@ -95,6 +95,7 @@ public sealed class Commander
             "obstacles" => Obstacles(),
             "enter" => Answered(golem.Enter(command.Text), $"in {command.Text}"),
             "scenarios" => Scenarios(),
+            "adopt" => Answered(golem.Adopt(command.Text), $"navigating {command.Text.Replace('-', ' ')}"),
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),
             "help" => Help(command),
             _ => Reply.Syntax($"'{command.Verb}' is no command"),
@@ -105,7 +106,7 @@ public sealed class Commander
 
     // ---- the operator's verbs: the same validation as the endpoint, the same role ----
 
-    // the three modes of the errand (ajuste 58): visit and cover door by door, dash with the doors crossed on the way
+    // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)
     private Reply Errand(Command command)
     {
         var request = new ErrandRequest(command.Points.Select(p => new StopRequest(p.X, p.Y)).ToList());
@@ -113,7 +114,7 @@ public sealed class Commander
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var points = request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList();
-        return Answered(command.Verb == "cover" ? displacer.Cover(points) : command.Verb == "dash" ? displacer.Dash(points) : displacer.Move(points));
+        return Answered(command.Verb == "cover" ? displacer.Cover(points) : displacer.Move(points));
     }
 
     private Reply Then(Command command)
@@ -183,7 +184,7 @@ public sealed class Commander
     {
         string json = Readings.Where(golem.Actor);
         var e = JsonDocument.Parse(json).RootElement;
-        string scenario = Str(e, "scenario") != "" ? $" · scenario {Str(e, "scenario")}" : "";
+        string scenario = (Str(e, "scenario") != "" ? $" · scenario {Str(e, "scenario")}" : "") + (Str(e, "navigation") != "" ? $" · navigating {Str(e, "navigation")}" : "");
         if (!Bool(e, "knows")) return Reply.Done("the golem does not know where its body stands yet: no act brought its pose" + scenario, json);
         string zone = Str(e, "zone");
         return Reply.Done($"standing at ({Num(e, "x")}, {Num(e, "y")}) facing {Num(e, "heading")} rad" + (zone != "" ? $", in {zone}" : ", nowhere on the map") + (Bool(e, "held") ? " — held" : "") + scenario, json);

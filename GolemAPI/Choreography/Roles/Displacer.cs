@@ -52,51 +52,9 @@ public sealed class Displacer
                         from = Pose(@fx, @fy, @ftheta);
                         point = Position(@sx, @sy);
                         route = g.Visit(from, point);
-                        print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
-                        if (route.IsWalkable) {
-                            print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
                         }
-                    }
-                ")
-                .WithParameters(p => {
-                    p["fx", typeof(double)] = Resolution.Metres(start.Value.X);
-                    p["fy", typeof(double)] = Resolution.Metres(start.Value.Y);
-                    p["ftheta", typeof(double)] = Resolution.Radians(start.Value.Theta);
-                    p["sx", typeof(double)] = Resolution.Metres(first.X);
-                    p["sy", typeof(double)] = Resolution.Metres(first.Y);
-                })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"stop ({first.X:0.##}, {first.Y:0.##}): " + GolemEmbodiment.Reason(ex)); }   // no way fits the body, or the domain refused inside
-        if (!answer.Ok) return Answer.Refusal($"stop ({first.X:0.##}, {first.Y:0.##}): " + answer.Refused);
-        return ThenEach(robot.Newest(), points.Skip(1), answer);
-    }
-
-    /// <summary>Send the golem through points in THIS order the DASH way (ajuste 58): the same errand as Move, opened with g.Dash —
-    /// the doors crossed on the way when the straight run passes clean, the way bending only at their points of clearance, fewer stops.
-    /// The first point opens the route from
-    /// where the errand starts — where the body stands, or where its last pending route ends — and the route decides its
-    /// whole way inside; every further point is told to it, one entry each, and it decides again through them all. The
-    /// first order is pushed to the body by the reaction on the act. Returns the last answer, or the first refusal.</summary>
-    public Answer Dash(IReadOnlyList<(double X, double Y)> points)
-    {
-        var start = robot.WhereTheErrandStarts();
-        if (start == null) return Answer.Refusal("no telemetry from the body yet: the errand needs a starting point");
-        var first = points[0];
-        Answer answer;
-        try
-        {
-            answer = Answer.Of(robot.Actor.Using(
-                @"
-                    Check(g.Current.Map.IsOnMap(Position(@sx, @sy))) Error 'that point is nowhere on the map';
-                ",
-                @"
-                    {
-                        from = Pose(@fx, @fy, @ftheta);
-                        point = Position(@sx, @sy);
-                        route = g.Dash(from, point);
                         print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
@@ -138,6 +96,9 @@ public sealed class Displacer
                         from = Pose(@fx, @fy, @ftheta);
                         point = Position(@sx, @sy);
                         route = g.Cover(from, point);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
                         print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
@@ -188,6 +149,9 @@ public sealed class Displacer
                             route = g.Find(@id);
                             point = Position(@sx, @sy);
                             route.Then(point);
+                            if (g.Strategy.OnTheWay.IsActive) {
+                                route = g.Dash(route);
+                            }
                             print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                             if (route.IsWalkable) {
                                 print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
@@ -303,6 +267,9 @@ public sealed class Displacer
                         route = g.Underway();
                         me = Pose(@px, @py, @ptheta);
                         route.Arrive(me);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
                         print route.Id 'route', route.Order 'action', route.Amount 'amount', route.IsPending() 'pending', route.Why 'why';
                         if (route.IsWalkable) {
                             print route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',

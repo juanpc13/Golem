@@ -34,11 +34,11 @@ internal sealed class RoutePlanner
     private readonly EdgeCost cost;
     private readonly Navigation navigation;   // how the doors are taken: door by door, or crossed on the way (ajuste 58)
 
-    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius) : this(layout, collisions, radius, new DistanceCost(), Navigation.DoorByDoor) { }
+    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius) : this(layout, collisions, radius, new DistanceCost(), new DoorByDoor()) { }
 
     internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, Navigation navigation) : this(layout, collisions, radius, new DistanceCost(), navigation) { }
 
-    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost) : this(layout, collisions, radius, cost, Navigation.DoorByDoor) { }
+    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost) : this(layout, collisions, radius, cost, new DoorByDoor()) { }
 
     internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost, Navigation navigation)
     {

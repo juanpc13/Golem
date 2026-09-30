@@ -3,6 +3,7 @@ using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Maps;
 using GolemDomain.Robots;
+using GolemDomain.Routes;
 using GolemDomain.Scenarios;
 using GolemDomain.Touches;
 using GolemDomain.Units;
@@ -277,8 +278,9 @@ public class MapLayoutTests
         Assert.AreEqual("open-floor", map.Name);
         Assert.AreEqual(1, map.ZoneCount);
         Assert.AreEqual("upgrade('open-floor_v1') {\n    openFloor = MapLayout('open-floor');\n    {\n        floor = openFloor.Area('floor').At(Position(0.0, 0.0)).Size(11.0, 11.0);\n    }\n}\n", map.AsRelease(), "a hyphenated name becomes a camelCase variable");
-        Assert.AreEqual("floor@9,1.5", g.Dash(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(), "the kitchen's corner to the garage's in one straight run: no wall, no door, no block");
-        Assert.AreEqual("floor@9,1.5", g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(), "door by door too: there is no door");
+        Assert.AreEqual("floor@9,1.5", g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5)).AsPlan(), "the kitchen's corner to the garage's in one straight run: no wall, no door, no block");
+        g.Strategy.OnTheWay.Activate();
+        Assert.AreEqual("floor@9,1.5", g.Dash(g.Visit(new Position(2.0, 9.5), new Position(9.0, 1.5))).AsPlan(), "improved with a dash, the same: there is no door to cross");
         Assert.IsTrue(g.FitsAt(new Position(2.75, 5.5)), "where the warehouse has a solid block, the open floor has room");
     }
 }

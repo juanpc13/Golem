@@ -26,9 +26,10 @@ namespace GolemDomain.Routes;
 internal sealed class Route
 {
     internal int Id { get; }
-    /// <summary>How this route takes the doors — door by door (Visit, Cover, Follow) or crossed on the way (Dash): the mode the
-    /// golem's verb chose, kept for every way decided again (ajuste 58).</summary>
-    internal Navigation Navigation { get; }
+    /// <summary>How this route takes the doors — door by door, as every route is born, or on the way once the script improved it with
+    /// <see cref="Dash"/> (ajuste 62; the golem's strategy at birth in ajuste 61, a mode per verb in ajuste 58) — kept for every way
+    /// decided again.</summary>
+    internal Navigation Navigation { get; private set; }
     private readonly MapLayout layout;         // where its doors stand and its stops lie
     private readonly Collisions collisions;    // what a bump on the way teaches, and what the planner skirts
     private readonly double radius;            // the body the way is planned for
@@ -151,6 +152,22 @@ internal sealed class Route
         if (from == null) throw new GolemDomainException("Route.Decide: 'from' was not given");
         MustBePending();
         Plan(from);
+        return this;
+    }
+
+    /// <summary>The route IMPROVED with a dash (ajuste 62; Juan: "tomar la route actual y mejorarla"): from here on it takes the doors ON
+    /// THE WAY — a clean straight run crosses a door, the way bends only at the doors' points of clearance — and its way is decided again
+    /// from where it stands (the errand's start when it was just born, the pose its last act brought when it is underway), through the
+    /// same stops ahead. Idempotent: a route already on the way, or no longer pending, is handed back as it is — so the script's
+    /// <c>if (g.Strategy.OnTheWay.IsActive) { route = g.Dash(route); }</c> after every arrival touches nothing twice. No road on the
+    /// way from here: refused, like a Decide.</summary>
+    internal Route Dash(Navigation onTheWay)
+    {
+        if (onTheWay == null) throw new GolemDomainException("Route.Dash: 'onTheWay' was not given");
+        if (!onTheWay.IsOnTheWay) throw new GolemDomainException($"route {Id} is improved with the golem's on-the-way strategy, not '{onTheWay.Name}'");
+        if (!IsPending() || Navigation.IsOnTheWay) return this;
+        Navigation = onTheWay;   // the golem's own strategy, the same object — nothing is built here
+        Plan(standing ?? origin);
         return this;
     }
 

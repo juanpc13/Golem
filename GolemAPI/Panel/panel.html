@@ -142,8 +142,7 @@
       <canvas id="map" width="300" height="300" title="click to put this point on the line"></canvas>
       <details class="hint"><summary>How the line, the map and the marks work</summary><p>The buttons <b>compose</b> the command line at the top of the page; nothing runs
       until you press <b>run</b> or Enter. Click a room, press a place or add the pair to put a <b>point</b> on the line; <code>visit</code> sends the golem
-      through the points in that order, <code>cover</code> lets it choose the order that makes the whole road shortest, <code>dash</code> goes in that order with the doors
-      crossed on the way (fewer stops, ajuste 58), <code>then</code> tells one more
+      through the points in that order, <code>cover</code> lets it choose the order that makes the whole road shortest, <code>then</code> tells one more
       stop to the route underway. Between stops it always takes the shortest road through the doors and open boundaries, journals it, and journals every
       passage crossed and every stop reached. The world (Gazebo, the kiosk) holds more than the map knows: what the body bumps into there becomes a red
       <b>mark</b> on this map (<code>g.Bump</code>, told to the peers, who <code>g.HearBump</code> it and mark it too); marks close together are joined as
@@ -159,7 +158,6 @@
       <div class="row">
         <button id="move" class="place">visit</button>
         <button id="cover" class="place">cover</button>
-        <button id="dash" class="place" title="the same errand as visit, the doors crossed on the way — fewer stops (ajuste 58)">dash</button>
         <button id="then" class="place">then</button>
         <button id="clear">clear the line</button>
       </div>
@@ -178,6 +176,8 @@
         <button id="scen">scenarios</button>
         <button id="floor" title="the golem enters the open floor: the arena's interior as one area, the choreographies' scenario (ajuste 60) — open the floor in the kiosk too">enter open-floor</button>
         <button id="ware" title="back to the warehouse: its map and its own collisions">enter warehouse</button>
+        <button id="otw" title="the golem's strategy from here on: the doors crossed on the way, fewer stops (ajuste 61)">adopt on-the-way</button>
+        <button id="dbd" title="the golem's strategy from here on: every door a leg of its own, lined up and crossed straight">adopt door-by-door</button>
         <button id="helpv">help</button>
       </div>
       <details class="hint"><summary>Commands &mdash; the language, one line each; click an example to put it on the line</summary><table id="commands"></table></details>
@@ -328,7 +328,7 @@ const answer = document.getElementById('answer');
 // con with"): the line is this golem's own — the prompt names it — the buttons compose the command, and `--with` at its end names the
 // peers the same command is carried to (the selector under the line composes it).
 const head = 'golem ';
-const HEAD = /^\s*golem(\s+(?!(?:visit|cover|dash|then|pause|resume|forget|reset|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
+const HEAD = /^\s*golem(\s+(?!(?:visit|cover|then|pause|resume|forget|reset|adopt|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
 const WITH = /\s*--with(?:\s+([A-Za-z_][A-Za-z0-9_,-]*))?/i;
 function parts() {
   const m = line.value.match(HEAD);
@@ -343,7 +343,7 @@ function setLine(cmd) { const p = parts(); p.cmd = cmd; put(build(p)); }
 function setWhole(text) { put(text); }
 // visit / cover / then at the head of the command; the points already on it stay
 function compose(verb) {
-  const rest = parts().cmd.trim().replace(/^(visit|cover|dash|then)\b\s*/i, '');
+  const rest = parts().cmd.trim().replace(/^(visit|cover|then)\b\s*/i, '');
   setLine(rest ? `${verb} ${rest}` : `${verb} `);
 }
 // one more point on the command — a place's centre, a click on the map, the pair; a command with no verb yet becomes a visit
@@ -399,7 +399,7 @@ async function run() {
     answer.className = 'answer ' + (r.ok ? 'done' : r.status === 409 ? 'refused' : 'syntax');
     answer.textContent = `› ${sent}\n${said}`;
     // done: an act's line is spent; a read, or a line refused or misread, stays to be read or edited
-    if (r.ok && /^(visit|cover|dash|then|pause|resume|reset|forget|enter)\b/i.test(cmd)) setLine('');
+    if (r.ok && /^(visit|cover|then|pause|resume|reset|forget|enter|adopt)\b/i.test(cmd)) setLine('');
   } catch (e) {
     answer.className = 'answer syntax';
     answer.textContent = `› ${text}\ngolem unreachable: ${e}`;
@@ -415,12 +415,12 @@ line.addEventListener('keydown', (e) => {
 document.getElementById('addpoint').onclick = () => addPoint(+document.getElementById('x').value, +document.getElementById('y').value);
 document.getElementById('move').onclick = () => compose('visit');
 document.getElementById('cover').onclick = () => compose('cover');
-document.getElementById('dash').onclick = () => compose('dash');
 document.getElementById('then').onclick = () => compose('then');
 document.getElementById('clear').onclick = () => setWhole(head);
 for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],
                           ['state', 'state'], ['route', 'route'], ['where', 'where'], ['obst', 'obstacles'], ['show', 'show'], ['helpv', 'help'],
-                          ['scen', 'scenarios'], ['floor', 'enter open-floor'], ['ware', 'enter warehouse']])
+                          ['scen', 'scenarios'], ['floor', 'enter open-floor'], ['ware', 'enter warehouse'],
+                          ['otw', 'adopt on-the-way'], ['dbd', 'adopt door-by-door']])
   document.getElementById(id).onclick = () => setLine(text);
 // THE WITH SELECTOR (Juan, 28-sep-2026: "botones de los otros golems… acorde a sus TELL_ROUTES"; then "un parámetro para los otros"):
 // one button per peer this golem can reach (its tell routes, `peers` from /body); lit = named in `--with`; a click composes the
