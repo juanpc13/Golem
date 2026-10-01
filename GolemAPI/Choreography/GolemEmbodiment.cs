@@ -128,6 +128,63 @@ public sealed class GolemEmbodiment
     // I join: my own Join, from where I will stand, by my rank. The script ends with its print, like every script that changes what the
     // body must do; what pushes the order to my body at once is the next-order-join reaction on the Join (a uptake's print returns to
     // nobody). No expose: my join spreads nothing.
+    // A peer convened by distance and told me where it stood (ajuste 73): if I am in the fleet — already convened, its word may take my
+    // place and interrupt my route; not yet, I keep its word and convene myself, once, and my act tells everybody where I stand. The
+    // peer's position enters as @px @py: x and y are the print's labels.
+    public const string UptakeStoodFor = @"
+        {
+            fleet = Fleet(@names);
+            if (fleet.Has(g)) {
+                center = Position(@cx, @cy);
+                side = Meters(@sideLength);
+                formation = g.Choreography.Formation(@figure, center, side);
+                muster = g.Choreography.Muster(@callId, formation, fleet);
+                peer = fleet.Member(@teller);
+                at = Position(@px, @py);
+                me = fleet.Member(g);
+                if (muster.Knows(me)) {
+                    route = muster.Stood(peer, at);
+                    if (g.Strategy.OnTheWay.IsActive) {
+                        route = g.Dash(route);
+                    }
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
+                    }
+                } else {
+                    muster.Stood(peer, at);
+                    from = g.Destination;
+                    route = g.Choreography.Convene(from, muster, me);
+                    if (g.Strategy.OnTheWay.IsActive) {
+                        route = g.Dash(route);
+                    }
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
+                    }
+                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, me.Name who, from.X stoodX, from.Y stoodY;
+                }
+            }
+        }
+        ";
     public const string UptakeCalledTo = @"
         {
             fleet = Fleet(@names);

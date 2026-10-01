@@ -78,6 +78,7 @@ public class GolemController : Controller
         var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
                                                     : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
         var center = (request.Center.X.Value, request.Center.Y.Value);
+        if (request.Policy == "distance") return Answered(displacer.Convene(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet));   // ajuste 73
         var turn = request.Turn;
         return Answered(turn == null ? displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet) : displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet, turn.Value));
     }

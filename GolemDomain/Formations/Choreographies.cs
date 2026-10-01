@@ -19,6 +19,7 @@ internal sealed class Choreographies
     private static readonly string[] Known = { "square", "triangle", "circle" };
     private readonly Func<Position, Position, string, Route> takePlace;   // the golem it was born with: the route to a place, refused off the map or without room
     private readonly Func<double> speed;                                  // …and its body's cruise, in m/s, for the stages of a turn
+    private readonly List<Muster> musters = new();                        // the convocations by distance it heard of or convened in (ajuste 73)
 
     // born with its golem, which hands it how to ask for a route and how fast its body goes (like the strategies' switches, ajuste 63)
     internal Choreographies(Func<Position, Position, string, Route> takePlace, Func<double> speed)
@@ -76,6 +77,40 @@ internal sealed class Choreographies
         return route;
     }
 
+    /// <summary>The CONVOCATION of that call BY DISTANCE (ajuste 73): found by the call's identity, or opened — by the golem's own
+    /// word or a peer's that came first — <c>muster = g.Choreography.Muster(@callId, formation, fleet);</c>.</summary>
+    internal Muster Muster(string call, Formation formation, Fleet fleet)
+    {
+        if (string.IsNullOrWhiteSpace(call)) throw new GolemDomainException("Choreographies.Muster: 'call' was not given");
+        if (formation == null) throw new GolemDomainException("Choreographies.Muster: 'formation' was not given");
+        if (fleet == null) throw new GolemDomainException("Choreographies.Muster: 'fleet' was not given");
+        var known = musters.FirstOrDefault(m => m.Call == call);
+        if (known != null) return known;
+        var muster = new Muster(call, formation, fleet, takePlace);
+        musters.Add(muster);
+        return muster;
+    }
+
+    /// <summary>The convocation a route of this golem belongs to (propuesta 74): the one the route was given by, or the one that holds it
+    /// now — <c>muster = g.Choreography.MusterOf(route);</c>, the body's word on a route that yields. Refused for a route of no call.</summary>
+    internal Muster MusterOf(Route route)
+    {
+        if (route == null) throw new GolemDomainException("Choreographies.MusterOf: 'route' was not given");
+        return musters.FirstOrDefault(m => ReferenceEquals(m.Route, route))
+            ?? throw new GolemDomainException($"route {route.Id} was given by no convocation");
+    }
+
+    /// <summary>The golem CONVENES by distance (ajuste 73; Juan: "el Convene… termina dando la route del punto donde se moverá"): it is
+    /// recorded where it stands and given the route to the best place it knows now — <c>route = g.Choreography.Convene(from, muster, me);</c>.
+    /// A peer's word may interrupt that route later (<see cref="Formations.Muster.Stood"/>).</summary>
+    internal Route Convene(Position from, Muster muster, Member me)
+    {
+        if (from == null) throw new GolemDomainException("Choreographies.Convene: 'from' was not given");
+        if (muster == null) throw new GolemDomainException("Choreographies.Convene: 'muster' was not given");
+        if (me == null) throw new GolemDomainException("Choreographies.Convene: 'me' was not given");
+        if (!musters.Contains(muster)) throw new GolemDomainException($"the call {muster.Call} is not this golem's: it is found with g.Choreography.Muster");
+        return muster.Convene(from, me);
+    }
+
     private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 }
-

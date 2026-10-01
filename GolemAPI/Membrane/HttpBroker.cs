@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Choreography.Transport.Brokered;
 
 namespace GolemAPI.Membrane;
@@ -23,9 +24,18 @@ public sealed record Frame(string Topic, string Key, Dictionary<string, string> 
 //   * headers travel intact.
 // Delivery policy (retries, timeout) lives here too: TELL_RETRY_SECONDS bounds how
 // long an undeliverable record is retried before the verdict is given.
+//
+// AJUSTE 76 (1-oct-2026): /tell ANSWERS ON RECEIPT. The handler a record is handed to is Puppeteer's BrokerTellConsumer,
+// which runs the uptake and then emits the ACK synchronously (ProduceAsync(...).GetAwaiter().GetResult()); run inside the
+// request, that held the teller's POST for as long as the ack took — up to the retry window when nobody consumed the ack
+// topic at the origin — so the teller's client timed out (10 s), retried (2 s) and every other tell behind the same key
+// gate waited: 12 to 18 s between golems convening at once (lab, 1-oct). Now Deliver retains the record, QUEUES it and
+// returns; one consumer per topic applies the records in the order they arrived (what the broker promises per key); and
+// an ack — the transport's receipt, no lived fact — goes out ONCE, with a short timeout, outside the key gate, no retry.
 public sealed class HttpBroker : ITellWire
 {
     private static readonly HttpClient Wire = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private static readonly TimeSpan AckTimeout = TimeSpan.FromSeconds(3);
     private const int RetainedPerTopic = 500;
 
     // Every frame carries where it came from, and a tell's id is remembered with its origin: the ack
@@ -42,6 +52,7 @@ public sealed class HttpBroker : ITellWire
     private readonly ConcurrentDictionary<string, List<BrokerRecord>> retained = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> keyGates = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Uri> originOfTell = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Channel<BrokerRecord>> queues = new(StringComparer.Ordinal);   // one queue, one consumer per topic (ajuste 76)
 
     public HttpBroker(string whoAmI, IReadOnlyDictionary<string, Uri> routes, TimeSpan retryWindow, Uri myUrl = null)
     {
@@ -121,8 +132,9 @@ public sealed class HttpBroker : ITellWire
         }
 
         // An ack goes back to whoever told; anything else follows the route table.
+        bool isAck = topic.EndsWith(".acks", StringComparison.Ordinal);
         Uri peer = null;
-        if (topic.EndsWith(".acks", StringComparison.Ordinal) && headers != null
+        if (isAck && headers != null
             && headers.TryGetValue(TellIdHeader, out string tellId) && originOfTell.TryRemove(tellId, out Uri origin))
             peer = origin;
         if (peer == null && !routes.TryGetValue(topic, out peer))
@@ -132,6 +144,19 @@ public sealed class HttpBroker : ITellWire
         if (myUrl != null) outgoing[OriginHeader] = myUrl.ToString();
         var frame = new Frame(topic, key, outgoing, value);
         string body = JsonSerializer.Serialize(frame);
+
+        // An ack is the transport's receipt: one attempt, short, outside the key gate, no retry (ajuste 76). Lost, it only
+        // delays settlement — the consumer notes it and the origin resolves on its next recovery citation.
+        if (isAck)
+        {
+            using var brief = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            brief.CancelAfter(AckTimeout);
+            using var content = new StringContent(body, Encoding.UTF8, "application/json");
+            using var answer = await Wire.PostAsync(new Uri(peer, "tell"), content, brief.Token);
+            if (!answer.IsSuccessStatusCode)
+                throw new HttpRequestException($"{(int)answer.StatusCode} from {peer} for the ack on '{topic}'");
+            return;
+        }
 
         // One gate per partition key: records to one instance keep their order.
         SemaphoreSlim gate = keyGates.GetOrAdd(key ?? string.Empty, _ => new SemaphoreSlim(1, 1));
@@ -168,6 +193,7 @@ public sealed class HttpBroker : ITellWire
     {
         var handlers = local.GetOrAdd(topic, _ => new List<Action<BrokerRecord>>());
         lock (handlers) handlers.Add(onRecord);
+        QueueOf(topic);   // the topic's consumer is up before anything is queued for it
 
         // A late subscriber still sees what already arrived on its topic.
         BrokerRecord[] backlog;
@@ -182,8 +208,9 @@ public sealed class HttpBroker : ITellWire
         return new Subscription(() => { lock (handlers) handlers.Remove(onRecord); });
     }
 
-    // Entry point for the TellController: a record arrived over HTTP.
-    // True when at least one local handler consumed it without throwing.
+    // Entry point for the TellController: a record arrived over HTTP. It is retained and QUEUED for the topic's consumer, and
+    // the request returns at once (ajuste 76): true when this golem subscribes the topic — the handlers run off the request,
+    // in arrival order — false when the topic is nobody's here (503: the origin keeps retrying).
     public bool Deliver(string topic, string key, IReadOnlyDictionary<string, string> headers, string value)
     {
         // A tell that arrives remembers who told it, so its ack can find the way back.
@@ -200,18 +227,31 @@ public sealed class HttpBroker : ITellWire
             if (log.Count > RetainedPerTopic) log.RemoveAt(0);
         }
 
-        if (!local.TryGetValue(topic, out var handlers)) return false;
-        Action<BrokerRecord>[] snapshot;
-        lock (handlers) snapshot = handlers.ToArray();
-
-        bool consumed = false;
-        foreach (var handler in snapshot)
-        {
-            try { handler(record); consumed = true; }
-            catch (Exception ex) { Console.WriteLine($"[wire {whoAmI}] handler failed on '{topic}': {ex.Message}"); }
-        }
-        return consumed;
+        if (!local.ContainsKey(topic)) return false;
+        return QueueOf(topic).Writer.TryWrite(record);
     }
+
+    // The topic's queue, its consumer started with it: one record at a time, in the order they came, each handed to every
+    // handler of the topic; a handler that throws is noted and the next record follows.
+    private Channel<BrokerRecord> QueueOf(string topic) => queues.GetOrAdd(topic, t =>
+    {
+        var queue = Channel.CreateUnbounded<BrokerRecord>(new UnboundedChannelOptions { SingleReader = true });
+        _ = Task.Run(async () =>
+        {
+            await foreach (var record in queue.Reader.ReadAllAsync())
+            {
+                if (!local.TryGetValue(t, out var handlers)) continue;
+                Action<BrokerRecord>[] snapshot;
+                lock (handlers) snapshot = handlers.ToArray();
+                foreach (var handler in snapshot)
+                {
+                    try { handler(record); }
+                    catch (Exception ex) { Console.WriteLine($"[wire {whoAmI}] handler failed on '{t}': {ex.Message}"); }
+                }
+            }
+        });
+        return queue;
+    });
 
     private sealed class Subscription : IDisposable
     {

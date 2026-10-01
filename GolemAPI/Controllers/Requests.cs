@@ -94,8 +94,8 @@ public sealed record FormationRequest(string Figure, PointRequest Center, double
         else foreach (var p in Center.Problems()) yield return "centre: " + p;
         if (Radius.HasValue) yield return "a square is said by its side, \"side\": 2.0 — not by a radius";
         if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
-        if (Policy == "distance") yield return "\"by\": \"distance\" is not built yet (propuesta 64): \"by\": \"rank\" takes the places by the fleet's names";
-        else if (Policy != "rank") yield return "the policy is \"rank\" (\"distance\" is propuesta 64)";
+        if (Policy is not ("rank" or "distance")) yield return "the policy is \"rank\" or \"distance\"";
+        if (Policy == "distance" && !string.IsNullOrWhiteSpace(Effect)) yield return "the turn by distance is not built yet: \"by\": \"rank\" for an effect";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
         bool effect = !string.IsNullOrWhiteSpace(Effect);
         if (effect && !Effects.Contains(Effect.Trim().ToLowerInvariant())) yield return "the effect must be one of " + string.Join(", ", Effects);

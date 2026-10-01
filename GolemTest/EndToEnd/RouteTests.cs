@@ -343,6 +343,64 @@ public class RouteTests
     }
 
     [TestMethod]
+    public void ATouchFromBehind_ClearsAhead_InsteadOfBackingIntoWhatTouchedIt()
+    {
+        // propuesta 75 (1-oct-2026): caught up with from behind on the open floor, going north — the body goes AHEAD, the same distance
+        var map = Catalog.OpenFloor();
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+
+        var route = g.Visit(new Pose(4.5, 4.5, 1.5708), new Position(4.5, 9.0));
+        g.Bump(new Pose(4.5, 7.0, 1.5708), Math.PI);   // pressed on the back while facing north: the touch at (4.5, 6.75), behind
+        Assert.IsTrue(collisions.KnowsAt(new Position(4.5, 6.75)), "the mark where the touch landed: one radius behind");
+        Assert.AreEqual("advance", route.Order, "away from the touch: ahead, not back into it");
+        Assert.AreEqual("away", route.NextLeg.Kind, "the clearance leg: " + route.AsPlan());
+        Assert.IsTrue(route.NextLeg.IsCorrection);
+        Assert.IsFalse(route.NextLeg.IsReverse, "walked forward");
+        Assert.IsTrue(route.NextLeg.Target.Y >= 7.0 + body.Retreat.InMeters - 1e-6, "at least the body's retreat ahead of where it stood: " + route.NextLeg.Target.Y);
+        Assert.AreEqual(4.5, route.NextLeg.Target.X, 1e-3, "along its own axis");
+        Assert.AreEqual(route.NextLeg.Target.Y - 7.0, route.Amount, 1e-9, "the amount is the run ahead");
+        StringAssert.StartsWith(route.AsPlan(), "away@", route.AsPlan());
+        StringAssert.EndsWith(route.AsPlan(), "floor@4.5,9", "and on to the stop from there: " + route.AsPlan());
+
+        // the same touch on the nose: back, as always
+        var other = new Golem(body);
+        other.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var ahead = other.Visit(new Pose(4.5, 4.5, 1.5708), new Position(4.5, 9.0));
+        other.Bump(new Pose(4.5, 7.0, 1.5708), 0.0);
+        Assert.AreEqual("back", ahead.Order);
+        Assert.AreEqual("back", ahead.NextLeg.Kind);
+        Assert.IsTrue(ahead.NextLeg.Target.Y <= 7.0 - body.Retreat.InMeters + 1e-6);
+
+        // exactly on the flank: ahead counts — the body backs off, as it always did
+        var flank = new Golem(body);
+        flank.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var side = flank.Visit(new Pose(4.5, 4.5, 1.5708), new Position(4.5, 9.0));
+        flank.Bump(new Pose(4.5, 7.0, 1.5708), Math.PI / 2);
+        Assert.AreEqual("back", side.Order, "a touch on the flank is not from behind");
+    }
+
+    [TestMethod]
+    public void ATouchFromBehind_NearAWallAhead_ClearsOnlyAsFarAsTheWallLeaves()
+    {
+        var map = Catalog.OpenFloor();   // the floor is 11 × 11: its north wall at y = 11
+        var collisions = new Collisions();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, collisions));
+
+        var route = g.Visit(new Pose(5.5, 5.0, 1.5708), new Position(5.5, 10.5));
+        g.Bump(new Pose(5.5, 10.3, 1.5708), Math.PI);   // caught up with from behind, close to the north wall
+        Assert.AreEqual("advance", route.Order);
+        Assert.AreEqual("away", route.NextLeg.Kind);
+        Assert.IsTrue(g.HasRoomAt(route.NextLeg.At), "the clearance stands off the wall: " + route.AsPlan());
+        Assert.IsTrue(route.NextLeg.Target.Y > 10.3, "and still ahead of where the body stood");
+        Assert.IsTrue(route.NextLeg.Target.Y <= 10.3 + body.Retreat.InMeters + 1e-6, "no further than the plain distance when nothing that way is clear");
+    }
+
+    [TestMethod]
     public void AfterABump_TheRetreatLeavesRoomToTurn_AndTheRoadGoesAroundIfTheBodyFits()
     {
         var map = Catalog.Warehouse();

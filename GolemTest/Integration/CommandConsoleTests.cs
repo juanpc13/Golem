@@ -176,7 +176,7 @@ public class CommandConsoleTests
         StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard the call and joined by itself: first of the four, the north-east corner — " + blueWay);
 
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --with blue")).Kind, "a choreography spreads by itself");
-        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by distance")).Kind, "the other policy is propuesta 64");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by distance --effect rotate-clockwise --for 10s")).Kind, "no turn by distance yet");
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph circle --center 5.5,5.5 --radius 1.0")).Kind, "the square alone for now");
         Assert.AreEqual("refused", (await red.ExecuteAsync("choreograph square --center 0.75,5.5 --side 2.0")).Kind, "a square the corridor cannot hold: red's corner falls in the wall");
 
@@ -185,6 +185,28 @@ public class CommandConsoleTests
         StringAssert.Contains((await red.ExecuteAsync("route")).Text, "11 stop(s) left", "its corner and ten stages: a side of 2 m is 1 s at 2 m/s");
         string blueTurn = await Until(blue, "11 stop(s) left");
         StringAssert.Contains(blueTurn, "11 stop(s) left", "blue heard the turning call and turns the same square — " + blueTurn);
+    }
+
+    // BY DISTANCE (ajuste 73): red is commanded and convenes; blue hears where red stood, convenes by itself and takes the place red
+    // leaves it. A square of side 1 around (2.0, 1.5), in the living room: red at its mark (2.5, 2.5) is nearest the north-east corner
+    // (2.5, 2.0), so blue — far away in the north hall — gets the south-west one (1.5, 1.0). By rank it would be the other way round
+    // (blue first of the names, the north-east corner).
+    [TestMethod]
+    public async Task AChoreographyByDistance_EachGolemTakesTheNearestPlace_TheWordSpreadsAndDecides()
+    {
+        await using var world = new MockWorld();
+        await world.PlaceGolemAsync("red");
+        await world.PlaceGolemAsync("blue");
+        var red = new Commander(world.HostOf("red").Embodiment);
+        var blue = new Commander(world.HostOf("blue").Embodiment);
+
+        var call = await red.ExecuteAsync("choreograph square --center 2.0,1.5 --side 1.0 --by distance --fleet blue,red");
+        Assert.IsTrue(call.Ok, call.Text);
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "living@2.5,2", "red, nearest to the north-east corner, sets out to it");
+        string blueWay = await Until(blue, "living@1.5,1");
+        StringAssert.Contains(blueWay, "living@1.5,1", "blue heard red, convened by itself and took the south-west corner — " + blueWay);
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "living@2.5,2", "blue's word took nothing from red");
+        StringAssert.Contains((await red.ExecuteAsync("state")).Text, "of 1 route(s)", "red's route was never interrupted: still its one route");
     }
 
     // The newest route of a golem, read until it says what a tell should have made it do (a tell is delivered, not instant).

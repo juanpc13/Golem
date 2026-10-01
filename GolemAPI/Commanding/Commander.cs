@@ -130,6 +130,7 @@ public sealed class Commander
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
+        if (request.Policy == "distance") return Answered(displacer.Convene(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet));   // ajuste 73
         var turn = request.Turn;
         return Answered(turn == null ? displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet) : displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet, turn.Value));
     }

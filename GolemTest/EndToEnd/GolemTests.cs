@@ -253,6 +253,30 @@ public class GolemTests
     }
 
     [TestMethod]
+    public void TwoBodiesOnOneColumn_TheOneBehindCatchesUp_AndTheyPartInsteadOfShoving()
+    {
+        // propuesta 75 (1-oct-2026, the lab "el cuadrado más al norte"): red going north on x = 4.5 caught up with green, standing there;
+        // green, touched on the back, backed off INTO red, which backed off too — both stalled. Now green clears AHEAD and red backs off.
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var green = new Golem(body, "green");
+        green.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var red = new Golem(body, "red");
+        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+
+        var greens = green.Visit(new Pose(4.5, 6.5, 1.5708), new Position(4.5, 7.0));   // green, half a metre short of its place, facing north
+        var reds = red.Visit(new Pose(4.5, 4.5, 1.5708), new Position(4.5, 9.0));         // red, up the same column, through green's place
+        green.Bump(new Pose(4.5, 6.9, 1.5708), Math.PI);   // green pressed on the back: red's nose at (4.5, 6.65)
+        red.Bump(new Pose(4.5, 6.4, 1.5708), 0.0);          // red pressed on the nose: green's back at (4.5, 6.65)
+
+        Assert.AreEqual("advance", greens.Order, "the one touched from behind goes ahead");
+        Assert.AreEqual("away", greens.NextLeg.Kind);
+        Assert.AreEqual("back", reds.Order, "the one that touched with its nose backs off");
+        Assert.IsTrue(greens.NextLeg.Target.Y > 6.9 && reds.NextLeg.Target.Y < 6.4, "the two legs lead apart: " + greens.AsPlan() + " | " + reds.AsPlan());
+        double gap = greens.NextLeg.Target.Y - reds.NextLeg.Target.Y;
+        Assert.IsTrue(gap >= 0.5 + 2 * body.Retreat.InMeters - 1e-6, "once walked, two retreats further apart than they stood: " + gap);
+    }
+
+    [TestMethod]
     public void ATouchOnTheLeftFlank_LandsALeftOfTheBody()
     {
         var map = Catalog.Warehouse();

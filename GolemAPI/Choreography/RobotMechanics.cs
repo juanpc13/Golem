@@ -65,7 +65,9 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
             ("next-order-join",   "[_:Choreographies].Join(_, _, _)"),   // the golem takes its place in a formation (propuesta 59)
-            ("next-order-join-turn", "[_:Choreographies].Join(_, _, _, _)"),   // …and turns with the fleet around it (paso 3)
+            ("next-order-join-turn", "[_:Choreographies].Join(_, _, _, _)"),
+            ("next-order-convene", "[_:Choreographies].Convene(_, _, _)"),   // the golem convenes by distance (ajuste 73)
+            ("next-order-stood",   "[_:Muster].Stood(_, _)"),               // …and a peer's word may interrupt its route   // …and turns with the fleet around it (paso 3)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),
             ("next-order-resume", "[_:Golem].Resume(_)"),   // a zero-argument pattern on the golem did not fire (17-sep lab): the pose rides along, and it is true
@@ -126,6 +128,9 @@ public sealed class RobotMechanics : IOutputSink
             case "turnRight":
                 TurnRight(order);
                 break;
+            case "stop" when order.IsHalt:
+                Halt(order);                                // a route yields its place: the body stops and says where it stood (propuesta 74)
+                break;
             case "stop":
                 if (Carrying == null) break;                // already standing: the clock asked again while held
                 Stop();
@@ -166,6 +171,12 @@ public sealed class RobotMechanics : IOutputSink
         _ = ros.PublishAsync(ros.OrderTopic, "{\"action\":\"stop\"}");
     }
 
+    /// <summary>Halt: the route underway YIELDS its place (propuesta 74) — the body stops with a ticket of its own and answers `done` once
+    /// it stands, so the golem writes where it really stood (`muster.Halted(me)`). It is carried like any order: the clock asking the
+    /// same stop again sends nothing, and the body's `done` is met on its ticket. What it was doing is not kept: that route is over.</summary>
+    private void Halt(Order order) =>
+        Send(order, "stopping — its place went to a peer: the body says where it stands");
+
     /// <summary>Continue: the order the body was holding is back — it goes on with what it stopped.</summary>
     private void Continue(Order order)
     {
@@ -176,7 +187,7 @@ public sealed class RobotMechanics : IOutputSink
 
     private static string Whither(Order order) => order.Kind switch
     {
-        "stop" => "the stop", "via" => "a point", "around" => "a point around the obstacle", "aside" => "a point aside",
+        "stop" => "the stop", "via" => "a point", "around" => "a point around the obstacle", "aside" => "a point aside", "away" => "a point clear of the touch",
         _ => $"the passage {order.Name}"
     };
 

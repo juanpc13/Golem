@@ -50,6 +50,10 @@ internal sealed class Route
     /// <summary>Where the body stood, facing which way, when the operator held the route (Juan, 17-sep-2026: "guardar la
     /// posición actual… y cuando le den resume, desde su posición hacia la siguiente que tenía en ruta"). Null until held.</summary>
     internal Pose HeldAt { get; private set; }
+    /// <summary>Whether the route YIELDS — it lost its place in a convocation while the body was carrying one of its orders (propuesta 74,
+    /// 1-oct-2026): it asks the body to stop and say where it stood, and the convocation opens the route that replaces it from there
+    /// (<c>muster.Halted(me)</c>). Still pending; nothing more is walked on it.</summary>
+    internal bool Yielding { get; private set; }
 
     private RouteStatus status = RouteStatus.Pending;
     private Trajectory way = new(Array.Empty<Leg>());   // the plan: passages to cross, points to pass, stops to reach, in order
@@ -168,7 +172,7 @@ internal sealed class Route
     {
         if (onTheWay == null) throw new GolemDomainException("Route.Dash: 'onTheWay' was not given");
         if (!onTheWay.IsOnTheWay) throw new GolemDomainException($"route {Id} is improved with the golem's on-the-way strategy, not '{onTheWay.Name}'");
-        if (!IsPending() || Navigation.IsOnTheWay) return this;
+        if (!IsPending() || Yielding || Navigation.IsOnTheWay) return this;   // a route that yields is replaced, not improved
         Navigation = onTheWay;   // the golem's own strategy, the same object — nothing is built here
         Plan(standing ?? origin);
         return this;
@@ -274,9 +278,9 @@ internal sealed class Route
         get
         {
             if (!IsPending()) return Status;
-            if (Paused) return "stop";
+            if (Paused || Yielding) return "stop";
             if (!IsRouted || nextLeg >= way.Count) throw new GolemDomainException($"route {Id} is pending with no way ahead: a route is born with its way and decides it again by itself");
-            if (NextLeg.IsReverse) return "back";
+            if (NextLeg.IsReverse) return "back";   // the retreat; a clearance ahead (away) is an advance like any leg
             if (!turned && Math.Abs(TurnAhead) > TurnTolerance) return TurnAhead > 0 ? "turnLeft" : "turnRight";
             return "advance";
         }
@@ -322,7 +326,7 @@ internal sealed class Route
     // The turn, signed, from where the body faces to where it must face (positive: to the left, counter-clockwise).
     private double TurnAhead => standing == null ? 0.0 : Normalize(Target.Heading - standing.Heading);
     /// <summary>Whether the body may act on the next leg now — back, turn or advance: a leg ahead, not held.</summary>
-    internal bool IsWalkable => IsPending() && IsRouted && nextLeg < way.Count && !Paused;
+    internal bool IsWalkable => IsPending() && IsRouted && nextLeg < way.Count && !Paused && !Yielding;
     internal int LegsLeft => way.Count - nextLeg;
     /// <summary>The legs not yet known to be walked: the plan ahead, from the first one on.</summary>
     internal IReadOnlyList<Leg> LegsAhead => way.Legs().Skip(nextLeg).ToList();
@@ -492,7 +496,7 @@ internal sealed class Route
         bumpsSinceRoute++;
         collisions.Mark(touch);
         lastTouch = touch;
-        Correct(me, replan: true);
+        Correct(me, touch, replan: true);
         if (bumps > PatienceWithThings) End(RouteStatus.Failed, $"its patience with things is spent: {bumps} bumps on this route");
         return this;
     }
@@ -508,10 +512,10 @@ internal sealed class Route
         if (bumps == 0) throw new GolemDomainException($"route {Id} has no bump to annul");
         bumps--;
         if (bumpsSinceRoute > 0) bumpsSinceRoute--;
-        if (IsRouted && nextLeg < way.Count && NextLeg.IsReverse)
+        if (IsRouted && nextLeg < way.Count && NextLeg.Kind is Leg.Retreat or Leg.Clearance)
         {
             var back = NextLeg.At;
-            var legs = new List<Leg> { new(back, Leg.Retreat) };
+            var legs = new List<Leg> { new(back, NextLeg.Name) };   // the retreat — or the clearance ahead — not yet walked is kept
             try { legs.AddRange(PastFrom(back, standing.Heading, lastTouch)); }
             catch (GolemDomainException) { Strand(legs, standing); return this; }   // stranded still: the retreat alone, decided again once reached
             Take(new Trajectory(legs), standing);
@@ -533,7 +537,7 @@ internal sealed class Route
         if (ReferenceEquals(at, me)) throw new GolemDomainException("Route.Graze: 'at' and 'me' are the same position");
         grazes++;
         grazesOnLeg++;
-        Correct(me, replan: false);
+        Correct(me, at, replan: false);
         if (grazesOnLeg >= PatienceWithWalls) End(RouteStatus.Failed, $"its patience with walls is spent: {grazesOnLeg} grazes on one leg");   // the route ends by itself
         return this;
     }
@@ -550,14 +554,15 @@ internal sealed class Route
         linedUp = false;
     }
 
-    // The corrections a touch inserts ahead of what was left: back off first (a leg walked in reverse, the body's retreat
-    // behind where it stood), then — replanning — the road from there through the stops ahead, or — not replanning — the
-    // legs that were left, walked again from the retreat point. If no road fits from there, the retreat alone stays and
-    // the route decides again from it once reached (Reach → PlanAgainFrom).
-    private void Correct(Pose me, bool replan)
+    // The corrections a touch inserts ahead of what was left: clear what was touched first — AWAY FROM THE TOUCH (propuesta 75):
+    // touched ahead, a leg walked in reverse, the body's retreat behind where it stood (back); touched from behind, the same
+    // distance walked forward (away) — then — replanning — the road from there through the stops ahead, or — not replanning —
+    // the legs that were left, walked again from that point. If no road fits from there, that leg alone stays and the route
+    // decides again from it once reached (Reach → PlanAgainFrom).
+    private void Correct(Pose me, Position touch, bool replan)
     {
-        var back = RetreatFrom(me);
-        var legs = new List<Leg> { new(back, Leg.Retreat) };
+        var back = RetreatFrom(me, touch);
+        var legs = new List<Leg> { new(back, TouchedFromBehind(me, touch) ? Leg.Clearance : Leg.Retreat) };
         if (replan)
         {
             try { legs.AddRange(PastFrom(back, me.Heading, lastTouch)); }
@@ -607,22 +612,35 @@ internal sealed class Route
     /// <summary>How far the retreat may grow, in retreats, when the body's own retreat leaves it no room to turn.</summary>
     internal const double RetreatAtMost = 3;
 
-    // Where the body backs off to: straight back along the reverse of its heading, the body's own retreat at least, and
-    // FURTHER — up to RetreatAtMost retreats, a half radius at a time — until it stands with room to turn in place there:
-    // clear of the walls, and clear of every figure by a whole extra radius, so the shell sweeping round touches nothing
-    // (Juan, 17-sep-2026: "retroceder más y girar alejándose de la marca, para rodearla si aún cabe su cuerpo o ir por
-    // otra ruta si ya no cabe" — the 16-sep run touched the crate's corner again while turning after a plain retreat). Where
-    // nothing behind is clear, the plain retreat: the road from there will say whether a way fits.
-    private Position RetreatFrom(Pose me)
+    // Where the body clears to, AWAY FROM THE TOUCH along its own axis (propuesta 75, 1-oct-2026: a body caught up with from behind
+    // backed off INTO the one that touched it, and both stalled): touched ahead, straight back along the reverse of its heading;
+    // touched from behind, straight ahead. The body's own retreat at least, and FURTHER — up to RetreatAtMost retreats, a half
+    // radius at a time — until it stands with room to turn in place there: clear of the walls, and clear of every figure by a
+    // whole extra radius, so the shell sweeping round touches nothing (Juan, 17-sep-2026: "retroceder más y girar alejándose de
+    // la marca, para rodearla si aún cabe su cuerpo o ir por otra ruta si ya no cabe" — the 16-sep run touched the crate's
+    // corner again while turning after a plain retreat). Where nothing that way is clear of the figures, the plain distance: the
+    // road from there will say whether a way fits. A WALL that way shortens it (propuesta 75): the farthest point, a half radius
+    // at a time, where the body still has room — never into the wall; none at all, the plain distance, as before.
+    private Position RetreatFrom(Pose me, Position touch)
     {
+        double away = TouchedFromBehind(me, touch) ? me.Heading : me.Heading + Math.PI;
         for (double d = retreat; d <= retreat * RetreatAtMost + 1e-9; d += radius / 2)
         {
-            var back = me.Along(me.Heading + Math.PI, d);
-            if (!layout.HasRoom(back, radius)) break;                   // a wall behind: no further
-            if (!collisions.Blocks(back, radius * 2)) return back;      // room to turn: an extra radius clear of every figure
+            var clear = me.Along(away, d);
+            if (!layout.HasRoom(clear, radius)) break;                  // a wall that way: no further
+            if (!collisions.Blocks(clear, radius * 2)) return clear;    // room to turn: an extra radius clear of every figure
         }
-        return me.Along(me.Heading + Math.PI, retreat);
+        for (double d = retreat; d > radius / 2; d -= radius / 2)       // the wall is nearer than the retreat: as far as it leaves
+        {
+            var clear = me.Along(away, d);
+            if (layout.HasRoom(clear, radius)) return clear;
+        }
+        return me.Along(away, retreat);
     }
+
+    // Whether the touch landed on the back half of the body's shell: its bearing from where the body faces beyond a right angle.
+    // Exactly on the flank counts as ahead — the body backs off, as it always did.
+    private static bool TouchedFromBehind(Pose me, Position touch) => Math.Abs(Normalize(me.HeadingTo(touch) - me.Heading)) > Math.PI / 2 + 1e-9;
 
     // ---- the hold (Juan, 14-sep-2026: "pausa/continuar el trayecto actual en ejecución") ----
 
@@ -656,6 +674,17 @@ internal sealed class Route
             turned = false;
             turnsOnLeg = 0;
         }
+        return this;
+    }
+
+    /// <summary>The route YIELDS (propuesta 74): its place went to a peer while the body was carrying one of its orders, so the order in
+    /// course is measured from a pose the route no longer knows. It asks the body to stop (`Order` = stop) and waits for where the body
+    /// stood; the convocation then abandons it and opens the one that replaces it from there. Only once.</summary>
+    internal Route Yield()
+    {
+        MustBePending();
+        if (Yielding) throw new GolemDomainException($"route {Id} already yields");
+        Yielding = true;
         return this;
     }
 

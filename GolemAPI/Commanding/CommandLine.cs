@@ -39,7 +39,7 @@ public static class CommandLine
     {
         new CommandHelp("visit", "visit x,y [x,y …]", "an errand through those points, in that order", "visit 2,9.5 9,8"),
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
-        new CommandHelp("choreograph", "choreograph square --center x,y --side s [--by rank] [--effect rotate-clockwise|rotate-counterclockwise --for 10s] [--fleet a,b]", "the fleet takes a square, said by its side, its sides square to the map, the first corner north-east; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged (--by distance, by who stands nearest, is propuesta 64); --effect turns it along its sides for that long; it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
+        new CommandHelp("choreograph", "choreograph square --center x,y --side s [--by rank|distance] [--effect rotate-clockwise|rotate-counterclockwise --for 10s] [--fleet a,b]", "the fleet takes a square, said by its side, its sides square to the map, the first corner north-east; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged; --by distance: each golem sets out to the nearest corner it knows and a nearer peer's word may send it to the next (ajuste 73; no effect by distance yet); --effect turns it along its sides for that long; it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
@@ -134,8 +134,7 @@ public static class CommandLine
                 if (values.TryGetValue("by", out var by))
                 {
                     values["by"] = by.ToLowerInvariant();
-                    if (values["by"] == "distance") throw new CommandSyntaxException("choreograph: --by distance is not built yet (propuesta 64); --by rank takes the corners by the fleet's names");
-                    if (values["by"] != "rank") throw new CommandSyntaxException($"choreograph: --by is rank (distance comes with propuesta 64); found '{Head(by)}'");
+                    if (values["by"] is not ("rank" or "distance")) throw new CommandSyntaxException($"choreograph: --by is rank or distance; found '{Head(by)}'");
                 }
                 if (values.TryGetValue("fleet", out var fleet) && !Names.IsMatch(fleet)) throw new CommandSyntaxException($"choreograph: --fleet expects names like blue,red; found '{Head(fleet)}'");
                 // an effect and how long it lasts go together: --effect rotate-clockwise --for 10s (seconds, the s optional)
@@ -149,6 +148,8 @@ public static class CommandLine
                         throw new CommandSyntaxException($"choreograph: --for expects seconds greater than zero, like --for 10s; found '{Head(values["for"])}'");
                     values["for"] = seconds.ToString(CultureInfo.InvariantCulture);
                 }
+                if (values.TryGetValue("by", out var policy) && policy == "distance" && values.ContainsKey("effect"))
+                    throw new CommandSyntaxException("choreograph: the turn by distance is not built yet — --by rank for an effect");
                 return new Command(named, with, verb, centre, noOptions, rest[0], values);
             }
             case "adopt":

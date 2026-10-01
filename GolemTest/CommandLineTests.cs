@@ -140,7 +140,8 @@ public class CommandLineTests
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5"), "choreograph square: expected --center x,y and --side s");
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side"), "--side needs a value");
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side -2"), "--side expects metres greater than zero");
-        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 2 --by distance"), "--by distance is not built yet (propuesta 64)");
+        Assert.AreEqual("distance", CommandLine.Parse("choreograph square --center 5.5,5.5 --side 2 --by Distance").Values["by"], "by distance: who stands nearest (ajuste 73)");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 2 --by distance --effect rotate-clockwise --for 10s"), "the turn by distance is not built yet");
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 2 --by luck"), "--by is rank");
         StringAssert.Contains(Refused("choreograph square --center kitchen --side 1"), "expected a point like 2,9.5 at 'kitchen'");
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side 1 --spin"), "'--spin' is no option");

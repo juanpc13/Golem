@@ -7,7 +7,7 @@ namespace GolemDomain.Routes;
 /// to cross (north~center), a detour around a mark (around), a step out of a peer's way (aside), or a stop to
 /// reach (named by its zone: garage). A door's leg also says how it is walked: line up at the approach (in front
 /// of the door, off the wall) and end at the exit (behind it); for an opening, a detour or a stop both are the
-/// point. The legs of a maneuver (back, aside, ahead) never enter a mission's road.
+/// point. The legs of a maneuver (back, away, aside, ahead) never enter a mission's road.
 /// </summary>
 internal sealed class Leg
 {
@@ -18,6 +18,10 @@ internal sealed class Leg
     /// <summary>The name of the leg a touch inserts first: back off, in reverse, to a point behind where the body stood
     /// (Juan, 16-sep-2026: "el siguiente print sea retroceder un poco… pasos intermedios adicionales en la lista").</summary>
     internal const string Retreat = "back";
+    /// <summary>The name of the leg a touch FROM BEHIND inserts first (propuesta 75, 1-oct-2026): the body clears what touched it by
+    /// moving AHEAD — the same distance as a retreat, walked forward, the body's own axis — so two bodies that caught up with each
+    /// other part instead of shoving (the one touched on the nose backs off, the one touched on the back goes ahead).</summary>
+    internal const string Clearance = "away";
     /// <summary>A point the way passes through that is no passage and no stop — what the route calls a point it was given
     /// bare (the planner's detours and courtesy steps arrive at the journal as points).</summary>
     internal const string Waypoint = "via";
@@ -30,11 +34,11 @@ internal sealed class Leg
     internal bool IsStop => Kind == "stop";
     /// <summary>door, opening, around, aside or stop — what the journal's act for this leg is.</summary>
     internal string Kind =>
-        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name == Retreat ? Retreat : Name == Waypoint ? Waypoint : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
+        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name == Retreat ? Retreat : Name == Clearance ? Clearance : Name == Waypoint ? Waypoint : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
     /// <summary>A correction the way gained after a touch (back, around, aside), as opposed to a leg of the plan as first decided
     /// (a door, an opening, a point, a stop) — Juan, 16-sep-2026: "posiciones legacy vs posiciones de corrección".</summary>
-    internal bool IsCorrection => Kind == Retreat || Kind == Detour || Kind == Courtesy;
-    /// <summary>Walked in reverse: no turn before it.</summary>
+    internal bool IsCorrection => Kind == Retreat || Kind == Clearance || Kind == Detour || Kind == Courtesy;
+    /// <summary>Walked in reverse: no turn before it. A clearance (away) is a correction too, but walked forward.</summary>
     internal bool IsReverse => Kind == Retreat;
     /// <summary>A passage's two areas (the first and the second of its name); "" for a point or a stop.</summary>
     internal string A => Kind == "door" ? Name[..Name.IndexOf('/')] : Kind == "opening" ? Name[..Name.IndexOf('~')] : "";

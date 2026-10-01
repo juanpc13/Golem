@@ -162,6 +162,7 @@
         <button id="then" class="place">then</button>
         <button id="square" class="place" title="the fleet takes a square, said by its side, each golem the corner of its rank among the names (--by rank) — add --with all or press the peers">square</button>
         <button id="sqspin" class="place" title="the fleet takes the square by rank and turns clockwise along its sides for ten seconds">square · rotate 10s</button>
+        <button id="sqnear" class="place" title="the fleet takes a square by distance: each golem sets out to the nearest corner it knows, and a nearer peer's word may send it to the next (ajuste 73)">square · by distance</button>
         <button id="clear">clear the line</button>
       </div>
       <div class="row">
@@ -422,6 +423,7 @@ document.getElementById('move').onclick = () => compose('visit');
 document.getElementById('cover').onclick = () => compose('cover');
 document.getElementById('square').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank');
 document.getElementById('sqspin').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank --effect rotate-clockwise --for 10s');
+document.getElementById('sqnear').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
 document.getElementById('then').onclick = () => compose('then');
 document.getElementById('clear').onclick = () => setWhole(head);
 for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],

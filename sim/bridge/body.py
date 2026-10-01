@@ -13,6 +13,7 @@ the order is a TICKET the golem stamped, the only thing the body echoes back), s
   {"action": "turnRight", "amount": 0.80, "route": 3, ...}   — the same, clockwise
   {"action": "stop"}                    — stand, remembering what it was doing and how much was left (the operator held the golem, or nothing is pending)
   {"action": "stop", "anchor": true}    — stand, and take the world's word for where you are (after a teleport)
+  {"order": 18, "action": "stop"}       — stand, and say done once standing: a stop with a ticket is an order like any other, and gets its word back
   {"action": "continue"}                — take up what was left of what it was doing when it was stopped
 A new action replaces whatever the body was doing. The amounts are measured on the body's own odometry — how far it
 travelled since the order began, how much it turned — never against a point on the plane: the golem decides the points,
@@ -153,6 +154,9 @@ class Body(Node):
                 if order.get("anchor"):
                     self.calibrate = True
                 self.drive(0.0, 0.0)
+                if order.get("order") is not None:   # a stop with a ticket is an order like any other: it gets its word back once the body stands
+                    self.get_logger().info("order %s: stop" % order.get("order"))
+                    self.say({"order": order.get("order"), "result": "done"})
                 return
             if action == "continue":
                 if self.held is None:

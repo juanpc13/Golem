@@ -151,6 +151,38 @@ public sealed class Displacer
                     expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @direction sense, @seconds span;
                 ";
 
+    // BY DISTANCE (ajuste 73): the convocation of this call, this golem convened in it — where it stands, the route to the best place it
+    // knows — and the act exposes where it stood, so echo-stood tells every peer (a peer's word may later interrupt this route).
+    private const string ConveneFormation = @"
+                    {
+                        from = g.Destination;
+                        center = Position(@cx, @cy);
+                        side = Meters(@sideLength);
+                        formation = g.Choreography.Formation(@figure, center, side);
+                        fleet = Fleet(@names);
+                        me = fleet.Member(g);
+                        muster = g.Choreography.Muster(@callId, formation, fleet);
+                        route = g.Choreography.Convene(from, muster, me);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                        expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, me.Name who, from.X stoodX, from.Y stoodY;
+                    }
+                ";
+
     /// <summary>The fleet is called to a FORMATION — the square, today — and this golem takes its place BY RANK (propuesta 59, paso 1;
     /// ajustes 65, 69): the formation by its name, at a centre with a side, the fleet's names (this golem among them), and the route to its place — the place of its rank among the names,
     /// sorted — decided inside. The first order is pushed to the body by the reaction on the act.</summary>
@@ -196,6 +228,28 @@ public sealed class Displacer
                 .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal($"{figure} at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}, rotating {turn.Direction} for {turn.Seconds:0.#} s: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The fleet is called to a FORMATION BY DISTANCE (ajuste 73): this golem convenes — recorded where it stands, the route to
+    /// the best place it knows — and every peer is told where it stood (a nearer peer's word may interrupt the route later).</summary>
+    public Answer Convene(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet)
+    {
+        if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
+        string callId = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // one call, frozen as a parameter: the convocation's identity
+        try
+        {
+            return Answer.Of(robot.Actor.Using(JoinCheck, ConveneFormation)
+                .WithParameters(p => {
+                    p["cx", typeof(double)] = Resolution.Metres(center.X);
+                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
+                    p["sideLength", typeof(double)] = Resolution.Metres(side);
+                    p["figure", typeof(string)] = figure;
+                    p["callId", typeof(string)] = callId;
+                    p["names", typeof(string)] = string.Join(",", fleet);
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"{figure} at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}, by distance: " + GolemEmbodiment.Reason(ex)); }
     }
 
     /// <summary>Send the golem through several points and let it choose the order that makes the way shortest: the same
@@ -397,6 +451,7 @@ public sealed class Displacer
         var was = robot.Mechanics.Carrying;
         if (was == null || was.Ticket != order) return null;   // the ticket the body echoes: a word about another order is stale (ajuste 55)
         robot.Mechanics.Done();
+        if (was.IsHalt) return Halted(was);                    // the body stopped for a route that yields its place (propuesta 74)
         var here = robot.Pose ?? new Pose(was.X, was.Y, was.Heading);
         bool stop = was.IsMove && was.Kind == "stop";
         Answer answer;
@@ -448,6 +503,57 @@ public sealed class Displacer
             robot.Mechanics.Linger(linger);
             robot.Note($"lingering {linger.TotalSeconds:0} s at ({was.X:0.0}, {was.Y:0.0}) to keep the leader's lead");
         }
+        return answer;
+    }
+
+    /// <summary>The body STOPPED for the route that yields its place and stands (propuesta 74): where it really stood — telemetry, like
+    /// the hold — enters as `me`, and the convocation abandons that route and opens the one that replaces it from there —
+    /// `route = muster.Halted(me)`. The script writes `route = g.Underway()` first, so `next-order-underway` pushes the new order.</summary>
+    private Answer Halted(Order was)
+    {
+        var pose = robot.Pose;
+        if (pose == null) { var refused = Answer.Refusal("no telemetry from the body: the halt needs where it stands"); robot.Report(refused, ""); return refused; }
+        Answer answer;
+        try
+        {
+            answer = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
+                    Check(g.Underway().Yielding) Error 'the route underway does not yield its place';
+                ",
+                @"
+                    {
+                        me = Pose(@px, @py, @ptheta);
+                        route = g.Underway();
+                        muster = g.Choreography.MusterOf(route);
+                        route = muster.Halted(me);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ")
+                .WithParameters(p => {
+                    p["px", typeof(double)] = Resolution.Metres(pose.X);
+                    p["py", typeof(double)] = Resolution.Metres(pose.Y);
+                    p["ptheta", typeof(double)] = Resolution.Radians(pose.Theta);
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { answer = Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+        robot.Report(answer, $"route {was.Route}: stopped, its place went to a peer — standing at ({pose.X:0.0}, {pose.Y:0.0}) facing {pose.Theta:0.00}");
         return answer;
     }
 

@@ -515,6 +515,12 @@ public sealed class MockWorld : ILabWorld
             using var doc = JsonDocument.Parse(json);
             var o = doc.RootElement;
             string action = o.GetProperty("action").GetString();
+            if (action == "stop" && o.TryGetProperty("order", out var stopTicket) && stopTicket.ValueKind == JsonValueKind.Number)
+            {
+                lock (gate) { held = null; doing = null; }   // a stop with a ticket wants its word back: the body stands (propuesta 74)
+                Say($"{{\"order\":{stopTicket.GetInt32()},\"result\":\"done\"}}");
+                return;
+            }
             lock (gate)
             {
                 if (action == "stop") { held = doing; doing = null; return; }

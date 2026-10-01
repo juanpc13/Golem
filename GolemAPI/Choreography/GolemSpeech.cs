@@ -89,6 +89,18 @@ public sealed class GolemSpeech
                 tell CalledToTurn with @figure, @cx, @cy, @sideLength, @names, @direction, @seconds
                     to {p}
                     once 'called-' + @callId + '-{p}';"));
+            // BY DISTANCE (ajuste 73): a golem that convened tells every peer where it stood — its act's expose, the position read from
+            // the domain (expose takes any primitive expression). The peer that had not convened convenes itself and tells in turn; each
+            // golem convenes once, so the word spreads with no loop. The once is per call, teller and peer.
+            string stood = string.Join("\n", peers.Select(p => $@"
+                tell StoodFor with @figure, @cx, @cy, @sideLength, @names, @callId, @who, @stoodX, @stoodY
+                    to {p}
+                    once 'stood-' + @callId + '-' + @who + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-stood")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Stood").One()
+                    .OnMatch("[_:Choreographies].Convene(_, _, _) expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call, $who who, $stoodX stoodX, $stoodY stoodY;")
+                .Causation.Continue(stood);
             golemActor.Reactions.DefineReaction("echo-called-turn")
                 .Cue().Company().WithSharedHydration()
                 .Seek("CalledTurn").One()
@@ -129,6 +141,9 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
+            .Told("StoodFor").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
+                .With<string>("callId").With<string>("teller").With<double>("px").With<double>("py")
+                .Command(GolemEmbodiment.UptakeStoodFor)
             .Told("CalledTo").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
                 .Command(GolemEmbodiment.UptakeCalledTo)
             .Told("CalledToTurn").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")

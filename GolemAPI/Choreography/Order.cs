@@ -24,6 +24,11 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
     public string Ended { get; init; } = "";
     public bool IsEnded => Ended != "";
 
+    /// <summary>The golem is held by the operator (`g.Held`, printed as `held`): its `stop` is the hold, taken up again by `continue`. A
+    /// `stop` that is no hold is a route YIELDING its place (propuesta 74): the body stops and says where it stood.</summary>
+    public bool Held { get; init; }
+    public bool IsHalt => Action == "stop" && !Held;
+
     /// <summary>Why the route ended short of its last stop, in the domain's words (`route.Why`, printed only when `route.EndedShort`):
     /// empty otherwise. For the log and the panel; it never travels to the body.</summary>
     public string Why { get; init; } = "";
@@ -54,8 +59,9 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
             if (!e.TryGetProperty("action", out var action))
                 return e.TryGetProperty("ended", out var ended) ? new Order(route.GetInt32(), "", 0, "", "", 0, 0, 0, false, 0) { Ended = ended.GetString() ?? "", Why = S("why") } : null;
             string a = action.GetString() ?? "";
-            if (e.TryGetProperty("held", out var held) && held.ValueKind == JsonValueKind.True) a = "stop";
-            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft"));
+            bool isHeld = B("held");
+            if (isHeld) a = "stop";
+            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft")) { Held = isHeld };
         }
         catch (JsonException) { return null; }
     }
