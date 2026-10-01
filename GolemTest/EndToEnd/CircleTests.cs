@@ -40,15 +40,18 @@ public class CircleTests
         Assert.AreEqual(places[0].DistanceTo(places[1]), places[1].DistanceTo(places[2]), 0.001, "three places evenly spaced: a triangle");
         Assert.AreEqual(places[1].DistanceTo(places[2]), places[2].DistanceTo(places[0]), 0.001);
 
-        var red = g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("call-red", circle, fleet), fleet.Member("red"));
+        var red = g.Choreography.Muster("call-red", circle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("red"));
         StringAssert.Contains(red.AsPlan(), "center@5,4.63", "red, third of three: the place at 240 degrees — from the living room, the door crossed on the way (Dash): " + red.AsPlan());
-        var blue = g.Choreography.Join(new Pose(0.5, 0.5, 0.0), g.Choreography.Muster("call-blue", circle, fleet), fleet.Member("blue"));
+        red.Abandon("this golem plays the next member now");   // its route ended: the berths of the others move on (ajuste 80)
+        var blue = g.Choreography.Muster("call-blue", circle, fleet).Join(new Pose(0.5, 0.5, 0.0), fleet.Member("blue"));
         StringAssert.Contains(blue.AsPlan(), "center@6.5,5.5", "blue, first: due east");
-        var green = g.Choreography.Join(new Pose(9.0, 9.5, 0.0), g.Choreography.Muster("call-green", circle, fleet), fleet.Member("green"));
+        blue.Abandon("this golem plays the next member now");
+        var green = g.Choreography.Muster("call-green", circle, fleet).Join(new Pose(9.0, 9.5, 0.0), fleet.Member("green"));
         StringAssert.Contains(green.AsPlan(), "center@5,6.37", "green, second: at 120 degrees");
+        green.Abandon("this golem plays the next member now");
         Assert.AreEqual("door by door", red.Navigation.Name, "a formation is joined by a route born door by door, like every route (ajuste 62)");
         g.Strategy.OnTheWay.Activate();
-        var again = g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("call-red-2", circle, fleet), fleet.Member("red"));   // another call: a golem takes one place per call
+        var again = g.Choreography.Muster("call-red-2", circle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("red"));   // another call: a golem takes one place per call
         Assert.AreEqual("door by door", again.Navigation.Name, "born door by door whatever the golem adopted: the script asks the strategy and improves it");
         Assert.IsTrue(g.Strategy.OnTheWay.IsActive, "what the script's if asks");
         Assert.AreEqual("on the way", g.Dash(again).Navigation.Name, "the route improved with a dash, as the script does it");
@@ -70,11 +73,11 @@ public class CircleTests
 
         // a circle in the west corridor (1.5 m wide) with a radius of 1 m: its places fall in the walls or the blocks
         var tight = new Circle(new Position(0.75, 5.5), new Meters(1.0));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("tight", tight, fleet), fleet.Member("blue"))).Message,
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Muster("tight", tight, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("blue"))).Message,
             "place 1 of 2 of the circle at (1.75, 5.5)");
         // a circle whose place lies outside the map altogether
         var outside = new Circle(new Position(11.0, 5.5), new Meters(2.0));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("outside", outside, fleet), fleet.Member("blue"))).Message, "is nowhere on the map");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Muster("outside", outside, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("blue"))).Message, "is nowhere on the map");
         Assert.AreEqual(0, g.Routes().Count, "nothing minted for a refused place");
     }
 }

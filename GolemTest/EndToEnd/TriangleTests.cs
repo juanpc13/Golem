@@ -60,9 +60,13 @@ public class TriangleTests
 
         var places = new HashSet<string>();
         foreach (var name in fleet.Names)
-            places.Add(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("call-" + name, triangle, fleet), fleet.Member(name)).AsPlan());
+        {
+            var taken = g.Choreography.Muster("call-" + name, triangle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
+            places.Add(taken.AsPlan());
+            taken.Abandon("this golem plays the next member now");   // the berths of the others move on with the route (ajuste 80)
+        }
         Assert.AreEqual(5, places.Count, "five golems, five places of the triangle");
-        StringAssert.Contains(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("again-blue", triangle, fleet), fleet.Member("blue")).AsPlan(), "floor@5.5,7.5", "blue, first: the apex");
+        StringAssert.Contains(g.Choreography.Muster("again-blue", triangle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("blue")).AsPlan(), "floor@5.5,7.5", "blue, first: the apex");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Triangle(new Position(5.5, 5.5), new Meters(0.0))).Message, "a side greater than zero");
     }
 }

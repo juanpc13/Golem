@@ -8,11 +8,10 @@ namespace GolemDomain.Formations;
 /// y ese creará el objeto de la variable formación, que puede ser cualquier forma al final"): born with the golem, like its strategies,
 /// and reached as <c>g.Choreography</c>. It makes a FORMATION by its name — the name enters where the object is created — with a centre and
 /// the formation's natural measure: <c>formation = g.Choreography.Formation(@figure, center, side);</c>. The script no longer says which
-/// shape it is. And it GIVES THE ROUTE to the place (ajuste 70; Juan: "el método Join es como algo que debe proporcionarlo el módulo de
-/// Choreography, dar la route"): <c>route = g.Choreography.Join(from, formation, me);</c> — the module decides the place; the golem, from
-/// inside, opens the route, so every route stays the golem's (its handle, its list, its scenario). The concrete figures stay
-/// constructible for the tests and for this module. Since ajuste 77 (1-oct-2026) every formation is taken THROUGH A CONVOCATION
-/// (<see cref="Formations.Muster"/>) — by rank or by distance — which stays as the formation in place and takes the fleet's steps.
+/// shape it is. Since ajuste 77 (1-oct-2026) every formation is taken THROUGH A CONVOCATION (<see cref="Formations.Muster"/>) — found or
+/// opened here by its call, <c>muster = g.Choreography.Muster(@callId, formation, fleet, @by);</c> — which takes the words
+/// (<c>muster.Convene(from, me)</c>, ajuste 81: the act on the object that keeps it), gives the routes through the golem it was born with,
+/// stays as the formation in place and takes the fleet's steps. The concrete figures stay constructible for the tests and for this module.
 /// </summary>
 internal sealed class Choreographies
 {
@@ -46,19 +45,6 @@ internal sealed class Choreographies
     /// <summary>The formations the golem knows how to take, by name.</summary>
     internal IReadOnlyList<string> Names() => Known;
 
-    /// <summary>The golem takes ITS PLACE in a formation BY RANK (propuesta 59, paso 1; ajuste 70: the module's, was the golem's; ajuste 77:
-    /// through the convocation, which keeps the place): the place of its rank among as many places as the fleet has bodies, and the
-    /// route to it — <c>route = g.Choreography.Join(from, muster, me);</c>. Refused when the place is nowhere on the map or leaves no
-    /// room for the body, or when the convocation is not this golem's.</summary>
-    internal Route Join(Position from, Muster muster, Member me)
-    {
-        if (from == null) throw new GolemDomainException("Choreographies.Join: 'from' was not given");
-        if (muster == null) throw new GolemDomainException("Choreographies.Join: 'muster' was not given");
-        if (me == null) throw new GolemDomainException("Choreographies.Join: 'me' was not given");
-        if (!musters.Contains(muster)) throw new GolemDomainException($"the call {muster.Call} is not this golem's: it is found with g.Choreography.Muster");
-        return muster.Join(from, me);
-    }
-
     /// <summary>The CONVOCATION of that call (ajuste 73; by rank too since ajuste 77): found by the call's identity, or opened — by the
     /// golem's own word or a peer's that came first — <c>muster = g.Choreography.Muster(@callId, formation, fleet);</c>.</summary>
     internal Muster Muster(string call, Formation formation, Fleet fleet)
@@ -66,9 +52,22 @@ internal sealed class Choreographies
         if (string.IsNullOrWhiteSpace(call)) throw new GolemDomainException("Choreographies.Muster: 'call' was not given");
         if (formation == null) throw new GolemDomainException("Choreographies.Muster: 'formation' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.Muster: 'fleet' was not given");
+        return Muster(call, formation, fleet, "rank");
+    }
+
+    /// <summary>The convocation of that call WITH ITS POLICY (ajuste 80) — <c>rank</c> or <c>distance</c>, the word that travels in the
+    /// tell so every copy shares it — found or opened: <c>muster = g.Choreography.Muster(@callId, formation, fleet, @by);</c>.</summary>
+    internal Muster Muster(string call, Formation formation, Fleet fleet, string by)
+    {
+        if (string.IsNullOrWhiteSpace(call)) throw new GolemDomainException("Choreographies.Muster: 'call' was not given");
+        if (formation == null) throw new GolemDomainException("Choreographies.Muster: 'formation' was not given");
+        if (fleet == null) throw new GolemDomainException("Choreographies.Muster: 'fleet' was not given");
+        if (by == null) throw new GolemDomainException("Choreographies.Muster: 'by' was not given");
+        string policy = by.Trim().ToLowerInvariant();
+        if (policy is not ("rank" or "distance")) throw new GolemDomainException($"the places are shared by 'rank' or by 'distance', not by '{by}'");
         var known = musters.FirstOrDefault(m => m.Call == call);
         if (known != null) return known;
-        var muster = new Muster(call, formation, fleet, golem);
+        var muster = new Muster(call, formation, fleet, golem, policy == "distance");
         musters.Add(muster);
         return muster;
     }
@@ -111,17 +110,4 @@ internal sealed class Choreographies
         return musters.FirstOrDefault(m => ReferenceEquals(m.Route, route))
             ?? throw new GolemDomainException($"route {route.Id} was given by no convocation");
     }
-
-    /// <summary>The golem CONVENES by distance (ajuste 73; Juan: "el Convene… termina dando la route del punto donde se moverá"): it is
-    /// recorded where it stands and given the route to the best place it knows now — <c>route = g.Choreography.Convene(from, muster, me);</c>.
-    /// A peer's word may interrupt that route later (<see cref="Formations.Muster.Stood"/>).</summary>
-    internal Route Convene(Position from, Muster muster, Member me)
-    {
-        if (from == null) throw new GolemDomainException("Choreographies.Convene: 'from' was not given");
-        if (muster == null) throw new GolemDomainException("Choreographies.Convene: 'muster' was not given");
-        if (me == null) throw new GolemDomainException("Choreographies.Convene: 'me' was not given");
-        if (!musters.Contains(muster)) throw new GolemDomainException($"the call {muster.Call} is not this golem's: it is found with g.Choreography.Muster");
-        return muster.Convene(from, me);
-    }
-
 }

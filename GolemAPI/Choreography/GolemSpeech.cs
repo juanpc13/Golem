@@ -72,30 +72,17 @@ public sealed class GolemSpeech
                     .OnMatch("Position($x, $y) [_:Golem].Forget(_)")   // the point built beside the act: no expose at all
                 .Causation.Continue(forgotten);
 
-            // The operator called this golem to a formation: every peer is told it was called too (ajustes 71, 72) — the formation and
-            // the fleet; each peer knows who it is (born with its name) and joins if it is in the fleet. Only the act with the expose is
-            // told: a peer's own join carries none, so the call spreads one hop, no loop. The once is per call and peer: the same square
-            // called again is another call.
-            string called = string.Join("\n", peers.Select(p => $@"
-                tell CalledTo with @figure, @cx, @cy, @sideLength, @names, @callId
-                    to {p}
-                    once 'called-' + @callId + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-called")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Called").One()
-                    .OnMatch("[_:Choreographies].Join(_, _, _) expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call;")
-                .Causation.Continue(called);
-            // BY DISTANCE (ajuste 73): a golem that convened tells every peer where it stood — its act's expose, the position read from
+            // THE CALL (ajustes 73, 80, both policies): a golem that convened tells every peer where it stood — its act's expose, the position read from
             // the domain (expose takes any primitive expression). The peer that had not convened convenes itself and tells in turn; each
             // golem convenes once, so the word spreads with no loop. The once is per call, teller and peer.
             string stood = string.Join("\n", peers.Select(p => $@"
-                tell StoodFor with @figure, @cx, @cy, @sideLength, @names, @callId, @who, @stoodX, @stoodY
+                tell StoodFor with @figure, @cx, @cy, @sideLength, @names, @callId, @by, @who, @stoodX, @stoodY
                     to {p}
                     once 'stood-' + @callId + '-' + @who + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-stood")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Stood").One()
-                    .OnMatch("[_:Choreographies].Convene(_, _, _) expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call, $who who, $stoodX stoodX, $stoodY stoodY;")
+                    .OnMatch("[_:Muster].Convene(_, _) expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call, $by policy, $who who, $stoodX stoodX, $stoodY stoodY;")   // the act on the convocation (ajuste 81)
                 .Causation.Continue(stood);
             // THE FORMATION IN PLACE (ajuste 77): a golem that reached its place says so to every peer — the arrival's act exposes who and
             // which call (the peer's own Placed, written by its uptake, carries no expose: one hop) — and a step asked of one golem is told
@@ -154,11 +141,8 @@ public sealed class GolemSpeech
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
             .Told("StoodFor").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
-                .With<string>("callId").With<string>("teller").With<double>("px").With<double>("py")
+                .With<string>("callId").With<string>("by").With<string>("teller").With<double>("px").With<double>("py")
                 .Command(GolemEmbodiment.UptakeStoodFor)
-            .Told("CalledTo").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
-                .With<string>("callId")
-                .Command(GolemEmbodiment.UptakeCalledTo)
             .Told("PlacedAt").With<string>("call").With<string>("who")
                 .Command(GolemEmbodiment.UptakePlacedAt)
             .Told("RotateTo").With<string>("sense").With<string>("stepId").With<string>("call")

@@ -19,7 +19,7 @@ namespace GolemTest;
 public class MusterTests
 {
     [TestMethod]
-    public void ANearerPeersWord_InterruptsMyRoute_AndSendsMeToTheNextPlace_WhileTheNearerOneKeepsIts()
+    public void TheRoundOpensTheRoutes_WithTheSameTable_AndACorrectedWord_InterruptsMyRoute_WhileTheNearerOneKeepsIts()
     {
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var blue = new Golem(body, "blue");
@@ -29,18 +29,30 @@ public class MusterTests
         var fleet = new Fleet("blue,red");
         var center = new Position(5.5, 5.5);
         var side = new Meters(2.0);
-        var blueCall = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", center, side), fleet);
-        var redCall = red.Choreography.Muster("red-1", red.Choreography.Formation("square", center, side), fleet);
+        var blueCall = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", center, side), fleet, "distance");
+        var redCall = red.Choreography.Muster("red-1", red.Choreography.Formation("square", center, side), fleet, "distance");
+        Assert.AreEqual("distance", blueCall.Policy);
 
-        // each convenes alone first: both nearest to the north-east corner — blue at 0.99 m, red at 0.71 m
-        var blueFirst = blue.Choreography.Convene(new Pose(5.8, 5.8, 0.0), blueCall, fleet.Member(blue));
-        StringAssert.Contains(blueFirst.AsPlan(), "floor@6.5,6.5", "alone, blue's best place is the north-east corner");
-        var redRoute = red.Choreography.Convene(new Pose(7.0, 7.0, 0.0), redCall, fleet.Member(red));
-        StringAssert.Contains(redRoute.AsPlan(), "floor@6.5,6.5", "and red's too");
-        Assert.IsFalse(blueCall.IsComplete, "blue has heard nobody yet");
+        // each says where it stands: nobody sets out until the round is complete (ajuste 80)
+        Assert.IsNull(blueCall.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue)), "blue spoke; red has not: no route yet");
+        Assert.IsFalse(blueCall.IsComplete);
+        Assert.IsNull(blueCall.Route);
+        Assert.AreEqual(0, blue.Routes().Count, "nothing minted while the fleet speaks");
+        Assert.IsNull(redCall.Convene(new Pose(7.0, 7.0, 0.0), fleet.Member(red)));
 
-        // the words cross: red is nearer to the north-east corner, so blue loses it — while blue's body carries an order of that route
-        var blueYields = blueCall.Stood(fleet.Member(red), new Position(7.0, 7.0));
+        // the words cross and complete each round: the routes open with the SAME table — red nearer to the north-east corner, blue to the south-west
+        var blueFirst = blueCall.Stood(fleet.Member(red), new Position(7.0, 7.0));
+        Assert.IsNotNull(blueFirst, "red's word completes blue's round: blue's route opens");
+        Assert.IsTrue(blueCall.IsComplete);
+        StringAssert.Contains(blueFirst.AsPlan(), "floor@4.5,4.5", "red stands nearer to the north-east corner: blue takes the south-west one — " + blueFirst.AsPlan());
+        var redRoute = redCall.Stood(fleet.Member(blue), new Position(5.8, 5.8));
+        StringAssert.Contains(redRoute.AsPlan(), "floor@6.5,6.5", "and red the north-east one");
+        Assert.AreEqual(0.0, blueCall.PlaceOf(fleet.Member(red)).DistanceTo(redCall.PlaceOf(fleet.Member(red))), 1e-9, "the two copies, the same table");
+        Assert.AreEqual(0.0, blueCall.PlaceOf(fleet.Member(blue)).DistanceTo(redCall.PlaceOf(fleet.Member(blue))), 1e-9);
+        Assert.AreEqual(2, blue.Current.Collisions.PeersInTheWay().Count, "red, where it stood and where it goes, is a body in blue's way while blue's route lasts (ajuste 80)");
+
+        // a CORRECTED word — red says it stands by the south-west corner after all — while blue's body carries an order of its route
+        var blueYields = blueCall.Stood(fleet.Member(red), new Position(4.4, 4.4));
         Assert.AreSame(blueFirst, blueYields, "red's word opens no route yet: the order in course was measured from a pose blue no longer knows");
         Assert.IsTrue(blueFirst.Yielding);
         Assert.AreEqual("pending", blueFirst.Status);
@@ -50,33 +62,25 @@ public class MusterTests
         Assert.AreSame(blueCall, blue.Choreography.MusterOf(blueFirst), "the body's word finds the convocation by the route underway");
 
         // the body stopped half-way, turned a little: the new route opens from THERE, not from where the first one began
-        var blueNow = blueCall.Halted(new Pose(6.0, 6.0, 0.4));
+        var blueNow = blueCall.Halted(new Pose(5.6, 5.6, 0.4));
         Assert.AreNotSame(blueFirst, blueNow);
         Assert.AreEqual("abandoned", blueFirst.Status);
-        StringAssert.Contains(blueFirst.Why, "red took this place by distance: blue goes to (4.5, 4.5)");
-        StringAssert.Contains(blueNow.AsPlan(), "floor@4.5,4.5", "blue goes to the south-west corner");
-        Assert.AreEqual(0.0, blueNow.Standing.DistanceTo(new Position(6.0, 6.0)), 1e-9, "measured from where the body stopped");
+        StringAssert.Contains(blueFirst.Why, "red took this place by distance: blue goes to (6.5, 6.5)");
+        StringAssert.Contains(blueNow.AsPlan(), "floor@6.5,6.5", "blue goes to the north-east corner now");
+        Assert.AreEqual(0.0, blueNow.Standing.DistanceTo(new Position(5.6, 5.6)), 1e-9, "measured from where the body stopped");
         Assert.AreEqual(0.4, blueNow.Standing.Heading, 1e-9, "…facing the way it stopped");
         Assert.AreSame(blueNow, blueCall.Route);
         Assert.AreSame(blueCall, blue.Choreography.MusterOf(blueNow));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueCall.Halted(new Pose(6.0, 6.0, 0.4))).Message, "nothing to halt");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueCall.Halted(new Pose(5.6, 5.6, 0.4))).Message, "nothing to halt");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.MusterOf(blueFirst)).Message, "was given by no convocation");
-        var redNow = redCall.Stood(fleet.Member(blue), new Position(5.8, 5.8));
-        Assert.AreSame(redRoute, redNow, "blue stands farther from red's corner: red keeps its route");
-        Assert.AreEqual("pending", redRoute.Status);
-
-        // everybody spoke: the two copies, the same table
-        Assert.IsTrue(blueCall.IsComplete && redCall.IsComplete);
-        Assert.AreEqual(0.0, blueCall.PlaceOf(fleet.Member(red)).DistanceTo(redCall.PlaceOf(fleet.Member(red))), 1e-9);
-        Assert.AreEqual(0.0, blueCall.PlaceOf(fleet.Member(blue)).DistanceTo(redCall.PlaceOf(fleet.Member(blue))), 1e-9);
-        Assert.AreEqual(0.0, redCall.PlaceOf(fleet.Member(blue)).DistanceTo(new Position(4.5, 4.5)), 1e-9);
 
         // the same word again changes nothing; a golem convenes once; the call is the convocation's identity
-        Assert.AreSame(blueNow, blueCall.Stood(fleet.Member(red), new Position(7.0, 7.0)));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Convene(new Pose(5.8, 5.8, 0.0), blueCall, fleet.Member(blue))).Message, "already took its place");
-        Assert.AreSame(blueCall, blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", center, side), fleet), "the same call, the same convocation");
-        Assert.AreNotSame(blueCall, blue.Choreography.Muster("red-2", blue.Choreography.Formation("square", center, side), fleet), "another call, another convocation");
+        Assert.AreSame(blueNow, blueCall.Stood(fleet.Member(red), new Position(4.4, 4.4)));
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueCall.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue))).Message, "already took its place");
+        Assert.AreSame(blueCall, blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", center, side), fleet, "distance"), "the same call, the same convocation");
+        Assert.AreNotSame(blueCall, blue.Choreography.Muster("red-2", blue.Choreography.Formation("square", center, side), fleet, "distance"), "another call, another convocation");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueCall.Stood(fleet.Member(blue), new Position(1.0, 1.0))).Message, "its own word is its Convene");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Muster("red-3", blue.Choreography.Formation("square", center, side), fleet, "luck")).Message, "by 'rank' or by 'distance'");
     }
 
     [TestMethod]
@@ -86,17 +90,21 @@ public class MusterTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var call = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet);
-        var first = blue.Choreography.Convene(new Pose(5.8, 5.8, 0.0), call, fleet.Member(blue));
+        var call = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
+        Assert.IsNull(call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue)), "the round is not complete");
+        var first = call.Stood(fleet.Member("red"), new Position(7.0, 7.0));
+        StringAssert.Contains(first.AsPlan(), "floor@4.5,4.5", "red nearer to the north-east corner: blue takes the south-west one");
         WalkToTheEnd(first);
-        Assert.AreEqual("completed", first.Status, "blue is on the north-east corner: no order in course");
+        Assert.AreEqual("completed", first.Status, "blue is on the south-west corner, facing the centre: no order in course");
+        Assert.AreEqual(0, blue.Current.Collisions.PeersInTheWay().Count, "the route ended: red has moved on, nothing is planned around");
 
-        var next = call.Stood(fleet.Member("red"), new Position(7.0, 7.0));
+        // red corrects its word: it stands by the south-west corner after all — blue, already placed, sets out for the north-east one at once
+        var next = call.Stood(fleet.Member("red"), new Position(4.4, 4.4));
         Assert.AreNotSame(first, next, "nothing to stop: the route to the next place opens at once");
         Assert.IsFalse(first.Yielding);
         Assert.AreEqual("completed", first.Status, "a route walked stays walked");
-        Assert.AreEqual(0.0, next.Standing.DistanceTo(new Position(6.5, 6.5)), 1e-9, "from the corner the last arrival left the body on");
-        StringAssert.Contains(next.AsPlan(), "floor@4.5,4.5");
+        Assert.AreEqual(0.0, next.Standing.DistanceTo(new Position(4.5, 4.5)), 1e-9, "from the corner the last arrival left the body on");
+        StringAssert.Contains(next.AsPlan(), "floor@6.5,6.5");
     }
 
     [TestMethod]
@@ -106,11 +114,15 @@ public class MusterTests
         var green = new Golem(body, "green");
         green.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,green,red");
-        var call = green.Choreography.Muster("red-1", green.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet);
-        // three bodies on a square: green, alone, takes the place nearest to it
-        var first = green.Choreography.Convene(new Pose(7.0, 7.0, 0.0), call, fleet.Member(green));
+        var call = green.Choreography.Muster("red-1", green.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
+        // three bodies on a square: the round — blue and red far away, green by the north-east corner — gives green the nearest place
+        Assert.IsNull(call.Convene(new Pose(7.0, 7.0, 0.0), fleet.Member(green)));
+        Assert.IsNull(call.Stood(fleet.Member("blue"), new Position(0.5, 0.5)));
+        var first = call.Stood(fleet.Member("red"), new Position(0.5, 9.5));
+        Assert.IsNotNull(first, "the third word completes the round");
         var firstPlace = call.PlaceOf(fleet.Member(green));
 
+        // two corrected words while green's body carries an order: one stop, the place kept moves twice
         Assert.AreSame(first, call.Stood(fleet.Member("blue"), new Position(firstPlace.X, firstPlace.Y)), "blue stands on green's place: green yields");
         Assert.IsTrue(first.Yielding);
         var afterBlue = call.PlaceOf(fleet.Member(green));
@@ -123,6 +135,42 @@ public class MusterTests
         StringAssert.Contains(first.Why, "red took this place by distance", "in the words of the last peer that took it");
         Assert.AreEqual(0.0, route.PlannedEnd.DistanceTo(last), 1e-9, "one route, to the last place");
         Assert.AreEqual(2, green.Routes().Count, "the first and the one that replaced it: no route in between");
+    }
+
+    // THE BERTHS (ajuste 80; Juan: "azul debería saber que ahí se encuentra amarillo y chocará en su trayecto"): the other members, where they
+    // said they stand and where they go, are bodies in the way when the route to the place opens — the way goes around them from its first leg.
+    [TestMethod]
+    public void ThePeersKnownAtTheCall_AreBerthsTheWayGoesAround_UntilTheRouteEnds()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        var collisions = new Collisions();
+        blue.Enter(new Scenario(Catalog.OpenFloor(), collisions));
+        var fleet = new Fleet("blue,yellow");   // two on a square: blue the north-east corner (6.5, 6.5), yellow the south-west one
+        var square = blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0));
+        var call = blue.Choreography.Muster("red-1", square, fleet);
+        Assert.AreEqual("rank", call.Policy);
+
+        // yellow stands in the middle of blue's column, by the south-east corner; blue comes from the south, straight up x = 6.5
+        Assert.IsNull(call.Stood(fleet.Member("yellow"), new Position(6.5, 4.5)), "yellow's word, before blue joined: kept");
+        var route = call.Join(new Pose(6.5, 2.5, 1.5708), fleet.Member(blue));
+        var berths = call.Berths();
+        Assert.AreEqual(2, berths.Count, "yellow where it stands and where it goes: " + string.Join(", ", berths.Select(b => b.Who + "@" + b.Center.X + "," + b.Center.Y)));
+        Assert.AreEqual(2, collisions.PeersInTheWay().Count, "both in blue's way while its route lasts");
+        Assert.IsTrue(route.LegsAhead.Count > 2, "not the straight run up the column through yellow: the way bends around it — " + route.AsPlan());
+        Assert.IsTrue(route.LegsAhead.All(l => Math.Max(Math.Abs(l.At.X - 6.5), Math.Abs(l.At.Y - 4.5)) > 0.6), "no leg ends inside yellow's berth — " + route.AsPlan());
+        StringAssert.Contains(route.AsPlan(), "floor@6.5,6.5", "and it still ends on blue's own corner");
+        WalkToTheEnd(route);
+        Assert.AreEqual("completed", route.Status);
+        Assert.AreEqual(0, collisions.PeersInTheWay().Count, "the route ended: the peers have moved on, as bodies do");
+
+        // a peer standing on MY place is no berth (by rank a golem may stand on another's corner): the route still opens
+        var other = new Golem(body, "yellow");
+        other.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var otherCall = other.Choreography.Muster("red-1", square, fleet);
+        otherCall.Stood(fleet.Member("blue"), new Position(4.6, 4.4));   // blue stands almost on the south-west corner, yellow's place by rank
+        var toSouthWest = otherCall.Join(new Pose(2.5, 2.5, 0.0), fleet.Member(other));
+        StringAssert.Contains(toSouthWest.AsPlan(), "floor@4.5,4.5", "the place is taken even so: " + toSouthWest.AsPlan());
     }
 
     // THE STEPS (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj y antihorario… se pueden
@@ -140,7 +188,7 @@ public class MusterTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Current).Message, "stands in no formation");
 
         // blue joins by rank: first of two, the north-east corner (place 1 of 2 of the square: north-east, then south-west)
-        var first = blue.Choreography.Join(new Pose(5.8, 5.8, 0.0), call, fleet.Member(blue));
+        var first = call.Join(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
         StringAssert.Contains(first.AsPlan(), "floor@6.5,6.5");
         Assert.AreEqual(0, call.PlaceIndex);
         Assert.AreSame(call, blue.Choreography.Current);
@@ -189,7 +237,7 @@ public class MusterTests
         StringAssert.Contains(third.AsPlan(), "floor@6.5,6.5");
         Assert.AreEqual(3, blue.Routes().Count, "one route per step, nothing in between");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Heard(new Fleet("blue,green,red").Member("green"))).Message, "is not a member of the fleet");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Stood(fleet.Member("red"), new Position(7.0, 7.0))).Message, "joined the call red-1 by rank");
+        Assert.AreSame(third, call.Stood(fleet.Member("red"), new Position(7.0, 7.0)), "by rank a word moves nobody: the place is the rank's");
     }
 
     [TestMethod]
@@ -199,10 +247,10 @@ public class MusterTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var call = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet);
+        var call = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
         Assert.IsNull(call.Heard(fleet.Member("red")), "a word before blue has a route is only kept");
         Assert.IsNull(call.Stood(fleet.Member("red"), new Position(7.0, 7.0)));
-        var first = blue.Choreography.Convene(new Pose(5.8, 5.8, 0.0), call, fleet.Member(blue));
+        var first = call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
         StringAssert.Contains(first.AsPlan(), "floor@4.5,4.5", "red is nearer to the north-east corner: blue takes the south-west one");
         Assert.AreEqual(1, call.PlaceIndex, "the index of the place the table gave");
         call.Rotate("clockwise", "step-1");
@@ -226,7 +274,7 @@ public class MusterTests
         var call = blue.Choreography.Muster("red-1", square, fleet);
 
         // blue comes from the north, down x = 6.5, to the north-east corner: it arrives facing south, and the route then has it face the centre
-        var route = blue.Choreography.Join(new Pose(6.5, 10.4, -1.5708), call, fleet.Member(blue));
+        var route = call.Join(new Pose(6.5, 10.4, -1.5708), fleet.Member(blue));
         Assert.AreEqual(0.0, route.FacesToward.DistanceTo(new Position(5.5, 5.5)), 1e-9, "the route faces the centre");
         StringAssert.EndsWith(route.AsPlan(), "floor@6.5,6.5 > face@6.5,6.5", "the way ends with the facing leg, on the place: " + route.AsPlan());
         Assert.IsTrue(route.LegsAhead.Last().IsFacing);
@@ -258,7 +306,7 @@ public class MusterTests
         var green = new Golem(body, "green");
         green.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var greens = green.Choreography.Muster("red-1", square, fleet);
-        var toNorthWest = green.Choreography.Join(new Pose(3.5, 7.5, -0.7854), greens, fleet.Member(green));   // from the north-west diagonal, facing the centre
+        var toNorthWest = greens.Join(new Pose(3.5, 7.5, -0.7854), fleet.Member(green));   // from the north-west diagonal, facing the centre
         toNorthWest.Arrive(toNorthWest.NextLeg);
         Assert.AreEqual("completed", toNorthWest.Status, "already facing the centre on arrival: nothing to turn — " + toNorthWest.AsPlan());
     }
@@ -276,16 +324,14 @@ public class MusterTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var call = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet);
+        var call = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
 
         Assert.IsNull(call.Stood(fleet.Member("red"), new Position(7.0, 7.0)), "blue has not convened: the word is only kept");
         Assert.IsFalse(call.Knows(fleet.Member(blue)));
         Assert.IsTrue(call.Knows(fleet.Member("red")));
-        var route = blue.Choreography.Convene(new Pose(5.8, 5.8, 0.0), call, fleet.Member(blue));
+        var route = call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
         StringAssert.Contains(route.AsPlan(), "floor@4.5,4.5", "blue convenes knowing red is nearer to the north-east corner: straight to the south-west");
         Assert.IsTrue(call.IsComplete);
-        var other = new Golem(body, "green");
-        other.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => other.Choreography.Convene(new Pose(1.0, 1.0, 0.0), call, fleet.Member("red"))).Message, "is not this golem's");
     }
 }
+

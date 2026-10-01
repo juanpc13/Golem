@@ -51,7 +51,12 @@ public class SquareTests
 
         // by rank: the names sorted, the corners counter-clockwise from the north-east — wherever each body stands (one convocation per
         // member here: a golem takes one place per call)
-        GolemDomain.Routes.Route AsMember(string name) => g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("call-" + name, square, fleet), fleet.Member(name));
+        GolemDomain.Routes.Route AsMember(string name)
+        {
+            var taken = g.Choreography.Muster("call-" + name, square, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
+            taken.Abandon("this golem plays the next member now");   // its route ended: the berths of the others move on (ajuste 80)
+            return taken;
+        }
         StringAssert.Contains(AsMember("blue").AsPlan(), "floor@6.5,6.5", "blue, first: the north-east corner");
         StringAssert.Contains(AsMember("green").AsPlan(), "floor@4.5,6.5", "green, second: north-west");
         StringAssert.Contains(AsMember("red").AsPlan(), "floor@4.5,4.5", "red, third: south-west");
@@ -91,7 +96,7 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => fleet.Member(g)).Message, "a golem without a name is in no fleet");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, " ")).Message, "a golem's name must be a name");
         Assert.AreEqual(2, fleet.Member(red).Rank, "its member, by the name it was born with: blue, green, red, yellow");
-        var route = red.Choreography.Join(new Pose(2.5, 2.5, 0.0), red.Choreography.Muster("red-1", formation, fleet), fleet.Member(red));
+        var route = red.Choreography.Muster("red-1", formation, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
         StringAssert.Contains(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }
 }

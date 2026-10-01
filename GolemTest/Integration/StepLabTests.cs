@@ -109,7 +109,7 @@ public class StepLabTests
                 fleet = Fleet(@names);
                 me = fleet.Member(g);
                 muster = g.Choreography.Muster(@callId, formation, fleet);
-                route = g.Choreography.Join(from, muster, me);
+                route = muster.Join(from, me);
                 print route.Id 'route', route.Order 'action';
             }").WithParameters(p => {
                 p["cx", typeof(double)] = 5.5; p["cy", typeof(double)] = 5.5; p["sideLength", typeof(double)] = 2.0;
@@ -164,7 +164,7 @@ public class StepLabTests
                 fleet = Fleet(@names);
                 me = fleet.Member(g);
                 muster = g.Choreography.Muster(@callId, formation, fleet);
-                route = g.Choreography.Join(from, muster, me);
+                route = muster.Join(from, me);
                 print route.Id 'route', route.Order 'action';
             }", p => {
                 p["cx", typeof(double)] = 5.5; p["cy", typeof(double)] = 5.5; p["sideLength", typeof(double)] = 2.0;
@@ -203,7 +203,7 @@ public class StepLabTests
                 fleet = Fleet(@names);
                 me = fleet.Member(g);
                 muster = g.Choreography.Muster(@callId, formation, fleet);
-                route = g.Choreography.Join(from, muster, me);
+                route = muster.Join(from, me);
                 print route.Id 'route', route.Order 'action';
             }", p => {
                 p["cx", typeof(double)] = 5.5; p["cy", typeof(double)] = 5.5; p["sideLength", typeof(double)] = 2.0;

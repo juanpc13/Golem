@@ -129,8 +129,7 @@ public sealed class Commander
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
-        if (request.Policy == "distance") return Answered(displacer.Convene(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet));   // ajuste 73
-        return Answered(displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet));
+        return Called(displacer.Call(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet, request.Policy));
     }
 
     // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)
@@ -232,6 +231,10 @@ public sealed class Commander
 
     // an act of the mind (no route to print): done in a few words, or refused in the domain's
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
+
+    // a call made (ajuste 80): the route opens when the whole fleet said where it stands — at once for a fleet of one, else said so
+    private Reply Called(Answer answer) =>
+        answer.Ok && answer.Order == null ? Reply.Done("called — the routes open when everybody said where it stands", answer.Print ?? "") : Answered(answer);
 
     // a step asked (ajuste 77): opened at once when everybody already stands on its place — the order, as any — or queued, said so
     private Reply Stepped(Answer answer, string sense) =>

@@ -130,7 +130,7 @@ internal sealed class Golem
 
     /// <summary>The golem's choreographies module, its own from birth (ajuste 69; Juan: "el módulo asociado a coreografías…
     /// g.coreografia.formacion('cuadrado')"): the formations it knows how to take, made by name, and the route to its place — <c>formation =
-    /// g.Choreography.Formation(@figure, center, side); route = g.Choreography.Join(from, formation, me);</c> (ajustes 69, 70).</summary>
+    /// g.Choreography.Formation(@figure, center, side); route = muster.Join(from, me);</c> (ajustes 69, 70).</summary>
     internal Choreographies Choreography => choreography;
 
     /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here
@@ -202,16 +202,25 @@ internal sealed class Golem
 
     // A PLACE of a choreography, asked by the golem's own module (ajuste 70: Choreographies.Join decides the place, the golem opens the
     // route to it, so every route stays the golem's): refused when the place is nowhere on the map or leaves no room for this body.
+    /// <summary>Whether this body may take a place at all — on the map, room for it — refused in the domain's words otherwise; what the
+    /// convocation asks as soon as a place is known (by rank, at the call), before the fleet is made to wait for it (ajuste 80).</summary>
+    internal void CheckPlace(Position place, string where)
+    {
+        if (place == null) throw new GolemDomainException("Golem.CheckPlace: 'place' was not given");
+        if (!layout.IsOnMap(place)) throw new GolemDomainException($"{where} is nowhere on the map");
+        if (!layout.HasRoom(place, Radius())) throw new GolemDomainException($"{where} leaves no room for a body of radius {Fmt(Radius())}");
+    }
+
     /// <summary>The route to a PLACE of a formation, asked by the golem's own choreographies module (ajustes 70, 78): on the map, room
     /// for the body, then the errand opened like any other. The module's to ask, never the journal's — the journal asks the module.</summary>
-    internal Route TakePlace(Position from, Position place, Position facing, string where)
+    internal Route TakePlace(Position from, Position place, Position facing, IReadOnlyList<Peer> berths, string where)
     {
         if (from == null) throw new GolemDomainException("Golem.TakePlace: 'from' was not given");
         if (place == null) throw new GolemDomainException("Golem.TakePlace: 'place' was not given");
         if (facing == null) throw new GolemDomainException("Golem.TakePlace: 'facing' was not given");
-        if (!layout.IsOnMap(place)) throw new GolemDomainException($"{where} is nowhere on the map");
-        if (!layout.HasRoom(place, Radius())) throw new GolemDomainException($"{where} leaves no room for a body of radius {Fmt(Radius())}");
-        return Entrust(from, place, following: false, choosesOrder: false, facing: facing);   // the route ends facing the centre (ajuste 79)
+        if (berths == null) throw new GolemDomainException("Golem.TakePlace: 'berths' was not given");
+        CheckPlace(place, where);
+        return Entrust(from, place, following: false, choosesOrder: false, facing: facing, berths: berths);   // facing the centre (79), around the peers (80)
     }
 
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
@@ -562,9 +571,17 @@ internal sealed class Golem
     // A new route with this stop, its way decided from `from` at once: the handle is the next one, minted here (a
     // deterministic function of the routes the golem holds, so the same on replay), and never reused — the idempotency
     // keys of the host hang on it. Opened while the golem is free, `from` is where its body stands: kept.
-    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder, Position facing = null)
+    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder, Position facing = null, IReadOnlyList<Peer> berths = null)
     {
         if (!HasPendingMission()) collisions.PeersMovedOn();   // an idle golem sets out afresh: whoever it met while standing has moved on
+        // the fleet's other members, where they stand and where they go (ajuste 80): bodies in the way while this route lasts, planned
+        // around from the first leg — except one on this very place (by rank a golem may stand on another's corner)
+        if (berths != null)
+            foreach (var peer in berths)
+            {
+                double reach = 2 * Radius() + Collisions.MarkMargin + Radius();   // the berth's half side, plus this body: the place must stand clear of it
+                if (Math.Max(Math.Abs(peer.Center.X - stop.X), Math.Abs(peer.Center.Y - stop.Y)) > reach) collisions.Meet(peer.Who, peer.Center);
+            }
         // born with the golem's direct way, whatever is active (ajuste 62): the script improves it with a dash when the strategy says so
         var route = new Route(lastHandle + 1, stop, following, choosesOrder, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, this);
         if (facing != null) route.Faces(facing);   // a place of a formation: the body ends facing the centre (ajuste 79)

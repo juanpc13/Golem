@@ -138,79 +138,59 @@ public sealed class GolemEmbodiment
                 center = Position(@cx, @cy);
                 side = Meters(@sideLength);
                 formation = g.Choreography.Formation(@figure, center, side);
-                muster = g.Choreography.Muster(@callId, formation, fleet);
+                muster = g.Choreography.Muster(@callId, formation, fleet, @by);
                 peer = fleet.Member(@teller);
                 at = Position(@px, @py);
                 me = fleet.Member(g);
                 if (muster.Knows(me)) {
-                    route = muster.Stood(peer, at);
-                    if (g.Strategy.OnTheWay.IsActive) {
-                        route = g.Dash(route);
-                    }
-                    if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action';
-                        if (route.IsWalkable) {
-                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                    muster.Stood(peer, at);
+                    if (muster.IsComplete) {
+                        route = muster.Route;
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
                         }
                     } else {
-                        print route.Id 'route', route.Status 'ended';
-                        if (route.EndedShort) {
-                            print route.Why 'why';
-                        }
+                        print muster.StoodCount 'stood', fleet.Count 'of';
                     }
                 } else {
                     muster.Stood(peer, at);
                     from = g.Destination;
-                    route = g.Choreography.Convene(from, muster, me);
-                    if (g.Strategy.OnTheWay.IsActive) {
-                        route = g.Dash(route);
-                    }
-                    if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action';
-                        if (route.IsWalkable) {
-                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                    muster.Convene(from, me);
+                    if (muster.IsComplete) {
+                        route = muster.Route;
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
                         }
                     } else {
-                        print route.Id 'route', route.Status 'ended';
-                        if (route.EndedShort) {
-                            print route.Why 'why';
-                        }
+                        print muster.StoodCount 'stood', fleet.Count 'of';
                     }
-                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, me.Name who, from.X stoodX, from.Y stoodY;
-                }
-            }
-        }
-        ";
-    public const string UptakeCalledTo = @"
-        {
-            fleet = Fleet(@names);
-            if (fleet.Has(g)) {
-                from = g.Destination;
-                center = Position(@cx, @cy);
-                side = Meters(@sideLength);
-                formation = g.Choreography.Formation(@figure, center, side);
-                me = fleet.Member(g);
-                muster = g.Choreography.Muster(@callId, formation, fleet);
-                route = g.Choreography.Join(from, muster, me);
-                if (g.Strategy.OnTheWay.IsActive) {
-                    route = g.Dash(route);
-                }
-                if (route.IsPending()) {
-                    print route.Id 'route', route.Order 'action';
-                    if (route.IsWalkable) {
-                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                              route.Following 'following', route.StopsLeft 'stopsLeft';
-                    }
-                } else {
-                    print route.Id 'route', route.Status 'ended';
-                    if (route.EndedShort) {
-                        print route.Why 'why';
-                    }
+                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @by policy, me.Name who, from.X stoodX, from.Y stoodY;
                 }
             }
         }

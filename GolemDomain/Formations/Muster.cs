@@ -1,6 +1,7 @@
 using System.Globalization;
 using GolemDomain.Geometry;
 using GolemDomain.Routes;
+using GolemDomain.Touches;
 
 namespace GolemDomain.Formations;
 
@@ -9,26 +10,32 @@ namespace GolemDomain.Formations;
 /// DISTANCE, and since ajuste 77 (1-oct-2026) THE FORMATION IN PLACE: it remembers this golem's route and the INDEX of its place, so the
 /// fleet can take the next places STEP BY STEP (Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj y
 /// antihorario… se pueden encolar"). Its identity is the CALL (<c>@callId</c>): two calls to the same square are two convocations.
-/// By rank the golem JOINS (<see cref="Join"/>): the place of its rank, no word exchanged. By distance it CONVENES once
-/// (<see cref="Convene"/>) to the best place it knows, and every peer's word (<see cref="Stood"/>) applies the first law again. Then
-/// every golem says when it stands on its place (<see cref="Placed"/>), steps are queued (<see cref="Rotate"/>) and the next one opens
-/// once everybody is placed (<see cref="Step"/>): all set out together, each following the one ahead along the same side.
+/// Every golem CONVENES (<see cref="Convene"/>): it says where it stands; every peer's word (<see cref="Stood"/>) is where it stood. SINCE AJUSTE 80 (1-oct-2026; Juan:
+/// "sólo pedir la posición de los demás al inicio de una coreografía y luego ya no") THE ROUND OPENS THE ROUTES: nobody sets out until
+/// every member said where it stands — the word that completes the round, the golem's own or the last heard, opens its route — so every
+/// copy shares the same table before anyone moves, by rank or by distance (the policy is the convocation's from birth), and the OTHER
+/// members enter the planner as berths (<see cref="Berths"/>): the route goes around them from its first leg. A later word, by distance,
+/// applies the first law again and may make the route yield (<see cref="Halted"/>, propuesta 74). Then every golem says when it stands
+/// on its place (<see cref="Placed"/>), steps are queued (<see cref="Rotate"/>) and the next one opens once everybody is placed
+/// (<see cref="Step"/>): all set out together, each following the one ahead along the same side. <see cref="Join"/> stays in the
+/// repertoire: by rank, at once, for the tests.
 /// </summary>
 internal sealed class Muster
 {
     private readonly Golem golem;                                        // whose convocation this is: it opens every route to a place (ajustes 70, 78)
+    private readonly bool byDistance;                                    // the policy, the convocation's from birth (ajuste 80): rank, or who stands nearest
+    private Position convenedFrom;                                       // where this golem said it stood, to open its route from once the round completes
     private readonly Dictionary<string, Position> stood = new();         // by distance: where each member said it stood, by name
     private readonly HashSet<string> placed = new(StringComparer.Ordinal);   // who said it stands on its place, this round
     private readonly Queue<(bool Clockwise, string Id)> steps = new();   // the steps queued, in the order they were asked
     private readonly HashSet<string> stepIds = new(StringComparer.Ordinal);
     private Member me;                                                   // this golem, once it joined or convened
-    private bool byDistance;                                            // how it took its place
     private int placeIndex = -1;                                        // …the index of the place it is going to, in the formation's order
     private Position place;                                             // …that place
     private Route route;                                                // …and the route there
     private string yieldedTo;                                           // the peer whose word made that route yield, until it is replaced
 
-    internal Muster(string call, Formation formation, Fleet fleet, Golem golem)
+    internal Muster(string call, Formation formation, Fleet fleet, Golem golem, bool byDistance)
     {
         if (string.IsNullOrWhiteSpace(call)) throw new GolemDomainException("a convocation needs its call");
         if (formation == null) throw new GolemDomainException("Muster.Muster: 'formation' was not given");
@@ -38,14 +45,17 @@ internal sealed class Muster
         Formation = formation;
         Fleet = fleet;
         this.golem = golem;
+        this.byDistance = byDistance;
     }
 
     internal string Call { get; }
+    /// <summary>How the places are shared: <c>rank</c> (the names sorted) or <c>distance</c> (who stands nearest, the first law).</summary>
+    internal string Policy => byDistance ? "distance" : "rank";
     internal Formation Formation { get; }
     internal Fleet Fleet { get; }
-    /// <summary>How many members said where they stood (by distance) — this golem among them once it convened.</summary>
+    /// <summary>How many members said where they stood — this golem among them once it convened.</summary>
     internal int StoodCount => stood.Count;
-    /// <summary>Every member of the fleet spoke: every copy has the same table.</summary>
+    /// <summary>Every member of the fleet said where it stands: the round is complete, every copy has the same table, the routes open.</summary>
     internal bool IsComplete => stood.Count == Fleet.Count;
     /// <summary>This golem's route in the convocation; null before it joined or convened.</summary>
     internal Route Route => route;
@@ -91,50 +101,75 @@ internal sealed class Muster
     }
 
     /// <summary>This golem JOINS BY RANK (propuesta 59, paso 1; through the convocation since ajuste 77): the place of its rank among as
-    /// many places as the fleet has bodies, and the route to it — <c>route = g.Choreography.Join(from, muster, me);</c>. Once.</summary>
+    /// many places as the fleet has bodies, and the route to it — <c>route = muster.Join(from, me);</c>. Once.</summary>
     internal Route Join(Position from, Member member)
     {
         if (from == null) throw new GolemDomainException("Muster.Join: 'from' was not given");
         if (member == null) throw new GolemDomainException("Muster.Join: 'member' was not given");
         MustBeFree(member);
         me = member;
-        byDistance = false;
+        stood[me.Name] = new Position(from.X, from.Y);
         placeIndex = member.Rank;
         place = Formation.Place(member);
-        route = golem.TakePlace(from, place, Formation.Center, $"place {me.Rank + 1} of {me.Of} of the {Formation.Name} at ({Fmt(place.X)}, {Fmt(place.Y)})");
+        route = golem.TakePlace(from, place, Formation.Center, Berths(), $"place {me.Rank + 1} of {me.Of} of the {Formation.Name} at ({Fmt(place.X)}, {Fmt(place.Y)})");
         return route;
     }
 
-    /// <summary>This golem convenes BY DISTANCE — once: it is recorded where it stands and given the route to the best place it knows
-    /// now (<c>route = g.Choreography.Convene(from, muster, me)</c>).</summary>
+    /// <summary>This golem CONVENES — once: it says where it stands (<c>muster.Convene(from, me)</c>). When with its word the
+    /// round is complete, its route to its place opens and comes back (<see cref="Route"/> holds it); else nothing yet (null): the word
+    /// that completes the round will open it (<see cref="Stood"/>). Ajuste 80: nobody sets out before everybody spoke.</summary>
     internal Route Convene(Position from, Member member)
     {
         if (from == null) throw new GolemDomainException("Muster.Convene: 'from' was not given");
         if (member == null) throw new GolemDomainException("Muster.Convene: 'member' was not given");
         MustBeFree(member);
+        if (!byDistance) golem.CheckPlace(Formation.Place(member), $"place {member.Rank + 1} of {member.Of} of the {Formation.Name}");   // known at once by rank: refused now, not after the fleet waited
         me = member;
-        byDistance = true;
+        convenedFrom = from;
         stood[me.Name] = new Position(from.X, from.Y);
-        Head(PlaceOf(me));
-        route = golem.TakePlace(from, place, Formation.Center, Where(place));
+        return IsComplete ? Open() : null;
+    }
+
+    // The round is complete: this golem's place by the policy, and the route there from where it said it stood — the other members as
+    // berths, so the way goes around them (ajuste 80).
+    private Route Open()
+    {
+        Head(byDistance ? PlaceOf(me) : Formation.Place(me));
+        route = golem.TakePlace(convenedFrom, place, Formation.Center, Berths(), Where(place));
         return route;
     }
 
-    /// <summary>A PEER'S WORD — where it stood when it convened. Recorded; if this golem already convened, the law is applied again.
-    /// When the peer took its place: with the route still pending — an order of it in the body — the route YIELDS (propuesta 74): it
-    /// asks the body to stop, the new place is kept, and the route that replaces it opens once the body said where it stood
-    /// (<see cref="Halted"/>); with the route completed, the pose of its last arrival is the truth and the new route opens at once from
-    /// there. A route that ended short (a reset, a failure) is not revived by a word; a word to a route that already yields only
-    /// moves the place kept. Else the same route comes back. Before this golem convened, the word is only kept (null comes back).
-    /// A golem that joined by rank hears no such word: its place is its rank's.</summary>
+    /// <summary>The OTHER members as bodies in the way (ajuste 80): where each said it stands and the place it gets — by rank its rank's,
+    /// by distance the table's, once it spoke. What the golem plans around when it opens its route to its place.</summary>
+    internal IReadOnlyList<Peer> Berths()
+    {
+        var berths = new List<Peer>();
+        var table = byDistance ? Table() : null;
+        foreach (var name in Fleet.Names)
+        {
+            if (me != null && name == me.Name) continue;
+            if (stood.TryGetValue(name, out var at)) berths.Add(new Peer(name, at));
+            Position going = byDistance ? (table.TryGetValue(name, out var given) ? given : null) : Formation.Place(Fleet.Member(name));
+            if (going != null) berths.Add(new Peer(name, going));
+        }
+        return berths;
+    }
+
+    /// <summary>A PEER'S WORD — where it stood when it convened. Recorded. If with it the round is complete and this golem convened but
+    /// has no route yet, its route opens and comes back (ajuste 80). Already on its way, by rank nothing moves it; by distance the law is
+    /// applied again (a corrected word): when the peer took its place, with the route still pending — an order of it in the body — the
+    /// route YIELDS (propuesta 74): it asks the body to stop, the new place is kept, and the route that replaces it opens once the body said
+    /// where it stood (<see cref="Halted"/>); with the route completed, the pose of its last arrival is the truth and the new route opens
+    /// at once from there. A route that ended short is not revived by a word. Before this golem convened, the word is only kept (null).</summary>
     internal Route Stood(Member peer, Position at)
     {
         if (peer == null) throw new GolemDomainException("Muster.Stood: 'peer' was not given");
         if (at == null) throw new GolemDomainException("Muster.Stood: 'at' was not given");
         if (me != null && peer.Name == me.Name) throw new GolemDomainException($"'{peer.Name}' is this golem: its own word is its Convene");
-        if (me != null && !byDistance) throw new GolemDomainException($"'{me.Name}' joined the call {Call} by rank: its place is its rank's, no word moves it");
         stood[peer.Name] = new Position(at.X, at.Y);
         if (me == null) return null;
+        if (route == null) return IsComplete ? Open() : null;
+        if (!byDistance) return route;                            // by rank the place is the rank's: no word moves it
         if (route.EndedShort) return route;
         var now = PlaceOf(me);
         if (now.DistanceTo(place) < 1e-6) return route;
@@ -146,7 +181,7 @@ internal sealed class Muster
             return route;
         }
         placed.Remove(me.Name);                   // it leaves the place it had reached
-        route = golem.TakePlace(route.Standing, place, Formation.Center, Where(place));
+        route = golem.TakePlace(route.Standing, place, Formation.Center, Berths(), Where(place));
         yieldedTo = null;
         return route;
     }
@@ -159,7 +194,7 @@ internal sealed class Muster
         if (me == null) throw new GolemDomainException("Muster.Halted: 'me' was not given");
         if (route == null || !route.Yielding || !route.IsPending()) throw new GolemDomainException($"no route of the call {Call} yields its place: nothing to halt");
         route.Abandon($"{yieldedTo} took this place by distance: {this.me.Name} goes to ({Fmt(place.X)}, {Fmt(place.Y)})");
-        route = golem.TakePlace(me, place, Formation.Center, Where(place));
+        route = golem.TakePlace(me, place, Formation.Center, Berths(), Where(place));
         yieldedTo = null;
         return route;
     }
@@ -223,7 +258,7 @@ internal sealed class Muster
         place = places[next];
         placed.Clear();
         Round++;
-        route = golem.TakePlace(route.Standing, place, Formation.Center, $"place {next + 1} of {count} of the {Formation.Name}, one step {(clockwise ? "clockwise" : "counter-clockwise")}, at ({Fmt(place.X)}, {Fmt(place.Y)})");
+        route = golem.TakePlace(route.Standing, place, Formation.Center, Array.Empty<Peer>(), $"place {next + 1} of {count} of the {Formation.Name}, one step {(clockwise ? "clockwise" : "counter-clockwise")}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come
         return route;
     }
 
@@ -263,6 +298,6 @@ internal sealed class Muster
         return table;
     }
 
-    private string Where(Position at) => $"the place of {me.Name} in the {Formation.Name} by distance at ({Fmt(at.X)}, {Fmt(at.Y)})";
+    private string Where(Position at) => $"the place of {me.Name} in the {Formation.Name} by {Policy} at ({Fmt(at.X)}, {Fmt(at.Y)})";
     private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 }

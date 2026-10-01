@@ -168,12 +168,17 @@ public class CommandConsoleTests
         var red = new Commander(world.HostOf("red").Embodiment);
         var blue = new Commander(world.HostOf("blue").Embodiment);
 
-        var call = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank");
+        var call = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,red,green,yellow");   // the names: red's corner is the third's
         Assert.IsTrue(call.Ok, call.Text);
-        StringAssert.StartsWith(call.Text, "route 1 · ", "one golem commanded: one answer, red's own");
-        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "center@4.5,4.5", "red, third of the four names: the south-west corner");
+        StringAssert.Contains(call.Text, "called", "one golem commanded: it said where it stands, and waits for the fleet's words (ajuste 80) — " + call.Text);
+        await Task.Delay(1500);
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "no route yet", "green and yellow are not in this world: the round never completes, nobody sets out — the fleet waits (ajuste 80)");
+        await red.ExecuteAsync("reset");
+        call = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,red");
+        Assert.IsTrue(call.Ok, call.Text);
+        StringAssert.Contains(await Until(red, "center@4.5,4.5"), "center@4.5,4.5", "with blue's word the round is complete: red, second of the two names, sets out to the south-west corner (two on a square: north-east and south-west)");
         string blueWay = await Until(blue, "center@6.5,6.5");
-        StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard the call and joined by itself: first of the four, the north-east corner — " + blueWay);
+        StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard the call, said where it stands and set out by itself: first of the two, the north-east corner — " + blueWay);
 
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --with blue")).Kind, "a choreography spreads by itself");
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph circle --center 5.5,5.5 --radius 1.0")).Kind, "the square alone for now");
@@ -245,7 +250,8 @@ public class CommandConsoleTests
 
         var call = await red.ExecuteAsync("choreograph square --center 2.0,1.5 --side 1.0 --by distance --fleet blue,red");
         Assert.IsTrue(call.Ok, call.Text);
-        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "living@2.5,2", "red, nearest to the north-east corner, sets out to it");
+        StringAssert.Contains(call.Text, "called", "red said where it stands; the routes open when blue speaks (ajuste 80) — " + call.Text);
+        StringAssert.Contains(await Until(red, "living@2.5,2"), "living@2.5,2", "red, nearest to the north-east corner, sets out to it once the round is complete");
         string blueWay = await Until(blue, "living@1.5,1");
         StringAssert.Contains(blueWay, "living@1.5,1", "blue heard red, convened by itself and took the south-west corner — " + blueWay);
         StringAssert.Contains((await red.ExecuteAsync("route")).Text, "living@2.5,2", "blue's word took nothing from red");
