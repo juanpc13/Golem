@@ -176,15 +176,58 @@ public class CommandConsoleTests
         StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard the call and joined by itself: first of the four, the north-east corner — " + blueWay);
 
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --with blue")).Kind, "a choreography spreads by itself");
-        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by distance --effect rotate-clockwise --for 10s")).Kind, "no turn by distance yet");
         Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph circle --center 5.5,5.5 --radius 1.0")).Kind, "the square alone for now");
         Assert.AreEqual("refused", (await red.ExecuteAsync("choreograph square --center 0.75,5.5 --side 2.0")).Kind, "a square the corridor cannot hold: red's corner falls in the wall");
 
-        var turning = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --effect rotate-clockwise --for 10s");
-        Assert.IsTrue(turning.Ok, turning.Text);
-        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "11 stop(s) left", "its corner and ten stages: a side of 2 m is 1 s at 2 m/s");
-        string blueTurn = await Until(blue, "11 stop(s) left");
-        StringAssert.Contains(blueTurn, "11 stop(s) left", "blue heard the turning call and turns the same square — " + blueTurn);
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --effect rotate-clockwise --for 10s")).Kind, "the timed turn is gone (ajuste 77)");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("rotate clockwise --with blue")).Kind, "a step spreads by itself too");
+    }
+
+    // THE STEP (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj… se pueden encolar"): four
+    // golems — blue, green, purple, yellow: no follower among them, unlike red → blue in this world — each put in the centre hall (the
+    // world's walls are the warehouse's) a little OUTSIDE its corner of a square of side 2 around (5.5, 5.5), on the diagonal, so the join
+    // crosses nobody and every body arrives FACING THE CENTRE: blue the north-east corner (6.5, 6.5), green north-west, purple south-west,
+    // yellow south-east, counter-clockwise. Facing the centre, a step costs every body the same turn (45°), so the four move in lockstep
+    // and the one behind never runs into the one ahead while it turns (lab 1-oct: a body already facing its way caught the one ahead
+    // mid-turn). Once all four stand
+    // on their corners, one step clockwise takes each to the PREVIOUS place in the order — along the sides, each following the one ahead:
+    // blue to the south-east corner, green to the north-east… A second step, queued while they walk, opens only when all four arrived again.
+    [TestMethod]
+    public async Task AStep_TakesEveryBodyToTheNextCorner_OnceEverybodyStands_AndStepsQueue()
+    {
+        await using var world = new MockWorld();
+        var names = new[] { "blue", "green", "purple", "yellow" };
+        var homes = new Dictionary<string, (double X, double Y)> { ["blue"] = (6.65, 6.65), ["green"] = (4.35, 6.65), ["purple"] = (4.35, 4.35), ["yellow"] = (6.65, 4.35) };   // a hand off the hall's walls
+        foreach (var name in names) await world.AddGolemAsync(name, homes[name], peers: names.Where(n => n != name).ToList());
+        var fleet = names.ToDictionary(n => n, n => new Commander(world.HostOf(n).Embodiment));
+        var blue = fleet["blue"];
+
+        Assert.AreEqual("refused", (await blue.ExecuteAsync("rotate clockwise")).Kind, "no formation in place yet");
+        Assert.IsTrue((await blue.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,green,purple,yellow")).Ok);
+        foreach (var g in fleet.Values) await Until(g, "route 1 completed");
+        StringAssert.Contains((await blue.ExecuteAsync("where")).Text, "(6.5, 6.5)", "blue, first of the names: the north-east corner");
+        StringAssert.Contains((await fleet["green"].ExecuteAsync("where")).Text, "(4.5, 6.5)", "green, second: north-west");
+        StringAssert.Contains((await fleet["purple"].ExecuteAsync("where")).Text, "(4.5, 4.5)", "purple, third: south-west");
+        StringAssert.Contains((await fleet["yellow"].ExecuteAsync("where")).Text, "(6.5, 4.5)", "yellow, fourth: south-east");
+
+        // the words cross the wire: every copy hears the four (the in-memory wire may deliver a word on its retry, seconds later)
+        for (int i = 0; i < 150 && names.Any(n => world.Read(n, "print g.Choreography.Current.PlacedCount 'v';").GetInt32() < 4); i++) await Task.Delay(200);
+        CollectionAssert.AreEqual(new[] { 4, 4, 4, 4 }, names.Select(n => world.Read(n, "print g.Choreography.Current.PlacedCount 'v';").GetInt32()).ToList(), "every copy heard that all four stand on their places");
+        var step = await blue.ExecuteAsync("rotate clockwise");
+        Assert.IsTrue(step.Ok, step.Text);
+        StringAssert.StartsWith(step.Text, "route 2 · ", "everybody already stands: the step opens at once — " + step.Text);
+        StringAssert.Contains(step.Text, "(6.5, 4.5)", "one step clockwise: blue heads from the north-east corner to the south-east one — " + step.Text);
+        var again = await blue.ExecuteAsync("rotate clockwise");
+        Assert.IsTrue(again.Ok, again.Text);
+        StringAssert.Contains(again.Text, "queued", "the second step waits for everybody — " + again.Text);
+        // the step spreads: every peer queues the same two steps and opens the first — green from north-west to north-east, purple from
+        // south-west to north-west, yellow from south-east to south-west (the walk itself is the Gazebo lab's: this world's wire may hand a
+        // word over seconds late, and four bodies in lockstep do not forgive that)
+        for (int i = 0; i < 150 && names.Any(n => world.Read(n, "print g.Choreography.Current.Queued 'v';").GetInt32() != 1); i++) await Task.Delay(200);
+        CollectionAssert.AreEqual(new[] { 1, 1, 1, 1 }, names.Select(n => world.Read(n, "print g.Choreography.Current.Queued 'v';").GetInt32()).ToList(), "every copy queued the second step and opened the first");
+        StringAssert.Contains((await fleet["green"].ExecuteAsync("route")).Text, "center@6.5,6.5", "green's step: to the north-east corner");
+        StringAssert.Contains((await fleet["purple"].ExecuteAsync("route")).Text, "center@4.5,6.5", "purple's step: to the north-west corner");
+        StringAssert.Contains((await fleet["yellow"].ExecuteAsync("route")).Text, "center@4.5,4.5", "yellow's step: to the south-west corner");
     }
 
     // BY DISTANCE (ajuste 73): red is commanded and convenes; blue hears where red stood, convenes by itself and takes the place red
@@ -213,7 +256,7 @@ public class CommandConsoleTests
     private static async Task<string> Until(Commander golem, string expected)
     {
         string text = "";
-        for (int i = 0; i < 60; i++)
+        for (int i = 0; i < 100; i++)
         {
             text = (await golem.ExecuteAsync("route")).Text;
             if (text.Contains(expected)) return text;

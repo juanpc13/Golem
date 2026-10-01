@@ -34,7 +34,7 @@ internal sealed class Route
     private readonly Collisions collisions;    // what a bump on the way teaches, and what the planner skirts
     private readonly double radius;            // the body the way is planned for
     private readonly double retreat;           // how far it backs off after a touch, before anything else
-    private readonly Action<Pose> stood;       // what the route tells its golem when the body reported where it stood (a turn, a move)
+    private readonly Golem golem;              // the golem whose route this is: told where the body stood at every turn and move (ajuste 78)
     private readonly List<Position> stops = new();
     /// <summary>Where to go, in the order given.</summary>
     internal IReadOnlyList<Position> Stops => stops;
@@ -59,6 +59,7 @@ internal sealed class Route
     private Trajectory way = new(Array.Empty<Leg>());   // the plan: passages to cross, points to pass, stops to reach, in order
     private Position origin;                             // where the way was decided from (the errand's start, or where the body stood)
     private Pose standing;                               // where the body stands and faces, as its last act reported it
+    private Position faces;                              // where the body faces once it reached its last stop (a formation's centre, ajuste 79); null: nowhere in particular
     private int nextLeg;                                 // the first leg not yet known to be walked
     private bool turned;                                 // the body already turned to face the next leg's point
     private int turnsOnLeg;                              // turns asked on the leg ahead: a body that cannot line up is not asked forever
@@ -85,20 +86,20 @@ internal sealed class Route
     /// radius yet — a heterogeneous fleet would need it).</summary>
     internal double FollowerStandoff => 2 * radius + FollowerClearance;
 
-    internal Route(int id, Position stop, bool following, bool choosesOrder, Navigation navigation, MapLayout layout, Collisions collisions, double radius, double retreat, Action<Pose> stood)
+    internal Route(int id, Position stop, bool following, bool choosesOrder, Navigation navigation, MapLayout layout, Collisions collisions, double radius, double retreat, Golem golem)
     {
         if (stop == null) throw new GolemDomainException("Route.Route: 'stop' was not given");
         if (navigation == null) throw new GolemDomainException($"route {id} needs to know how it takes the doors");
         if (layout == null) throw new GolemDomainException($"route {id} is decided on a layout");
         if (collisions == null) throw new GolemDomainException($"route {id} needs the collisions module, even empty");
-        if (stood == null) throw new GolemDomainException("Route.Route: 'stood' was not given");
+        if (golem == null) throw new GolemDomainException($"route {id} is a golem's: it was given none");
         if (radius < 0) throw new GolemDomainException($"route {id} is planned for a body: its radius cannot be negative");
         if (retreat < 0) throw new GolemDomainException($"route {id} is planned for a body: its retreat cannot be negative");
         this.layout = layout;
         this.collisions = collisions;
         this.radius = radius;
         this.retreat = retreat;
-        this.stood = stood;
+        this.golem = golem;
         Navigation = navigation;
         Id = id;
         Following = following;
@@ -173,6 +174,7 @@ internal sealed class Route
         if (onTheWay == null) throw new GolemDomainException("Route.Dash: 'onTheWay' was not given");
         if (!onTheWay.IsOnTheWay) throw new GolemDomainException($"route {Id} is improved with the golem's on-the-way strategy, not '{onTheWay.Name}'");
         if (!IsPending() || Yielding || Navigation.IsOnTheWay) return this;   // a route that yields is replaced, not improved
+        if (reached == stops.Count) return this;                              // on its place, only the facing left: nothing to plan
         Navigation = onTheWay;   // the golem's own strategy, the same object — nothing is built here
         Plan(standing ?? origin);
         return this;
@@ -230,6 +232,7 @@ internal sealed class Route
         if (!fresh.Last.IsStop) throw new GolemDomainException($"route {Id}'s way must end at a stop, not at '{fresh.Last.Name}'");
         int ahead = stops.Count - reached;
         if (fresh.StopCount != ahead) throw new GolemDomainException($"route {Id} has {ahead} stops ahead but the way reaches {fresh.StopCount}");
+        if (faces != null) fresh = new Trajectory(fresh.Legs().Append(Leg.FacingFrom(fresh.Last.At, faces)).ToList());   // the route ends facing the centre (ajuste 79)
         way = fresh.WalkedFrom(from);
         origin = from;
         standing = StandingAt(from);
@@ -305,7 +308,7 @@ internal sealed class Route
         {
             var leg = NextLeg;
             var point = leg.IsReverse ? leg.At : linedUp ? leg.Exit : leg.Approach;
-            double heading = standing == null ? leg.Heading : leg.IsReverse ? standing.Heading : standing.HeadingTo(point);
+            double heading = standing == null || leg.IsFacing ? leg.Heading : leg.IsReverse ? standing.Heading : standing.HeadingTo(point);
             return new Pose(point.X, point.Y, heading);
         }
     }
@@ -399,10 +402,20 @@ internal sealed class Route
         MustBePending();
         if (Order != "turnLeft" && Order != "turnRight") throw new GolemDomainException($"route {Id} asked no turn now: it asks '{Order}'");
         standing = me;
-        stood(me);
+        golem.Stood(me);
         turnsOnLeg++;
         turned = turnsOnLeg >= TurnsAtMost || Math.Abs(TurnAhead) <= 2 * TurnTolerance;
+        if (turned && NextLeg.IsFacing) Faced();   // the facing leg asks no advance: facing the centre, the route is complete
         return this;
+    }
+
+    // The body faces where the route told it to, on its place: the facing leg is behind, and with every stop reached the route is complete.
+    private void Faced()
+    {
+        nextLeg++;
+        turned = false;
+        turnsOnLeg = 0;
+        if (reached == stops.Count && nextLeg >= way.Count) End(RouteStatus.Completed, "");
     }
 
     /// <summary>The body moved as asked — forward, or in reverse — and says where it stands now. The route moves its cursor
@@ -416,7 +429,7 @@ internal sealed class Route
         if (Order != "advance" && Order != "back") throw new GolemDomainException($"route {Id} asked no move now: it asks '{Order}'");
         var leg = NextLeg;
         standing = me;
-        stood(me);
+        golem.Stood(me);
         turned = false;
         turnsOnLeg = 0;
         if (!leg.IsReverse && !linedUp && !Same(leg.Approach, leg.Exit)) { linedUp = true; return this; }   // lined up in front of the door: now through it
@@ -431,10 +444,24 @@ internal sealed class Route
             reached++;
             if (reached == stops.Count && Following) PullOver(me);
         }
+        if (reached == stops.Count && nextLeg < way.Count && NextLeg.IsFacing && Math.Abs(TurnAhead) <= TurnTolerance) Faced();   // already facing the centre: nothing to turn
         if (reached == stops.Count && nextLeg >= way.Count) End(RouteStatus.Completed, "");
         else if (nextLeg >= way.Count) PlanAgainFrom(me);   // the way ran out short of a stop (a retreat with no road from it): decided again from here
         return this;
     }
+
+    /// <summary>Where the body faces once it reached its last stop (ajuste 79): a formation's centre, so every step of the fleet costs
+    /// every body the same turn. Said before the way is decided; the way then ends with a facing leg (<see cref="Leg.Facing"/>).</summary>
+    internal Route Faces(Position toward)
+    {
+        if (toward == null) throw new GolemDomainException("Route.Faces: 'toward' was not given");
+        if (IsRouted) throw new GolemDomainException($"route {Id} already decided its way: where it faces is said before");
+        faces = toward;
+        return this;
+    }
+
+    /// <summary>Where the body faces once on its last stop; null when nowhere in particular.</summary>
+    internal Position FacesToward => faces;
 
     // Stranded — the touch left only the retreat, no road fit from the point it was decided at — or awake with the body
     // carried elsewhere: the route decides its way again from where the body actually stands (18-sep-2026: the domain, not a
@@ -561,6 +588,7 @@ internal sealed class Route
     // decides again from it once reached (Reach → PlanAgainFrom).
     private void Correct(Pose me, Position touch, bool replan)
     {
+        if (reached == stops.Count) { End(RouteStatus.Completed, ""); return; }   // touched while turning to face the centre, on its place: done (ajuste 79)
         var back = RetreatFrom(me, touch);
         var legs = new List<Leg> { new(back, TouchedFromBehind(me, touch) ? Leg.Clearance : Leg.Retreat) };
         if (replan)

@@ -44,8 +44,8 @@ public sealed class Commander
         if (command.Golem != "" && !IsMe(command.Golem))
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
         // a choreography spreads by itself, by tell (ajuste 71): this golem is called, its peers are told — never a line carried to them
-        if (command.Verb == "choreograph" && command.With.Count > 0)
-            return Reply.Syntax("choreograph: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, adopt)");
+        if (command.Verb is "choreograph" or "rotate" && command.With.Count > 0)
+            return Reply.Syntax($"{command.Verb}: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, adopt)");
         if (command.With.Count == 0) return await MineAsync(command, line);
 
         var peers = command.With.Contains("all") ? golem.Peers.Concat(command.With.Where(w => w != "all")).Distinct().ToList() : command.With.ToList();
@@ -88,6 +88,7 @@ public sealed class Commander
         {
             "visit" or "cover" => Errand(command),
             "choreograph" => Choreograph(command),
+            "rotate" => Motors(out var m, out var noMotors) ? Stepped(m.Rotate(command.Text), command.Text) : noMotors,
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
@@ -123,16 +124,13 @@ public sealed class Commander
         var peers = golem.Peers.ToList();   // the fleet, unless told outright: this golem and every peer it can reach (ajuste 71)
         var request = new FormationRequest(command.Text, new PointRequest(command.Points[0].X, command.Points[0].Y),
                                            double.Parse(command.Values["side"], CultureInfo.InvariantCulture), FleetOf(command, peers).ToList(),
-                                           command.Values.TryGetValue("effect", out var effect) ? effect : null,
-                                           command.Values.TryGetValue("for", out var lasting) ? double.Parse(lasting, CultureInfo.InvariantCulture) : null,
                                            command.Values.TryGetValue("by", out var by) ? by : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
         if (request.Policy == "distance") return Answered(displacer.Convene(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet));   // ajuste 73
-        var turn = request.Turn;
-        return Answered(turn == null ? displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet) : displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet, turn.Value));
+        return Answered(displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet));
     }
 
     // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)
@@ -234,6 +232,10 @@ public sealed class Commander
 
     // an act of the mind (no route to print): done in a few words, or refused in the domain's
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
+
+    // a step asked (ajuste 77): opened at once when everybody already stands on its place — the order, as any — or queued, said so
+    private Reply Stepped(Answer answer, string sense) =>
+        answer.Ok && answer.Order == null ? Reply.Done($"step {sense} queued — it opens when everybody stands on its place", answer.Print ?? "") : Answered(answer);
 
     private Reply Obstacles()
     {

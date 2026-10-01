@@ -19,8 +19,7 @@ namespace GolemDomain.Routes;
 /// </summary>
 internal abstract class Navigation
 {
-    private Action<Navigation> chosen;   // the golem this strategy belongs to, told when it is switched on: it switches the others off
-    private Action<Navigation> dropped;  // …and when it is switched off: the direct way stays
+    private Strategies holder;   // the golem's strategies this one belongs to: told when it is switched on or off, it alone sets what is active (ajuste 78: the object, no delegates)
 
     /// <summary>What the journal and the panel call this mode.</summary>
     internal abstract string Name { get; }
@@ -38,8 +37,8 @@ internal abstract class Navigation
     /// active: nothing changes.</summary>
     internal Navigation Activate()
     {
-        if (chosen == null) throw new GolemDomainException($"the strategy '{Name}' belongs to no golem: it is the golem's own (g.Strategy.OnTheWay), never built");
-        if (!IsActive) chosen(this);
+        if (holder == null) throw new GolemDomainException($"the strategy '{Name}' belongs to no golem: it is the golem's own (g.Strategy.OnTheWay), never built");
+        if (!IsActive) holder.Choose(this);
         return this;
     }
 
@@ -47,19 +46,17 @@ internal abstract class Navigation
     /// else is active. Already off: nothing changes.</summary>
     internal Navigation Deactivate()
     {
-        if (dropped == null) throw new GolemDomainException($"the strategy '{Name}' belongs to no golem: it is the golem's own (g.Strategy.OnTheWay), never built");
+        if (holder == null) throw new GolemDomainException($"the strategy '{Name}' belongs to no golem: it is the golem's own (g.Strategy.OnTheWay), never built");
         if (IsDefault) throw new GolemDomainException($"'{Name}' is the golem's direct way: it stays when nothing else is active, and cannot be switched off — activate another");
-        if (IsActive) dropped(this);
+        if (IsActive) holder.Drop(this);
         return this;
     }
 
-    // The golem that holds this strategy hands it the switches; the golem alone sets what is active, so one is active at a time.
-    internal void HeldBy(Action<Navigation> chosen, Action<Navigation> dropped)
+    // The golem's strategies this one belongs to: it alone sets what is active, so one is active at a time.
+    internal void HeldBy(Strategies holder)
     {
-        if (chosen == null) throw new GolemDomainException("Navigation.HeldBy: 'chosen' was not given");
-        if (dropped == null) throw new GolemDomainException("Navigation.HeldBy: 'dropped' was not given");
-        this.chosen = chosen;
-        this.dropped = dropped;
+        if (holder == null) throw new GolemDomainException("Navigation.HeldBy: 'holder' was not given");
+        this.holder = holder;
     }
     internal void Active(bool on) => IsActive = on;
 
@@ -142,7 +139,7 @@ internal sealed class Strategies
 
     internal Strategies()
     {
-        foreach (var strategy in All()) strategy.HeldBy(Choose, Drop);
+        foreach (var strategy in All()) strategy.HeldBy(this);
         DoorByDoor.Active(true);
     }
 
@@ -151,6 +148,15 @@ internal sealed class Strategies
     /// <summary>Both, the direct one first.</summary>
     internal IReadOnlyList<Navigation> All() => new Navigation[] { DoorByDoor, OnTheWay };
 
-    private void Choose(Navigation chosen) { foreach (var s in All()) s.Active(ReferenceEquals(s, chosen)); }
-    private void Drop(Navigation dropped) { foreach (var s in All()) s.Active(s.IsDefault); }
+    // what a strategy of this golem's says when switched on or off: the holder alone sets what is active
+    internal void Choose(Navigation chosen)
+    {
+        if (chosen == null) throw new GolemDomainException("Strategies.Choose: 'chosen' was not given");
+        foreach (var s in All()) s.Active(ReferenceEquals(s, chosen));
+    }
+    internal void Drop(Navigation dropped)
+    {
+        if (dropped == null) throw new GolemDomainException("Strategies.Drop: 'dropped' was not given");
+        foreach (var s in All()) s.Active(s.IsDefault);
+    }
 }

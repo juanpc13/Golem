@@ -1,4 +1,3 @@
-using System.Globalization;
 using GolemDomain.Geometry;
 using GolemDomain.Routes;
 
@@ -12,22 +11,20 @@ namespace GolemDomain.Formations;
 /// shape it is. And it GIVES THE ROUTE to the place (ajuste 70; Juan: "el método Join es como algo que debe proporcionarlo el módulo de
 /// Choreography, dar la route"): <c>route = g.Choreography.Join(from, formation, me);</c> — the module decides the place; the golem, from
 /// inside, opens the route, so every route stays the golem's (its handle, its list, its scenario). The concrete figures stay
-/// constructible for the tests and for this module.
+/// constructible for the tests and for this module. Since ajuste 77 (1-oct-2026) every formation is taken THROUGH A CONVOCATION
+/// (<see cref="Formations.Muster"/>) — by rank or by distance — which stays as the formation in place and takes the fleet's steps.
 /// </summary>
 internal sealed class Choreographies
 {
     private static readonly string[] Known = { "square", "triangle", "circle" };
-    private readonly Func<Position, Position, string, Route> takePlace;   // the golem it was born with: the route to a place, refused off the map or without room
-    private readonly Func<double> speed;                                  // …and its body's cruise, in m/s, for the stages of a turn
-    private readonly List<Muster> musters = new();                        // the convocations by distance it heard of or convened in (ajuste 73)
+    private readonly Golem golem;                   // the golem it was born with: it opens the route to a place (refused off the map or without room)
+    private readonly List<Muster> musters = new();  // the convocations it heard of, joined or convened in (ajustes 73, 77)
 
-    // born with its golem, which hands it how to ask for a route and how fast its body goes (like the strategies' switches, ajuste 63)
-    internal Choreographies(Func<Position, Position, string, Route> takePlace, Func<double> speed)
+    // born with its golem (like the strategies' switches, ajuste 63): objects that know each other, no delegate (ajuste 78)
+    internal Choreographies(Golem golem)
     {
-        if (takePlace == null) throw new GolemDomainException("Choreographies.Choreographies: 'takePlace' was not given");
-        if (speed == null) throw new GolemDomainException("Choreographies.Choreographies: 'speed' was not given");
-        this.takePlace = takePlace;
-        this.speed = speed;
+        if (golem == null) throw new GolemDomainException("Choreographies.Choreographies: 'golem' was not given");
+        this.golem = golem;
     }
 
     /// <summary>A formation by its name — <c>square</c>, <c>triangle</c> or <c>circle</c>, any case — at that centre, with its natural
@@ -49,36 +46,21 @@ internal sealed class Choreographies
     /// <summary>The formations the golem knows how to take, by name.</summary>
     internal IReadOnlyList<string> Names() => Known;
 
-    /// <summary>The golem takes ITS PLACE in a formation BY RANK (propuesta 59, paso 1; ajuste 70: the module's, was the golem's): the
-    /// place of its rank among as many places as the fleet has bodies, and the route to it — <c>route = g.Choreography.Join(from,
-    /// formation, me);</c>. Refused when the place is nowhere on the map or leaves no room for the body.</summary>
-    internal Route Join(Position from, Formation formation, Member me)
+    /// <summary>The golem takes ITS PLACE in a formation BY RANK (propuesta 59, paso 1; ajuste 70: the module's, was the golem's; ajuste 77:
+    /// through the convocation, which keeps the place): the place of its rank among as many places as the fleet has bodies, and the
+    /// route to it — <c>route = g.Choreography.Join(from, muster, me);</c>. Refused when the place is nowhere on the map or leaves no
+    /// room for the body, or when the convocation is not this golem's.</summary>
+    internal Route Join(Position from, Muster muster, Member me)
     {
         if (from == null) throw new GolemDomainException("Choreographies.Join: 'from' was not given");
-        if (formation == null) throw new GolemDomainException("Choreographies.Join: 'formation' was not given");
+        if (muster == null) throw new GolemDomainException("Choreographies.Join: 'muster' was not given");
         if (me == null) throw new GolemDomainException("Choreographies.Join: 'me' was not given");
-        var place = formation.Place(me);
-        string where = $"place {me.Rank + 1} of {me.Of} of the {formation.Name} at ({Fmt(place.X)}, {Fmt(place.Y)})";
-        return takePlace(from, place, where);
+        if (!musters.Contains(muster)) throw new GolemDomainException($"the call {muster.Call} is not this golem's: it is found with g.Choreography.Muster");
+        return muster.Join(from, me);
     }
 
-    /// <summary>The same, TURNING with the fleet (paso 3): its place first, then every stage of the rotation told to the route —
-    /// <c>turn = Rotation(@direction, lasting); route = g.Choreography.Join(from, formation, me, turn);</c>. The stages are decided before
-    /// the route is minted: a refusal mints nothing.</summary>
-    internal Route Join(Position from, Formation formation, Member me, Rotation turn)
-    {
-        if (from == null) throw new GolemDomainException("Choreographies.Join: 'from' was not given");
-        if (formation == null) throw new GolemDomainException("Choreographies.Join: 'formation' was not given");
-        if (me == null) throw new GolemDomainException("Choreographies.Join: 'me' was not given");
-        if (turn == null) throw new GolemDomainException("Choreographies.Join: 'turn' was not given");
-        var stages = formation.Stages(me, turn, speed());
-        var route = Join(from, formation, me);
-        foreach (var stage in stages) route.Then(stage);
-        return route;
-    }
-
-    /// <summary>The CONVOCATION of that call BY DISTANCE (ajuste 73): found by the call's identity, or opened — by the golem's own
-    /// word or a peer's that came first — <c>muster = g.Choreography.Muster(@callId, formation, fleet);</c>.</summary>
+    /// <summary>The CONVOCATION of that call (ajuste 73; by rank too since ajuste 77): found by the call's identity, or opened — by the
+    /// golem's own word or a peer's that came first — <c>muster = g.Choreography.Muster(@callId, formation, fleet);</c>.</summary>
     internal Muster Muster(string call, Formation formation, Fleet fleet)
     {
         if (string.IsNullOrWhiteSpace(call)) throw new GolemDomainException("Choreographies.Muster: 'call' was not given");
@@ -86,9 +68,39 @@ internal sealed class Choreographies
         if (fleet == null) throw new GolemDomainException("Choreographies.Muster: 'fleet' was not given");
         var known = musters.FirstOrDefault(m => m.Call == call);
         if (known != null) return known;
-        var muster = new Muster(call, formation, fleet, takePlace);
+        var muster = new Muster(call, formation, fleet, golem);
         musters.Add(muster);
         return muster;
+    }
+
+    /// <summary>The convocation of that call, already known — <c>muster = g.Choreography.Muster(@call);</c> in the uptakes of the words
+    /// about a formation in place (ajuste 77). Refused when unknown: ask <see cref="Knows"/> first.</summary>
+    internal Muster Muster(string call)
+    {
+        if (string.IsNullOrWhiteSpace(call)) throw new GolemDomainException("Choreographies.Muster: 'call' was not given");
+        return musters.FirstOrDefault(m => m.Call == call) ?? throw new GolemDomainException($"the golem knows no call {call}");
+    }
+
+    /// <summary>Whether this golem has its place in the convocation of that call — so a word about it (a member placed, a step) is its
+    /// business: <c>if (g.Choreography.Knows(@call)) { … }</c>.</summary>
+    internal bool Knows(string call)
+    {
+        if (string.IsNullOrWhiteSpace(call)) throw new GolemDomainException("Choreographies.Knows: 'call' was not given");
+        return musters.Any(m => m.Call == call && m.Route != null);
+    }
+
+    /// <summary>The FORMATION IN PLACE (ajuste 77): the convocation of the latest route this golem took a place by — what a step
+    /// (<c>rotate</c>) is about. Refused when the golem stands in no formation.</summary>
+    internal Muster Current =>
+        musters.Where(m => m.Route != null).OrderByDescending(m => m.Route.Id).FirstOrDefault()
+        ?? throw new GolemDomainException("the fleet stands in no formation: call one first (choreograph)");
+
+    /// <summary>Whether that route was this golem's route to its place in a convocation, and reached it — the arrival asks it to say the
+    /// golem is placed: <c>if (g.Choreography.Reached(route)) { muster = g.Choreography.MusterOf(route); … }</c>.</summary>
+    internal bool Reached(Route route)
+    {
+        if (route == null) throw new GolemDomainException("Choreographies.Reached: 'route' was not given");
+        return musters.Any(m => m.IsReached(route));
     }
 
     /// <summary>The convocation a route of this golem belongs to (propuesta 74): the one the route was given by, or the one that holds it
@@ -112,5 +124,4 @@ internal sealed class Choreographies
         return muster.Convene(from, me);
     }
 
-    private static string Fmt(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 }

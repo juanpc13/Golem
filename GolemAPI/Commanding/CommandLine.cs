@@ -39,7 +39,8 @@ public static class CommandLine
     {
         new CommandHelp("visit", "visit x,y [x,y …]", "an errand through those points, in that order", "visit 2,9.5 9,8"),
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
-        new CommandHelp("choreograph", "choreograph square --center x,y --side s [--by rank|distance] [--effect rotate-clockwise|rotate-counterclockwise --for 10s] [--fleet a,b]", "the fleet takes a square, said by its side, its sides square to the map, the first corner north-east; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged; --by distance: each golem sets out to the nearest corner it knows and a nearer peer's word may send it to the next (ajuste 73; no effect by distance yet); --effect turns it along its sides for that long; it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
+        new CommandHelp("choreograph", "choreograph square --center x,y --side s [--by rank|distance] [--fleet a,b]", "the fleet takes a square, said by its side, its sides square to the map, the first corner north-east; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged; --by distance: each golem sets out to the nearest corner it knows and a nearer peer's word may send it to the next (ajuste 73); it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
+        new CommandHelp("rotate", "rotate clockwise|counterclockwise", "one step of the formation in place: every body takes the next corner in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused here)", "rotate clockwise"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
@@ -106,20 +107,21 @@ public static class CommandLine
                 return new Command(named, with, verb, Points(verb, args, exactly: 1), noOptions, "");
             case "choreograph":
             {
-                // the figure's name, then its options with values: --center x,y, --side s, --by rank, --effect … --for …, and --fleet a,b
-                // when the fleet is told outright. --radius is read only to say it is the circle's, not the square's.
+                // the figure's name, then its options with values: --center x,y, --side s, --by rank|distance, and --fleet a,b when the
+                // fleet is told outright. --radius is read only to say it is the circle's, not the square's.
                 var values = new Dictionary<string, string>();
                 var rest = new List<string>();
                 for (int i = 0; i < args.Count; i++)
                 {
                     string a = args[i].ToLowerInvariant();
-                    if (a is "--center" or "--side" or "--radius" or "--by" or "--fleet" or "--effect" or "--for")
+                    if (a is "--center" or "--side" or "--radius" or "--by" or "--fleet")
                     {
-                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"choreograph: {a} needs a value, like {a switch { "--center" => "--center 5.5,5.5", "--side" => "--side 2.0", "--radius" => "--side 2.0", "--by" => "--by rank", "--effect" => "--effect rotate-clockwise", "--for" => "--for 10s", _ => "--fleet blue,red" }}");
+                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"choreograph: {a} needs a value, like {a switch { "--center" => "--center 5.5,5.5", "--side" => "--side 2.0", "--radius" => "--side 2.0", "--by" => "--by rank", _ => "--fleet blue,red" }}");
                         values[a[2..]] = args[++i];
                         continue;
                     }
-                    if (a.StartsWith("--")) throw new CommandSyntaxException($"choreograph: '{Head(a)}' is no option; the options are --center x,y, --side s, --by rank, --effect rotate-clockwise|rotate-counterclockwise, --for 10s and --fleet a,b");
+                    if (a is "--effect" or "--for") throw new CommandSyntaxException("choreograph: the timed turn is gone (ajuste 77) — take the square, then rotate clockwise|counterclockwise, one step a time");
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"choreograph: '{Head(a)}' is no option; the options are --center x,y, --side s, --by rank|distance and --fleet a,b");
                     rest.Add(a);
                 }
                 if (rest.Count == 1 && rest[0] is "circle" or "triangle")
@@ -130,28 +132,19 @@ public static class CommandLine
                 var centre = Points(verb, new[] { values["center"] }, exactly: 1);
                 if (!double.TryParse(values["side"], NumberStyles.Float, CultureInfo.InvariantCulture, out double side) || side <= 0)
                     throw new CommandSyntaxException($"choreograph: --side expects metres greater than zero, like --side 2.0; found '{Head(values["side"])}'");
-                // how the places are shared: by rank, the default and the only policy built; by distance is propuesta 64
+                // how the places are shared: by rank, the default; by distance (ajuste 73)
                 if (values.TryGetValue("by", out var by))
                 {
                     values["by"] = by.ToLowerInvariant();
                     if (values["by"] is not ("rank" or "distance")) throw new CommandSyntaxException($"choreograph: --by is rank or distance; found '{Head(by)}'");
                 }
                 if (values.TryGetValue("fleet", out var fleet) && !Names.IsMatch(fleet)) throw new CommandSyntaxException($"choreograph: --fleet expects names like blue,red; found '{Head(fleet)}'");
-                // an effect and how long it lasts go together: --effect rotate-clockwise --for 10s (seconds, the s optional)
-                if (values.ContainsKey("effect") != values.ContainsKey("for")) throw new CommandSyntaxException("choreograph: an effect and its time go together, like --effect rotate-clockwise --for 10s");
-                if (values.TryGetValue("effect", out var effect))
-                {
-                    values["effect"] = effect.ToLowerInvariant();
-                    if (values["effect"] is not ("rotate-clockwise" or "rotate-counterclockwise")) throw new CommandSyntaxException($"choreograph: --effect is rotate-clockwise or rotate-counterclockwise; found '{Head(effect)}'");
-                    string lasting = values["for"].ToLowerInvariant().TrimEnd('s');
-                    if (!double.TryParse(lasting, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds) || seconds <= 0)
-                        throw new CommandSyntaxException($"choreograph: --for expects seconds greater than zero, like --for 10s; found '{Head(values["for"])}'");
-                    values["for"] = seconds.ToString(CultureInfo.InvariantCulture);
-                }
-                if (values.TryGetValue("by", out var policy) && policy == "distance" && values.ContainsKey("effect"))
-                    throw new CommandSyntaxException("choreograph: the turn by distance is not built yet — --by rank for an effect");
                 return new Command(named, with, verb, centre, noOptions, rest[0], values);
             }
+            case "rotate":
+                // one step of the formation in place, in that sense (ajuste 77): the sense is the whole of it
+                if (args.Count != 1 || args[0].ToLowerInvariant() is not ("clockwise" or "counterclockwise")) throw new CommandSyntaxException("rotate: expected the sense, clockwise or counterclockwise, like rotate clockwise");
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
             case "adopt":
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("on-the-way" or "door-by-door")) throw new CommandSyntaxException("adopt: expected the strategy, on-the-way or door-by-door");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());

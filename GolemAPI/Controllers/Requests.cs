@@ -72,19 +72,15 @@ public sealed record ScenarioRequest(string Scenario)
 }
 
 /// <summary>The fleet called to a SQUARE (propuesta 59; ajuste 65) — <c>{"figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
-/// "by": "rank", "fleet": ["blue", "red"]}</c>: said by its side; the places taken by rank (the only policy built: "distance" is propuesta
-/// 64); the fleet may be left out (this golem and every peer it can reach).</summary>
-public sealed record FormationRequest(string Figure, PointRequest Center, double? Side, List<string> Fleet, string Effect = null, double? For = null,
-                                      string By = null, double? Radius = null)
+/// "by": "rank", "fleet": ["blue", "red"]}</c>: said by its side; the places taken by rank or by distance (ajuste 73); the fleet may be
+/// left out (this golem and every peer it can reach). The timed turn (effect, for) is gone: a step is <see cref="RotateRequest"/> (ajuste 77).</summary>
+public sealed record FormationRequest(string Figure, PointRequest Center, double? Side, List<string> Fleet, string By = null, double? Radius = null,
+                                      string Effect = null, double? For = null)
 {
-    public const string Shape = "{\"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"by\": \"rank\", \"fleet\": [\"blue\", \"red\"], \"effect\": \"rotate-clockwise\", \"for\": 10}";
-    public static readonly string[] Effects = { "rotate-clockwise", "rotate-counterclockwise" };
+    public const string Shape = "{\"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"by\": \"rank\", \"fleet\": [\"blue\", \"red\"]}";
     public static readonly string[] Figures = { "square" };   // the circle and the triangle set aside for now (ajuste 65)
 
-    /// <summary>The rotation asked, as the domain takes it: its sense and its seconds; null when no effect was asked.</summary>
-    public (string Direction, double Seconds)? Turn => string.IsNullOrWhiteSpace(Effect) ? null : (Effect.Trim().ToLowerInvariant()["rotate-".Length..], For ?? 0);
-
-    /// <summary>How the places are shared: by rank, the default and the only one built.</summary>
+    /// <summary>How the places are shared: by rank, the default, or by distance.</summary>
     public string Policy => string.IsNullOrWhiteSpace(By) ? "rank" : By.Trim().ToLowerInvariant();
 
     public IEnumerable<string> Problems()
@@ -95,12 +91,21 @@ public sealed record FormationRequest(string Figure, PointRequest Center, double
         if (Radius.HasValue) yield return "a square is said by its side, \"side\": 2.0 — not by a radius";
         if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
         if (Policy is not ("rank" or "distance")) yield return "the policy is \"rank\" or \"distance\"";
-        if (Policy == "distance" && !string.IsNullOrWhiteSpace(Effect)) yield return "the turn by distance is not built yet: \"by\": \"rank\" for an effect";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
-        bool effect = !string.IsNullOrWhiteSpace(Effect);
-        if (effect && !Effects.Contains(Effect.Trim().ToLowerInvariant())) yield return "the effect must be one of " + string.Join(", ", Effects);
-        if (effect && (!For.HasValue || !double.IsFinite(For.Value) || For.Value <= 0)) yield return "an effect lasts a number of seconds greater than zero: \"for\": 10";
-        if (!effect && For.HasValue) yield return "\"for\" says how long an effect lasts: give the effect too";
+        if (!string.IsNullOrWhiteSpace(Effect) || For.HasValue) yield return "the timed turn is gone (ajuste 77): take the square, then POST /rotate " + RotateRequest.Shape + ", one step a time";
+    }
+}
+
+/// <summary>One STEP of the formation in place (ajuste 77) — <c>{"sense": "clockwise"}</c> or <c>"counterclockwise"</c>: every body takes
+/// the next corner in that sense once everybody stands on its own; steps queue.</summary>
+public sealed record RotateRequest(string Sense)
+{
+    public const string Shape = "{\"sense\": \"clockwise\"}";
+    public static readonly string[] Senses = { "clockwise", "counterclockwise" };
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Sense) || !Senses.Contains(Sense.Trim().ToLowerInvariant())) yield return "the sense is \"clockwise\" or \"counterclockwise\": " + Shape;
     }
 }
 

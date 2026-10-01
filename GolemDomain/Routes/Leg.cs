@@ -22,6 +22,9 @@ internal sealed class Leg
     /// moving AHEAD — the same distance as a retreat, walked forward, the body's own axis — so two bodies that caught up with each
     /// other part instead of shoving (the one touched on the nose backs off, the one touched on the back goes ahead).</summary>
     internal const string Clearance = "away";
+    /// <summary>The name of the leg that ends a route to a PLACE of a formation (ajuste 79, 1-oct-2026): the body, on its place, turns to
+    /// FACE THE CENTRE of the figure — no advance, a heading of its own — so every step of the fleet costs every body the same turn.</summary>
+    internal const string Facing = "face";
     /// <summary>A point the way passes through that is no passage and no stop — what the route calls a point it was given
     /// bare (the planner's detours and courtesy steps arrive at the journal as points).</summary>
     internal const string Waypoint = "via";
@@ -34,12 +37,14 @@ internal sealed class Leg
     internal bool IsStop => Kind == "stop";
     /// <summary>door, opening, around, aside or stop — what the journal's act for this leg is.</summary>
     internal string Kind =>
-        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name == Retreat ? Retreat : Name == Clearance ? Clearance : Name == Waypoint ? Waypoint : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
+        Name == Detour ? Detour : Name == Courtesy ? Courtesy : Name == Retreat ? Retreat : Name == Clearance ? Clearance : Name == Facing ? Facing : Name == Waypoint ? Waypoint : Name.Contains('/') ? "door" : Name.Contains('~') ? "opening" : "stop";
     /// <summary>A correction the way gained after a touch (back, around, aside), as opposed to a leg of the plan as first decided
     /// (a door, an opening, a point, a stop) — Juan, 16-sep-2026: "posiciones legacy vs posiciones de corrección".</summary>
     internal bool IsCorrection => Kind == Retreat || Kind == Clearance || Kind == Detour || Kind == Courtesy;
     /// <summary>Walked in reverse: no turn before it. A clearance (away) is a correction too, but walked forward.</summary>
     internal bool IsReverse => Kind == Retreat;
+    /// <summary>A turn in place to face somewhere (ajuste 79): done with its turn, no advance.</summary>
+    internal bool IsFacing => Kind == Facing;
     /// <summary>A passage's two areas (the first and the second of its name); "" for a point or a stop.</summary>
     internal string A => Kind == "door" ? Name[..Name.IndexOf('/')] : Kind == "opening" ? Name[..Name.IndexOf('~')] : "";
     internal string B => Kind == "door" ? Name[(Name.IndexOf('/') + 1)..] : Kind == "opening" ? Name[(Name.IndexOf('~') + 1)..] : "";
@@ -73,10 +78,21 @@ internal sealed class Leg
         Heading = heading;
     }
 
-    /// <summary>The same leg, told the point it is walked from: its heading is the bearing from there to its approach.</summary>
+    /// <summary>The same leg, told the point it is walked from: its heading is the bearing from there to its approach. A facing leg
+    /// keeps its own heading: it is walked from nowhere.</summary>
     internal Leg WalkedFrom(Position previous)
     {
         if (previous == null) throw new GolemDomainException("Leg.WalkedFrom: 'previous' was not given");
+        if (IsFacing) return this;
         return new Leg(At, Name, Approach, Exit, true, previous.HeadingTo(Approach));
+    }
+
+    /// <summary>The leg that faces somewhere from a point (ajuste 79): on the point, heading toward the place to face.</summary>
+    internal static Leg FacingFrom(Position at, Position toward)
+    {
+        if (at == null) throw new GolemDomainException("Leg.FacingFrom: 'at' was not given");
+        if (toward == null) throw new GolemDomainException("Leg.FacingFrom: 'toward' was not given");
+        if (ReferenceEquals(at, toward)) throw new GolemDomainException("Leg.FacingFrom: 'at' and 'toward' are the same position");
+        return new Leg(at, Facing, at, at, true, at.HeadingTo(toward));
     }
 }

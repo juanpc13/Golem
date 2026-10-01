@@ -79,8 +79,19 @@ public class GolemController : Controller
                                                     : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
         var center = (request.Center.X.Value, request.Center.Y.Value);
         if (request.Policy == "distance") return Answered(displacer.Convene(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet));   // ajuste 73
-        var turn = request.Turn;
-        return Answered(turn == null ? displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet) : displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet, turn.Value));
+        return Answered(displacer.Join(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet));
+    }
+
+    /// <summary>One STEP of the formation in place (ajuste 77): every body takes the next corner in that sense once everybody stands on
+    /// its own; steps queue. It spreads by itself: command one golem.</summary>
+    [HttpPost("rotate")]
+    public IActionResult Rotate([FromBody] RotateRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + RotateRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Rotate(request.Sense.Trim().ToLowerInvariant()));
     }
 
     // The operator holds the golem where its body stands, or lets it go on.

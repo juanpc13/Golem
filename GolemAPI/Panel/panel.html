@@ -161,8 +161,9 @@
         <button id="cover" class="place">cover</button>
         <button id="then" class="place">then</button>
         <button id="square" class="place" title="the fleet takes a square, said by its side, each golem the corner of its rank among the names (--by rank) — add --with all or press the peers">square</button>
-        <button id="sqspin" class="place" title="the fleet takes the square by rank and turns clockwise along its sides for ten seconds">square · rotate 10s</button>
         <button id="sqnear" class="place" title="the fleet takes a square by distance: each golem sets out to the nearest corner it knows, and a nearer peer's word may send it to the next (ajuste 73)">square · by distance</button>
+        <button id="rotcw" class="place" title="one step of the formation in place: every body takes the next corner clockwise, once everybody stands on its own; press it again to queue another step (ajuste 77)">&#8635; clockwise</button>
+        <button id="rotccw" class="place" title="one step of the formation in place, counter-clockwise; steps queue (ajuste 77)">&#8634; counterclockwise</button>
         <button id="clear">clear the line</button>
       </div>
       <div class="row">
@@ -344,7 +345,7 @@ function parts() {
 function build(p) { return p.with.length ? `${p.head}${p.cmd.trim()} --with ${p.with.join(',')}` : `${p.head}${p.cmd}`; }
 function put(text) { line.value = text; line.focus(); line.setSelectionRange(line.value.length, line.value.length); }
 // a choreography spreads by itself, by tell (ajuste 71): its line never carries --with, and the selector is off while it is on the line
-const isChoreography = (cmd) => /^choreograph\b/i.test((cmd ?? parts().cmd).trim());
+const isChoreography = (cmd) => /^(choreograph|rotate)\b/i.test((cmd ?? parts().cmd).trim());   // both spread by themselves: no --with
 function setLine(cmd) { const p = parts(); p.cmd = cmd; if (isChoreography(cmd)) p.with = []; put(build(p)); lightGolems(); }
 function setWhole(text) { put(text); }
 // visit / cover / then at the head of the command; the points already on it stay
@@ -422,8 +423,9 @@ document.getElementById('addpoint').onclick = () => addPoint(+document.getElemen
 document.getElementById('move').onclick = () => compose('visit');
 document.getElementById('cover').onclick = () => compose('cover');
 document.getElementById('square').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank');
-document.getElementById('sqspin').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank --effect rotate-clockwise --for 10s');
 document.getElementById('sqnear').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
+document.getElementById('rotcw').onclick = () => setLine('rotate clockwise');
+document.getElementById('rotccw').onclick = () => setLine('rotate counterclockwise');
 document.getElementById('then').onclick = () => compose('then');
 document.getElementById('clear').onclick = () => setWhole(head);
 for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],

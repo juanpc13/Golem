@@ -45,7 +45,7 @@ internal sealed class Golem
     {
         if (body == null) throw new GolemDomainException("a golem needs a body to drive");
         this.body = body;
-        choreography = new Choreographies(TakePlace, Speed);   // the module asks its golem for the route to a place (ajuste 70)
+        choreography = new Choreographies(this);   // the module is born with its golem and asks it for the route to a place (ajustes 70, 78)
     }
 
     /// <summary>The golem born with its body AND ITS NAME (ajuste 72, 30-sep-2026; Juan: "que g sepa quién es él, el dominio debería
@@ -202,11 +202,16 @@ internal sealed class Golem
 
     // A PLACE of a choreography, asked by the golem's own module (ajuste 70: Choreographies.Join decides the place, the golem opens the
     // route to it, so every route stays the golem's): refused when the place is nowhere on the map or leaves no room for this body.
-    private Route TakePlace(Position from, Position place, string where)
+    /// <summary>The route to a PLACE of a formation, asked by the golem's own choreographies module (ajustes 70, 78): on the map, room
+    /// for the body, then the errand opened like any other. The module's to ask, never the journal's — the journal asks the module.</summary>
+    internal Route TakePlace(Position from, Position place, Position facing, string where)
     {
+        if (from == null) throw new GolemDomainException("Golem.TakePlace: 'from' was not given");
+        if (place == null) throw new GolemDomainException("Golem.TakePlace: 'place' was not given");
+        if (facing == null) throw new GolemDomainException("Golem.TakePlace: 'facing' was not given");
         if (!layout.IsOnMap(place)) throw new GolemDomainException($"{where} is nowhere on the map");
         if (!layout.HasRoom(place, Radius())) throw new GolemDomainException($"{where} leaves no room for a body of radius {Fmt(Radius())}");
-        return Entrust(from, place, following: false, choosesOrder: false);
+        return Entrust(from, place, following: false, choosesOrder: false, facing: facing);   // the route ends facing the centre (ajuste 79)
     }
 
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
@@ -557,11 +562,12 @@ internal sealed class Golem
     // A new route with this stop, its way decided from `from` at once: the handle is the next one, minted here (a
     // deterministic function of the routes the golem holds, so the same on replay), and never reused — the idempotency
     // keys of the host hang on it. Opened while the golem is free, `from` is where its body stands: kept.
-    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder)
+    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder, Position facing = null)
     {
         if (!HasPendingMission()) collisions.PeersMovedOn();   // an idle golem sets out afresh: whoever it met while standing has moved on
         // born with the golem's direct way, whatever is active (ajuste 62): the script improves it with a dash when the strategy says so
-        var route = new Route(lastHandle + 1, stop, following, choosesOrder, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, Stood);
+        var route = new Route(lastHandle + 1, stop, following, choosesOrder, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, this);
+        if (facing != null) route.Faces(facing);   // a place of a formation: the body ends facing the centre (ajuste 79)
         route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
         if (!HasPendingMission()) standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
         routes.Add(route);
@@ -573,10 +579,12 @@ internal sealed class Golem
     // else where its body last stood; null before any act brought a pose.
     private Pose Whereabouts() => HasPendingMission() ? PlannedEnd() : standing;
 
-    // What a route tells its golem when the body reported a turn or a move: where it stood then — and every route the body
-    // has not set out on yet measures its first order from there, not from where its planning expected the body to be.
-    private void Stood(Pose me)
+    /// <summary>What a route tells its golem when the body reported a turn or a move: where it stood then — and every route the
+    /// body has not set out on yet measures its first order from there, not from where its planning expected the body to be. The
+    /// route's own word to the golem it belongs to (ajuste 78: objects that know each other, no delegate); never the journal's.</summary>
+    internal void Stood(Pose me)
     {
+        if (me == null) throw new GolemDomainException("Golem.Stood: 'me' was not given");
         standing = me;
         foreach (var route in routes)
             if (route.IsPending() && !route.HasSetOut) route.StandAt(me);

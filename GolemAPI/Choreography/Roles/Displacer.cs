@@ -100,7 +100,8 @@ public sealed class Displacer
                         formation = g.Choreography.Formation(@figure, center, side);
                         fleet = Fleet(@names);
                         me = fleet.Member(g);
-                        route = g.Choreography.Join(from, formation, me);
+                        muster = g.Choreography.Muster(@callId, formation, fleet);
+                        route = g.Choreography.Join(from, muster, me);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -120,35 +121,36 @@ public sealed class Displacer
                     }
                     expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call;
                 ";
-    private const string TurnFormation = @"
+    // THE STEP (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj y antihorario… se pueden
+    // encolar"): a step is queued on the formation in place — nothing moves here unless everybody already stands on its place, then the
+    // step opens at once. The act exposes what the peers need to queue the same step (echo-rotate); the labels never a parameter's name.
+    private const string RotateFormation = @"
                     {
-                        from = g.Destination;
-                        center = Position(@cx, @cy);
-                        side = Meters(@sideLength);
-                        formation = g.Choreography.Formation(@figure, center, side);
-                        fleet = Fleet(@names);
-                        me = fleet.Member(g);
-                        lasting = Seconds(@seconds);
-                        turn = Rotation(@direction, lasting);
-                        route = g.Choreography.Join(from, formation, me, turn);
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                        muster = g.Choreography.Current;
+                        muster.Rotate(@sense, @stepId);
+                        if (muster.CanStep) {
+                            route = muster.Step();
+                            if (g.Strategy.OnTheWay.IsActive) {
+                                route = g.Dash(route);
+                            }
+                            if (route.IsPending()) {
+                                print route.Id 'route', route.Order 'action';
+                                if (route.IsWalkable) {
+                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                                }
+                            } else {
+                                print route.Id 'route', route.Status 'ended';
+                                if (route.EndedShort) {
+                                    print route.Why 'why';
+                                }
                             }
                         } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
+                            print muster.Queued 'queued';
                         }
+                        expose @sense turning, @stepId step, muster.Call call;
                     }
-                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @direction sense, @seconds span;
                 ";
 
     // BY DISTANCE (ajuste 73): the convocation of this call, this golem convened in it — where it stands, the route to the best place it
@@ -206,30 +208,6 @@ public sealed class Displacer
         catch (Exception ex) { return Answer.Refusal($"{figure} at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}: " + GolemEmbodiment.Reason(ex)); }   // no place, no way, or the domain refused inside
     }
 
-    /// <summary>The same, TURNING with the fleet (paso 3): the rotation's sense and its seconds become the stages the route is told —
-    /// the next corner, and the next, as many as fit at the body's cruise speed — <c>route = g.Choreography.Join(from, formation, me, turn)</c>.</summary>
-    public Answer Join(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet, (string Direction, double Seconds) turn)
-    {
-        if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
-        string callId = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // one call, frozen as a parameter: the once of every tell that spreads it
-        try
-        {
-            return Answer.Of(robot.Actor.Using(JoinCheck, TurnFormation)
-                .WithParameters(p => {
-                    p["cx", typeof(double)] = Resolution.Metres(center.X);
-                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
-                    p["sideLength", typeof(double)] = Resolution.Metres(side);
-                    p["figure", typeof(string)] = figure;   // the formation's name: the module makes it (ajuste 69)
-                    p["callId", typeof(string)] = callId;   // this call, for the tells that carry it to the peers (ajuste 71)
-                    p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
-                    p["direction", typeof(string)] = turn.Direction;
-                    p["seconds", typeof(double)] = turn.Seconds;
-                })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"{figure} at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}, rotating {turn.Direction} for {turn.Seconds:0.#} s: " + GolemEmbodiment.Reason(ex)); }
-    }
-
     /// <summary>The fleet is called to a FORMATION BY DISTANCE (ajuste 73): this golem convenes — recorded where it stands, the route to
     /// the best place it knows — and every peer is told where it stood (a nearer peer's word may interrupt the route later).</summary>
     public Answer Convene(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet)
@@ -250,6 +228,28 @@ public sealed class Displacer
                 .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal($"{figure} at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}, by distance: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>A STEP of the formation in place (ajuste 77): every body takes the next place in that sense — <c>clockwise</c> or
+    /// <c>counterclockwise</c> — once everybody stands on its place; steps queue. The step's id, minted here, is the once of the tell that
+    /// spreads it. Refused when the fleet stands in no formation.</summary>
+    public Answer Rotate(string sense)
+    {
+        if (string.IsNullOrWhiteSpace(sense)) return Answer.Refusal("a step needs its sense: clockwise or counterclockwise");
+        string stepId = $"{robot.Name}-step-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
+                ", RotateFormation)
+                .WithParameters(p => {
+                    p["sense", typeof(string)] = sense.Trim().ToLowerInvariant();
+                    p["stepId", typeof(string)] = stepId;
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"rotate {sense}: " + GolemEmbodiment.Reason(ex)); }
     }
 
     /// <summary>Send the golem through several points and let it choose the order that makes the way shortest: the same
@@ -495,6 +495,13 @@ public sealed class Displacer
         }
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
         robot.Report(answer, $"route {was.Route}: {was.Describe()} done, standing at ({here.X:0.0}, {here.Y:0.0}) facing {here.Theta:0.00}");
+        if (answer.Ok && answer.Order is { IsEnded: true, Ended: "completed" })
+        {
+            // the route completed: if it was the one to this golem's place in a formation, the golem says it stands on it (ajuste 77) — its own
+            // act, so the arrival keeps its one expose (a script carries one expose: a second one unbinds the first's parameters, lab 1-oct)
+            var placed = Placed();
+            if (placed.Ok) { robot.Report(placed, $"route {was.Route}: on its place in the formation — the fleet is told"); return placed; }
+        }
         if (!answer.Ok || !stop) return answer;
         robot.ReportLocalization(was.Route);
         if (was.Following && was.IsLastStop)
@@ -555,6 +562,48 @@ public sealed class Displacer
         catch (Exception ex) { answer = Answer.Refusal(GolemEmbodiment.Reason(ex)); }
         robot.Report(answer, $"route {was.Route}: stopped, its place went to a peer — standing at ({pose.X:0.0}, {pose.Y:0.0}) facing {pose.Theta:0.00}");
         return answer;
+    }
+
+    // THE GOLEM STANDS ON ITS PLACE (ajuste 77): the route to its place in the formation in place completed — the convocation records its
+    // word and, when with it everybody is placed and a step is queued, opens the next step; the act exposes who and which call, so
+    // echo-placed tells every peer. No parameter: the formation in place is the domain's to know (`g.Choreography.Current`), and the Check
+    // refuses when the golem does not stand on its place, or stands in no formation — nothing is written then.
+    private const string PlacedScript = @"
+                    {
+                        muster = g.Choreography.Current;
+                        me = muster.Me;
+                        route = muster.Placed(me);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                        expose me.Name who, muster.Call call, muster.Round round;
+                    }
+                ";
+
+    private Answer Placed()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Current.Reached) Error 'the golem does not stand on a place of the formation in place';
+                ", PlacedScript)
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
     }
 
     /// <summary>The body could not: stalled, timed out. The route fails in the body's words; the next route's order follows.

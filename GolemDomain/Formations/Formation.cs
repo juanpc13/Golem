@@ -31,27 +31,6 @@ internal abstract class Formation
         return Places(member.Of)[member.Rank];
     }
 
-    /// <summary>The STAGES of a rotation for a member (paso 3): the next place in the sense of the turn, and the next, as many as
-    /// fit in the rotation's duration at a body's cruise speed — the run between neighbouring places over the speed, a step each;
-    /// at least one, a hundred at most. Nothing for a fleet of one: there is nowhere to turn to.</summary>
-    internal IReadOnlyList<Position> Stages(Member member, Rotation turn, double speed)
-    {
-        if (member == null) throw new GolemDomainException("Formation.Stages: 'member' was not given");
-        if (turn == null) throw new GolemDomainException("Formation.Stages: 'turn' was not given");
-        if (speed <= 0) throw new GolemDomainException("Formation.Stages: a body needs a speed greater than zero to turn around a figure");
-        var places = Places(member.Of);
-        if (places.Count < 2) return Array.Empty<Position>();
-        double step = places[0].DistanceTo(places[1]) / speed;   // seconds from one place to the next, at cruise
-        int steps = Math.Clamp((int)Math.Floor(turn.Lasting.InSeconds / step), 1, 100);
-        var stages = new List<Position>();
-        int rank = member.Rank;
-        for (int i = 0; i < steps; i++)
-        {
-            rank = ((turn.Clockwise ? rank - 1 : rank + 1) % places.Count + places.Count) % places.Count;
-            stages.Add(places[rank]);
-        }
-        return stages;
-    }
 }
 
 /// <summary>A circle of places around a centre, said by its radius: N bodies evenly spaced from due east, counter-clockwise — three

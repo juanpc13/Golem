@@ -194,7 +194,8 @@ public sealed class GolemEmbodiment
                 side = Meters(@sideLength);
                 formation = g.Choreography.Formation(@figure, center, side);
                 me = fleet.Member(g);
-                route = g.Choreography.Join(from, formation, me);
+                muster = g.Choreography.Muster(@callId, formation, fleet);
+                route = g.Choreography.Join(from, muster, me);
                 if (g.Strategy.OnTheWay.IsActive) {
                     route = g.Dash(route);
                 }
@@ -214,18 +215,14 @@ public sealed class GolemEmbodiment
             }
         }
         ";
-    public const string UptakeCalledToTurn = @"
+    // A PEER STANDS ON ITS PLACE (ajuste 77): its word, recorded in the convocation of that call — if this golem has its place in it;
+    // when with it everybody is placed and a step is queued, the next step opens and its route is printed (next-order-placed pushes).
+    public const string UptakePlacedAt = @"
         {
-            fleet = Fleet(@names);
-            if (fleet.Has(g)) {
-                from = g.Destination;
-                center = Position(@cx, @cy);
-                side = Meters(@sideLength);
-                formation = g.Choreography.Formation(@figure, center, side);
-                me = fleet.Member(g);
-                lasting = Seconds(@seconds);
-                turn = Rotation(@direction, lasting);
-                route = g.Choreography.Join(from, formation, me, turn);
+            if (g.Choreography.Knows(@call)) {
+                muster = g.Choreography.Muster(@call);
+                peer = muster.Fleet.Member(@who);
+                route = muster.Heard(peer);
                 if (g.Strategy.OnTheWay.IsActive) {
                     route = g.Dash(route);
                 }
@@ -241,6 +238,37 @@ public sealed class GolemEmbodiment
                     if (route.EndedShort) {
                         print route.Why 'why';
                     }
+                }
+            }
+        }
+        ";
+    // A STEP was asked of the fleet (ajuste 77): the same step is queued here, in the same order it was queued there (the wire keeps a
+    // topic's order); it opens at once when everybody already stands on its place (next-order-step pushes).
+    public const string UptakeRotateTo = @"
+        {
+            if (g.Choreography.Knows(@call)) {
+                muster = g.Choreography.Muster(@call);
+                muster.Rotate(@sense, @stepId);
+                if (muster.CanStep) {
+                    route = muster.Step();
+                    if (g.Strategy.OnTheWay.IsActive) {
+                        route = g.Dash(route);
+                    }
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
+                    }
+                } else {
+                    print muster.Queued 'queued';
                 }
             }
         }

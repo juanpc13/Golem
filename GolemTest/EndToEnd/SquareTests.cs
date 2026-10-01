@@ -38,7 +38,7 @@ public class SquareTests
     }
 
     [TestMethod]
-    public void AFleetOfFour_TakesTheSquare_ByRank_AndTurnsAlongItsSides()
+    public void AFleetOfFour_TakesTheSquare_ByRank()
     {
         var map = Catalog.OpenFloor();
         var collisions = new Collisions();
@@ -49,14 +49,13 @@ public class SquareTests
         var fleet = new Fleet("blue,red,green,yellow");
         CollectionAssert.AreEqual(new[] { "blue", "green", "red", "yellow" }, fleet.Names.ToList());
 
-        // by rank: the names sorted, the corners counter-clockwise from the north-east — wherever each body stands
-        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("blue")).AsPlan(), "floor@6.5,6.5", "blue, first: the north-east corner");
-        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("green")).AsPlan(), "floor@4.5,6.5", "green, second: north-west");
-        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("red")).AsPlan(), "floor@4.5,4.5", "red, third: south-west");
-        StringAssert.EndsWith(g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("yellow")).AsPlan(), "floor@6.5,4.5", "yellow, fourth: the south-east corner");
-        var turning = g.Choreography.Join(new Pose(2.5, 2.5, 0.0), square, fleet.Member("green"), new Rotation("clockwise", new Seconds(10.0)));
-        Assert.AreEqual(11, turning.StopsLeft, "its corner and ten stages: a side of 2 m is 1 s at 2 m/s");
-        StringAssert.StartsWith(turning.AsPlan(), "floor@4.5,6.5 > floor@6.5,6.5 > floor@6.5,4.5", "green from the north-west corner clockwise: north-east, then south-east");
+        // by rank: the names sorted, the corners counter-clockwise from the north-east — wherever each body stands (one convocation per
+        // member here: a golem takes one place per call)
+        GolemDomain.Routes.Route AsMember(string name) => g.Choreography.Join(new Pose(2.5, 2.5, 0.0), g.Choreography.Muster("call-" + name, square, fleet), fleet.Member(name));
+        StringAssert.Contains(AsMember("blue").AsPlan(), "floor@6.5,6.5", "blue, first: the north-east corner");
+        StringAssert.Contains(AsMember("green").AsPlan(), "floor@4.5,6.5", "green, second: north-west");
+        StringAssert.Contains(AsMember("red").AsPlan(), "floor@4.5,4.5", "red, third: south-west");
+        StringAssert.Contains(AsMember("yellow").AsPlan(), "floor@6.5,4.5", "yellow, fourth: the south-east corner");
     }
 
     // THE FORMATION BY NAME (ajuste 69; Juan: "el módulo asociado a coreografías… g.coreografia.formacion('cuadrado'), y ese creará el
@@ -92,8 +91,8 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => fleet.Member(g)).Message, "a golem without a name is in no fleet");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, " ")).Message, "a golem's name must be a name");
         Assert.AreEqual(2, fleet.Member(red).Rank, "its member, by the name it was born with: blue, green, red, yellow");
-        var route = red.Choreography.Join(new Pose(2.5, 2.5, 0.0), formation, fleet.Member(red));
-        StringAssert.EndsWith(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
+        var route = red.Choreography.Join(new Pose(2.5, 2.5, 0.0), red.Choreography.Muster("red-1", formation, fleet), fleet.Member(red));
+        StringAssert.Contains(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }
 }
 
