@@ -235,6 +235,34 @@ public class CommandConsoleTests
         StringAssert.Contains((await fleet["yellow"].ExecuteAsync("route")).Text, "center@4.5,4.5", "yellow's step: to the south-west corner");
     }
 
+    // PLACE (ajuste 87, a lab lever; Juan: "el botón que los ponga en la posición"): the body carried onto a mark — the pending routes let go, the
+    // body re-anchored, the golem awake there; with names, every golem of the fleet onto its own mark, each peer's line carried to it.
+    [TestMethod]
+    public async Task Place_CarriesTheBodyOntoAMark_AndWithNames_EveryGolemOntoItsOwn()
+    {
+        await using var world = new MockWorld();
+        await world.PlaceGolemAsync("red");
+        await world.PlaceGolemAsync("blue");
+        var red = new Commander(world.HostOf("red").Embodiment);
+        var blue = new Commander(world.HostOf("blue").Embodiment);
+
+        Assert.IsTrue((await red.ExecuteAsync("visit 9,1.5")).Ok);
+        var placed = await red.ExecuteAsync("place 4.5,3");
+        Assert.IsTrue(placed.Ok, placed.Text);
+        StringAssert.StartsWith(placed.Text, "placed at (4.5, 3): every pending route let go, the body carried there");
+        StringAssert.Contains((await red.ExecuteAsync("where")).Text, "(4.5, 3)", "the golem woke where the body was carried");
+        StringAssert.Contains((await red.ExecuteAsync("state")).Text, "last: route 1 abandoned", "the errand underway was let go, journaled");
+
+        var fleet = await red.ExecuteAsync("place blue@5.5,8 red@5.5,3.5");
+        Assert.IsTrue(fleet.Ok, fleet.Text);
+        StringAssert.Contains(fleet.Text, "red › placed at (5.5, 3.5)", "this golem's own mark, by its name — " + fleet.Text);
+        StringAssert.Contains(fleet.Text, "blue › placed at (5.5, 8)", "blue's line carried to blue — " + fleet.Text);
+        StringAssert.Contains((await blue.ExecuteAsync("where")).Text, "(5.5, 8)");
+        StringAssert.Contains((await red.ExecuteAsync("where")).Text, "(5.5, 3.5)");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("place 3,3 --with blue")).Kind, "each golem its own mark: the names go on the line, never --with");
+        Assert.AreEqual("refused", (await red.ExecuteAsync("place green@3,3")).Kind, "no golem named green in this world");
+    }
+
     // BY DISTANCE (ajuste 73): red is commanded and convenes; blue hears where red stood, convenes by itself and takes the place red
     // leaves it. A square of side 1 around (2.0, 1.5), in the living room: red at its mark (2.5, 2.5) is nearest the north-east corner
     // (2.5, 2.0), so blue — far away in the north hall — gets the nearest corner left, the north-west one (1.5, 2.0); the other two stay

@@ -50,6 +50,7 @@ public static class CommandLine
         new CommandHelp("route", "route", "the newest route: its way, the legs ahead, what it asks the body now", "route"),
         new CommandHelp("where", "where", "where the golem knows its body stands, facing which way, in which zone", "where"),
         new CommandHelp("obstacles", "obstacles", "what the bodies learned by touching: the things outlined, the peers met", "obstacles"),
+        new CommandHelp("place", "place x,y | place blue@x,y red@x,y …", "a lab lever (ajuste 87): the body carried onto that mark — every pending route let go, the body re-anchored there, the golem awake where it stands; with names, each golem of the fleet carried onto its own mark (this golem's own by its name or bare, every peer's line carried to it); never --with", "place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3"),
         new CommandHelp("optimize", "optimize on-the-way|door-by-door", "how the golem optimizes the routes it computes from here on: switches on one of its two strategies — the doors crossed on the way (fewer stops), or every door a leg of its own (the direct way, nothing converted); every route is born direct and the script improves it with a dash while on-the-way is active — at birth and at its next arrival (ajustes 62, 63; was adopt, ajuste 82)", "optimize on-the-way"),
         new CommandHelp("enter", "enter <scenario>", "the golem enters a scenario it knows — its map and its collisions from here on (warehouse, open-floor); refused while a route is pending", "enter open-floor"),
         new CommandHelp("scenarios", "scenarios", "the scenarios the golem knows, and the one it is in", "scenarios"),
@@ -160,6 +161,25 @@ public static class CommandLine
             case "scenarios":
                 if (args.Count > 0) throw new CommandSyntaxException($"{verb} takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");
+            case "place":
+            {
+                // a lab lever (ajuste 87): a mark for this golem — `place 3,3` — or one per golem — `place blue@6,6.2 red@7,6.3`; the names are
+                // the line's values (the bare mark under ""), each carried to its golem by the Commander
+                if (args.Count == 0) throw new CommandSyntaxException("place: expected a mark like 3,3 for this golem, or one per golem like blue@6,6.2 red@7,6.3");
+                var marks = new Dictionary<string, string>();
+                foreach (var a in args)
+                {
+                    int k = a.IndexOf('@');
+                    if (k == 0) throw new CommandSyntaxException($"place: {a} is a name the console resolves — set it first, or write a golem's mark like blue@6,6.2");
+                    string who = k > 0 ? a[..k].ToLowerInvariant() : "";
+                    string at = k > 0 ? a[(k + 1)..] : a;
+                    if (k > 0 && !Name.IsMatch(who)) throw new CommandSyntaxException($"place: expected a golem's name before @ at '{Head(a)}'");
+                    if (!Point.IsMatch(at)) throw new CommandSyntaxException($"place: expected a mark like 3,3 at '{Head(a)}'");
+                    if (marks.ContainsKey(who)) throw new CommandSyntaxException(who == "" ? "place: this golem's mark was given twice" : $"place: {who}'s mark was given twice");
+                    marks[who] = at;
+                }
+                return new Command(named, with, verb, none, noOptions, "", marks);
+            }
             case "reset":
                 foreach (var a in args)
                     if (a.ToLowerInvariant() != "--all") throw new CommandSyntaxException($"reset takes no argument but the option --all; found '{Head(a)}'");

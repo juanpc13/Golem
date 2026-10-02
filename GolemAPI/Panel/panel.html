@@ -23,6 +23,7 @@
   main { display:grid; grid-template-columns:340px minmax(0, 1fr); gap:22px; padding:20px 22px;
          max-width:1280px; margin:0 auto; align-items:start; }
   @media (max-width:760px) { main { grid-template-columns:1fr; } }
+  section.lab { grid-column:1 / -1; }   /* the lab's scenes, under everything, across both columns (2-oct-2026) */
 
   section h2 { font-size:0.8rem; text-transform:uppercase; letter-spacing:0.1em;
                color:var(--muted); margin:0 0 10px; }
@@ -82,6 +83,7 @@
           overflow-y:auto; font-family:ui-monospace, monospace; font-size:13px; }
   #feed { max-height:66vh; }
   #feed.hide-tells li.tell { display:none; }
+  #feed.hide-defines li.kind-define, #feed.hide-defines li.kind-script { display:none; }   /* the templates and the releases: only the acts stay (Juan, 2-oct-2026) */
   h2 .toggle { float:right; font-size:11px; letter-spacing:0; text-transform:none; font-weight:400; color:var(--muted); cursor:pointer; }
   h2 .toggle input { vertical-align:middle; margin-right:4px; }
   #places.hidden { display:none; }
@@ -209,7 +211,7 @@
   </section>
 
   <section>
-    <h2>Journal — live <label class="toggle"><input type="checkbox" id="hideTells"> hide tells</label></h2>
+    <h2>Journal — live <label class="toggle"><input type="checkbox" id="hideTells"> hide tells</label><label class="toggle" title="the define action templates and the releases hidden: the acts alone"><input type="checkbox" id="hideDefines"> hide definitions</label></h2>
     <ul id="feed"></ul>
     <p class="hint" style="margin-top:8px">
       Everything the journal receives, record by record, as it lands: the release chain, each
@@ -234,6 +236,31 @@
     </p>
 
 
+  </section>
+
+  <section class="lab">
+    <h2>Lab — a dispute</h2>
+    <div class="card ops">
+      <p class="hint">A SCENE for the dispute by distance, to read in the journals (ajuste 87). Three lines, composed here in order, each run with Enter &mdash; edit
+      the marks first if you want another case. <b>1</b> puts every golem in the open floor (press <i>Open floor</i> in the kiosk too). <b>2</b> carries every body onto a mark (a lab lever: the pending routes let go, the body teleported and re-anchored, the
+      golem awake there): red (7, 6.3) and blue (6, 6.2) both stand nearest the north-east corner (6.5, 6.5) &mdash; 0.54 m and 0.58 m. <b>3</b> calls the
+      square by distance from this golem. What the law does: red keeps the north-east corner; blue's second choice is the north-west one, but green
+      (3.5, 7.5) stands nearer to it and takes it first; blue ends on the south-east corner, yellow on the south-west. Since ajuste 80 nobody sets out
+      until the four spoke, so the contest is settled in the table BEFORE anyone moves: the journal shows the four <code>StoodFor</code>, then every route
+      opening &mdash; no yield (<code>Halted</code>) unless a word arrives late, which the round no longer produces.</p>
+      <div class="row">
+        <span class="cat">1 &middot; the floor</span>
+        <button id="labfloor" class="place" title="enter open-floor --with all — every golem in the choreographies' scenario (open the floor in the kiosk too, so the walls are gone from the world)">enter open-floor &middot; all</button>
+      </div>
+      <div class="row">
+        <span class="cat">2 &middot; the marks</span>
+        <button id="labmarks" class="place" title="place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3 — each body carried onto its mark">place the fleet</button>
+      </div>
+      <div class="row">
+        <span class="cat">3 &middot; the call</span>
+        <button id="labcall" class="place" title="choreograph square --center 5.5,5.5 --side 2.0 --by distance — the round of words, then the routes">square &middot; by distance</button>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -287,7 +314,7 @@ function row(e) {
   // the speech (tells, their templates, the acks) can be hidden from the feed while reading the acts
   if (journaled && /^\s*(tell(\s|$)|define action \d+ \([^)]*\) as\s*tell(\s|$))/.test(script)) li.classList.add('tell');
   if (journaled) {
-    try { const doc = JSON.parse(e.Note); note = doc.kind + (doc.actionId ? ' ' + doc.actionId : ''); } catch {}
+    try { const doc = JSON.parse(e.Note); note = doc.kind + (doc.actionId ? ' ' + doc.actionId : ''); li.classList.add('kind-' + doc.kind); } catch {}   // the record kind, so a kind can be hidden
   }
   // a runtime row has no statement: its text is the note, shown at full width instead of squeezed into the tag column
   const body = journaled ? escapeHtml(pretty(script)) : escapeHtml(e.Kind === 'order' ? (note || '') : (script || note || ''));
@@ -314,6 +341,14 @@ feed.classList.toggle('hide-tells', hideTells.checked);
 hideTells.addEventListener('change', () => {
   feed.classList.toggle('hide-tells', hideTells.checked);
   try { localStorage.setItem('golem.hideTells', hideTells.checked ? '1' : '0'); } catch {}
+});
+// "hide definitions": the define action templates and the releases out of sight, the acts alone (Juan, 2-oct-2026: "ver solo los action")
+const hideDefines = document.getElementById('hideDefines');
+try { hideDefines.checked = localStorage.getItem('golem.hideDefines') === '1'; } catch {}
+feed.classList.toggle('hide-defines', hideDefines.checked);
+hideDefines.addEventListener('change', () => {
+  feed.classList.toggle('hide-defines', hideDefines.checked);
+  try { localStorage.setItem('golem.hideDefines', hideDefines.checked ? '1' : '0'); } catch {}
   feed.scrollTop = feed.scrollHeight;
 });
 
@@ -348,7 +383,7 @@ const answer = document.getElementById('answer');
 // con with"): the line is this golem's own — the prompt names it — the buttons compose the command, and `--with` at its end names the
 // peers the same command is carried to (the selector under the line composes it).
 const head = 'golem ';
-const HEAD = /^\s*golem(\s+(?!(?:visit|cover|choreograph|rotate|then|pause|resume|forget|reset|optimize|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
+const HEAD = /^\s*golem(\s+(?!(?:visit|cover|choreograph|rotate|then|pause|resume|forget|reset|place|optimize|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
 const WITH = /\s*--with(?:\s+([A-Za-z_][A-Za-z0-9_,-]*))?/i;
 function parts() {
   const m = line.value.match(HEAD);
@@ -422,7 +457,7 @@ async function run() {
     answer.className = 'answer ' + (r.ok ? 'done' : r.status === 409 ? 'refused' : 'syntax');
     answer.textContent = `› ${sent}\n${said}`;
     // done: an act's line is spent; a read, or a line refused or misread, stays to be read or edited
-    if (r.ok && /^(visit|cover|choreograph|then|pause|resume|reset|forget|enter|optimize)\b/i.test(cmd)) setLine('');
+    if (r.ok && /^(visit|cover|choreograph|then|pause|resume|reset|place|forget|enter|optimize)\b/i.test(cmd)) setLine('');
   } catch (e) {
     answer.className = 'answer syntax';
     answer.textContent = `› ${text}\ngolem unreachable: ${e}`;
@@ -442,6 +477,10 @@ document.getElementById('square').onclick = () => setLine('choreograph square --
 document.getElementById('sqnear').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
 document.getElementById('penta').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank');
 document.getElementById('pentanear').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance');
+// the lab's dispute scene (ajuste 87): two lines, composed, never run by themselves
+document.getElementById('labfloor').onclick = () => { const p = parts(); p.cmd = 'enter open-floor'; p.with = ['all']; put(build(p)); lightGolems(); };
+document.getElementById('labmarks').onclick = () => { const p = parts(); p.cmd = 'place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3'; p.with = []; put(build(p)); lightGolems(); };   // place names its golems on the line: never --with
+document.getElementById('labcall').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
 document.getElementById('rotcw').onclick = () => setLine('rotate clockwise');
 document.getElementById('rotccw').onclick = () => setLine('rotate counterclockwise');
 document.getElementById('clear').onclick = () => setWhole(head);

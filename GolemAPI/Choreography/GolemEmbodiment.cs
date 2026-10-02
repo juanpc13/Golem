@@ -441,9 +441,24 @@ public sealed class GolemEmbodiment
         Note("letting go of every pending route");
         // the body was carried: the golem wakes where it stands now (22-sep-2026, ajuste 49) — a told point that comes next is
         // planned from the real pose, not from where the body stood before the operator moved it
-        await SettledAtHomeAsync(CancellationToken.None);
+        await SettledAtAsync(home.X, home.Y, CancellationToken.None);
         try { Report(Wake(), $"awake where the body stands after the reset"); }
         catch (Exception ex) { Note($"waking after the reset refused: {Reason(ex)}"); }
+    }
+
+    /// <summary>The body CARRIED onto a mark of the operator's choosing (ajuste 87, 2-oct-2026; Juan: "el botón que los ponga en la
+    /// posición"): a lab lever like <see cref="LetGoAsync"/>, to another mark — every pending route let go (the golem's act), the body
+    /// teleported there and re-anchored, and the golem awake where it stands. Never domain: a real robot is not carried.</summary>
+    public async Task PlaceAsync(double x, double y)
+    {
+        Mechanics.StopOnMark();
+        try { await ros.TeleportAsync(x, y, 0.0, CancellationToken.None); }
+        catch { /* best-effort in the world; the journaled facts are the point */ }
+        Report(LetGo($"the operator carried the body to ({x:0.##}, {y:0.##})"), "let go of every pending route: the body carried");
+        Note($"carried to ({x:0.##}, {y:0.##})");
+        await SettledAtAsync(x, y, CancellationToken.None);
+        try { Report(Wake(), "awake where the body stands after being carried"); }
+        catch (Exception ex) { Note($"waking after being carried refused: {Reason(ex)}"); }
     }
 
     /// <summary>Reborn: the body is put back on its mark and told it stands there (dead reckoning re-anchors) — and the golem
@@ -453,17 +468,17 @@ public sealed class GolemEmbodiment
     {
         await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
         Mechanics.StopOnMark();
-        await SettledAtHomeAsync(ct);
+        await SettledAtAsync(home.X, home.Y, ct);
     }
 
-    // The body's pose, as the membrane brings it, within a body's width of the mark — or five seconds of patience.
-    private async Task SettledAtHomeAsync(CancellationToken ct)
+    // The body's pose, as the membrane brings it, within a body's width of that mark — or five seconds of patience.
+    private async Task SettledAtAsync(double x, double y, CancellationToken ct)
     {
         var patience = DateTime.UtcNow + TimeSpan.FromSeconds(5);
         while (DateTime.UtcNow < patience && !ct.IsCancellationRequested)
         {
             var pose = ros.LatestPose;
-            if (pose != null && Math.Sqrt((pose.X - home.X) * (pose.X - home.X) + (pose.Y - home.Y) * (pose.Y - home.Y)) < 0.3) return;
+            if (pose != null && Math.Sqrt((pose.X - x) * (pose.X - x) + (pose.Y - y) * (pose.Y - y)) < 0.3) return;
             await Task.Delay(100, ct);
         }
         Note("the body's pose did not settle on its mark in time: the golem wakes where the membrane says it stands");

@@ -46,6 +46,9 @@ public sealed class Commander
         // a choreography spreads by itself, by tell (ajuste 71): this golem is called, its peers are told — never a line carried to them
         if (command.Verb is "choreograph" or "rotate" && command.With.Count > 0)
             return Reply.Syntax($"{command.Verb}: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, optimize)");
+        // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
+        if (command.Verb == "place" && command.With.Count > 0)
+            return Reply.Syntax("place carries each golem to its own mark — write the names on the line, place blue@6,6.2 red@7,6.3, not --with");
         if (command.With.Count == 0) return await MineAsync(command, line);
 
         var peers = command.With.Contains("all") ? golem.Peers.Concat(command.With.Where(w => w != "all")).Distinct().ToList() : command.With.ToList();
@@ -94,6 +97,7 @@ public sealed class Commander
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
             "forget" => Forget(command),
             "reset" => await ResetAsync(command),
+            "place" => await PlaceAsync(command),
             "state" => State(),
             "route" => Route(),
             "where" => Where(),
@@ -160,6 +164,39 @@ public sealed class Commander
         var captor = golem.Captor;
         if (captor == null) return Reply.Refused($"this body has no bumper: the role '{Capabilities.CollisionCaptor}' is not among its capabilities ({golem.Capabilities})");
         return Answered(captor.Forget(request.X.Value, request.Y.Value));
+    }
+
+    // THE FLEET CARRIED ONTO MARKS (ajuste 87, a lab lever): this golem's own mark by this golem; every other name's line carried to that
+    // peer, one value each — the one line that carries a different value to every peer, so it has no --with
+    private async Task<Reply> PlaceAsync(Command command)
+    {
+        var marks = command.Values.Select(v => (Who: v.Key == "" ? golem.Name : v.Key, At: v.Value)).ToList();
+        if (marks.Count(m => IsMe(m.Who)) > 1) return Reply.Syntax($"place: this golem's mark was given twice, bare and as {golem.Name}@…");
+        var replies = new List<(string Who, Reply Reply)>();
+        foreach (var (who, at) in marks.OrderBy(m => IsMe(m.Who) ? 0 : 1))
+        {
+            var point = CommandLine.Parse($"visit {at}").Points[0];
+            if (IsMe(who))
+            {
+                await golem.PlaceAsync(point.X, point.Y);
+                replies.Add((golem.Name, Reply.Done($"placed at ({point.X:0.##}, {point.Y:0.##}): every pending route let go, the body carried there", Readings.Where(golem.Actor))));
+                continue;
+            }
+            var peer = await golem.CommandPeerAsync(who, $"golem {who} place {at}");
+            replies.Add((who, peer == null ? Reply.Refused($"this is {golem.Name}: no golem named '{who}' among its peers")
+                            : peer.Status == 200 ? Reply.Done(peer.Text, "")
+                            : peer.Status == 409 ? new Reply("refused", peer.Text, "")
+                            : Reply.Syntax(peer.Text)));
+        }
+        if (replies.Count == 1 && IsMe(replies[0].Who)) return replies[0].Reply;
+        var json = new JsonObject();
+        foreach (var (who, reply) in replies)
+        {
+            if (reply.Json != "") { try { json[who] = JsonNode.Parse(reply.Json); continue; } catch (JsonException) { } }
+            json[who] = reply.Text;
+        }
+        string kind = replies.All(r => r.Reply.Ok) ? "done" : replies.Any(r => r.Reply.Kind == "refused") ? "refused" : "syntax";
+        return new Reply(kind, string.Join(Environment.NewLine, replies.Select(r => $"{r.Who} › {r.Reply.Text}")), json.ToJsonString());
     }
 
     private async Task<Reply> ResetAsync(Command command)
