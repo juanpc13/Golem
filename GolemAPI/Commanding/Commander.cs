@@ -45,7 +45,7 @@ public sealed class Commander
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
         // a choreography spreads by itself, by tell (ajuste 71): this golem is called, its peers are told — never a line carried to them
         if (command.Verb is "choreograph" or "rotate" && command.With.Count > 0)
-            return Reply.Syntax($"{command.Verb}: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, adopt)");
+            return Reply.Syntax($"{command.Verb}: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, optimize)");
         if (command.With.Count == 0) return await MineAsync(command, line);
 
         var peers = command.With.Contains("all") ? golem.Peers.Concat(command.With.Where(w => w != "all")).Distinct().ToList() : command.With.ToList();
@@ -99,7 +99,7 @@ public sealed class Commander
             "where" => Where(),
             "obstacles" => Obstacles(),
             "enter" => Answered(golem.Enter(command.Text), $"in {command.Text}"),
-            "adopt" => Answered(golem.Adopt(command.Text), $"navigating {command.Text.Replace('-', ' ')}"),
+            "optimize" => Answered(golem.Optimize(command.Text), $"navigating {command.Text.Replace('-', ' ')}"),
             "scenarios" => Scenarios(),
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),
             "help" => Help(command),

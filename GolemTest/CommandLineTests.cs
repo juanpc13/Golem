@@ -86,14 +86,14 @@ public class CommandLineTests
     {
         Assert.AreEqual("", CommandLine.Parse("help").Text);
         Assert.AreEqual("visit", CommandLine.Parse("help VISIT").Text);
-        CollectionAssert.AreEqual(new[] { "visit", "cover", "choreograph", "rotate", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "adopt", "enter", "scenarios", "set", "show", "help", "--with" },
+        CollectionAssert.AreEqual(new[] { "visit", "cover", "choreograph", "rotate", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "optimize", "enter", "scenarios", "set", "show", "help", "--with" },
                                   CommandLine.Help.Select(h => h.Verb).ToList(), "every command the language has, in the help's order — no script of the actor's among them");
         Assert.IsTrue(CommandLine.Help.All(h => h.Usage != "" && h.What != "" && h.Example != ""), "each with how it is written, what it does and an example");
         StringAssert.Contains(Refused("help fly"), "help: 'fly' is no command; the commands are visit, cover, choreograph");
-        Assert.AreEqual("on-the-way", CommandLine.Parse("adopt On-The-Way").Text, "the strategy adopted (ajuste 61)");
-        StringAssert.Contains(Refused("adopt fast"), "adopt: expected the strategy, on-the-way or door-by-door");
+        Assert.AreEqual("on-the-way", CommandLine.Parse("optimize On-The-Way").Text, "the strategy the routes are optimized by (ajustes 61, 82)");
+        StringAssert.Contains(Refused("optimize fast"), "optimize: expected the strategy, on-the-way or door-by-door");
         StringAssert.Contains(Refused("dash 9,1.5"), "'dash' is no command", "the dash is a strategy now, not a verb");
-        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, choreograph, rotate, then, pause, resume, forget, reset, state, route, where, obstacles, adopt, enter, scenarios, set, show, help, --with — help tells each");
+        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, choreograph, rotate, then, pause, resume, forget, reset, state, route, where, obstacles, optimize, enter, scenarios, set, show, help, --with — help tells each");
         StringAssert.Contains(Refused("query { print g.Standing.X 'x'; }"), "'query' is no command", "the actor's scripts never travel on a line");
         StringAssert.Contains(Refused(""), "nothing to do: write a command, or help");
         StringAssert.Contains(Refused("golem"), "nothing to do");

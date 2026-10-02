@@ -116,14 +116,14 @@ public class OperatorController : Controller
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 
-    // The golem adopts a strategy of navigation (ajuste 61): {"navigation": "on-the-way"} — every route born from here on is born with it.
-    [HttpPost("adopt")]
-    public IActionResult Adopt([FromBody] NavigationRequest request)
+    // The golem optimizes the routes it computes by one of its strategies (ajuste 61; `optimize` since ajuste 82): {"navigation": "on-the-way"} — every route from here on is improved with it.
+    [HttpPost("optimize")]
+    public IActionResult Optimize([FromBody] NavigationRequest request)
     {
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + NavigationRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.Adopt(request.Navigation);
+        var answer = golemEmbodiment.Optimize(request.Navigation);
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 

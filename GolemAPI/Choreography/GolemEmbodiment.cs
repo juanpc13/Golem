@@ -411,8 +411,10 @@ public sealed class GolemEmbodiment
     /// ya existen dentro del golem"): `on-the-way` (the doors crossed on the way, fewer stops) or `door-by-door` (every door a leg of
     /// its own, the direct way). The strategies live in the golem from birth — `g.Strategy.OnTheWay`, `g.Strategy.DoorByDoor` — and the
     /// operator's word picks the template that activates one; nothing is built, nothing found by a name. Every route is born direct and
-    /// improved by the script while on-the-way is active (ajuste 62). The mind's own act, no role's.</summary>
-    public Answer Adopt(string navigation)
+    /// improved by the script while on-the-way is active (ajuste 62). The mind's own act, no role's. Named `optimize` since ajuste 82
+    /// (2-oct-2026; Juan: "más bien es como una estrategia de conversión para optimizar la route calculada"): the word says what happens to the
+    /// route computed, not that the golem changes its policy.</summary>
+    public Answer Optimize(string navigation)
     {
         string which = (navigation ?? "").Trim().ToLowerInvariant();
         if (which is not ("on-the-way" or "door-by-door")) return Answer.Refusal($"a strategy of navigation is on-the-way or door-by-door, not '{navigation}'");
@@ -420,7 +422,7 @@ public sealed class GolemEmbodiment
         {
             return Answer.Of(Actor.Using(which == "on-the-way" ? ActivateOnTheWay : ActivateDoorByDoor).PerformCommand());
         }
-        catch (Exception ex) { return Answer.Refusal($"adopt {which}: " + Reason(ex)); }
+        catch (Exception ex) { return Answer.Refusal($"optimize {which}: " + Reason(ex)); }
     }
 
     // ==================================================================

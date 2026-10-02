@@ -181,8 +181,8 @@
         <button id="scen">scenarios</button>
         <button id="floor" title="the golem enters the open floor: the arena's interior as one area, the choreographies' scenario (ajuste 60) — open the floor in the kiosk too">enter open-floor</button>
         <button id="ware" title="back to the warehouse: its map and its own collisions">enter warehouse</button>
-        <button id="otw" title="the golem's strategy from here on: the doors crossed on the way, fewer stops (ajuste 61)">adopt on-the-way</button>
-        <button id="dbd" title="the golem's strategy from here on: every door a leg of its own, lined up and crossed straight">adopt door-by-door</button>
+        <button id="otw" title="how the golem optimizes the routes it computes from here on: the doors crossed on the way, fewer stops (ajustes 61, 82)">optimize on-the-way</button>
+        <button id="dbd" title="how the golem optimizes the routes it computes from here on: every door a leg of its own, lined up and crossed straight — nothing converted">optimize door-by-door</button>
         <button id="helpv">help</button>
       </div>
       <details class="hint"><summary>Commands &mdash; the language, one line each; click an example to put it on the line</summary><table id="commands"></table></details>
@@ -333,7 +333,7 @@ const answer = document.getElementById('answer');
 // con with"): the line is this golem's own — the prompt names it — the buttons compose the command, and `--with` at its end names the
 // peers the same command is carried to (the selector under the line composes it).
 const head = 'golem ';
-const HEAD = /^\s*golem(\s+(?!(?:visit|cover|choreograph|then|pause|resume|forget|reset|adopt|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
+const HEAD = /^\s*golem(\s+(?!(?:visit|cover|choreograph|then|pause|resume|forget|reset|optimize|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
 const WITH = /\s*--with(?:\s+([A-Za-z_][A-Za-z0-9_,-]*))?/i;
 function parts() {
   const m = line.value.match(HEAD);
@@ -406,7 +406,7 @@ async function run() {
     answer.className = 'answer ' + (r.ok ? 'done' : r.status === 409 ? 'refused' : 'syntax');
     answer.textContent = `› ${sent}\n${said}`;
     // done: an act's line is spent; a read, or a line refused or misread, stays to be read or edited
-    if (r.ok && /^(visit|cover|choreograph|then|pause|resume|reset|forget|enter|adopt)\b/i.test(cmd)) setLine('');
+    if (r.ok && /^(visit|cover|choreograph|then|pause|resume|reset|forget|enter|optimize)\b/i.test(cmd)) setLine('');
   } catch (e) {
     answer.className = 'answer syntax';
     answer.textContent = `› ${text}\ngolem unreachable: ${e}`;
@@ -431,7 +431,7 @@ document.getElementById('clear').onclick = () => setWhole(head);
 for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],
                           ['state', 'state'], ['route', 'route'], ['where', 'where'], ['obst', 'obstacles'], ['show', 'show'], ['helpv', 'help'],
                           ['scen', 'scenarios'], ['floor', 'enter open-floor'], ['ware', 'enter warehouse'],
-                          ['otw', 'adopt on-the-way'], ['dbd', 'adopt door-by-door']])
+                          ['otw', 'optimize on-the-way'], ['dbd', 'optimize door-by-door']])
   document.getElementById(id).onclick = () => setLine(text);
 // THE WITH SELECTOR (Juan, 28-sep-2026: "botones de los otros golems… acorde a sus TELL_ROUTES"; then "un parámetro para los otros"):
 // one button per peer this golem can reach (its tell routes, `peers` from /body); lit = named in `--with`; a click composes the

@@ -50,7 +50,7 @@ public static class CommandLine
         new CommandHelp("route", "route", "the newest route: its way, the legs ahead, what it asks the body now", "route"),
         new CommandHelp("where", "where", "where the golem knows its body stands, facing which way, in which zone", "where"),
         new CommandHelp("obstacles", "obstacles", "what the bodies learned by touching: the things outlined, the peers met", "obstacles"),
-        new CommandHelp("adopt", "adopt on-the-way|door-by-door", "the strategy of navigation the golem goes by from here on: switches on one of the golem's two strategies — the doors crossed on the way (fewer stops), or every door a leg of its own (the direct way); every route is born direct and the script improves it with a dash while on-the-way is active — at birth and at its next arrival (ajustes 62, 63)", "adopt on-the-way"),
+        new CommandHelp("optimize", "optimize on-the-way|door-by-door", "how the golem optimizes the routes it computes from here on: switches on one of its two strategies — the doors crossed on the way (fewer stops), or every door a leg of its own (the direct way, nothing converted); every route is born direct and the script improves it with a dash while on-the-way is active — at birth and at its next arrival (ajustes 62, 63; was adopt, ajuste 82)", "optimize on-the-way"),
         new CommandHelp("enter", "enter <scenario>", "the golem enters a scenario it knows — its map and its collisions from here on (warehouse, open-floor); refused while a route is pending", "enter open-floor"),
         new CommandHelp("scenarios", "scenarios", "the scenarios the golem knows, and the one it is in", "scenarios"),
         new CommandHelp("set", "set name x,y [x,y …]", "the console keeps a value under that name, to write @name on a line (visit @stops)", "set stops 2,9.5 9,8"),
@@ -145,8 +145,8 @@ public static class CommandLine
                 // one step of the formation in place, in that sense (ajuste 77): the sense is the whole of it
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("clockwise" or "counterclockwise")) throw new CommandSyntaxException("rotate: expected the sense, clockwise or counterclockwise, like rotate clockwise");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
-            case "adopt":
-                if (args.Count != 1 || args[0].ToLowerInvariant() is not ("on-the-way" or "door-by-door")) throw new CommandSyntaxException("adopt: expected the strategy, on-the-way or door-by-door");
+            case "optimize":
+                if (args.Count != 1 || args[0].ToLowerInvariant() is not ("on-the-way" or "door-by-door")) throw new CommandSyntaxException("optimize: expected the strategy, on-the-way or door-by-door");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
             case "enter":
                 if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("enter: expected the scenario's name, like enter open-floor");

@@ -48,7 +48,7 @@ public sealed record PointRequest(double? X, double? Y)
     }
 }
 
-/// <summary>The strategy of navigation the golem adopts (ajuste 61) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
+/// <summary>The strategy the golem optimizes its routes by (ajuste 61; `optimize`, ajuste 82) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
 public sealed record NavigationRequest(string Navigation)
 {
     public const string Shape = "{\"navigation\": \"on-the-way\"}";
