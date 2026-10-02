@@ -133,10 +133,11 @@ public class CommandLineTests
         Assert.AreEqual("rank", CommandLine.Parse("choreograph square --center 5.5,5.5 --side 2 --by Rank").Values["by"], "the policy, said outright");
         Assert.AreEqual("blue,red", CommandLine.Parse("choreograph square --side 2 --fleet blue,red --center 5.5,5.5").Values["fleet"], "the options in any order");
         // the square alone for now, said by its side; the other policy not built yet
-        StringAssert.Contains(Refused("choreograph circle --center 5.5,5.5 --radius 1"), "the square alone for now — the circle is set aside");
+        Assert.AreEqual("pentagon", CommandLine.Parse("choreograph Pentagon --center 5.5,5.5 --side 2").Text, "the pentagon, a polygon by its side (ajuste 85)");
+        StringAssert.Contains(Refused("choreograph circle --center 5.5,5.5 --radius 1"), "the square and the pentagon for now — the circle is set aside");
         StringAssert.Contains(Refused("choreograph triangle --center 5.5,5.5 --side 2"), "the triangle is set aside");
-        StringAssert.Contains(Refused("choreograph hexagon --center 5.5,5.5 --side 1"), "expected the figure, square");
-        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --radius 2.0"), "a square is said by its side; --radius is the circle's");
+        StringAssert.Contains(Refused("choreograph hexagon --center 5.5,5.5 --side 1"), "expected the figure, square or pentagon");
+        StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --radius 2.0"), "a polygon is said by its side; --radius is the circle's");
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5"), "choreograph square: expected --center x,y and --side s");
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side"), "--side needs a value");
         StringAssert.Contains(Refused("choreograph square --center 5.5,5.5 --side -2"), "--side expects metres greater than zero");

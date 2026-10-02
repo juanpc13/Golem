@@ -167,6 +167,8 @@
         <span class="cat">choreography</span>
         <button id="square" class="place" title="the fleet takes a square, said by its side, each golem the corner of its rank among the names (--by rank); it spreads by itself">square</button>
         <button id="sqnear" class="place" title="the fleet takes a square by distance: the corners shared by who stands nearest, over one round of words (ajustes 73, 80)">square · by distance</button>
+        <button id="penta" class="place" title="the fleet takes a pentagon, its first vertex north, the bodies spread along its perimeter: four stand on the north vertex and three points of the sides (ajuste 85)">pentagon</button>
+        <button id="pentanear" class="place" title="the fleet takes a pentagon by distance: the places shared by who stands nearest (ajuste 85)">pentagon · by distance</button>
         <button id="rotcw" class="place" title="one step of the formation in place: every body takes the next corner clockwise, once everybody stands on its own; press it again to queue another step (ajuste 77)">&#8635; clockwise</button>
         <button id="rotccw" class="place" title="one step of the formation in place, counter-clockwise; steps queue (ajuste 77)">&#8634; counterclockwise</button>
       </div>
@@ -438,6 +440,8 @@ document.getElementById('move').onclick = () => compose('visit');
 document.getElementById('cover').onclick = () => compose('cover');
 document.getElementById('square').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank');
 document.getElementById('sqnear').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
+document.getElementById('penta').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank');
+document.getElementById('pentanear').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance');
 document.getElementById('rotcw').onclick = () => setLine('rotate clockwise');
 document.getElementById('rotccw').onclick = () => setLine('rotate counterclockwise');
 document.getElementById('clear').onclick = () => setWhole(head);

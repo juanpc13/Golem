@@ -15,7 +15,7 @@ namespace GolemDomain.Formations;
 /// </summary>
 internal sealed class Choreographies
 {
-    private static readonly string[] Known = { "square", "triangle", "circle" };
+    private static readonly string[] Known = { "square", "pentagon", "triangle", "circle" };   // the pentagon since ajuste 85
     private readonly Golem golem;                   // the golem it was born with: it opens the route to a place (refused off the map or without room)
     private readonly List<Muster> musters = new();  // the convocations it heard of, joined or convened in (ajustes 73, 77)
 
@@ -26,7 +26,7 @@ internal sealed class Choreographies
         this.golem = golem;
     }
 
-    /// <summary>A formation by its name — <c>square</c>, <c>triangle</c> or <c>circle</c>, any case — at that centre, with its natural
+    /// <summary>A formation by its name — <c>square</c>, <c>pentagon</c>, <c>triangle</c> or <c>circle</c>, any case — at that centre, with its natural
     /// measure: a polygon's SIDE (ajuste 65), a circle's RADIUS. A name that is none of them is refused.</summary>
     internal Formation Formation(string name, Position center, Units.Length measure)
     {
@@ -36,6 +36,7 @@ internal sealed class Choreographies
         return name.Trim().ToLowerInvariant() switch
         {
             "square" => new Square(center, measure),
+            "pentagon" => new Pentagon(center, measure),
             "triangle" => new Triangle(center, measure),
             "circle" => new Circle(center, measure),
             _ => throw new GolemDomainException($"the golem knows no formation named '{name}': {string.Join(", ", Known)}")

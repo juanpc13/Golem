@@ -82,7 +82,8 @@ public class SquareTests
         Assert.AreEqual(2.0, ((Square)formation).Side.InMeters, 1e-9, "said by its side");
         Assert.IsInstanceOfType(g.Choreography.Formation("Circle", center, new Meters(1.0)), typeof(Circle), "any case; a circle by its radius");
         Assert.IsInstanceOfType(g.Choreography.Formation("triangle", center, side), typeof(Triangle));
-        CollectionAssert.AreEqual(new[] { "square", "triangle", "circle" }, g.Choreography.Names().ToList());
+        Assert.IsInstanceOfType(g.Choreography.Formation("pentagon", center, side), typeof(Pentagon), "the pentagon (ajuste 85)");
+        CollectionAssert.AreEqual(new[] { "square", "pentagon", "triangle", "circle" }, g.Choreography.Names().ToList());
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("hexagon", center, side)).Message, "knows no formation named 'hexagon'");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("square", null, side)).Message, "'center' was not given");
 

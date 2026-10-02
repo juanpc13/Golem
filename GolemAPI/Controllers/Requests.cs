@@ -78,17 +78,17 @@ public sealed record FormationRequest(string Figure, PointRequest Center, double
                                       string Effect = null, double? For = null)
 {
     public const string Shape = "{\"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"by\": \"rank\", \"fleet\": [\"blue\", \"red\"]}";
-    public static readonly string[] Figures = { "square" };   // the circle and the triangle set aside for now (ajuste 65)
+    public static readonly string[] Figures = { "square", "pentagon" };   // the circle and the triangle set aside for now (ajuste 65); the pentagon since ajuste 85
 
     /// <summary>How the places are shared: by rank, the default, or by distance.</summary>
     public string Policy => string.IsNullOrWhiteSpace(By) ? "rank" : By.Trim().ToLowerInvariant();
 
     public IEnumerable<string> Problems()
     {
-        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square for now (the circle and the triangle are set aside): " + Shape;
+        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square or pentagon for now (the circle and the triangle are set aside): " + Shape;
         if (Center == null) yield return "give the centre: " + Shape;
         else foreach (var p in Center.Problems()) yield return "centre: " + p;
-        if (Radius.HasValue) yield return "a square is said by its side, \"side\": 2.0 — not by a radius";
+        if (Radius.HasValue) yield return "a polygon is said by its side, \"side\": 2.0 — not by a radius";
         if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
         if (Policy is not ("rank" or "distance")) yield return "the policy is \"rank\" or \"distance\"";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";

@@ -39,7 +39,7 @@ public static class CommandLine
     {
         new CommandHelp("visit", "visit x,y [x,y …]", "an errand through those points, in that order", "visit 2,9.5 9,8"),
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
-        new CommandHelp("choreograph", "choreograph square --center x,y --side s [--by rank|distance] [--fleet a,b]", "the fleet takes a square, said by its side, its sides square to the map, the first corner north-east; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged; --by distance: each golem sets out to the nearest corner it knows and a nearer peer's word may send it to the next (ajuste 73); it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
+        new CommandHelp("choreograph", "choreograph square|pentagon --center x,y --side s [--by rank|distance] [--fleet a,b]", "the fleet takes a square (its sides square to the map, the first corner north-east) or a pentagon (its first vertex north; ajuste 85), said by its side, the bodies spread along its perimeter — four on a square take the corners, four on a pentagon the north vertex and three points of its sides; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged; --by distance: each golem sets out to the nearest corner it knows and a nearer peer's word may send it to the next (ajuste 73); it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
         new CommandHelp("rotate", "rotate clockwise|counterclockwise", "one step of the formation in place: every body takes the next corner in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused here)", "rotate clockwise"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
@@ -125,10 +125,10 @@ public static class CommandLine
                     rest.Add(a);
                 }
                 if (rest.Count == 1 && rest[0] is "circle" or "triangle")
-                    throw new CommandSyntaxException($"choreograph: the square alone for now — the {rest[0]} is set aside (ajuste 65); like choreograph square --center 5.5,5.5 --side 2.0");
-                if (rest.Count != 1 || rest[0] != "square") throw new CommandSyntaxException("choreograph: expected the figure, square, like choreograph square --center 5.5,5.5 --side 2.0");
-                if (values.ContainsKey("radius")) throw new CommandSyntaxException("choreograph square: expected --side s, like --side 2.0 (a square is said by its side; --radius is the circle's)");
-                if (!values.ContainsKey("center") || !values.ContainsKey("side")) throw new CommandSyntaxException("choreograph square: expected --center x,y and --side s");
+                    throw new CommandSyntaxException($"choreograph: the square and the pentagon for now — the {rest[0]} is set aside (ajuste 65); like choreograph square --center 5.5,5.5 --side 2.0");
+                if (rest.Count != 1 || rest[0] is not ("square" or "pentagon")) throw new CommandSyntaxException("choreograph: expected the figure, square or pentagon, like choreograph square --center 5.5,5.5 --side 2.0");
+                if (values.ContainsKey("radius")) throw new CommandSyntaxException($"choreograph {rest[0]}: expected --side s, like --side 2.0 (a polygon is said by its side; --radius is the circle's)");
+                if (!values.ContainsKey("center") || !values.ContainsKey("side")) throw new CommandSyntaxException($"choreograph {rest[0]}: expected --center x,y and --side s");
                 var centre = Points(verb, new[] { values["center"] }, exactly: 1);
                 if (!double.TryParse(values["side"], NumberStyles.Float, CultureInfo.InvariantCulture, out double side) || side <= 0)
                     throw new CommandSyntaxException($"choreograph: --side expects metres greater than zero, like --side 2.0; found '{Head(values["side"])}'");
