@@ -40,11 +40,12 @@ public class MusterTests
         Assert.AreEqual(0, blue.Routes().Count, "nothing minted while the fleet speaks");
         Assert.IsNull(redCall.Convene(new Pose(7.0, 7.0, 0.0), fleet.Member(red)));
 
-        // the words cross and complete each round: the routes open with the SAME table — red nearer to the north-east corner, blue to the south-west
+        // the words cross and complete each round: the routes open with the SAME table — red nearer to the north-east corner, blue to the next
+        // nearest of the four (ajuste 86: the places are the corners, two stay free): north-west and south-east tie, the order breaks it
         var blueFirst = blueCall.Stood(fleet.Member(red), new Position(7.0, 7.0));
         Assert.IsNotNull(blueFirst, "red's word completes blue's round: blue's route opens");
         Assert.IsTrue(blueCall.IsComplete);
-        StringAssert.Contains(blueFirst.AsPlan(), "floor@4.5,4.5", "red stands nearer to the north-east corner: blue takes the south-west one — " + blueFirst.AsPlan());
+        StringAssert.Contains(blueFirst.AsPlan(), "floor@4.5,6.5", "red stands nearer to the north-east corner: blue takes the north-west one — " + blueFirst.AsPlan());
         var redRoute = redCall.Stood(fleet.Member(blue), new Position(5.8, 5.8));
         StringAssert.Contains(redRoute.AsPlan(), "floor@6.5,6.5", "and red the north-east one");
         Assert.AreEqual(0.0, blueCall.PlaceOf(fleet.Member(red)).DistanceTo(redCall.PlaceOf(fleet.Member(red))), 1e-9, "the two copies, the same table");
@@ -93,9 +94,9 @@ public class MusterTests
         var call = blue.Choreography.Muster("red-1", blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
         Assert.IsNull(call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue)), "the round is not complete");
         var first = call.Stood(fleet.Member("red"), new Position(7.0, 7.0));
-        StringAssert.Contains(first.AsPlan(), "floor@4.5,4.5", "red nearer to the north-east corner: blue takes the south-west one");
+        StringAssert.Contains(first.AsPlan(), "floor@4.5,6.5", "red nearer to the north-east corner: blue takes the north-west one");
         WalkToTheEnd(first);
-        Assert.AreEqual("completed", first.Status, "blue is on the south-west corner, facing the centre: no order in course");
+        Assert.AreEqual("completed", first.Status, "blue is on the north-west corner, facing the centre: no order in course");
         Assert.AreEqual(0, blue.Current.Collisions.PeersInTheWay().Count, "the route ended: red has moved on, nothing is planned around");
 
         // red corrects its word: it stands by the south-west corner after all — blue, already placed, sets out for the north-east one at once
@@ -103,7 +104,7 @@ public class MusterTests
         Assert.AreNotSame(first, next, "nothing to stop: the route to the next place opens at once");
         Assert.IsFalse(first.Yielding);
         Assert.AreEqual("completed", first.Status, "a route walked stays walked");
-        Assert.AreEqual(0.0, next.Standing.DistanceTo(new Position(4.5, 4.5)), 1e-9, "from the corner the last arrival left the body on");
+        Assert.AreEqual(0.0, next.Standing.DistanceTo(new Position(4.5, 6.5)), 1e-9, "from the corner the last arrival left the body on");
         StringAssert.Contains(next.AsPlan(), "floor@6.5,6.5");
     }
 
@@ -146,7 +147,7 @@ public class MusterTests
         var blue = new Golem(body, "blue");
         var collisions = new Collisions();
         blue.Enter(new Scenario(Catalog.OpenFloor(), collisions));
-        var fleet = new Fleet("blue,yellow");   // two on a square: blue the north-east corner (6.5, 6.5), yellow the south-west one
+        var fleet = new Fleet("blue,yellow");   // two on a square: blue the north-east corner (6.5, 6.5), yellow the north-west one; two corners free (ajuste 86)
         var square = blue.Choreography.Formation("square", new Position(5.5, 5.5), new Meters(2.0));
         var call = blue.Choreography.Muster("red-1", square, fleet);
         Assert.AreEqual("rank", call.Policy);
@@ -168,9 +169,9 @@ public class MusterTests
         var other = new Golem(body, "yellow");
         other.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var otherCall = other.Choreography.Muster("red-1", square, fleet);
-        otherCall.Stood(fleet.Member("blue"), new Position(4.6, 4.4));   // blue stands almost on the south-west corner, yellow's place by rank
-        var toSouthWest = otherCall.Join(new Pose(2.5, 2.5, 0.0), fleet.Member(other));
-        StringAssert.Contains(toSouthWest.AsPlan(), "floor@4.5,4.5", "the place is taken even so: " + toSouthWest.AsPlan());
+        otherCall.Stood(fleet.Member("blue"), new Position(4.6, 6.4));   // blue stands almost on the north-west corner, yellow's place by rank
+        var toNorthWest = otherCall.Join(new Pose(2.5, 8.5, 0.0), fleet.Member(other));
+        StringAssert.Contains(toNorthWest.AsPlan(), "floor@4.5,6.5", "the place is taken even so: " + toNorthWest.AsPlan());
     }
 
     // THE STEPS (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj y antihorario… se pueden
@@ -225,8 +226,8 @@ public class MusterTests
         var second = call.Placed(call.Me);
         Assert.AreNotSame(first, second, "everybody placed and a step queued: the step opens");
         Assert.AreEqual(0, call.Queued);
-        Assert.AreEqual(1, call.PlaceIndex, "clockwise from place 1 of 2: the other place");
-        StringAssert.Contains(second.AsPlan(), "floor@4.5,4.5", "blue goes to the south-west corner");
+        Assert.AreEqual(3, call.PlaceIndex, "clockwise from the first of FOUR corners (two of them free, ajuste 86): the last, south-east");
+        StringAssert.Contains(second.AsPlan(), "floor@6.5,4.5", "blue goes to the south-east corner, a free one");
         Assert.AreEqual(0.0, second.Standing.DistanceTo(new Position(6.5, 6.5)), 1e-9, "from the corner it stood on");
         Assert.AreSame(second, call.Route);
         Assert.AreEqual(0, call.PlacedCount, "a new round: nobody is placed yet");
@@ -240,7 +241,7 @@ public class MusterTests
         var third = call.Heard(fleet.Member("red"));
         Assert.AreNotSame(second, third);
         Assert.AreEqual(1, call.Queued, "one step left in the queue");
-        Assert.AreEqual(0, call.PlaceIndex, "counter-clockwise from place 2 of 2: back to the first");
+        Assert.AreEqual(0, call.PlaceIndex, "counter-clockwise from the south-east corner: back to the first, north-east");
         StringAssert.Contains(third.AsPlan(), "floor@6.5,6.5");
         Assert.AreEqual(3, blue.Routes().Count, "one route per step, nothing in between");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Heard(new Fleet("blue,green,red").Member("green"))).Message, "is not a member of the fleet");
@@ -258,14 +259,14 @@ public class MusterTests
         Assert.IsNull(call.Heard(fleet.Member("red")), "a word before blue has a route is only kept");
         Assert.IsNull(call.Stood(fleet.Member("red"), new Position(7.0, 7.0)));
         var first = call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
-        StringAssert.Contains(first.AsPlan(), "floor@4.5,4.5", "red is nearer to the north-east corner: blue takes the south-west one");
+        StringAssert.Contains(first.AsPlan(), "floor@4.5,6.5", "red is nearer to the north-east corner: blue takes the north-west one (ajuste 86: the corners, two free)");
         Assert.AreEqual(1, call.PlaceIndex, "the index of the place the table gave");
         call.Queue(call.Formation.Rotate("clockwise"), "step-1");
         WalkToTheEnd(first);
         var step = call.Placed(call.Me);
         Assert.AreNotSame(first, step, "red's word came first; blue's completes the round: the step opens");
         Assert.AreEqual(0, call.PlaceIndex);
-        StringAssert.Contains(step.AsPlan(), "floor@6.5,6.5", "clockwise from the south-west corner of two: the north-east one");
+        StringAssert.Contains(step.AsPlan(), "floor@6.5,6.5", "clockwise from the north-west corner: the north-east one");
     }
 
     // THE FACING (ajuste 79; resolves the pendiente 15): a route to a place ends with the body turning to face the centre, so every step
@@ -337,7 +338,7 @@ public class MusterTests
         Assert.IsFalse(call.Knows(fleet.Member(blue)));
         Assert.IsTrue(call.Knows(fleet.Member("red")));
         var route = call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
-        StringAssert.Contains(route.AsPlan(), "floor@4.5,4.5", "blue convenes knowing red is nearer to the north-east corner: straight to the south-west");
+        StringAssert.Contains(route.AsPlan(), "floor@4.5,6.5", "blue convenes knowing red is nearer to the north-east corner: straight to the north-west");
         Assert.IsTrue(call.IsComplete);
     }
 }

@@ -85,9 +85,11 @@ internal sealed class Circle : Formation
 
 /// <summary>A regular POLYGON of places, said by its SIDE (ajuste 65, 30-sep-2026; Juan: "el cuadrado maneja radius, ¿no debería ser
 /// lateral/largo del cuadro?"): its vertices on the circle that passes through them — the polygon's own business, never the operator's —
-/// and the fleet spread evenly along its PERIMETER from the first vertex, counter-clockwise: as many bodies as vertices take the
-/// vertices; more stand between them, where the perimeter divides. What polygon it is, is the concrete class's: the Square (a corner
-/// north-east, its sides square to the map) and the Triangle (apex north).</summary>
+/// and ITS PLACES ARE ITS VERTICES (ajuste 86, 2-oct-2026; Juan, on four bodies spread over a pentagon: "no parece un pentágono… deberían
+/// dejar la posición del que falta disponible"): fewer bodies than vertices leave the rest FREE — by rank the last of the order, by distance
+/// the one nobody was near — and a step moves the hole with the fleet; more bodies than vertices are spread evenly along the PERIMETER from
+/// the first vertex, counter-clockwise (ajuste 65: eight on a square take the corners and the middles of the sides). What polygon it is, is
+/// the concrete class's: the Square (a corner north-east, its sides square to the map), the Triangle (apex north), the Pentagon (apex north).</summary>
 internal abstract class Polygon : Formation
 {
     internal Units.Length Side { get; }
@@ -132,6 +134,7 @@ internal abstract class Polygon : Formation
         if (count < 1) throw new GolemDomainException($"{Name}: a formation needs at least one body");
         var v = Vertices();
         int n = v.Count;
+        if (count <= n) return v;                             // the vertices, all of them: the ones nobody takes stay free (ajuste 86)
         double side = v[0].DistanceTo(v[1]);
         double spacing = n * side / count;
         var places = new List<Position>();
@@ -167,4 +170,15 @@ internal sealed class Square : Polygon
     internal Square(Position center, Units.Length side) : base(center, side) { }
     internal override string Name => "square";
     protected override IReadOnlyList<double> Bearings => new[] { 45.0, 135.0, 225.0, 315.0 };
+}
+
+/// <summary>A pentagon of places (ajuste 85, 2-oct-2026; Juan: "agrega el pentágono como figura… quiero ver cómo se forman las figuras de
+/// pentágono con 4 golems"): the regular pentagon of that side, its first vertex due north and the rest counter-clockwise, the fleet
+/// places its vertices — five bodies take them all; four take the north, north-west, south-west and south-east ones by rank and leave the
+/// north-east one free (ajuste 86), the hole turning with the fleet at every step. <c>Pentagon(Position(5.5, 5.5), Meters(2.0))</c>.</summary>
+internal sealed class Pentagon : Polygon
+{
+    internal Pentagon(Position center, Units.Length side) : base(center, side) { }
+    internal override string Name => "pentagon";
+    protected override IReadOnlyList<double> Bearings => new[] { 90.0, 162.0, 234.0, 306.0, 18.0 };
 }

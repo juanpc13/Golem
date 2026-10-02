@@ -158,7 +158,7 @@ public class CommandConsoleTests
 
     // THE CALL SPREADS BY TELL (propuesta 59; ajustes 65, 71): the operator commands ONE golem — red — and red's act is told to every peer;
     // blue hears it and joins by itself, its own Join to its own corner by rank. The fleet is red and all its peers (blue, green, red,
-    // yellow sorted): blue first (north-east), red third (south-west). A choreography's --with is refused.
+    // yellow sorted): blue first (north-east), red third (south-west); with --fleet blue,red, two of four corners: blue north-east, red north-west (ajuste 86). A choreography's --with is refused.
     [TestMethod]
     public async Task AChoreography_CommandedToOneGolem_SpreadsByTell_AndEveryPeerJoinsItsOwnCorner()
     {
@@ -176,7 +176,7 @@ public class CommandConsoleTests
         await red.ExecuteAsync("reset");
         call = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,red");
         Assert.IsTrue(call.Ok, call.Text);
-        StringAssert.Contains(await Until(red, "center@4.5,4.5"), "center@4.5,4.5", "with blue's word the round is complete: red, second of the two names, sets out to the south-west corner (two on a square: north-east and south-west)");
+        StringAssert.Contains(await Until(red, "center@4.5,6.5"), "center@4.5,6.5", "with blue's word the round is complete: red, second of the two names, sets out to the north-west corner (two on a square take two neighbouring corners, the other two free — ajuste 86)");
         string blueWay = await Until(blue, "center@6.5,6.5");
         StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard the call, said where it stands and set out by itself: first of the two, the north-east corner — " + blueWay);
 
@@ -237,8 +237,8 @@ public class CommandConsoleTests
 
     // BY DISTANCE (ajuste 73): red is commanded and convenes; blue hears where red stood, convenes by itself and takes the place red
     // leaves it. A square of side 1 around (2.0, 1.5), in the living room: red at its mark (2.5, 2.5) is nearest the north-east corner
-    // (2.5, 2.0), so blue — far away in the north hall — gets the south-west one (1.5, 1.0). By rank it would be the other way round
-    // (blue first of the names, the north-east corner).
+    // (2.5, 2.0), so blue — far away in the north hall — gets the nearest corner left, the north-west one (1.5, 2.0); the other two stay
+    // free (ajuste 86). By rank it would be the other way round (blue first of the names, the north-east corner).
     [TestMethod]
     public async Task AChoreographyByDistance_EachGolemTakesTheNearestPlace_TheWordSpreadsAndDecides()
     {
@@ -252,8 +252,8 @@ public class CommandConsoleTests
         Assert.IsTrue(call.Ok, call.Text);
         StringAssert.Contains(call.Text, "called", "red said where it stands; the routes open when blue speaks (ajuste 80) — " + call.Text);
         StringAssert.Contains(await Until(red, "living@2.5,2"), "living@2.5,2", "red, nearest to the north-east corner, sets out to it once the round is complete");
-        string blueWay = await Until(blue, "living@1.5,1");
-        StringAssert.Contains(blueWay, "living@1.5,1", "blue heard red, convened by itself and took the south-west corner — " + blueWay);
+        string blueWay = await Until(blue, "living@1.5,2");
+        StringAssert.Contains(blueWay, "living@1.5,2", "blue heard red, convened by itself and took the north-west corner, the nearest left — " + blueWay);
         StringAssert.Contains((await red.ExecuteAsync("route")).Text, "living@2.5,2", "blue's word took nothing from red");
         StringAssert.Contains((await red.ExecuteAsync("state")).Text, "of 1 route(s)", "red's route was never interrupted: still its one route");
     }

@@ -251,14 +251,13 @@ internal sealed class Muster
         if (steps.Count == 0) throw new GolemDomainException($"'{Call}': no step is queued");
         if (!placed.SetEquals(Fleet.Names)) throw new GolemDomainException($"'{Call}': {placed.Count} of {Fleet.Count} stand on their places — the step waits for everybody");
         var (move, _) = steps.Dequeue();
-        int count = Fleet.Count;
-        int next = move.Next(placeIndex, count);
-        var places = Formation.Places(count);
+        var places = Formation.Places(Fleet.Count);           // the figure's places — more than the fleet when vertices stay free (ajuste 86): the hole moves with everybody
+        int next = move.Next(placeIndex, places.Count);
         placeIndex = next;
         place = places[next];
         placed.Clear();
         Round++;
-        route = golem.TakePlace(route.Standing, place, Formation.Center, Array.Empty<Peer>(), $"place {next + 1} of {count} of the {Formation.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come
+        route = golem.TakePlace(route.Standing, place, Formation.Center, Array.Empty<Peer>(), $"place {next + 1} of {places.Count} of the {Formation.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come
         return route;
     }
 
