@@ -39,6 +39,8 @@
            padding:8px 12px; cursor:pointer; font-size:14px; }
   button:active { background:#4a4a8a; }
   button.place { background:#25324f; border:1px solid #3d5a99; }
+  /* the buttons by category (Juan, 2-oct-2026: "ordéname los botones por categorías"): a label starts each row */
+  .row .cat { flex-basis:100%; font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-top:4px; }
   button.danger { background:#4a2430; color:#f0b9b9; border:1px solid #7a3a44; }
   button.danger:active { background:#6a3040; }
   .hint { font-size:12px; color:var(--muted); margin:0; }
@@ -157,33 +159,44 @@
         <button id="addpoint">+ point</button>
       </div>
       <div class="row">
-        <button id="move" class="place">visit</button>
-        <button id="cover" class="place">cover</button>
-        <button id="then" class="place">then</button>
-        <button id="square" class="place" title="the fleet takes a square, said by its side, each golem the corner of its rank among the names (--by rank) — add --with all or press the peers">square</button>
-        <button id="sqnear" class="place" title="the fleet takes a square by distance: each golem sets out to the nearest corner it knows, and a nearer peer's word may send it to the next (ajuste 73)">square · by distance</button>
-        <button id="rotcw" class="place" title="one step of the formation in place: every body takes the next corner clockwise, once everybody stands on its own; press it again to queue another step (ajuste 77)">&#8635; clockwise</button>
-        <button id="rotccw" class="place" title="one step of the formation in place, counter-clockwise; steps queue (ajuste 77)">&#8634; counterclockwise</button>
-        <button id="clear">clear the line</button>
+        <span class="cat">errands</span>
+        <button id="move" class="place" title="visit the points on the line in that order">visit</button>
+        <button id="cover" class="place" title="cover the points on the line in the order the golem finds shortest">cover</button>
       </div>
       <div class="row">
+        <span class="cat">choreography</span>
+        <button id="square" class="place" title="the fleet takes a square, said by its side, each golem the corner of its rank among the names (--by rank); it spreads by itself">square</button>
+        <button id="sqnear" class="place" title="the fleet takes a square by distance: the corners shared by who stands nearest, over one round of words (ajustes 73, 80)">square · by distance</button>
+        <button id="rotcw" class="place" title="one step of the formation in place: every body takes the next corner clockwise, once everybody stands on its own; press it again to queue another step (ajuste 77)">&#8635; clockwise</button>
+        <button id="rotccw" class="place" title="one step of the formation in place, counter-clockwise; steps queue (ajuste 77)">&#8634; counterclockwise</button>
+      </div>
+      <div class="row">
+        <span class="cat">hold</span>
         <button id="pause" disabled>pause</button>
         <button id="resume" disabled>resume</button>
         <button id="reset">reset</button>
         <button id="wipe" class="danger">reset --all</button>
       </div>
       <div class="row">
-        <button id="state">state</button>
-        <button id="route">route</button>
-        <button id="where">where</button>
-        <button id="obst">obstacles</button>
-        <button id="show">show</button>
-        <button id="scen">scenarios</button>
+        <span class="cat">scenario &amp; navigation</span>
         <button id="floor" title="the golem enters the open floor: the arena's interior as one area, the choreographies' scenario (ajuste 60) — open the floor in the kiosk too">enter open-floor</button>
         <button id="ware" title="back to the warehouse: its map and its own collisions">enter warehouse</button>
         <button id="otw" title="how the golem optimizes the routes it computes from here on: the doors crossed on the way, fewer stops (ajustes 61, 82)">optimize on-the-way</button>
         <button id="dbd" title="how the golem optimizes the routes it computes from here on: every door a leg of its own, lined up and crossed straight — nothing converted">optimize door-by-door</button>
+      </div>
+      <div class="row">
+        <span class="cat">reads</span>
+        <button id="state">state</button>
+        <button id="route">route</button>
+        <button id="where">where</button>
+        <button id="obst">obstacles</button>
+        <button id="scen">scenarios</button>
+      </div>
+      <div class="row">
+        <span class="cat">console</span>
+        <button id="show" title="the values kept in this browser, written as @name">show</button>
         <button id="helpv">help</button>
+        <button id="clear">clear the line</button>
       </div>
       <details class="hint"><summary>Commands &mdash; the language, one line each; click an example to put it on the line</summary><table id="commands"></table></details>
       <p class="hint"><b>pause / resume</b>: the golem is held where its body stands &mdash; journaled as <code>g.Pause(me)</code>, the body stops, the plan and
@@ -333,7 +346,7 @@ const answer = document.getElementById('answer');
 // con with"): the line is this golem's own — the prompt names it — the buttons compose the command, and `--with` at its end names the
 // peers the same command is carried to (the selector under the line composes it).
 const head = 'golem ';
-const HEAD = /^\s*golem(\s+(?!(?:visit|cover|choreograph|then|pause|resume|forget|reset|optimize|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
+const HEAD = /^\s*golem(\s+(?!(?:visit|cover|choreograph|rotate|then|pause|resume|forget|reset|optimize|enter|scenarios|state|route|where|obstacles|set|show|help)\b)[A-Za-z_][A-Za-z0-9_-]*)?\s*/i;   // a golem's name, never a command's word
 const WITH = /\s*--with(?:\s+([A-Za-z_][A-Za-z0-9_,-]*))?/i;
 function parts() {
   const m = line.value.match(HEAD);
@@ -348,9 +361,10 @@ function put(text) { line.value = text; line.focus(); line.setSelectionRange(lin
 const isChoreography = (cmd) => /^(choreograph|rotate)\b/i.test((cmd ?? parts().cmd).trim());   // both spread by themselves: no --with
 function setLine(cmd) { const p = parts(); p.cmd = cmd; if (isChoreography(cmd)) p.with = []; put(build(p)); lightGolems(); }
 function setWhole(text) { put(text); }
-// visit / cover / then at the head of the command; the points already on it stay
+// visit / cover at the head of the command; the points already on it stay (a `then` typed by hand is replaced the same: the button went on 2-oct-2026, the command stays)
 function compose(verb) {
-  const rest = parts().cmd.trim().replace(/^(visit|cover|then)\b\s*/i, '');
+  const cmd = parts().cmd.trim();
+  const rest = isChoreography(cmd) ? '' : cmd.replace(/^(visit|cover|then)\b\s*/i, '');   // a choreography or a step on the line is replaced whole: it carries no points
   setLine(rest ? `${verb} ${rest}` : `${verb} `);
 }
 // one more point on the command — a place's centre, a click on the map, the pair; a command with no verb yet becomes a visit
@@ -426,7 +440,6 @@ document.getElementById('square').onclick = () => setLine('choreograph square --
 document.getElementById('sqnear').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
 document.getElementById('rotcw').onclick = () => setLine('rotate clockwise');
 document.getElementById('rotccw').onclick = () => setLine('rotate counterclockwise');
-document.getElementById('then').onclick = () => compose('then');
 document.getElementById('clear').onclick = () => setWhole(head);
 for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],
                           ['state', 'state'], ['route', 'route'], ['where', 'where'], ['obst', 'obstacles'], ['show', 'show'], ['helpv', 'help'],
