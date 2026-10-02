@@ -16,8 +16,9 @@ namespace GolemDomain.Formations;
 /// copy shares the same table before anyone moves, by rank or by distance (the policy is the convocation's from birth), and the OTHER
 /// members enter the planner as berths (<see cref="Berths"/>): the route goes around them from its first leg. A later word, by distance,
 /// applies the first law again and may make the route yield (<see cref="Halted"/>, propuesta 74). Then every golem says when it stands
-/// on its place (<see cref="Placed"/>), steps are queued (<see cref="Rotate"/>) and the next one opens once everybody is placed
-/// (<see cref="Step"/>): all set out together, each following the one ahead along the same side. <see cref="Join"/> stays in the
+/// on its place (<see cref="Placed"/>), moves are queued (<see cref="Queue"/> — the move the FIGURE says, <see cref="Formation.Rotate"/>,
+/// ajuste 84) and the next one opens once everybody is placed (<see cref="Step"/>): all set out together, each following the one ahead
+/// along the same side. <see cref="Join"/> stays in the
 /// repertoire: by rank, at once, for the tests.
 /// </summary>
 internal sealed class Muster
@@ -27,7 +28,7 @@ internal sealed class Muster
     private Position convenedFrom;                                       // where this golem said it stood, to open its route from once the round completes
     private readonly Dictionary<string, Position> stood = new();         // by distance: where each member said it stood, by name
     private readonly HashSet<string> placed = new(StringComparer.Ordinal);   // who said it stands on its place, this round
-    private readonly Queue<(bool Clockwise, string Id)> steps = new();   // the steps queued, in the order they were asked
+    private readonly Queue<(Move Move, string Id)> steps = new();        // the moves queued, in the order they were asked (ajuste 84: the figure's)
     private readonly HashSet<string> stepIds = new(StringComparer.Ordinal);
     private Member me;                                                   // this golem, once it joined or convened
     private int placeIndex = -1;                                        // …the index of the place it is going to, in the formation's order
@@ -228,37 +229,36 @@ internal sealed class Muster
         return CanStep ? Step() : route;
     }
 
-    /// <summary>A STEP is queued (ajuste 77; Juan: "una lista de formación/coreografías para cumplir todas"): every body takes the next
-    /// place in that sense — <c>clockwise</c> or <c>counterclockwise</c> — once everybody stands on its place. Nothing moves here. The
-    /// step's id is the once of the tell that spreads it: the same step twice is refused. How many wait comes back.</summary>
-    internal int Rotate(string sense, string stepId)
+    /// <summary>A MOVE is queued (ajuste 77; Juan: "una lista de formación/coreografías para cumplir todas"; ajuste 84: the move is the
+    /// FIGURE's — <c>move = muster.Formation.Rotate(@sense); muster.Queue(move, @stepId);</c>): every body does it once everybody stands on
+    /// its place. Nothing moves here. The step's id is the once of the tell that spreads it: the same step twice is refused. How many wait
+    /// comes back.</summary>
+    internal int Queue(Move move, string stepId)
     {
-        if (string.IsNullOrWhiteSpace(sense)) throw new GolemDomainException("Muster.Rotate: 'sense' was not given");
-        if (string.IsNullOrWhiteSpace(stepId)) throw new GolemDomainException("Muster.Rotate: 'stepId' was not given");
-        string s = sense.Trim().ToLowerInvariant().Replace("-", "");
-        if (s is not ("clockwise" or "counterclockwise")) throw new GolemDomainException($"a step turns 'clockwise' or 'counterclockwise', not '{sense}'");
+        if (move == null) throw new GolemDomainException("Muster.Queue: 'move' was not given");
+        if (string.IsNullOrWhiteSpace(stepId)) throw new GolemDomainException("Muster.Queue: 'stepId' was not given");
         if (!stepIds.Add(stepId)) throw new GolemDomainException($"the step {stepId} is already queued in the call {Call}");
-        steps.Enqueue((s == "clockwise", stepId));
+        steps.Enqueue((move, stepId));
         return steps.Count;
     }
 
-    /// <summary>The next step OPENS (ajuste 77): every member stands on its place and a step waits — this golem heads to the place that
-    /// follows its own in the sense of the step (the places run counter-clockwise, so clockwise steps DOWN the order), from where its
-    /// route in place left the body; a new round begins. <c>route = muster.Step();</c>. Refused when it cannot step yet.</summary>
+    /// <summary>The next step OPENS (ajuste 77): every member stands on its place and a move waits — this golem heads to the place the
+    /// move takes its own to (<see cref="Move.Next"/>: the figure's own geometry, ajuste 84), from where its route in place left the body;
+    /// a new round begins. <c>route = muster.Step();</c>. Refused when it cannot step yet.</summary>
     internal Route Step()
     {
         if (route == null) throw new GolemDomainException($"'{Call}': this golem has no place in the call yet");
         if (steps.Count == 0) throw new GolemDomainException($"'{Call}': no step is queued");
         if (!placed.SetEquals(Fleet.Names)) throw new GolemDomainException($"'{Call}': {placed.Count} of {Fleet.Count} stand on their places — the step waits for everybody");
-        var (clockwise, _) = steps.Dequeue();
+        var (move, _) = steps.Dequeue();
         int count = Fleet.Count;
-        int next = ((clockwise ? placeIndex - 1 : placeIndex + 1) % count + count) % count;
+        int next = move.Next(placeIndex, count);
         var places = Formation.Places(count);
         placeIndex = next;
         place = places[next];
         placed.Clear();
         Round++;
-        route = golem.TakePlace(route.Standing, place, Formation.Center, Array.Empty<Peer>(), $"place {next + 1} of {count} of the {Formation.Name}, one step {(clockwise ? "clockwise" : "counter-clockwise")}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come
+        route = golem.TakePlace(route.Standing, place, Formation.Center, Array.Empty<Peer>(), $"place {next + 1} of {count} of the {Formation.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come
         return route;
     }
 

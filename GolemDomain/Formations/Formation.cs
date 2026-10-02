@@ -31,6 +31,20 @@ internal abstract class Formation
         return Places(member.Of)[member.Rank];
     }
 
+    /// <summary>The figure's ROTATION as a <see cref="Move"/> (ajuste 84; Juan: "que la figura como tal tenga la coreografía"): every body
+    /// to the next place in that sense, <c>clockwise</c> or <c>counterclockwise</c> — <c>move = muster.Formation.Rotate(@sense)</c>. A figure
+    /// that does not rotate refuses; the ones whose places run around a centre say what a step is (<see cref="Polygon"/>, <see cref="Circle"/>).
+    /// Every figure grows its own moves here, in its class, never in the convocation.</summary>
+    internal virtual Move Rotate(string sense) => throw new GolemDomainException($"a {Name} does not rotate");
+
+    /// <summary>The sense asked, read: true clockwise, false counter-clockwise; anything else refused.</summary>
+    protected static bool Clockwise(string sense)
+    {
+        if (string.IsNullOrWhiteSpace(sense)) throw new GolemDomainException("Formation.Rotate: 'sense' was not given");
+        string s = sense.Trim().ToLowerInvariant().Replace("-", "");
+        if (s is not ("clockwise" or "counterclockwise")) throw new GolemDomainException($"a step turns 'clockwise' or 'counterclockwise', not '{sense}'");
+        return s == "clockwise";
+    }
 }
 
 /// <summary>A circle of places around a centre, said by its radius: N bodies evenly spaced from due east, counter-clockwise — three
@@ -48,6 +62,13 @@ internal sealed class Circle : Formation
     }
 
     internal override string Name => "circle";
+
+    /// <summary>A step around the circle: its places run counter-clockwise, so clockwise is one place DOWN the order (ajuste 84).</summary>
+    internal override Move Rotate(string sense)
+    {
+        bool clockwise = Clockwise(sense);
+        return new Move(clockwise ? "one step clockwise" : "one step counter-clockwise", clockwise ? -1 : 1);
+    }
 
     internal override IReadOnlyList<Position> Places(int count)
     {
@@ -84,6 +105,15 @@ internal abstract class Polygon : Formation
 
     /// <summary>The vertices' bearings from the centre, in degrees, the first one first and then counter-clockwise.</summary>
     protected abstract IReadOnlyList<double> Bearings { get; }
+
+    /// <summary>A step along the perimeter (ajuste 84; Juan: "de momento quiero lograrlo para el cuadrado"): the places run
+    /// counter-clockwise from the first vertex, so clockwise is one place DOWN the order — the square's and the triangle's rotation; each
+    /// may add moves of its own in its class.</summary>
+    internal override Move Rotate(string sense)
+    {
+        bool clockwise = Clockwise(sense);
+        return new Move(clockwise ? "one step clockwise" : "one step counter-clockwise", clockwise ? -1 : 1);
+    }
 
     /// <summary>The vertices, the first one first, counter-clockwise.</summary>
     internal IReadOnlyList<Position> Vertices()
@@ -129,7 +159,9 @@ internal sealed class Triangle : Polygon
 
 /// <summary>A square of places (29-sep-2026; Juan: "la figura de cuadro"), said by its side (ajuste 65): its sides square to the map,
 /// the first corner north-east, the fleet spread along its perimeter — four bodies take the corners, eight the corners and the middles
-/// of the sides. <c>Square(Position(5.5, 5.5), Meters(2.0))</c>: corners a metre from the centre each way.</summary>
+/// of the sides. <c>Square(Position(5.5, 5.5), Meters(2.0))</c>: corners a metre from the centre each way. Its MOVES (ajuste 84): the
+/// rotation it inherits from the polygon (<c>Rotate(sense)</c>: the next corner in that sense); the ones to come — the opposite corner, the
+/// diagonals swapped — are written here, in the square's class.</summary>
 internal sealed class Square : Polygon
 {
     internal Square(Position center, Units.Length side) : base(center, side) { }

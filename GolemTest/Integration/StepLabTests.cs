@@ -226,7 +226,7 @@ public class StepLabTests
         log.Add("heard: " + Try("{ muster = g.Choreography.Muster(@call); peer = muster.Fleet.Member(@who); route = muster.Heard(peer); print route.Id 'v'; }",
             p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
         log.Add("uptake whole: " + Try(GolemEmbodiment.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
-        log.Add("rotate: " + Try("{ muster = g.Choreography.Current; muster.Rotate(@sense, @stepId); print muster.Queued 'v'; }",
+        log.Add("rotate: " + Try("{ muster = g.Choreography.Current; move = muster.Formation.Rotate(@sense); muster.Queue(move, @stepId); print muster.Queued 'v'; }",
             p => { p["sense", typeof(string)] = "clockwise"; p["stepId", typeof(string)] = "s1"; }));
         log.Add("uptake rotate whole: " + Try(GolemEmbodiment.UptakeRotateTo, p => { p["sense", typeof(string)] = "clockwise"; p["stepId", typeof(string)] = "s2"; p["call", typeof(string)] = "blue-1"; }));
         Console.WriteLine(string.Join("\n", log));

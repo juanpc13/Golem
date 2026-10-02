@@ -103,7 +103,7 @@ public sealed class GolemSpeech
             golemActor.Reactions.DefineReaction("echo-rotate")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Rotate").One()
-                    .OnMatch("[_:Muster].Rotate(_, _) expose $sense turning, $stepId step, $call call;")
+                    .OnMatch("[_:Muster].Queue(_, _) expose $sense turning, $stepId step, $call call;")   // the figure's move queued in the convocation (ajuste 84)
                 .Causation.Continue(rotate);
         }
 

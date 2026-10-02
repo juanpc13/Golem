@@ -228,7 +228,8 @@ public sealed class GolemEmbodiment
         {
             if (g.Choreography.Knows(@call)) {
                 muster = g.Choreography.Muster(@call);
-                muster.Rotate(@sense, @stepId);
+                move = muster.Formation.Rotate(@sense);
+                muster.Queue(move, @stepId);
                 if (muster.CanStep) {
                     route = muster.Step();
                     if (g.Strategy.OnTheWay.IsActive) {

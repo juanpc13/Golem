@@ -98,7 +98,8 @@ public sealed class Displacer
     private const string RotateFormation = @"
                     {
                         muster = g.Choreography.Current;
-                        muster.Rotate(@sense, @stepId);
+                        move = muster.Formation.Rotate(@sense);
+                        muster.Queue(move, @stepId);
                         if (muster.CanStep) {
                             route = muster.Step();
                             if (g.Strategy.OnTheWay.IsActive) {
