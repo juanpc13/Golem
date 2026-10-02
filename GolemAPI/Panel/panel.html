@@ -244,7 +244,7 @@
       <p class="hint">A SCENE for the dispute by distance, to read in the journals (ajuste 87). Three lines, composed here in order, each run with Enter &mdash; edit
       the marks first if you want another case. <b>1</b> puts every golem in the open floor (press <i>Open floor</i> in the kiosk too). <b>2</b> carries every body onto a mark (a lab lever: the pending routes let go, the body teleported and re-anchored, the
       golem awake there): red (7, 6.3) and blue (6, 6.2) both stand nearest the north-east corner (6.5, 6.5) &mdash; 0.54 m and 0.58 m. <b>3</b> calls the
-      square by distance from this golem. What the law does: red keeps the north-east corner; blue's second choice is the north-west one, but green
+      formation from this golem &mdash; the square by distance is the scene; by rank, and the pentagon either way, are there to compare from the same marks. What the law does, square by distance: red keeps the north-east corner; blue's second choice is the north-west one, but green
       (3.5, 7.5) stands nearer to it and takes it first; blue ends on the south-east corner, yellow on the south-west. Since ajuste 80 nobody sets out
       until the four spoke, so the contest is settled in the table BEFORE anyone moves: the journal shows the four <code>StoodFor</code>, then every route
       opening &mdash; no yield (<code>Halted</code>) unless a word arrives late, which the round no longer produces.</p>
@@ -257,8 +257,19 @@
         <button id="labmarks" class="place" title="place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3 — each body carried onto its mark">place the fleet</button>
       </div>
       <div class="row">
-        <span class="cat">3 &middot; the call</span>
+        <span class="cat">3 &middot; the call, by distance &mdash; the dispute</span>
         <button id="labcall" class="place" title="choreograph square --center 5.5,5.5 --side 2.0 --by distance — the round of words, then the routes">square &middot; by distance</button>
+        <button id="labpenta" class="place" title="choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance — five vertices for four bodies: the law leaves one free">pentagon &middot; by distance</button>
+      </div>
+      <div class="row">
+        <span class="cat">or by rank &mdash; no dispute: the places by the names' order, whatever the marks</span>
+        <button id="labrank" title="choreograph square --center 5.5,5.5 --side 2.0 --by rank — the same marks, the corners by the names' order: compare with the law by distance">square &middot; by rank</button>
+        <button id="labpentarank" title="choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank — the first four vertices by the names' order, the north-east one free">pentagon &middot; by rank</button>
+      </div>
+      <div class="row">
+        <span class="cat">4 &middot; the steps &mdash; once everybody stands; they queue</span>
+        <button id="labcw" class="place" title="rotate clockwise — every body to the next place in that sense, the free vertex moving with them">&#8635; clockwise</button>
+        <button id="labccw" class="place" title="rotate counterclockwise">&#8634; counterclockwise</button>
       </div>
     </div>
   </section>
@@ -481,6 +492,11 @@ document.getElementById('pentanear').onclick = () => setLine('choreograph pentag
 document.getElementById('labfloor').onclick = () => { const p = parts(); p.cmd = 'enter open-floor'; p.with = ['all']; put(build(p)); lightGolems(); };
 document.getElementById('labmarks').onclick = () => { const p = parts(); p.cmd = 'place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3'; p.with = []; put(build(p)); lightGolems(); };   // place names its golems on the line: never --with
 document.getElementById('labcall').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
+document.getElementById('labrank').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank');
+document.getElementById('labpenta').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance');
+document.getElementById('labpentarank').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank');
+document.getElementById('labcw').onclick = () => setLine('rotate clockwise');
+document.getElementById('labccw').onclick = () => setLine('rotate counterclockwise');
 document.getElementById('rotcw').onclick = () => setLine('rotate clockwise');
 document.getElementById('rotccw').onclick = () => setLine('rotate counterclockwise');
 document.getElementById('clear').onclick = () => setWhole(head);
