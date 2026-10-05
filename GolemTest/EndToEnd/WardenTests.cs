@@ -150,8 +150,8 @@ public class WardenTests
         Assert.AreEqual(0.0, first.Of("yellow").To.DistanceTo(v[3]), 1e-9, "yellow, fourth: the south-east vertex; the north-east stays free");
 
         // a step queued before anybody is placed waits
-        Assert.AreEqual(1, muster.Queue(pentagon.Rotate("clockwise"), "s1"));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Queue(pentagon.Rotate("clockwise"), "s1")).Message, "already queued");
+        Assert.AreEqual(1, muster.Queue(pentagon.Rotate(Sense.Clockwise), "s1"));
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Queue(pentagon.Rotate(Sense.Clockwise), "s1")).Message, "already queued");
         Assert.IsFalse(muster.CanStep);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Step()).Message, "0 of 4 stand on their places");
         muster.Placed(fleet.Member("blue")); muster.Placed(fleet.Member("green")); muster.Placed(fleet.Member("red"));
@@ -175,8 +175,8 @@ public class WardenTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Step()).Message, "no step is queued");
 
         // two more queue while they walk
-        muster.Queue(pentagon.Rotate("counterclockwise"), "s2");
-        Assert.AreEqual(2, muster.Queue(pentagon.Rotate("counterclockwise"), "s3"));
+        muster.Queue(pentagon.Rotate(Sense.Counterclockwise), "s2");
+        Assert.AreEqual(2, muster.Queue(pentagon.Rotate(Sense.Counterclockwise), "s3"));
         foreach (var name in fleet.Names) muster.Placed(fleet.Member(name));
         muster.Step();
         Assert.AreEqual(2, muster.Round);

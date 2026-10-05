@@ -60,10 +60,10 @@ public class PentagonTests
         StringAssert.Contains(route.AsPlan(), "floor@5.5,7.2 > face@5.5,7.2", "blue, first by rank: the north vertex, then facing the centre: " + route.AsPlan());
         Assert.AreEqual(0, call.PlaceIndex(fleet.Member("blue")));
         Assert.AreEqual(0.0, pentagon.Place(fleet.Member("yellow")).DistanceTo(v[3]), 1e-9, "yellow, last of four: the south-east vertex; the north-east stays free");
-        Assert.AreEqual(4, pentagon.Rotate("clockwise").Next(0, 5), "clockwise from the north vertex: the north-east one — the free place, taken");
-        Assert.AreEqual(1, pentagon.Rotate("counterclockwise").Next(0, 5), "counter-clockwise: the north-west one");
+        Assert.AreEqual(4, pentagon.Rotate(Sense.Clockwise).Next(0, 5), "clockwise from the north vertex: the north-east one — the free place, taken");
+        Assert.AreEqual(1, pentagon.Rotate(Sense.Counterclockwise).Next(0, 5), "counter-clockwise: the north-west one");
         foreach (var name in fleet.Names) call.Placed(fleet.Member(name));   // everybody placed
-        call.Queue(pentagon.Rotate("clockwise"), "s1");
+        call.Queue(pentagon.Rotate(Sense.Clockwise), "s1");
         var next = call.Step();
         Assert.AreEqual(4, call.PlaceIndex(fleet.Member("blue")), "blue steps into the free vertex; its own, the north, is the free one now");
         for (int i = 0; i < 20 && route.IsPending(); i++) route.Arrive(route.NextLeg);

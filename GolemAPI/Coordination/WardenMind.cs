@@ -149,16 +149,25 @@ public sealed class WardenMind
                     }
                 ";
     /// <summary>A STEP of the formation in place: every body takes the next place in that sense once everybody stands on its own; steps
-    /// queue. Refused when the fleet stands in no formation.</summary>
+    /// queue. Refused when the fleet stands in no formation. The sense travels as a SYMBOL — the member's name of the domain's closed set,
+    /// declared <c>typeof(Enum)</c> (ajuste 90; the parameters guide: the caller never names the domain's enum type, the engine resolves
+    /// the name at the verb, the journal keeps it): <c>clockwise</c> on the line is <c>Clockwise</c> in the journal.</summary>
     public Answer Rotate(string sense)
     {
         if (string.IsNullOrWhiteSpace(sense)) return Answer.Refusal("a step needs its sense: clockwise or counterclockwise");
+        string member = sense.Trim().ToLowerInvariant() switch
+        {
+            "clockwise" => "Clockwise",
+            "counterclockwise" => "Counterclockwise",
+            _ => null,
+        };
+        if (member == null) return Answer.Refusal($"a step turns clockwise or counterclockwise, not '{sense}'");
         string stepId = $"{warden}-step-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         try
         {
             return Answer.Of(wardenActor.Using(RotateFormation)
                 .WithParameters(p => {
-                    p["sense", typeof(string)] = sense.Trim().ToLowerInvariant();
+                    p["sense", typeof(Enum)] = member;
                     p["stepId", typeof(string)] = stepId;
                 })
                 .PerformCommand());
