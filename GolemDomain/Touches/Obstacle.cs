@@ -56,10 +56,10 @@ internal sealed class Thing : Obstacle
     /// body's radius to get where the body's CENTRE may not go.</summary>
     internal Rectangle Extent(double margin)
     {
-        double minX = vertices.Min(v => v.At.X), maxX = vertices.Max(v => v.At.X);
-        double minY = vertices.Min(v => v.At.Y), maxY = vertices.Max(v => v.At.Y);
-        double grow = Collisions.MarkReach + margin;
-        return new Rectangle(minX - grow, minY - grow, (maxX - minX) + 2 * grow, (maxY - minY) + 2 * grow);
+        var box = new NetTopologySuite.Geometries.Envelope();
+        foreach (var v in vertices) box.ExpandToInclude(v.At.AsCoordinate());
+        box.ExpandBy(Collisions.MarkReach + margin);
+        return new Rectangle(box);
     }
 }
 

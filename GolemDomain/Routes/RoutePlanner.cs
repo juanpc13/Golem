@@ -1,4 +1,6 @@
 using System.Globalization;
+using QuikGraph;
+using QuikGraph.Algorithms;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
 using GolemDomain.Maps;
@@ -184,33 +186,27 @@ internal sealed class RoutePlanner
             }
         nodes.Add(goal);
 
-        var dist = nodes.ToDictionary(n => n, _ => double.PositiveInfinity);
-        var prev = new Dictionary<Node, Node>();
-        var done = new HashSet<Node>();
-        dist[start] = 0;
-        while (true)
-        {
-            Node u = null;
-            foreach (var n in nodes)
-                if (!done.Contains(n) && !double.IsPositiveInfinity(dist[n]) && (u == null || dist[n] < dist[u])) u = n;
-            if (u == null) break;
-            if (u == goal) break;
-            done.Add(u);
-            foreach (var v in nodes)
-            {
-                if (done.Contains(v) || v == u) continue;
-                if (!Sees(u, v)) continue;
-                double edge = cost.Between(u.At, v.At) + navigation.HopCost;   // a hair per stop when the navigation says so: at equal length, the way with fewer stops
-                if (dist[u] + edge < dist[v]) { dist[v] = dist[u] + edge; prev[v] = u; }
-            }
-        }
-        if (double.IsPositiveInfinity(dist[goal]))
+        // the graph: an edge between every two nodes that see each other, its cost the run's and a hair per stop when the navigation
+        // says so (at equal length, the way with fewer stops); the shortest path is QuikGraph's Dijkstra (ajuste 89, 5-oct-2026)
+        var graph = new UndirectedGraph<Node, TaggedEdge<Node, double>>(allowParallelEdges: false);
+        graph.AddVertexRange(nodes);
+        for (int i = 0; i < nodes.Count; i++)
+            for (int j = i + 1; j < nodes.Count; j++)
+                if (Sees(nodes[i], nodes[j]))
+                    graph.AddEdge(new TaggedEdge<Node, double>(nodes[i], nodes[j], cost.Between(nodes[i].At, nodes[j].At) + navigation.HopCost));
+        var pathTo = graph.ShortestPathsDijkstra(e => e.Tag, start);
+        if (!pathTo(goal, out var edges))
             throw new GolemDomainException(collisions.MarkCount == 0
                 ? $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) through the map"
                 : $"no road from ({Fmt(from.X)}, {Fmt(from.Y)}) to ({Fmt(to.X)}, {Fmt(to.Y)}) that fits a body of radius {Fmt(radius)} past {collisions.MarkCount} marks");
 
         var path = new List<Node>();
-        for (Node n = goal; n != start; n = prev[n]) path.Insert(0, n);
+        var here = start;
+        foreach (var e in edges)
+        {
+            here = e.Source == here ? e.Target : e.Source;
+            path.Add(here);
+        }
         var legs = new List<Leg>();
         for (int i = 0; i < path.Count; i++)
         {

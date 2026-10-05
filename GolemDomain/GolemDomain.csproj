@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The pure domain: plain C# puppets, no Puppeteer, no ASP.NET, no I/O.
-       Hosts reference it; it references nothing (domain-modeling guide E38).
+       Hosts reference it; it references no framework (domain-modeling guide E38) — only the libraries that
+       CALCULATE for it (ajuste 89, 5-oct-2026; Juan: "no que nosotros hagamos los cálculos"): NetTopologySuite
+       (the plane's geometry inside Position, Segment, Rectangle, the figures) and QuikGraph (the planner's Dijkstra).
+       The domain names every operation in its own classes; the libraries never reach the journal.
        Namespaces: GolemDomain (the Golem aggregate the DSL instantiates),
        .Geometry (Position, Location, Segment, Pose, Rectangle), .Robots (Body, Mission),
        .Maps (Map, Area, Passage: information only), .Layouts (Layout, Zone, Wall, PlacedDoor,
@@ -18,6 +21,11 @@
   <ItemGroup>
     <!-- The acceptance tests chart the catalog's floor plans through the perform (FloorPlans.X().AsRelease). -->
     <InternalsVisibleTo Include="GolemTest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+    <PackageReference Include="QuikGraph" Version="2.5.0" />
   </ItemGroup>
 
 </Project>

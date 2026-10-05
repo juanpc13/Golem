@@ -622,8 +622,7 @@ internal sealed class Route
             // The RUN there is judged, not only the point: a step to the left after a second touch sent it, straight and
             // parallel, through the face the first touch had marked (25-sep-2026 rehearsal, a third bump on the same face).
             // No clear run: no point ahead, and the planner decides from the step, around every figure it knows.
-            double dx = Math.Cos(heading), dy = Math.Sin(heading);
-            double along = (touched.X - aside.X) * dx + (touched.Y - aside.Y) * dy;
+            double along = new Pose(aside.X, aside.Y, heading).Ahead(touched);
             var ahead = aside.Along(heading, Math.Max(0.0, along) + 3 * radius + Collisions.MarkMargin);   // the touch is on its shell: its centre one radius beyond, then a body's length
             if (layout.HasRoom(ahead, radius) && !collisions.Blocks(ahead, radius)
                 && layout.Crossings(aside, ahead, radius, Navigation.ThroughDoors) != null && !collisions.Blocks(new Segment(aside, ahead), radius))
@@ -761,12 +760,7 @@ internal sealed class Route
 
     private static bool Same(Position a, Position b) => Math.Abs(a.X - b.X) < 1e-6 && Math.Abs(a.Y - b.Y) < 1e-6;
 
-    private static double Normalize(double a)
-    {
-        while (a > Math.PI) a -= 2 * Math.PI;
-        while (a < -Math.PI) a += 2 * Math.PI;
-        return a;
-    }
+    private static double Normalize(double a) => NetTopologySuite.Algorithm.AngleUtility.Normalize(a);
 
     private static string Fmt(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 }

@@ -108,7 +108,7 @@ internal sealed class Collisions
         {
             var members = group.Select(i => marks[i]).ToList();
             var centre = new Position(members.Average(m => m.At.X), members.Average(m => m.At.Y));
-            var ordered = members.OrderBy(m => Math.Atan2(m.At.Y - centre.Y, m.At.X - centre.X)).ToList();
+            var ordered = members.OrderBy(m => centre.HeadingTo(m.At)).ToList();
             obstacles.Add(new Thing(ordered, centre));
         }
         obstacles.AddRange(encounters);

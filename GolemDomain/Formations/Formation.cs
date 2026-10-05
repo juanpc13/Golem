@@ -1,5 +1,9 @@
 using GolemDomain.Geometry;
 
+using NetTopologySuite.Algorithm;
+using NetTopologySuite.LinearReferencing;
+using GeometryFactory = NetTopologySuite.Geometries.GeometryFactory;
+
 namespace GolemDomain.Formations;
 
 /// <summary>
@@ -76,8 +80,7 @@ internal sealed class Circle : Formation
         var places = new List<Position>();
         for (int k = 0; k < count; k++)
         {
-            double angle = 2 * Math.PI * k / count;
-            places.Add(new Position(Center.X + Radius.InMeters * Math.Cos(angle), Center.Y + Radius.InMeters * Math.Sin(angle)));
+            places.Add(Center.Along(AngleUtility.ToRadians(360.0 * k / count), Radius.InMeters));
         }
         return places;
     }
@@ -123,8 +126,7 @@ internal abstract class Polygon : Formation
         var vertices = new List<Position>();
         foreach (double degrees in Bearings)
         {
-            double angle = degrees * Math.PI / 180;
-            vertices.Add(new Position(Center.X + Circumradius * Math.Cos(angle), Center.Y + Circumradius * Math.Sin(angle)));
+            vertices.Add(Center.Along(AngleUtility.ToRadians(degrees), Circumradius));
         }
         return vertices;
     }
@@ -135,17 +137,12 @@ internal abstract class Polygon : Formation
         var v = Vertices();
         int n = v.Count;
         if (count <= n) return v;                             // the vertices, all of them: the ones nobody takes stay free (ajuste 86)
-        double side = v[0].DistanceTo(v[1]);
-        double spacing = n * side / count;
+        var ring = GeometryFactory.Default.CreateLineString(v.Concat(new[] { v[0] }).Select(p => p.AsCoordinate()).ToArray());
+        var perimeter = new LengthIndexedLine(ring);
+        double spacing = ring.Length / count;
         var places = new List<Position>();
         for (int k = 0; k < count; k++)
-        {
-            double along = k * spacing;                       // the way along the perimeter from the first vertex
-            int edge = Math.Min((int)Math.Floor(along / side), n - 1);
-            double t = (along - edge * side) / side;          // how far along that edge
-            Position from = v[edge], to = v[(edge + 1) % n];
-            places.Add(new Position(from.X + (to.X - from.X) * t, from.Y + (to.Y - from.Y) * t));
-        }
+            places.Add(Position.Of(perimeter.ExtractPoint(k * spacing)));   // the way along the perimeter from the first vertex
         return places;
     }
 }

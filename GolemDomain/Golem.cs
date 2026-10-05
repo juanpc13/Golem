@@ -377,7 +377,7 @@ internal sealed class Golem
     /// where it stands, in the direction it faces turned by the bearing.</summary>
     private Pose TouchOn(Pose body, double bearing)
     {
-        double heading = Math.Atan2(Math.Sin(body.Heading + bearing), Math.Cos(body.Heading + bearing));
+        double heading = NetTopologySuite.Algorithm.AngleUtility.Normalize(body.Heading + bearing);
         var at = body.Along(heading, Radius());
         return new Pose(at.X, at.Y, heading);
     }
