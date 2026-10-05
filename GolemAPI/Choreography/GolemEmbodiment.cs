@@ -124,85 +124,27 @@ public sealed class GolemEmbodiment
             g.LearnForget(at);
         }
         ";
-    // A peer was called to a formation and told me I was called too (ajustes 71, 72): if I am in its fleet — the golem knows who it is —
-    // I join: my own Join, from where I will stand, by my rank. The script ends with its print, like every script that changes what the
-    // body must do; what pushes the order to my body at once is the next-order-join reaction on the Join (a uptake's print returns to
-    // nobody). No expose: my join spreads nothing.
-    // A peer convened by distance and told me where it stood (ajuste 73): if I am in the fleet — already convened, its word may take my
-    // place and interrupt my route; not yet, I keep its word and convene myself, once, and my act tells everybody where I stand. The
-    // peer's position enters as @px @py: x and y are the print's labels.
-    public const string UptakeStoodFor = @"
+    // THE WARDEN CALLED THE FLEET (propuesta 88): if I am in it — the golem knows who it is — I answer where I stand; the act exposes what
+    // the warden needs (the call, my name, where I stood, my scenario) and echo-stood tells it. Nothing of my body moves yet.
+    public const string UptakeCalledTo = @"
         {
             fleet = Fleet(@names);
             if (fleet.Has(g)) {
-                center = Position(@cx, @cy);
-                side = Meters(@sideLength);
-                formation = g.Choreography.Formation(@figure, center, side);
-                muster = g.Choreography.Muster(@callId, formation, fleet, @by);
-                peer = fleet.Member(@teller);
-                at = Position(@px, @py);
-                me = fleet.Member(g);
-                if (muster.Knows(me)) {
-                    muster.Stood(peer, at);
-                    if (muster.IsComplete) {
-                        route = muster.Route;
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
-                            }
-                        } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
-                        }
-                    } else {
-                        print muster.StoodCount 'stood', fleet.Count 'of';
-                    }
-                } else {
-                    muster.Stood(peer, at);
-                    from = g.Destination;
-                    muster.Convene(from, me);
-                    if (muster.IsComplete) {
-                        route = muster.Route;
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
-                            }
-                        } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
-                        }
-                    } else {
-                        print muster.StoodCount 'stood', fleet.Count 'of';
-                    }
-                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @by policy, me.Name who, from.X stoodX, from.Y stoodY;
-                }
+                from = g.Destination;
+                g.Choreography.Stood(@callId, from);
+                print g.Name 'who', from.X 'stoodX', from.Y 'stoodY';
+                expose @callId call, g.Name who, from.X stoodX, from.Y stoodY, g.Current.Name scenario;
             }
         }
         ";
-    // A PEER STANDS ON ITS PLACE (ajuste 77): its word, recorded in the convocation of that call — if this golem has its place in it;
-    // when with it everybody is placed and a step is queued, the next step opens and its route is printed (next-order-placed pushes).
-    public const string UptakePlacedAt = @"
+    // THE WARDEN SHARED THE PLACES (propuesta 88): the whole table as one word — if I have a place in it, I take it: my own from the table,
+    // the others as berths, the route ending facing the centre. The script ends with its print; next-order-take pushes the order.
+    public const string UptakeShared = @"
         {
-            if (g.Choreography.Knows(@call)) {
-                muster = g.Choreography.Muster(@call);
-                peer = muster.Fleet.Member(@who);
-                route = muster.Heard(peer);
+            given = Assignments(@table);
+            if (given.Has(g)) {
+                facing = Position(@atX, @atY);
+                route = g.Choreography.Take(@call, @round, given, facing);
                 if (g.Strategy.OnTheWay.IsActive) {
                     route = g.Dash(route);
                 }
@@ -222,48 +164,7 @@ public sealed class GolemEmbodiment
             }
         }
         ";
-    // A STEP was asked of the fleet (ajuste 77): the same step is queued here, in the same order it was queued there (the wire keeps a
-    // topic's order); it opens at once when everybody already stands on its place (next-order-step pushes).
-    public const string UptakeRotateTo = @"
-        {
-            if (g.Choreography.Knows(@call)) {
-                muster = g.Choreography.Muster(@call);
-                move = muster.Formation.Rotate(@sense);
-                muster.Queue(move, @stepId);
-                if (muster.CanStep) {
-                    route = muster.Step();
-                    if (g.Strategy.OnTheWay.IsActive) {
-                        route = g.Dash(route);
-                    }
-                    if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action';
-                        if (route.IsWalkable) {
-                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
-                    } else {
-                        print route.Id 'route', route.Status 'ended';
-                        if (route.EndedShort) {
-                            print route.Why 'why';
-                        }
-                    }
-                } else {
-                    print muster.Queued 'queued';
-                }
-            }
-        }
-        ";
 
-    // ==================================================================
-    // THE WAKING: the golem wakes where its body stands — ONE act, the first of every boot, once the membrane brought the pose
-    // (Juan, 18-sep-2026: "veo innecesario el decide"). The golem keeps the pose, so a told point taken up by a reaction — which
-    // has no telemetry — is planned from there at once; with a plan underway the route decides it again from there INSIDE
-    // (the body may have been carried anywhere while the golem was down). The reaction on g.Wake(_) pushes the print. The
-    // act is its own block and the print of what the body must do now follows it, in full, spoken once (Juan, 21-sep-2026);
-    // the pose's parameters are named `px py ptheta`, never like a print label: the journal's canonical render substitutes a
-    // parameter wherever its name appears, labels included (`'x'` came out as `'6.3'` on 21-sep).
-    // ==================================================================
     public Answer Wake()
     {
         var pose = ros.LatestPose;
@@ -272,6 +173,7 @@ public sealed class GolemEmbodiment
                 {
                     me = Pose(@px, @py, @ptheta);
                     g.Wake(me);
+                    expose g.Name who, g.Current.Name scenario, @wokeAt wokeAt;
                 }
                 {
                     print g.HasPendingMission() 'pending', g.Held 'held';
@@ -290,6 +192,7 @@ public sealed class GolemEmbodiment
                 p["px", typeof(double)] = Resolution.Metres(pose.X);
                 p["py", typeof(double)] = Resolution.Metres(pose.Y);
                 p["ptheta", typeof(double)] = Resolution.Radians(pose.Theta);
+                p["wokeAt", typeof(string)] = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");   // the once of the word to the warden: every waking is a word (propuesta 88)
             })
             .PerformCommand());
     }

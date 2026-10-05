@@ -43,9 +43,9 @@ public sealed class Commander
         // `golem blue …` on red's console: the line is another golem's — a console commands its own golem; the peers ride along with --with
         if (command.Golem != "" && !IsMe(command.Golem))
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
-        // a choreography spreads by itself, by tell (ajuste 71): this golem is called, its peers are told — never a line carried to them
-        if (command.Verb is "choreograph" or "rotate" && command.With.Count > 0)
-            return Reply.Syntax($"{command.Verb}: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, optimize)");
+        // a choreography is the WARDEN's (propuesta 88): its console calls the fleet and opens the steps; a golem only answers
+        if (command.Verb is "choreograph" or "rotate" or "fleet")
+            return Reply.Refused($"{command.Verb} is the warden's: command it on the warden's console — a golem answers where it stands and takes the place it is given");
         // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
         if (command.Verb == "place" && command.With.Count > 0)
             return Reply.Syntax("place carries each golem to its own mark — write the names on the line, place blue@6,6.2 red@7,6.3, not --with");
@@ -56,7 +56,7 @@ public sealed class Commander
         var replies = new List<(string Who, Reply Reply)> { (golem.Name, await MineAsync(command, line)) };
         foreach (var who in peers.Where(w => !IsMe(w)))
         {
-            var peer = await golem.CommandPeerAsync(who, ForPeer(line, who));
+            var peer = await golem.CommandPeerAsync(who, CommandLine.ForGolem(line, who));
             replies.Add((who, peer == null ? Reply.Refused($"this is {golem.Name}: no golem named '{who}' among its peers")
                             : peer.Status == 200 ? Reply.Done(peer.Text, "")
                             : peer.Status == 409 ? new Reply("refused", peer.Text, "")
@@ -74,24 +74,12 @@ public sealed class Commander
 
     private bool IsMe(string who) => string.Equals(who, golem.Name, StringComparison.OrdinalIgnoreCase);
 
-    // the same command, addressed to one peer alone: `golem visit 2,9.5 --with blue,green` → `golem blue visit 2,9.5`
-    private static string ForPeer(string line, string who)
-    {
-        string rest = Regex.Replace(line.Trim(), @"^golem\s+", "", RegexOptions.IgnoreCase);
-        var first = Regex.Match(rest, @"^[A-Za-z_][A-Za-z0-9_-]*");                          // this golem's own name, when written — never a command
-        if (first.Success && !CommandLine.Help.Any(h => h.Verb == first.Value.ToLowerInvariant())) rest = rest[first.Length..].TrimStart();
-        rest = Regex.Replace(rest, @"\s*--with\s+\S+", "", RegexOptions.IgnoreCase).Trim();
-        return $"golem {who} {rest}";
-    }
-
     // this golem's own part of a line: the command reaching the same role the endpoint reaches
     private async Task<Reply> MineAsync(Command command, string line)
     {
         Reply reply = command.Verb switch
         {
             "visit" or "cover" => Errand(command),
-            "choreograph" => Choreograph(command),
-            "rotate" => Motors(out var m, out var noMotors) ? Stepped(m.Rotate(command.Text), command.Text) : noMotors,
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
@@ -115,26 +103,7 @@ public sealed class Commander
 
     // ---- the operator's verbs: the same validation as the endpoint, the same role ----
 
-    // the fleet of a formation: told outright (--fleet), or this golem and the peers named with --with (all: every peer on the wire)
-    private IReadOnlyList<string> FleetOf(Command command, IReadOnlyList<string> peers)
-    {
-        if (command.Values.TryGetValue("fleet", out var told)) return told.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList();
-        return new[] { golem.Name.ToLowerInvariant() }.Concat(peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
-    }
-
-    // the fleet takes a square (propuesta 59; ajuste 65): this golem's part — its corner, by the policy asked (rank, the only one built)
-    private Reply Choreograph(Command command)
-    {
-        var peers = golem.Peers.ToList();   // the fleet, unless told outright: this golem and every peer it can reach (ajuste 71)
-        var request = new FormationRequest(command.Text, new PointRequest(command.Points[0].X, command.Points[0].Y),
-                                           double.Parse(command.Values["side"], CultureInfo.InvariantCulture), FleetOf(command, peers).ToList(),
-                                           command.Values.TryGetValue("by", out var by) ? by : null);
-        var problems = request.Problems().ToList();
-        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        var center = (request.Center.X.Value, request.Center.Y.Value);
-        return Called(displacer.Call(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet, request.Policy));
-    }
+    // ---- the operator's verbs: the same validation as the endpoint, the same role ----
 
     // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)
     private Reply Errand(Command command)
@@ -268,14 +237,6 @@ public sealed class Commander
 
     // an act of the mind (no route to print): done in a few words, or refused in the domain's
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
-
-    // a call made (ajuste 80): the route opens when the whole fleet said where it stands — at once for a fleet of one, else said so
-    private Reply Called(Answer answer) =>
-        answer.Ok && answer.Order == null ? Reply.Done("called — the routes open when everybody said where it stands", answer.Print ?? "") : Answered(answer);
-
-    // a step asked (ajuste 77): opened at once when everybody already stands on its place — the order, as any — or queued, said so
-    private Reply Stepped(Answer answer, string sense) =>
-        answer.Ok && answer.Order == null ? Reply.Done($"step {sense} queued — it opens when everybody stands on its place", answer.Print ?? "") : Answered(answer);
 
     private Reply Obstacles()
     {

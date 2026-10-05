@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Choreography.Transport.Brokered;
 using GolemAPI;
 using GolemAPI.Choreography;
+using GolemAPI.Coordination;
 using GolemAPI.Commanding;
 using GolemAPI.Membrane;
 using GolemAPI.Panel;
@@ -33,6 +34,7 @@ public sealed class MockWorld : ILabWorld
     private readonly FloorPlan plan;
     private readonly List<Box> crates = new();
     private readonly Dictionary<string, Golem> golems = new();
+    private WardenHost warden;   // the warden, when a test adds one (propuesta 88): every golem answers to 'warden'
     private readonly InProcessBroker broker = new();
     private readonly List<WorldContact> contacts = new();
     private readonly List<WayDecided> ways = new();   // guarded by `contacts`, numbered with the same sequence
@@ -78,7 +80,7 @@ public sealed class MockWorld : ILabWorld
         var at = home ?? (mark != null ? (mark.X, mark.Y) : throw new ArgumentException($"the plan has no body '{name}': give it a home"));
         var body = new KinematicBody(this, name, at.X, at.Y, 0.0);
         var settings = new GolemSettings(name, name, at, Capabilities.Parse(null), peers ?? Fleet.Where(n => n != name).ToList(),
-                                         follower ?? (Followers.TryGetValue(name, out var f) ? f : null), DatabaseType.IN_MEMORY, "");
+                                         follower ?? (Followers.TryGetValue(name, out var f) ? f : null), DatabaseType.IN_MEMORY, "", "warden");
         var feed = new PanelFeed();
         var host = GolemHost.Build(settings, body, new TellsInMemory(broker, this), feed);
         var golem = new Golem { Name = name, Host = host, Body = body, Feed = feed };
@@ -92,6 +94,20 @@ public sealed class MockWorld : ILabWorld
     }
 
     public Task PlaceGolemAsync(string golem) => AddGolemAsync(golem);
+
+    /// <summary>THE WARDEN in this world (propuesta 88): the same WardenHost the container runs, over the broker in memory; it reaches
+    /// every golem added so far (and the words of golems added later still find it: the broker keeps a topic's records for a late listener).</summary>
+    public async Task<WardenHost> AddWardenAsync(IReadOnlyList<string> golems = null)
+    {
+        var names = golems ?? Fleet.ToList();
+        var feed = new PanelFeed();
+        warden = WardenHost.Build(new WardenSettings("warden", names, DatabaseType.IN_MEMORY, ""), new TellsInMemory(broker, this), feed);
+        await warden.ConnectAsync(stop.Token);
+        return warden;
+    }
+
+    /// <summary>The warden's host, for a test that commands it (its console).</summary>
+    public WardenHost Warden => warden ?? throw new InvalidOperationException("no warden in this world: AddWardenAsync first");
 
     /// <summary>The golem's host — the same GolemHost the containers run — for a test that commands it directly (the console).</summary>
     public GolemHost HostOf(string golem) => Of(golem).Host;
@@ -292,6 +308,7 @@ public sealed class MockWorld : ILabWorld
 
     public async ValueTask DisposeAsync()
     {
+        if (warden != null) await warden.DisposeAsync();
         stop.Cancel();
         wake.Release();
         foreach (var g in golems.Values)

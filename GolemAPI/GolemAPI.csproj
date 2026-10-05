@@ -20,6 +20,7 @@
   <ItemGroup>
     <!-- TargetPath keeps it flat in the output: the root endpoint serves it as "panel.html" -->
     <None Include="Panel\panel.html" CopyToOutputDirectory="PreserveNewest" TargetPath="panel.html" />
+    <None Include="Panel\warden.html" CopyToOutputDirectory="PreserveNewest" TargetPath="warden.html" />
   </ItemGroup>
 
   <ItemGroup>

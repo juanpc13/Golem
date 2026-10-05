@@ -64,11 +64,7 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-find",   "[_:Golem].Find($id)"),        // a route in hand by its handle: Then
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
-            ("next-order-convene", "[_:Muster].Convene(_, _)"),              // the golem says where it stands: the round complete, its route opens (ajustes 73, 80, 81)
-            ("next-order-stood",   "[_:Muster].Stood(_, _)"),               // …and a peer's word may interrupt its route
-            ("next-order-placed",  "[_:Muster].Placed(_)"),                 // this golem stands on its place: the next step may open (ajuste 77)
-            ("next-order-heard",   "[_:Muster].Heard(_)"),                  // a peer's word that it stands on its place: the same
-            ("next-order-step",    "[_:Muster].Step()"),                    // …or opens at once when everybody already stands
+            ("next-order-take",   "[_:Choreographies].Take(_, _, _, _)"),   // the golem takes the place the warden shared: its route opens (propuesta 88)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),
             ("next-order-resume", "[_:Golem].Resume(_)"),   // a zero-argument pattern on the golem did not fire (17-sep lab): the pose rides along, and it is true

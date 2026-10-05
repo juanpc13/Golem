@@ -8,7 +8,7 @@ namespace GolemAPI;
 // runs after every hydration and issues the release chain; applied releases skip,
 // new ones run and journal. To evolve the golem, append the next release below —
 // never edit an applied one (its body signature is guarded).
-internal sealed class GolemPerformance : PerformanceV2
+internal sealed class GolemPerformance : PerformanceV2, GolemAPI.Panel.IJournalWatch
 {
     // True only on the boot where the journal was brand-new (the framework raises
     // OnFirstHydration exactly then). Used for the panel's birth announcement.
@@ -31,12 +31,12 @@ internal sealed class GolemPerformance : PerformanceV2
     // The operator wants to see EVERYTHING the journal receives — defines, actions,
     // literal scripts, tells, acks, verdicts — so the panel taps the framework's
     // StageHook: every record as it is written (live), and the whole journal at boot.
-    internal void WatchJournal(Action<long, byte[]> onRecordWritten)
+    public void WatchJournal(Action<long, byte[]> onRecordWritten)
     {
         hook.OnRecordWritten = (entryId, wire) => onRecordWritten(entryId, wire);
     }
 
-    internal List<Puppeteer.EventSourcing.DB.JournalWireRecord> ReadJournalAfter(long afterEntryId)
+    public List<Puppeteer.EventSourcing.DB.JournalWireRecord> ReadJournalAfter(long afterEntryId)
     {
         var records = new List<Puppeteer.EventSourcing.DB.JournalWireRecord>();
         hook.ReadJournalRecordsAfter(afterEntryId, records);

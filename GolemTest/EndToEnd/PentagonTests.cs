@@ -1,4 +1,5 @@
 using GolemDomain;
+using GolemDomain.Coordination;
 using GolemDomain.Formations;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
@@ -45,19 +46,28 @@ public class PentagonTests
         for (int i = 0; i < 5; i++) Assert.AreEqual(0.0, four[i].DistanceTo(v[i]), 1e-9, "the places are the vertices, in their order");
         Assert.AreEqual(6, pentagon.Places(6).Count, "more bodies than vertices: spread along the perimeter (ajuste 65)");
 
-        // the fleet of four takes it by rank, every route ending facing the centre; a step moves everybody one vertex — and the hole with them
+        // the fleet of four takes it by rank (the warden's law, propuesta 88), every route ending facing the centre; a step moves everybody
+        // one vertex — and the hole with them
         var fleet = new Fleet("blue,green,red,yellow");
-        var call = g.Choreography.Muster("red-1", pentagon, fleet);
-        var route = call.Join(new Pose(5.5, 9.0, -1.5708), fleet.Member(g));
+        var warden = new Warden("warden");
+        var call = warden.Muster("red-1", pentagon, fleet, "rank");
+        call.Convene();
+        call.Stood(fleet.Member("blue"), new Position(5.5, 9.0));
+        foreach (var name in new[] { "green", "red", "yellow" }) call.Stood(fleet.Member(name), pentagon.Place(fleet.Member(name)));   // the others on their places already
+        var given = call.Share();
+        g.Wake(new Pose(5.5, 9.0, -1.5708));
+        var route = g.Choreography.Take("red-1", 0, given, center);
         StringAssert.Contains(route.AsPlan(), "floor@5.5,7.2 > face@5.5,7.2", "blue, first by rank: the north vertex, then facing the centre: " + route.AsPlan());
-        Assert.AreEqual(0, call.PlaceIndex);
+        Assert.AreEqual(0, call.PlaceIndex(fleet.Member("blue")));
         Assert.AreEqual(0.0, pentagon.Place(fleet.Member("yellow")).DistanceTo(v[3]), 1e-9, "yellow, last of four: the south-east vertex; the north-east stays free");
         Assert.AreEqual(4, pentagon.Rotate("clockwise").Next(0, 5), "clockwise from the north vertex: the north-east one — the free place, taken");
         Assert.AreEqual(1, pentagon.Rotate("counterclockwise").Next(0, 5), "counter-clockwise: the north-west one");
-        call.Placed(call.Me); foreach (var name in new[] { "green", "red", "yellow" }) call.Heard(fleet.Member(name));   // one golem plays all: everybody placed
+        foreach (var name in fleet.Names) call.Placed(fleet.Member(name));   // everybody placed
         call.Queue(pentagon.Rotate("clockwise"), "s1");
-        var step = call.Step();
-        Assert.AreEqual(4, call.PlaceIndex, "blue steps into the free vertex; its own, the north, is the free one now");
+        var next = call.Step();
+        Assert.AreEqual(4, call.PlaceIndex(fleet.Member("blue")), "blue steps into the free vertex; its own, the north, is the free one now");
+        for (int i = 0; i < 20 && route.IsPending(); i++) route.Arrive(route.NextLeg);
+        var step = g.Choreography.Take("red-1", 1, next, center);
         StringAssert.Contains(step.AsPlan(), "floor@7.12,6.03", "the north-east vertex: " + step.AsPlan());
     }
 }

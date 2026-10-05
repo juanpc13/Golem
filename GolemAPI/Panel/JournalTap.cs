@@ -11,11 +11,18 @@ namespace GolemAPI.Panel;
 //
 // Rows: Script = the statement as the journal holds it (an action shows the template with
 // its arguments substituted), Note = JSON {kind, actionId, x?, y?} for the panel's tags and map.
+/// <summary>A performance whose journal the panel may watch: every record as it is written, and the history (the golem's and the warden's).</summary>
+public interface IJournalWatch
+{
+    void WatchJournal(Action<long, byte[]> onRecordWritten);
+    List<Puppeteer.EventSourcing.DB.JournalWireRecord> ReadJournalAfter(long afterEntryId);
+}
+
 internal sealed class JournalTap
 {
     private static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(600);
 
-    private readonly GolemPerformance performance;
+    private readonly IJournalWatch performance;
     private readonly PanelFeed feed;
     private readonly ConcurrentDictionary<int, (string[] Params, string Body)> templates = new();
     private readonly List<(long EntryId, byte[] Wire)> pending = new();
@@ -24,7 +31,7 @@ internal sealed class JournalTap
     private bool live;
     private Timer flushTimer;
 
-    internal JournalTap(GolemPerformance performance, PanelFeed feed)
+    internal JournalTap(IJournalWatch performance, PanelFeed feed)
     {
         this.performance = performance;
         this.feed = feed;

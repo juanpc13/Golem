@@ -1,6 +1,8 @@
 using Choreography.Theater;
 using GolemAPI;
 using GolemAPI.Choreography;
+using GolemAPI.Coordination;
+using GolemAPI.Controllers;
 using GolemAPI.Membrane;
 using GolemAPI.Panel;
 using Puppeteer;
@@ -37,10 +39,19 @@ var tellRetry = TimeSpan.FromSeconds(int.Parse(Environment.GetEnvironmentVariabl
 // The roles this body can play — its capabilities, declared by the operator (Juan, 18-sep-2026: "la configuración del golem
 // en el compose"): displacer (the motors), collision-captor (the bumper). An endpoint whose role the body lacks refuses.
 var capabilities = Capabilities.Parse(Environment.GetEnvironmentVariable("ROLES"));
+// THE WARDEN (propuesta 88, 2-oct-2026): a golem names the warden it answers to (WARDEN, a `tell-<warden>` route); the warden's own
+// process is ROLES=warden — no body, no membrane: the coordinator and the main console.
+string wardenName = Environment.GetEnvironmentVariable("WARDEN");
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
 var ct = shutdown.Token;
+
+if (capabilities.IsWarden)
+{
+    await RunWardenAsync(wardenName ?? golem, panelPort, tellRoutes, tellRetry, journalPath, ct);
+    return;
+}
 
 // --- The wires: the body over rosbridge, the tells over HTTP between containers. ---
 var ros = new Rosbridge(rosbridgeUrl, body, poseSource);
@@ -51,23 +62,26 @@ var routes = HttpBroker.ParseRoutes(tellRoutes);
 var wire = new HttpBroker(golem, routes, tellRetry, myUrl);
 if (tellDoneTo != null && !wire.CanRoute($"tell-{tellDoneTo}"))
     throw new InvalidOperationException($"TELL_ROUTES lacks 'tell-{tellDoneTo}' — tells to '{tellDoneTo}' would have nowhere to go");
-// Every golem I can tell (a route 'tell-<peer>'): what the body bumps into is told to all of them.
+if (wardenName != null && !wire.CanRoute($"tell-{wardenName}"))
+    throw new InvalidOperationException($"TELL_ROUTES lacks 'tell-{wardenName}' — the words to the warden would have nowhere to go");
+// Every golem I can tell (a route 'tell-<peer>'): what the body bumps into is told to all of them. The warden is no peer: it hears the
+// choreography's words alone.
 var peers = routes.Keys
     .Where(t => t.StartsWith("tell-", StringComparison.Ordinal) && !t.EndsWith(".acks", StringComparison.Ordinal))
     .Select(t => t["tell-".Length..])
-    .Where(n => n != golem)
+    .Where(n => n != golem && n != wardenName)
     .Distinct()
     .ToList();
 
 // --- The golem assembled (GolemHost): the actor, the speech, the embodiment with its roles, the mechanics — started. ---
-var settings = new GolemSettings(golem, body, home, capabilities, peers, tellDoneTo, DatabaseType.FileSystem, journalPath);
+var settings = new GolemSettings(golem, body, home, capabilities, peers, tellDoneTo, DatabaseType.FileSystem, journalPath, wardenName);
 await using var host = GolemHost.Build(settings, ros, wire, feed);
 
 // --- The controllers: the actor's endpoints and the operator's. ---
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls($"http://*:{panelPort}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
-builder.Services.AddControllers();
+builder.Services.AddControllers().ConfigureApplicationPartManager(parts => parts.FeatureProviders.Add(ControllersOf.AGolem()));   // a golem's endpoints, not the warden's (ajuste 88)
 builder.Services.AddSingleton<PerformanceV2>(host.Performance);
 builder.Services.AddSingleton(host.Embodiment);
 builder.Services.AddSingleton(feed);
@@ -99,6 +113,42 @@ catch (OperationCanceledException) { }
 
 await app.StopAsync();
 Console.WriteLine($"[golem {golem}] clean shutdown at entry {host.Performance.CurrentEntryId}");
+
+// THE WARDEN'S PROCESS (propuesta 88): the actor with the domain's assembly, the speech to and from the golems, the mind with its scripts,
+// the console and the board — over the tell wire alone. The golems are its routes (`tell-<golem>`).
+static async Task RunWardenAsync(string warden, int panelPort, string tellRoutes, TimeSpan tellRetry, string journalPath, CancellationToken ct)
+{
+    var feed = new PanelFeed();
+    var myUrl = new Uri(Environment.GetEnvironmentVariable("MY_URL") ?? $"http://{warden}:{panelPort}");
+    var routes = HttpBroker.ParseRoutes(tellRoutes);
+    var wire = new HttpBroker(warden, routes, tellRetry, myUrl);
+    var golems = routes.Keys
+        .Where(t => t.StartsWith("tell-", StringComparison.Ordinal) && !t.EndsWith(".acks", StringComparison.Ordinal))
+        .Select(t => t["tell-".Length..])
+        .Where(n => n != warden)
+        .Distinct()
+        .ToList();
+    var settings = new WardenSettings(warden, golems, DatabaseType.FileSystem, journalPath);
+    await using var host = WardenHost.Build(settings, wire, feed);
+
+    var builder = WebApplication.CreateBuilder();
+    builder.WebHost.UseUrls($"http://*:{panelPort}");
+    builder.Logging.SetMinimumLevel(LogLevel.Warning);
+    builder.Services.AddControllers().ConfigureApplicationPartManager(parts => parts.FeatureProviders.Add(ControllersOf.TheWarden()));   // the warden's endpoints, not a golem's
+    builder.Services.AddSingleton<PerformanceV2>(host.Performance);
+    builder.Services.AddSingleton(host.Mind);
+    builder.Services.AddSingleton(feed);
+    builder.Services.AddSingleton(wire);
+    var app = builder.Build();
+    app.MapControllers();
+    await app.StartAsync();
+    Console.WriteLine($"[warden {warden}] controllers listening on :{panelPort}; golems: {string.Join(", ", golems)}");
+    feed.Broadcast(new PanelEvent(host.Performance.CurrentEntryId, "info", "", $"warden awake — rehydrated at entry {host.Performance.CurrentEntryId}", DateTime.UtcNow));
+    await host.ConnectAsync(ct);
+    try { await Task.Delay(Timeout.Infinite, ct); } catch (OperationCanceledException) { }
+    await app.StopAsync();
+    Console.WriteLine($"[warden {warden}] clean shutdown at entry {host.Performance.CurrentEntryId}");
+}
 
 static (double X, double Y) ParsePoint(string xy)
 {

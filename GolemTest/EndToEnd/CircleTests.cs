@@ -1,4 +1,5 @@
 using GolemDomain;
+using GolemDomain.Coordination;
 using GolemDomain.Formations;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
@@ -40,21 +41,18 @@ public class CircleTests
         Assert.AreEqual(places[0].DistanceTo(places[1]), places[1].DistanceTo(places[2]), 0.001, "three places evenly spaced: a triangle");
         Assert.AreEqual(places[1].DistanceTo(places[2]), places[2].DistanceTo(places[0]), 0.001);
 
-        var red = g.Choreography.Muster("call-red", circle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("red"));
+        var (_, red) = Taken("red", new Pose(2.5, 2.5, 0.0), circle, fleet, map);
         StringAssert.Contains(red.AsPlan(), "center@5,4.63", "red, third of three: the place at 240 degrees — from the living room, the door crossed on the way (Dash): " + red.AsPlan());
-        red.Abandon("this golem plays the next member now");   // its route ended: the berths of the others move on (ajuste 80)
-        var blue = g.Choreography.Muster("call-blue", circle, fleet).Join(new Pose(0.5, 0.5, 0.0), fleet.Member("blue"));
+        var (_, blue) = Taken("blue", new Pose(0.5, 0.5, 0.0), circle, fleet, map);
         StringAssert.Contains(blue.AsPlan(), "center@6.5,5.5", "blue, first: due east");
-        blue.Abandon("this golem plays the next member now");
-        var green = g.Choreography.Muster("call-green", circle, fleet).Join(new Pose(9.0, 9.5, 0.0), fleet.Member("green"));
+        var (_, green) = Taken("green", new Pose(9.0, 9.5, 0.0), circle, fleet, map);
         StringAssert.Contains(green.AsPlan(), "center@5,6.37", "green, second: at 120 degrees");
-        green.Abandon("this golem plays the next member now");
         Assert.AreEqual("door by door", red.Navigation.Name, "a formation is joined by a route born door by door, like every route (ajuste 62)");
-        g.Strategy.OnTheWay.Activate();
-        var again = g.Choreography.Muster("call-red-2", circle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("red"));   // another call: a golem takes one place per call
+        var (owner, again) = Taken("red", new Pose(2.5, 2.5, 0.0), circle, fleet, map);   // another call: a golem takes one place per call
+        owner.Strategy.OnTheWay.Activate();
         Assert.AreEqual("door by door", again.Navigation.Name, "born door by door whatever the golem adopted: the script asks the strategy and improves it");
-        Assert.IsTrue(g.Strategy.OnTheWay.IsActive, "what the script's if asks");
-        Assert.AreEqual("on the way", g.Dash(again).Navigation.Name, "the route improved with a dash, as the script does it");
+        Assert.IsTrue(owner.Strategy.OnTheWay.IsActive, "what the script's if asks");
+        Assert.AreEqual("on the way", owner.Dash(again).Navigation.Name, "the route improved with a dash, as the script does it");
     }
 
     [TestMethod]
@@ -73,11 +71,27 @@ public class CircleTests
 
         // a circle in the west corridor (1.5 m wide) with a radius of 1 m: its places fall in the walls or the blocks
         var tight = new Circle(new Position(0.75, 5.5), new Meters(1.0));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Muster("tight", tight, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("blue"))).Message,
-            "place 1 of 2 of the circle at (1.75, 5.5)");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => Taken("blue", new Pose(2.5, 2.5, 0.0), tight, fleet, map)).Message,
+            "the place of blue in the call call-blue at (1.75, 5.5)");
         // a circle whose place lies outside the map altogether
         var outside = new Circle(new Position(11.0, 5.5), new Meters(2.0));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Muster("outside", outside, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("blue"))).Message, "is nowhere on the map");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => Taken("blue", new Pose(2.5, 2.5, 0.0), outside, fleet, map)).Message, "is nowhere on the map");
         Assert.AreEqual(0, g.Routes().Count, "nothing minted for a refused place");
+    }
+
+    // THE WARDEN'S LAW BY RANK AND THE GOLEM OBEYING ITS PLACE (propuesta 88): one convocation per member here — the others stand on their
+    // own places, so they are berths out of the way — and the golem, born with that name, takes its place from the table shared.
+    private static (Golem Golem, GolemDomain.Routes.Route Route) Taken(string name, Pose from, Formation figure, Fleet fleet, MapLayout map)
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var warden = new Warden("warden");
+        var muster = warden.Muster("call-" + name, figure, fleet, "rank");
+        muster.Convene();
+        foreach (var n in fleet.Names) muster.Stood(fleet.Member(n), n == name ? from : figure.Place(fleet.Member(n)));
+        var given = muster.Share();
+        var g = new Golem(body, name);
+        g.Enter(new Scenario(map, new Collisions()));
+        g.Wake(from);
+        return (g, g.Choreography.Take("call-" + name, 0, given, figure.Center));
     }
 }

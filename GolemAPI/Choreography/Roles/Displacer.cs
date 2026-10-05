@@ -81,136 +81,9 @@ public sealed class Displacer
         return ThenEach(robot.Newest(), points.Skip(1), answer);
     }
 
-    // THE FORMATIONS (propuesta 59; ajuste 65: the square alone on the command line for now, said by its side, the places taken BY RANK —
-    // the fleet's names sorted, each golem the corner of its own, no word exchanged; ajuste 69: the formation made by the golem's own
-    // choreographies module, by its name — `formation = g.Choreography.Formation(@figure, center, side);` — so ONE template per effect
-    // serves every shape). The side enters as @sideLength, never @side: a local named like a parameter would resolve to the parameter.
-    // The call SPREADS BY TELL (ajuste 71): the act ends with an expose of what the peers need — the labels never a parameter's name —
-    // and GolemSpeech's echo-called tells each peer it was called; the peers' own Join (UptakeCalledTo) carries no expose, so it spreads
-    // nothing further.
-    private const string JoinCheck = @"
-                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
-                    Check(g.Current.Map.IsOnMap(Position(@cx, @cy))) Error 'the centre is nowhere on the map';
-                ";
-    // THE STEP (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj y antihorario… se pueden
-    // encolar"): a step is queued on the formation in place — nothing moves here unless everybody already stands on its place, then the
-    // step opens at once. The act exposes what the peers need to queue the same step (echo-rotate); the labels never a parameter's name.
-    private const string RotateFormation = @"
-                    {
-                        muster = g.Choreography.Current;
-                        move = muster.Formation.Rotate(@sense);
-                        muster.Queue(move, @stepId);
-                        if (muster.CanStep) {
-                            route = muster.Step();
-                            if (g.Strategy.OnTheWay.IsActive) {
-                                route = g.Dash(route);
-                            }
-                            if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
-                                if (route.IsWalkable) {
-                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                                }
-                            } else {
-                                print route.Id 'route', route.Status 'ended';
-                                if (route.EndedShort) {
-                                    print route.Why 'why';
-                                }
-                            }
-                        } else {
-                            print muster.Queued 'queued';
-                        }
-                        expose @sense turning, @stepId step, muster.Call call;
-                    }
-                ";
-
-    // THE CALL (ajustes 71, 73, 80): one template for both policies. This golem says where it stands (Convene); its route opens only when
-    // the whole fleet said so — with this very word when it is the last, else with the last word heard (UptakeStoodFor). The act exposes
-    // what the peers need to convene in the same convocation: the formation, the fleet, the call, the POLICY and where this golem stood
-    // (labels never a parameter's name; one expose per script).
-    private const string CallFormation = @"
-                    {
-                        from = g.Destination;
-                        center = Position(@cx, @cy);
-                        side = Meters(@sideLength);
-                        formation = g.Choreography.Formation(@figure, center, side);
-                        fleet = Fleet(@names);
-                        me = fleet.Member(g);
-                        muster = g.Choreography.Muster(@callId, formation, fleet, @by);
-                        muster.Convene(from, me);
-                        if (muster.IsComplete) {
-                            route = muster.Route;
-                            if (g.Strategy.OnTheWay.IsActive) {
-                                route = g.Dash(route);
-                            }
-                            if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
-                                if (route.IsWalkable) {
-                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                                }
-                            } else {
-                                print route.Id 'route', route.Status 'ended';
-                                if (route.EndedShort) {
-                                    print route.Why 'why';
-                                }
-                            }
-                        } else {
-                            print muster.StoodCount 'stood', fleet.Count 'of';
-                        }
-                        expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @by policy, me.Name who, from.X stoodX, from.Y stoodY;
-                    }
-                ";
-
-    /// <summary>The fleet is CALLED to a formation (propuesta 59; ajustes 65, 71, 73, 80): the formation by its name, at a centre with a side,
-    /// the fleet's names (this golem among them) and the policy that shares the places — <c>rank</c> or <c>distance</c>. This golem says
-    /// where it stands; every peer is told and says where it stands; the routes open when everybody spoke — this golem's with its own word
-    /// when the fleet is just itself, else with the last word heard. The order is pushed by the reaction on the act that opens it.</summary>
-    public Answer Call(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet, string policy)
-    {
-        if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
-        if (string.IsNullOrWhiteSpace(policy)) return Answer.Refusal("a call shares the places by rank or by distance");
-        string callId = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // one call, frozen as a parameter: the convocation's identity, the once of every tell
-        try
-        {
-            return Answer.Of(robot.Actor.Using(JoinCheck, CallFormation)
-                .WithParameters(p => {
-                    p["cx", typeof(double)] = Resolution.Metres(center.X);
-                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
-                    p["sideLength", typeof(double)] = Resolution.Metres(side);
-                    p["figure", typeof(string)] = figure;   // the formation's name: the module makes it (ajuste 69)
-                    p["callId", typeof(string)] = callId;
-                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
-                    p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
-                })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"{figure} at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}, by {policy}: " + GolemEmbodiment.Reason(ex)); }   // no place, no way, or the domain refused inside
-    }
-
-    /// <summary>A STEP of the formation in place (ajuste 77): every body takes the next place in that sense — <c>clockwise</c> or
-    /// <c>counterclockwise</c> — once everybody stands on its place; steps queue. The step's id, minted here, is the once of the tell that
-    /// spreads it. Refused when the fleet stands in no formation.</summary>
-    public Answer Rotate(string sense)
-    {
-        if (string.IsNullOrWhiteSpace(sense)) return Answer.Refusal("a step needs its sense: clockwise or counterclockwise");
-        string stepId = $"{robot.Name}-step-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        try
-        {
-            return Answer.Of(robot.Actor.Using(
-                @"
-                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
-                ", RotateFormation)
-                .WithParameters(p => {
-                    p["sense", typeof(string)] = sense.Trim().ToLowerInvariant();
-                    p["stepId", typeof(string)] = stepId;
-                })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"rotate {sense}: " + GolemEmbodiment.Reason(ex)); }
-    }
+    // THE FORMATIONS are the WARDEN's since propuesta 88 (2-oct-2026): the call and the step are its lines; this golem answers where it
+    // stands and takes the place shared (GolemEmbodiment.UptakeCalledTo, UptakeShared), says when it stands on it (Placed, below) and yields
+    // when moved with an order in the body (Halted, below).
 
     /// <summary>Send the golem through several points and let it choose the order that makes the way shortest: the same
     /// errand, opened with g.Cover — the route reorders the points still ahead every time one is told to it.</summary>
@@ -460,7 +333,7 @@ public sealed class Displacer
             // the route completed: if it was the one to this golem's place in a formation, the golem says it stands on it (ajuste 77) — its own
             // act, so the arrival keeps its one expose (a script carries one expose: a second one unbinds the first's parameters, lab 1-oct)
             var placed = Placed();
-            if (placed.Ok) { robot.Report(placed, $"route {was.Route}: on its place in the formation — the fleet is told"); return placed; }
+            if (placed.Ok) robot.Report(placed, $"route {was.Route}: on its place in the formation — the warden is told");
         }
         if (!answer.Ok || !stop) return answer;
         robot.ReportLocalization(was.Route);
@@ -473,9 +346,9 @@ public sealed class Displacer
         return answer;
     }
 
-    /// <summary>The body STOPPED for the route that yields its place and stands (propuesta 74): where it really stood — telemetry, like
-    /// the hold — enters as `me`, and the convocation abandons that route and opens the one that replaces it from there —
-    /// `route = muster.Halted(me)`. The script writes `route = g.Underway()` first, so `next-order-underway` pushes the new order.</summary>
+    /// <summary>The body STOPPED for the route that yields its place and stands (propuesta 74; propuesta 88: the warden moved the golem): where it
+    /// really stood — telemetry, like the hold — enters as `me`, and the placement abandons that route and opens the one that replaces it
+    /// from there — `route = g.Choreography.Halted(me)`. The script writes `route = g.Underway()` first, so `next-order-underway` pushes the new order.</summary>
     private Answer Halted(Order was)
     {
         var pose = robot.Pose;
@@ -492,8 +365,7 @@ public sealed class Displacer
                     {
                         me = Pose(@px, @py, @ptheta);
                         route = g.Underway();
-                        muster = g.Choreography.MusterOf(route);
-                        route = muster.Halted(me);
+                        route = g.Choreography.Halted(me);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -524,32 +396,16 @@ public sealed class Displacer
         return answer;
     }
 
-    // THE GOLEM STANDS ON ITS PLACE (ajuste 77): the route to its place in the formation in place completed — the convocation records its
-    // word and, when with it everybody is placed and a step is queued, opens the next step; the act exposes who and which call, so
-    // echo-placed tells every peer. No parameter: the formation in place is the domain's to know (`g.Choreography.Current`), and the Check
-    // refuses when the golem does not stand on its place, or stands in no formation — nothing is written then.
+    // THE GOLEM STANDS ON ITS PLACE (ajuste 77; propuesta 88: told to the WARDEN): the route to its place completed — the placement records
+    // the word and the act exposes the call, the round and who, so echo-placed tells the warden; the next step is the warden's to open.
+    // No parameter: the placement in place is the domain's to know (`g.Choreography.Current`), and the Check refuses when the golem does
+    // not stand on its place, or stands in no formation — nothing is written then.
     private const string PlacedScript = @"
                     {
-                        muster = g.Choreography.Current;
-                        me = muster.Me;
-                        route = muster.Placed(me);
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
-                            }
-                        } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
-                        }
-                        expose me.Name who, muster.Call call, muster.Round round;
+                        placement = g.Choreography.Current;
+                        placement.Placed();
+                        print placement.Call 'call', placement.Round 'round';
+                        expose placement.Call call, placement.Round round, g.Name who;
                     }
                 ";
 

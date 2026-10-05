@@ -1,4 +1,5 @@
 using GolemDomain;
+using GolemDomain.Coordination;
 using GolemDomain.Formations;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
@@ -51,12 +52,7 @@ public class SquareTests
 
         // by rank: the names sorted, the corners counter-clockwise from the north-east — wherever each body stands (one convocation per
         // member here: a golem takes one place per call)
-        GolemDomain.Routes.Route AsMember(string name)
-        {
-            var taken = g.Choreography.Muster("call-" + name, square, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
-            taken.Abandon("this golem plays the next member now");   // its route ended: the berths of the others move on (ajuste 80)
-            return taken;
-        }
+        GolemDomain.Routes.Route AsMember(string name) => Taken(name, new Pose(2.5, 2.5, 0.0), square, fleet, map).Route;
         StringAssert.Contains(AsMember("blue").AsPlan(), "floor@6.5,6.5", "blue, first: the north-east corner");
         StringAssert.Contains(AsMember("green").AsPlan(), "floor@4.5,6.5", "green, second: north-west");
         StringAssert.Contains(AsMember("red").AsPlan(), "floor@4.5,4.5", "red, third: south-west");
@@ -97,8 +93,23 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => fleet.Member(g)).Message, "a golem without a name is in no fleet");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, " ")).Message, "a golem's name must be a name");
         Assert.AreEqual(2, fleet.Member(red).Rank, "its member, by the name it was born with: blue, green, red, yellow");
-        var route = red.Choreography.Muster("red-1", formation, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
+        var route = Taken("red", new Pose(2.5, 2.5, 0.0), formation, fleet, map).Route;
         StringAssert.Contains(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }
-}
 
+    // THE WARDEN'S LAW BY RANK AND THE GOLEM OBEYING ITS PLACE (propuesta 88): one convocation per member here — the others stand on their
+    // own places, so they are berths out of the way — and the golem, born with that name, takes its place from the table shared.
+    private static (Golem Golem, GolemDomain.Routes.Route Route) Taken(string name, Pose from, Formation figure, Fleet fleet, MapLayout map)
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var warden = new Warden("warden");
+        var muster = warden.Muster("call-" + name, figure, fleet, "rank");
+        muster.Convene();
+        foreach (var n in fleet.Names) muster.Stood(fleet.Member(n), n == name ? from : figure.Place(fleet.Member(n)));
+        var given = muster.Share();
+        var g = new Golem(body, name);
+        g.Enter(new Scenario(map, new Collisions()));
+        g.Wake(from);
+        return (g, g.Choreography.Take("call-" + name, 0, given, figure.Center));
+    }
+}

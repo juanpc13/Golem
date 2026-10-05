@@ -40,6 +40,7 @@ public static class CommandLine
         new CommandHelp("visit", "visit x,y [x,y …]", "an errand through those points, in that order", "visit 2,9.5 9,8"),
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
         new CommandHelp("choreograph", "choreograph square|pentagon --center x,y --side s [--by rank|distance] [--fleet a,b]", "the fleet takes a square (its sides square to the map, the first corner north-east) or a pentagon (its first vertex north; ajuste 85), said by its side, the bodies spread along its perimeter — four on a square take the corners, four on a pentagon the north vertex and three points of its sides; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged; --by distance: each golem sets out to the nearest corner it knows and a nearer peer's word may send it to the next (ajuste 73); it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
+        new CommandHelp("fleet", "fleet", "the warden's board (propuesta 88): every golem it heard from — where it said it stands, its scenario — and the formation in place: the call, who stood, who is placed, the table shared", "fleet"),
         new CommandHelp("rotate", "rotate clockwise|counterclockwise", "one step of the formation in place: every body takes the next corner in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused here)", "rotate clockwise"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
@@ -66,6 +67,17 @@ public static class CommandLine
     private static readonly Regex Names = new(@"^[A-Za-z_][A-Za-z0-9_-]*(,[A-Za-z_][A-Za-z0-9_-]*)*$", RegexOptions.Compiled);
     private const string WithUsage = "--with: expected the peers to carry the command to, like --with blue, --with blue,green or --with all";
 
+    /// <summary>The same line, addressed to ONE golem alone: `golem visit 2,9.5 --with blue,green` → `golem blue visit 2,9.5`; `golem all enter
+    /// open-floor` → `golem blue enter open-floor` — what a console carries to a peer (`--with`) and the warden to a golem (propuesta 88).</summary>
+    public static string ForGolem(string line, string who)
+    {
+        string rest = Regex.Replace((line ?? "").Trim(), @"^golem\s+", "", RegexOptions.IgnoreCase);
+        var first = Regex.Match(rest, @"^[A-Za-z_][A-Za-z0-9_,-]*");                          // a golem's name, several, or all — never a command
+        if (first.Success && !Help.Any(h => h.Verb == first.Value.ToLowerInvariant())) rest = rest[first.Length..].TrimStart();
+        rest = Regex.Replace(rest, @"\s*--with\s+\S+", "", RegexOptions.IgnoreCase).Trim();
+        return $"golem {who} {rest}";
+    }
+
     /// <summary>The line read. A line that is no command throws, saying what was expected and where.</summary>
     public static Command Parse(string line)
     {
@@ -75,8 +87,9 @@ public static class CommandLine
         if (tokens.Count > 0 && tokens[0].ToLowerInvariant() == "golem")
         {
             tokens.RemoveAt(0);   // the binary's name, optional here
-            // the golem's name may follow it — `golem red visit …` — when the next word is no command of the language
-            if (tokens.Count > 0 && Name.IsMatch(tokens[0]) && !Help.Any(h => h.Verb == tokens[0].ToLowerInvariant()))
+            // the golem's name may follow it — `golem red visit …` — when the next word is no command of the language; on the warden's
+            // console several, or all: `golem red,blue reset`, `golem all enter open-floor` (propuesta 88)
+            if (tokens.Count > 0 && Names.IsMatch(tokens[0]) && !Help.Any(h => h.Verb == tokens[0].ToLowerInvariant()))
             {
                 named = tokens[0].ToLowerInvariant();
                 tokens.RemoveAt(0);
@@ -142,6 +155,9 @@ public static class CommandLine
                 if (values.TryGetValue("fleet", out var fleet) && !Names.IsMatch(fleet)) throw new CommandSyntaxException($"choreograph: --fleet expects names like blue,red; found '{Head(fleet)}'");
                 return new Command(named, with, verb, centre, noOptions, rest[0], values);
             }
+            case "fleet":
+                if (args.Count != 0) throw new CommandSyntaxException("fleet takes nothing: it is the warden's board");
+                return new Command(named, with, verb, none, noOptions, "");
             case "rotate":
                 // one step of the formation in place, in that sense (ajuste 77): the sense is the whole of it
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("clockwise" or "counterclockwise")) throw new CommandSyntaxException("rotate: expected the sense, clockwise or counterclockwise, like rotate clockwise");

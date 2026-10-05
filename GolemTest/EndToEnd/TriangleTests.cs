@@ -1,4 +1,5 @@
 using GolemDomain;
+using GolemDomain.Coordination;
 using GolemDomain.Formations;
 using GolemDomain.Geometry;
 using GolemDomain.Layouts;
@@ -61,12 +62,27 @@ public class TriangleTests
         var places = new HashSet<string>();
         foreach (var name in fleet.Names)
         {
-            var taken = g.Choreography.Muster("call-" + name, triangle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
+            var (_, taken) = Taken(name, new Pose(2.5, 2.5, 0.0), triangle, fleet, map);
             places.Add(taken.AsPlan());
-            taken.Abandon("this golem plays the next member now");   // the berths of the others move on with the route (ajuste 80)
         }
         Assert.AreEqual(5, places.Count, "five golems, five places of the triangle");
-        StringAssert.Contains(g.Choreography.Muster("again-blue", triangle, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member("blue")).AsPlan(), "floor@5.5,7.5", "blue, first: the apex");
+        StringAssert.Contains(Taken("blue", new Pose(2.5, 2.5, 0.0), triangle, fleet, map).Route.AsPlan(), "floor@5.5,7.5", "blue, first: the apex");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Triangle(new Position(5.5, 5.5), new Meters(0.0))).Message, "a side greater than zero");
+    }
+
+    // THE WARDEN'S LAW BY RANK AND THE GOLEM OBEYING ITS PLACE (propuesta 88): one convocation per member here — the others stand on their
+    // own places, so they are berths out of the way — and the golem, born with that name, takes its place from the table shared.
+    private static (Golem Golem, GolemDomain.Routes.Route Route) Taken(string name, Pose from, Formation figure, Fleet fleet, MapLayout map)
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var warden = new Warden("warden");
+        var muster = warden.Muster("call-" + name, figure, fleet, "rank");
+        muster.Convene();
+        foreach (var n in fleet.Names) muster.Stood(fleet.Member(n), n == name ? from : figure.Place(fleet.Member(n)));
+        var given = muster.Share();
+        var g = new Golem(body, name);
+        g.Enter(new Scenario(map, new Collisions()));
+        g.Wake(from);
+        return (g, g.Choreography.Take("call-" + name, 0, given, figure.Center));
     }
 }

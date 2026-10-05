@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warden Panel</title>
+<style>
+  :root {
+    --bg:#141621; --surface:#1c1f2f; --ink:#e5e7f2; --muted:#9aa0ba; --line:#3a3f5c;
+    --ros:#8f9aff; --clay:#dfa563; --warn:#e07777; --ok:#7fc98a;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui, sans-serif; font-size:15px; }
+  header { display:flex; align-items:baseline; gap:18px; flex-wrap:wrap; padding:16px 22px; border-bottom:1px solid var(--line); }
+  h1 { font-size:1.05rem; margin:0; }
+  .badge { font-family:ui-monospace, monospace; font-size:12.5px; color:var(--muted); }
+  .badge b { color:var(--ink); font-weight:600; }
+  main { display:grid; grid-template-columns:420px minmax(0, 1fr); gap:22px; padding:20px 22px; max-width:1320px; margin:0 auto; align-items:start; }
+  @media (max-width:760px) { main { grid-template-columns:1fr; } }
+  section.lab { grid-column:1 / -1; }
+  section h2 { font-size:0.8rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin:0 0 10px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .ops { display:flex; flex-direction:column; gap:10px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .row .cat { flex-basis:100%; font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-top:4px; }
+  button { background:#2e2e4e; color:var(--ink); border:0; border-radius:8px; padding:8px 12px; cursor:pointer; font-size:14px; }
+  button:active { background:#4a4a8a; }
+  button.place { background:#25324f; border:1px solid #3d5a99; }
+  button.danger { background:#4a2430; color:#f0b9b9; border:1px solid #7a3a44; }
+  .hint { font-size:12px; color:var(--muted); margin:0; }
+  details.hint > summary { cursor:pointer; list-style:none; padding:2px 0; }
+  details.hint > summary::before { content:"\25B8  "; font-size:10px; color:var(--muted); }
+  details.hint[open] > summary::before { content:"\25BE  "; }
+  #map { display:block; width:100%; aspect-ratio:1; border-radius:8px; border:1px solid var(--line); background:#2a2f55; }
+  /* the command line */
+  .cli { padding:14px 22px 10px; border-bottom:1px solid var(--line); background:#181b2b; }
+  .cli-line { align-items:center; flex-wrap:nowrap; }
+  .prompt { font-family:ui-monospace, monospace; color:var(--clay); font-weight:600; white-space:nowrap; }
+  #line { flex:1 1 auto; min-width:0; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+          font-family:ui-monospace, monospace; font-size:14px; }
+  .answer { margin:8px 0 0; font-family:ui-monospace, monospace; font-size:12.5px; color:var(--muted); white-space:pre-wrap; max-height:9em; overflow:auto; }
+  .answer.done { color:var(--ok); } .answer.refused { color:var(--warn); } .answer.syntax { color:var(--clay); }
+  /* the board */
+  #board { width:100%; border-collapse:collapse; font-size:12.5px; font-family:ui-monospace, monospace; }
+  #board td, #board th { padding:4px 6px; border-bottom:1px solid #1e2a3a; text-align:left; white-space:nowrap; }
+  #board th { color:var(--muted); font-weight:400; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; }
+  #board tr.none td { color:#6b7d91; }
+  #formation { font-family:ui-monospace, monospace; font-size:12.5px; white-space:pre-wrap; margin:8px 0 0; color:var(--ink); }
+  /* the journal feed */
+  #feed, #events { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; overflow-y:auto; font-family:ui-monospace, monospace; font-size:13px; }
+  #feed { max-height:62vh; }
+  #feed.hide-tells li.tell { display:none; }
+  #feed.hide-defines li.kind-define, #feed.hide-defines li.kind-script { display:none; }
+  h2 .toggle { float:right; font-size:11px; letter-spacing:0; text-transform:none; font-weight:400; color:var(--muted); cursor:pointer; margin-left:10px; }
+  h2 .toggle input { vertical-align:middle; margin-right:4px; }
+  #events { max-height:22vh; }
+  #feed li, #events li { display:flex; gap:10px; align-items:baseline; padding:7px 10px; border-radius:8px; background:var(--surface); border:1px solid var(--line); }
+  .entry { color:var(--clay); min-width:52px; font-weight:600; }
+  .script { color:var(--ink); flex:1 1 auto; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .note { color:var(--muted); flex:0 0 auto; max-width:9em; text-align:right; word-break:break-word; }
+  li.runtime { border-style:dashed; opacity:0.75; }
+  li.runtime .entry { color:var(--muted); font-weight:400; }
+  li.info .entry { color:var(--ros); }
+  li.flash { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { border-color:var(--clay); background:#2a2438; } }
+  #commands { width:100%; border-collapse:collapse; font-size:12px; }
+  #commands td { padding:3px 6px; border-bottom:1px solid #1e2a3a; vertical-align:top; }
+  #commands td:first-child { font-family:ui-monospace, monospace; white-space:nowrap; color:var(--ink); cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--clay)"></span>
+      <span id="who">warden</span> — warden panel</h1>
+  <span class="badge">the coordinator: no body, the main console</span>
+  <span class="badge">journal entry <b id="entry">–</b></span>
+  <span class="badge">golems heard from <b id="heard">–</b> · on the wire <b id="wired">–</b></span>
+  <span class="badge">formation <b id="inplace">–</b></span>
+</header>
+
+<!-- THE COMMAND LINE: the warden's own commands, and any golem's with the golem in front -->
+<div class="cli" id="cli">
+  <div class="row cli-line">
+    <span class="prompt" id="prompt">warden &rsaquo;</span>
+    <input id="line" type="text" spellcheck="false" autocomplete="off"
+           placeholder="choreograph square --center 5.5,5.5 --side 2.0 --by distance &middot; rotate clockwise &middot; golem blue visit 2,9.5 &middot; golem all enter open-floor &mdash; Enter runs, &uarr;&darr; history, Esc clears">
+    <button id="run" class="place">run</button>
+  </div>
+  <pre id="answer" class="answer">&mdash;</pre>
+</div>
+
+<main>
+  <section>
+    <h2>The board — what the warden knows</h2>
+    <div class="card ops">
+      <canvas id="map" width="380" height="380" title="the open floor: every golem where it said it stands, the places of the formation in place"></canvas>
+      <p class="hint">Nothing here is telemetry: every row is a WORD a golem said — where it stood when it woke or answered a call, in which scenario.
+        The formation in place: the call, who stood, who is placed, the table the warden shared.</p>
+      <table id="board"><thead><tr><th>golem</th><th>stands at</th><th>scenario</th><th>words</th></tr></thead><tbody><tr class="none"><td colspan="4">nobody spoke yet</td></tr></tbody></table>
+      <pre id="formation">no formation in place</pre>
+      <div class="row">
+        <span class="cat">the warden's own</span>
+        <button id="fleet">fleet</button>
+        <button id="helpv">help</button>
+        <button id="clear">clear the line</button>
+      </div>
+      <div class="row">
+        <span class="cat">to every golem</span>
+        <button id="allfloor" title="golem all enter open-floor">all &middot; enter open-floor</button>
+        <button id="allware" title="golem all enter warehouse">all &middot; enter warehouse</button>
+        <button id="allwhere" title="golem all where">all &middot; where</button>
+        <button id="allstate" title="golem all state">all &middot; state</button>
+        <button id="allreset" class="danger" title="golem all reset">all &middot; reset</button>
+      </div>
+      <details class="hint"><summary>Commands &mdash; the language on this console; click an example to put it on the line</summary><table id="commands"></table></details>
+    </div>
+  </section>
+
+  <section>
+    <h2>Journal — live <label class="toggle"><input type="checkbox" id="hideTells"> hide tells</label><label class="toggle" title="the define action templates and the releases hidden: the acts alone"><input type="checkbox" id="hideDefines"> hide definitions</label></h2>
+    <ul id="feed"></ul>
+    <p class="hint" style="margin-top:8px">Everything the warden's journal receives, record by record: its birth, every act (the call, every word heard, the places shared, every step), the tells to the golems and their acks.</p>
+    <h2 style="margin-top:20px">Runtime events</h2>
+    <ul id="events"></ul>
+  </section>
+
+  <section class="lab">
+    <h2>Lab — a dispute, and the formations</h2>
+    <div class="card ops">
+      <p class="hint">The SCENE for the dispute by distance (ajuste 87), from the warden: four lines, composed here in order, each run with Enter. <b>1</b> every golem into the open
+        floor (press <i>Open floor</i> in the kiosk too). <b>2</b> every body carried onto a mark: red (7, 6.3) and blue (6, 6.2) both nearest the north-east corner.
+        <b>3</b> the call: the warden convenes the fleet, every golem answers where it stands, and the LAW is applied ONCE here — red keeps the north-east corner,
+        green takes the north-west before blue, blue ends south-east, yellow south-west — and the whole table travels to the four as one word. <b>4</b> the steps,
+        once everybody stands; they queue.</p>
+      <div class="row">
+        <span class="cat">1 &middot; the floor</span>
+        <button id="labfloor" class="place" title="golem all enter open-floor">enter open-floor &middot; all</button>
+      </div>
+      <div class="row">
+        <span class="cat">2 &middot; the marks</span>
+        <button id="labmarks" class="place" title="place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3 — each body carried onto its mark">place the fleet</button>
+      </div>
+      <div class="row">
+        <span class="cat">3 &middot; the call, by distance &mdash; the dispute</span>
+        <button id="labcall" class="place" title="choreograph square --center 5.5,5.5 --side 2.0 --by distance">square &middot; by distance</button>
+        <button id="labpenta" class="place" title="choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance — five vertices for four bodies: the law leaves one free">pentagon &middot; by distance</button>
+      </div>
+      <div class="row">
+        <span class="cat">or by rank &mdash; no dispute: the places by the names' order, whatever the marks</span>
+        <button id="labrank" title="choreograph square --center 5.5,5.5 --side 2.0 --by rank">square &middot; by rank</button>
+        <button id="labpentarank" title="choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank">pentagon &middot; by rank</button>
+      </div>
+      <div class="row">
+        <span class="cat">4 &middot; the steps &mdash; once everybody stands; they queue</span>
+        <button id="labcw" class="place" title="rotate clockwise">&#8635; clockwise</button>
+        <button id="labccw" class="place" title="rotate counterclockwise">&#8634; counterclockwise</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const WORLD = 11;
+const feed = document.getElementById('feed');
+const events = document.getElementById('events');
+const map = document.getElementById('map');
+const mctx = map.getContext('2d');
+const toPx = (wx) => wx / WORLD * map.width;
+const toPy = (wy) => (1 - wy / WORLD) * map.height;
+const COLORS = { blue:'#5b8cff', red:'#ff6b6b', green:'#5fd37f', yellow:'#ffd44d', purple:'#c084fc' };
+
+// A journaled statement, laid out to be read (as the golem's panel does it)
+function pretty(s) {
+  let out = '', depth = 0, quoted = false, lineStart = true;
+  const nextNonSpace = (i) => { while (i < s.length && /\s/.test(s[i])) i++; return s[i]; };
+  const nl = () => { out = out.replace(/[ \t]+$/, '') + '\n' + '  '.repeat(depth); lineStart = true; };
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quoted) { out += c; if (c === "'") quoted = false; continue; }
+    if (c === "'") { quoted = true; out += c; lineStart = false; continue; }
+    if (c === '{') { if (!lineStart && !/\s$/.test(out)) out += ' '; out += '{'; depth++; nl(); continue; }
+    if (c === '}') { depth = Math.max(0, depth - 1); nl(); out += '}'; lineStart = false; if (nextNonSpace(i + 1) !== undefined) nl(); continue; }
+    if (c === ';') { out += ';'; const n = nextNonSpace(i + 1); if (n !== undefined && n !== '}') nl(); continue; }
+    if (lineStart && /\s/.test(c)) continue;
+    out += c; lineStart = false;
+  }
+  return out.replace(/\n\s*\n/g, '\n').trim();
+}
+const escapeHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function row(e) {
+  const journaled = e.Kind === 'command';
+  const target = journaled ? feed : events;
+  const li = document.createElement('li');
+  li.className = e.Kind + ' flash';
+  let script = e.Script || '', note = e.Note;
+  if (journaled && /^\s*(tell(\s|$)|define action \d+ \([^)]*\) as\s*tell(\s|$))/.test(script)) li.classList.add('tell');
+  if (journaled) {
+    try { const doc = JSON.parse(e.Note); note = doc.kind + (doc.actionId ? ' ' + doc.actionId : ''); li.classList.add('kind-' + doc.kind); } catch {}
+  }
+  const body = journaled ? escapeHtml(pretty(script)) : escapeHtml(script || note || '');
+  const tag = journaled ? escapeHtml(note || '') : (script ? escapeHtml(note || '') : '');
+  li.innerHTML = `<span class="entry">${journaled ? '#' + e.Entry : '·'}</span><span class="script">${body}</span><span class="note">${tag}</span>`;
+  target.appendChild(li);
+  target.scrollTop = target.scrollHeight;
+  if (journaled) refreshSoon();
+}
+for (const [id, cls, key] of [['hideTells', 'hide-tells', 'warden.hideTells'], ['hideDefines', 'hide-defines', 'warden.hideDefines']]) {
+  const box = document.getElementById(id);
+  try { box.checked = localStorage.getItem(key) === '1'; } catch {}
+  feed.classList.toggle(cls, box.checked);
+  box.addEventListener('change', () => { feed.classList.toggle(cls, box.checked); try { localStorage.setItem(key, box.checked ? '1' : '0'); } catch {} feed.scrollTop = feed.scrollHeight; });
+}
+const es = new EventSource('/events');
+es.onmessage = (m) => row(JSON.parse(m.data));
+es.onopen = () => { feed.innerHTML = ''; events.innerHTML = ''; };
+
+// THE COMMAND LINE: the warden's own, or a golem's with the golem in front
+async function post(path, body) {
+  return fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+}
+const line = document.getElementById('line');
+const answer = document.getElementById('answer');
+function put(text) { line.value = text; line.focus(); line.setSelectionRange(line.value.length, line.value.length); }
+function setLine(text) { put(text); }
+let values = {};
+try { values = JSON.parse(localStorage.getItem('warden.cli.values') || '{}'); } catch {}
+function resolve(text) { return text.replace(/@([A-Za-z_][A-Za-z0-9_-]*)/g, (m, name) => name in values ? values[name] : m); }
+function console_(text) {
+  let m = text.match(/^set\s+([A-Za-z_][A-Za-z0-9_-]*)\s+(.+)$/i);
+  if (m) { values[m[1]] = m[2].trim(); try { localStorage.setItem('warden.cli.values', JSON.stringify(values)); } catch {} return `${m[1]} = ${values[m[1]]}`; }
+  m = text.match(/^show(?:\s+([A-Za-z_][A-Za-z0-9_-]*))?$/i);
+  if (m) {
+    if (m[1]) return m[1] in values ? `${m[1]} = ${values[m[1]]}` : `${m[1]}: no such value`;
+    const names = Object.keys(values);
+    return names.length ? names.map(n => `${n} = ${values[n]}`).join('\n') : 'no values kept: set marks blue@6,6.2 red@7,6.3';
+  }
+  return null;
+}
+let history = [];
+try { history = JSON.parse(localStorage.getItem('warden.cli.history') || '[]'); } catch {}
+let cursor = history.length;
+function remember(text) {
+  if (history[history.length - 1] !== text) history.push(text);
+  if (history.length > 50) history.shift();
+  cursor = history.length;
+  try { localStorage.setItem('warden.cli.history', JSON.stringify(history)); } catch {}
+}
+async function run() {
+  const text = line.value.trim();
+  if (!text) return;
+  if (/reset\s+--all/i.test(text) && !confirm('Wipe the journals of the golems named and reboot them from entry 1?')) return;
+  if (/\breset\s*$/i.test(text) && !confirm('Abandon every pending route of the golems named and put their bodies back on their marks?')) return;
+  remember(text);
+  const kept = console_(text);
+  if (kept !== null) { answer.className = 'answer done'; answer.textContent = `› ${text}\n${kept}`; setLine(''); return; }
+  const sent = resolve(text);
+  answer.className = 'answer';
+  answer.textContent = `› ${sent}\n…`;
+  try {
+    const r = await post('/command', {line: sent});
+    const said = await r.text();
+    answer.className = 'answer ' + (r.ok ? 'done' : r.status === 409 ? 'refused' : 'syntax');
+    answer.textContent = `› ${sent}\n${said}`;
+    if (r.ok && !/^(fleet|help|golem\s+\S+\s+(state|route|where|obstacles|scenarios|help))\b/i.test(sent)) setLine('');
+    refreshSoon();
+  } catch (e) {
+    answer.className = 'answer syntax';
+    answer.textContent = `› ${text}\nwarden unreachable: ${e}`;
+  }
+}
+document.getElementById('run').onclick = run;
+line.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); run(); }
+  else if (e.key === 'Escape') { e.preventDefault(); setLine(''); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); if (cursor > 0) { cursor--; put(history[cursor]); } }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); if (cursor < history.length - 1) { cursor++; put(history[cursor]); } else { cursor = history.length; setLine(''); } }
+});
+for (const [id, text] of [['fleet', 'fleet'], ['helpv', 'help'],
+                          ['allfloor', 'golem all enter open-floor'], ['allware', 'golem all enter warehouse'], ['allwhere', 'golem all where'], ['allstate', 'golem all state'], ['allreset', 'golem all reset'],
+                          ['labfloor', 'golem all enter open-floor'], ['labmarks', 'place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3'],
+                          ['labcall', 'choreograph square --center 5.5,5.5 --side 2.0 --by distance'], ['labpenta', 'choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance'],
+                          ['labrank', 'choreograph square --center 5.5,5.5 --side 2.0 --by rank'], ['labpentarank', 'choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank'],
+                          ['labcw', 'rotate clockwise'], ['labccw', 'rotate counterclockwise']])
+  document.getElementById(id).onclick = () => setLine(text);
+document.getElementById('clear').onclick = () => setLine('');
+
+// the help table, from /commands
+fetch('/commands').then(r => r.json()).then(help => {
+  const table = document.getElementById('commands');
+  for (const h of help) {
+    const tr = document.createElement('tr');
+    const usage = h.Usage ?? h.usage, what = h.What ?? h.what, example = h.Example ?? h.example;
+    tr.innerHTML = `<td title="click: put the example on the line">${escapeHtml(usage)}</td><td class="hint">${escapeHtml(what)}</td>`;
+    tr.firstChild.onclick = () => setLine(example);
+    table.appendChild(tr);
+  }
+}).catch(() => {});
+
+// THE BOARD: /fleet — the warden's name, the golems on the wire, the journal's entry, and the query over its journal: every golem's word
+// and the formation in place. Walked like the readings are: an object with a `name` is a golem, one with a `call` the formation.
+let golems = {}, formation = null;
+function walk(e, f) {
+  if (Array.isArray(e)) { for (const i of e) walk(i, f); return; }
+  if (e && typeof e === 'object') { f(e); for (const k in e) walk(e[k], f); }
+}
+async function refresh() {
+  try {
+    const b = await (await fetch('/fleet')).json();
+    document.getElementById('who').textContent = b.warden;
+    document.getElementById('prompt').textContent = b.warden + ' ›';
+    document.getElementById('entry').textContent = b.entry;
+    document.getElementById('wired').textContent = (b.golems || []).join(', ') || '–';
+    golems = {}; formation = null; let table = '';
+    walk(b.board, e => {
+      if ('name' in e && 'x' in e) golems[e.name] = e;
+      if ('call' in e) formation = e;
+      if ('table' in e && typeof e.table === 'string') table = e.table;
+    });
+    const names = Object.keys(golems).sort();
+    document.getElementById('heard').textContent = names.length;
+    const tbody = document.querySelector('#board tbody');
+    tbody.innerHTML = names.length ? names.map(n => { const g = golems[n]; return `<tr><td style="color:${COLORS[n] || 'var(--ink)'}">${n}</td><td>(${(+g.x).toFixed(2)}, ${(+g.y).toFixed(2)})</td><td>${escapeHtml(g.scenario || '')}</td><td>${g.words}</td></tr>`; }).join('')
+                                   : '<tr class="none"><td colspan="4">nobody spoke yet</td></tr>';
+    const f = document.getElementById('formation');
+    if (formation) {
+      document.getElementById('inplace').textContent = `${formation.figure} by ${formation.by}, round ${formation.round}`;
+      let text = `call ${formation.call}: ${formation.figure} by ${formation.by} · round ${formation.round}\n${formation.stood} of ${formation.of} stood · ${formation.shared ? 'places shared' : 'places not shared yet'} · ${formation.placed} of ${formation.of} placed · ${formation.queued} step(s) queued`;
+      if (table) text += '\n' + table.split(';').map(a => '  ' + a.replace('@', ' stands at ').replace('>', ' → ')).join('\n');
+      f.textContent = text;
+      formation.assignments = table ? table.split(';').map(a => { const m = a.match(/^([^@]+)@([^>]+)>(.+)$/); return m ? { who: m[1], from: m[2].split(',').map(Number), to: m[3].split(',').map(Number) } : null; }).filter(Boolean) : [];
+    } else { document.getElementById('inplace').textContent = '–'; f.textContent = 'no formation in place'; }
+    draw();
+  } catch { /* the warden restarting */ }
+}
+let refreshTimer = null;
+function refreshSoon() { clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 400); }
+function draw() {
+  const W = map.width, H = map.height;
+  mctx.clearRect(0, 0, W, H);
+  mctx.strokeStyle = '#3a4270'; mctx.lineWidth = 1;
+  for (let i = 0; i <= WORLD; i++) { mctx.beginPath(); mctx.moveTo(toPx(i), 0); mctx.lineTo(toPx(i), H); mctx.stroke(); mctx.beginPath(); mctx.moveTo(0, toPy(i)); mctx.lineTo(W, toPy(i)); mctx.stroke(); }
+  if (formation && formation.assignments) {
+    for (const a of formation.assignments) {
+      const c = COLORS[a.who] || '#ddd';
+      mctx.strokeStyle = c; mctx.setLineDash([4, 4]); mctx.beginPath(); mctx.moveTo(toPx(a.from[0]), toPy(a.from[1])); mctx.lineTo(toPx(a.to[0]), toPy(a.to[1])); mctx.stroke(); mctx.setLineDash([]);
+      mctx.strokeStyle = c; mctx.lineWidth = 2; mctx.beginPath(); mctx.arc(toPx(a.to[0]), toPy(a.to[1]), 9, 0, Math.PI * 2); mctx.stroke(); mctx.lineWidth = 1;
+    }
+  }
+  for (const n in golems) {
+    const g = golems[n], c = COLORS[n] || '#ddd';
+    mctx.fillStyle = c; mctx.beginPath(); mctx.arc(toPx(+g.x), toPy(+g.y), 7, 0, Math.PI * 2); mctx.fill();
+    mctx.fillStyle = '#e5e7f2'; mctx.font = '11px ui-monospace, monospace'; mctx.fillText(n, toPx(+g.x) + 10, toPy(+g.y) + 4);
+  }
+}
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

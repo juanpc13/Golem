@@ -59,13 +59,14 @@ services:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
       - GOLEM=blue
+      - WARDEN=warden      # the warden it answers to (propuesta 88): the choreography's words go there, its place comes from there
       - BODY=blue
       - ROLES=displacer,collision-captor   # the capabilities of this body: the motors and the bumper (18-sep-2026)
       - HOME_AT=6.3,10.4
       - PANEL_PORT=8080
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller);
       # the route to green carries no tells — it only lets "reset everything" reach green too
-      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-warden=http://warden:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
@@ -85,13 +86,14 @@ services:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
       - GOLEM=red
+      - WARDEN=warden      # the warden it answers to (propuesta 88): the choreography's words go there, its place comes from there
       - BODY=red
       - ROLES=displacer,collision-captor   # the capabilities of this body: the motors and the bumper (18-sep-2026)
       - HOME_AT=2.5,2.5
       - PANEL_PORT=8080
       # tells TO blue go to blue; acks for tells addressed to ME return to blue;
       # the route to green carries no tells — it only lets "reset everything" reach green too
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-warden=http://warden:8080
       - TELL_RETRY_SECONDS=30
       # - TELL_DONE_TO=blue  # red tells blue every visited point — off for the choreographies (29-sep-2026): a follower leaves its place
     volumes:
@@ -116,12 +118,13 @@ services:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
       - GOLEM=green
+      - WARDEN=warden      # the warden it answers to (propuesta 88): the choreography's words go there, its place comes from there
       - BODY=green
       - ROLES=displacer,collision-captor   # the capabilities of this body: the motors and the bumper (18-sep-2026)   # the capabilities of this body: the motors and the bumper (18-sep-2026)
       - HOME_AT=10,10.5
       - POSE_SOURCE=world   # for now (29-sep-2026); wheels = dead reckoning, anchored once, like a real robot
       - PANEL_PORT=8080
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-yellow=http://yellow-golem:8080,tell-warden=http://warden:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
@@ -142,15 +145,40 @@ services:
       - ROSBRIDGE_URL=ws://sim:9090
       - JOURNAL_PATH=/golem/journal
       - GOLEM=yellow
+      - WARDEN=warden      # the warden it answers to (propuesta 88): the choreography's words go there, its place comes from there
       - BODY=yellow
       - ROLES=displacer,collision-captor
       - HOME_AT=9.5,1.5
       - POSE_SOURCE=world
       - PANEL_PORT=8080
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-warden=http://warden:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
     depends_on:
       - sim
+    restart: unless-stopped
+
+  # THE WARDEN (propuesta 88, 2-oct-2026; Juan: "un actor/servicio nuevo para coordinar a los demás golems… el CLI principal"): the same
+  # image, no body — ROLES=warden, no BODY, no HOME_AT, no ROS. It convenes the formations, applies the law once and shares the places;
+  # its console carries any line to any golem (`golem blue visit 2,9.5`, `golem all enter open-floor`). Its panel: the board.
+  warden:
+    build:
+      context: .
+      dockerfile: GolemAPI/Dockerfile
+    image: golemapi
+    container_name: warden
+    ports:
+      - "8080:8080"  # the warden's endpoints + panel (the main console)
+    environment:
+      - JOURNAL_PATH=/golem/journal
+      - GOLEM=warden
+      - WARDEN=warden
+      - ROLES=warden
+      - PANEL_PORT=8080
+      - MY_URL=http://warden:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_RETRY_SECONDS=30
+    volumes:
+      - ./journal:/golem/journal
     restart: unless-stopped

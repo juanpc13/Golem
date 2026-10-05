@@ -21,6 +21,26 @@ internal abstract class Formation
     /// <summary>What the journal and the panel call this figure.</summary>
     internal abstract string Name { get; }
 
+    /// <summary>The figures there are, by name: what the golem's module and the warden make (ajuste 69; propuesta 88: the same maker for both).</summary>
+    internal static readonly IReadOnlyList<string> Known = new[] { "square", "pentagon", "triangle", "circle" };
+
+    /// <summary>A formation by its name — any case — at that centre, with its natural measure: a polygon's SIDE (ajuste 65), a circle's
+    /// RADIUS. A name that is none of them is refused.</summary>
+    internal static Formation Named(string name, Position center, Units.Length measure)
+    {
+        if (name == null) throw new GolemDomainException("Formation.Named: 'name' was not given");
+        if (center == null) throw new GolemDomainException("Formation.Named: 'center' was not given");
+        if (measure == null) throw new GolemDomainException("Formation.Named: 'measure' was not given");
+        return name.Trim().ToLowerInvariant() switch
+        {
+            "square" => new Square(center, measure),
+            "pentagon" => new Pentagon(center, measure),
+            "triangle" => new Triangle(center, measure),
+            "circle" => new Circle(center, measure),
+            _ => throw new GolemDomainException($"the golem knows no formation named '{name}': {string.Join(", ", Known)}")
+        };
+    }
+
     /// <summary>The places of this figure for a fleet of that many bodies, in a fixed order.</summary>
     internal abstract IReadOnlyList<Position> Places(int count);
 

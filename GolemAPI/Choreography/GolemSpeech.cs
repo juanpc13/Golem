@@ -22,11 +22,13 @@ public sealed class GolemSpeech
     private readonly string golem;
     private readonly string tellDoneTo;
     private readonly IReadOnlyList<string> peers;
+    private readonly string warden;   // the warden it answers to (propuesta 88), or null
     private readonly TellBindingTable bindings = new();
     private ToldListener toldListener;
 
-    public GolemSpeech(PerformanceV2 performance, IMessageBroker wire, PanelFeed feed, string golem, string tellDoneTo, IReadOnlyList<string> peers)
+    public GolemSpeech(PerformanceV2 performance, IMessageBroker wire, PanelFeed feed, string golem, string tellDoneTo, IReadOnlyList<string> peers, string warden = null)
     {
+        this.warden = warden;
         this.performance = performance;
         this.golemActor = performance.Actor;
         this.wire = wire;
@@ -42,6 +44,7 @@ public sealed class GolemSpeech
         bindings.Bind(golem, $"tell-{golem}");
         foreach (var peer in peers.Union(tellDoneTo == null ? Array.Empty<string>() : new[] { tellDoneTo }))
             bindings.Bind(peer, $"tell-{peer}");
+        if (warden != null) bindings.Bind(warden, $"tell-{warden}");
         performance.UseTellTransport(new BrokerTellTransport(wire, bindings, golem));
 
         if (peers.Count > 0)
@@ -72,39 +75,37 @@ public sealed class GolemSpeech
                     .OnMatch("Position($x, $y) [_:Golem].Forget(_)")   // the point built beside the act: no expose at all
                 .Causation.Continue(forgotten);
 
-            // THE CALL (ajustes 73, 80, both policies): a golem that convened tells every peer where it stood — its act's expose, the position read from
-            // the domain (expose takes any primitive expression). The peer that had not convened convenes itself and tells in turn; each
-            // golem convenes once, so the word spreads with no loop. The once is per call, teller and peer.
-            string stood = string.Join("\n", peers.Select(p => $@"
-                tell StoodFor with @figure, @cx, @cy, @sideLength, @names, @callId, @by, @who, @stoodX, @stoodY
-                    to {p}
-                    once 'stood-' + @callId + '-' + @who + '-{p}';"));
+        }
+
+        // THE WARDEN (propuesta 88, 2-oct-2026; Juan: "que ellos sólo coordinen con este nuevo actor"): the choreography's words go to the
+        // warden alone — never to a peer. The golem says where it stands when called (its answer's act, with its expose), says when it
+        // stands on its place (the placement's act), and says it woke (where, in which scenario: the fleet is learned from these words).
+        if (warden != null)
+        {
             golemActor.Reactions.DefineReaction("echo-stood")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Stood").One()
-                    .OnMatch("[_:Muster].Convene(_, _) expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call, $by policy, $who who, $stoodX stoodX, $stoodY stoodY;")   // the act on the convocation (ajuste 81)
-                .Causation.Continue(stood);
-            // THE FORMATION IN PLACE (ajuste 77): a golem that reached its place says so to every peer — the arrival's act exposes who and
-            // which call (the peer's own Placed, written by its uptake, carries no expose: one hop) — and a step asked of one golem is told
-            // to every peer, who queues the same step; the once is per step and peer.
-            string placed = string.Join("\n", peers.Select(p => $@"
-                tell PlacedAt with @call, @who
-                    to {p}
-                    once 'placed-' + @call + '-' + @round + '-' + @who + '-{p}';"));
+                    .OnMatch("[_:Choreographies].Stood(_, _) expose $call call, $who who, $stoodX stoodX, $stoodY stoodY, $scenario scenario;")
+                .Causation.Continue($@"
+                    tell StoodAt with @call, @who, @stoodX, @stoodY, @scenario
+                        to {warden}
+                        once 'stood-' + @call + '-' + @who;");
             golemActor.Reactions.DefineReaction("echo-placed")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Placed").One()
-                    .OnMatch("[_:Muster].Placed(_) expose $who who, $call call, $round round;")   // the round in the once: a word per round, not one per call
-                .Causation.Continue(placed);
-            string rotate = string.Join("\n", peers.Select(p => $@"
-                tell RotateTo with @sense, @stepId, @call
-                    to {p}
-                    once 'rotate-' + @stepId + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-rotate")
+                    .OnMatch("[_:Placement].Placed() expose $call call, $round round, $who who;")
+                .Causation.Continue($@"
+                    tell PlacedAt with @call, @round, @who
+                        to {warden}
+                        once 'placed-' + @call + '-' + @round + '-' + @who;");
+            golemActor.Reactions.DefineReaction("echo-awoke")
                 .Cue().Company().WithSharedHydration()
-                .Seek("Rotate").One()
-                    .OnMatch("[_:Muster].Queue(_, _) expose $sense turning, $stepId step, $call call;")   // the figure's move queued in the convocation (ajuste 84)
-                .Causation.Continue(rotate);
+                .Seek("Awoke").One()
+                    .OnMatch("Pose($px, $py, $ptheta) [_:Golem].Wake(_) expose $who who, $scenario scenario, $wokeAt wokeAt;")
+                .Causation.Continue($@"
+                    tell Awoke with @who, @px, @py, @scenario
+                        to {warden}
+                        once 'awoke-' + @who + '-' + @wokeAt;");
         }
 
         if (tellDoneTo == null) return;
@@ -140,16 +141,15 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
-            .Told("StoodFor").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
-                .With<string>("callId").With<string>("by").With<string>("teller").With<double>("px").With<double>("py")
-                .Command(GolemEmbodiment.UptakeStoodFor)
-            .Told("PlacedAt").With<string>("call").With<string>("who")
-                .Command(GolemEmbodiment.UptakePlacedAt)
-            .Told("RotateTo").With<string>("sense").With<string>("stepId").With<string>("call")
-                .Command(GolemEmbodiment.UptakeRotateTo)
+            .Told("CalledTo").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
+                .With<string>("callId").With<string>("by")
+                .Command(GolemEmbodiment.UptakeCalledTo)
+            .Told("Shared").With<string>("call").With<int>("round").With<string>("table").With<double>("atX").With<double>("atY")
+                .Command(GolemEmbodiment.UptakeShared)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
         Console.WriteLine($"[golem {golem}] listening for tells on topic 'tell-{golem}'");
         if (tellDoneTo != null) Console.WriteLine($"[golem {golem}] will tell '{tellDoneTo}' every stop it reaches");
+        if (warden != null) Console.WriteLine($"[golem {golem}] answers to the warden '{warden}'");
     }
 }

@@ -14,7 +14,11 @@ public sealed class Capabilities
     /// <summary>The bumper: the body says it touched something — the bump, and the operator's forget of what it learned.</summary>
     public const string CollisionCaptor = "collision-captor";
 
-    /// <summary>Every role this host knows how to play, in the order they are listed.</summary>
+    /// <summary>THE WARDEN (propuesta 88, 2-oct-2026): a subject without a body — it coordinates the golems and carries the operator's
+    /// lines; declared alone, never with a body's roles.</summary>
+    public const string Warden = "warden";
+
+    /// <summary>Every role a BODY can play, in the order they are listed — what null or empty declares.</summary>
     public static readonly IReadOnlyList<string> Known = new[] { Displacer, CollisionCaptor };
 
     private readonly List<string> roles;
@@ -30,14 +34,18 @@ public sealed class Capabilities
         foreach (var token in declared.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string role = token.ToLowerInvariant().Replace('_', '-');
-            if (!Known.Contains(role)) throw new ArgumentException($"ROLES names '{token}', a role this golem cannot play; it knows: {string.Join(", ", Known)}");
+            if (role != Warden && !Known.Contains(role)) throw new ArgumentException($"ROLES names '{token}', a role this golem cannot play; it knows: {string.Join(", ", Known)}, or {Warden} alone");
             if (!roles.Contains(role)) roles.Add(role);
         }
+        if (roles.Contains(Warden) && roles.Count > 1) throw new ArgumentException("ROLES: the warden has no body — it plays no other role");
         return new Capabilities(roles);
     }
 
     /// <summary>Whether the body declared this role.</summary>
     public bool Has(string role) => roles.Contains(role);
+
+    /// <summary>This process is the warden: no body, no mechanics, no membrane.</summary>
+    public bool IsWarden => roles.Contains(Warden);
 
     /// <summary>The roles declared, for the log and the panel.</summary>
     public override string ToString() => string.Join(", ", roles);

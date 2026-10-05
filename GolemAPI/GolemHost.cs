@@ -17,7 +17,8 @@ public sealed record GolemSettings(
     IReadOnlyList<string> Peers,         // every golem I can tell: what the body bumps into is told to all of them
     string TellDoneTo,                   // the peer that follows my stops, or null
     DatabaseType Storage,                // FileSystem in a container, IN_MEMORY in a test
-    string JournalPath);                 // where the FileSystem journal lives (and what reset-everything wipes)
+    string JournalPath,                  // where the FileSystem journal lives (and what reset-everything wipes)
+    string Warden = null);               // the WARDEN it answers to (propuesta 88): whom it tells where it stands, from whom it takes its place; null when none
 
 // THE GOLEM ASSEMBLED (propuesta 52, fase 0, 23-sep-2026): what Program.cs did in line, taken out so a scenario test can run
 // the SAME golem in its own process — the actor with the domain's assembly, the speech, the embodiment with its roles, the
@@ -69,7 +70,7 @@ public sealed class GolemHost : IAsyncDisposable
         var performance = new GolemPerformance(actor, settings.Golem, DomainLibrary.Assembly);   // the golem is born with its name (ajuste 72)
         performance.ConfigureStorage(settings.Storage, inMemory ? actor : $"path={settings.JournalPath}");
 
-        var speech = new GolemSpeech(performance, tellWire, feed, settings.Golem, settings.TellDoneTo, settings.Peers);
+        var speech = new GolemSpeech(performance, tellWire, feed, settings.Golem, settings.TellDoneTo, settings.Peers, settings.Warden);
         speech.DefineReactions();
         // The golem given a body: what the body reports comes to it; every print goes out through the robot's mechanics,
         // the actor's output target.

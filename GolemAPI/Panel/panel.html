@@ -166,15 +166,6 @@
         <button id="cover" class="place" title="cover the points on the line in the order the golem finds shortest">cover</button>
       </div>
       <div class="row">
-        <span class="cat">choreography</span>
-        <button id="square" class="place" title="the fleet takes a square, said by its side, each golem the corner of its rank among the names (--by rank); it spreads by itself">square</button>
-        <button id="sqnear" class="place" title="the fleet takes a square by distance: the corners shared by who stands nearest, over one round of words (ajustes 73, 80)">square · by distance</button>
-        <button id="penta" class="place" title="the fleet takes a pentagon, its first vertex north, the bodies spread along its perimeter: four stand on the north vertex and three points of the sides (ajuste 85)">pentagon</button>
-        <button id="pentanear" class="place" title="the fleet takes a pentagon by distance: the places shared by who stands nearest (ajuste 85)">pentagon · by distance</button>
-        <button id="rotcw" class="place" title="one step of the formation in place: every body takes the next corner clockwise, once everybody stands on its own; press it again to queue another step (ajuste 77)">&#8635; clockwise</button>
-        <button id="rotccw" class="place" title="one step of the formation in place, counter-clockwise; steps queue (ajuste 77)">&#8634; counterclockwise</button>
-      </div>
-      <div class="row">
         <span class="cat">hold</span>
         <button id="pause" disabled>pause</button>
         <button id="resume" disabled>resume</button>
@@ -238,41 +229,6 @@
 
   </section>
 
-  <section class="lab">
-    <h2>Lab — a dispute</h2>
-    <div class="card ops">
-      <p class="hint">A SCENE for the dispute by distance, to read in the journals (ajuste 87). Three lines, composed here in order, each run with Enter &mdash; edit
-      the marks first if you want another case. <b>1</b> puts every golem in the open floor (press <i>Open floor</i> in the kiosk too). <b>2</b> carries every body onto a mark (a lab lever: the pending routes let go, the body teleported and re-anchored, the
-      golem awake there): red (7, 6.3) and blue (6, 6.2) both stand nearest the north-east corner (6.5, 6.5) &mdash; 0.54 m and 0.58 m. <b>3</b> calls the
-      formation from this golem &mdash; the square by distance is the scene; by rank, and the pentagon either way, are there to compare from the same marks. What the law does, square by distance: red keeps the north-east corner; blue's second choice is the north-west one, but green
-      (3.5, 7.5) stands nearer to it and takes it first; blue ends on the south-east corner, yellow on the south-west. Since ajuste 80 nobody sets out
-      until the four spoke, so the contest is settled in the table BEFORE anyone moves: the journal shows the four <code>StoodFor</code>, then every route
-      opening &mdash; no yield (<code>Halted</code>) unless a word arrives late, which the round no longer produces.</p>
-      <div class="row">
-        <span class="cat">1 &middot; the floor</span>
-        <button id="labfloor" class="place" title="enter open-floor --with all — every golem in the choreographies' scenario (open the floor in the kiosk too, so the walls are gone from the world)">enter open-floor &middot; all</button>
-      </div>
-      <div class="row">
-        <span class="cat">2 &middot; the marks</span>
-        <button id="labmarks" class="place" title="place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3 — each body carried onto its mark">place the fleet</button>
-      </div>
-      <div class="row">
-        <span class="cat">3 &middot; the call, by distance &mdash; the dispute</span>
-        <button id="labcall" class="place" title="choreograph square --center 5.5,5.5 --side 2.0 --by distance — the round of words, then the routes">square &middot; by distance</button>
-        <button id="labpenta" class="place" title="choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance — five vertices for four bodies: the law leaves one free">pentagon &middot; by distance</button>
-      </div>
-      <div class="row">
-        <span class="cat">or by rank &mdash; no dispute: the places by the names' order, whatever the marks</span>
-        <button id="labrank" title="choreograph square --center 5.5,5.5 --side 2.0 --by rank — the same marks, the corners by the names' order: compare with the law by distance">square &middot; by rank</button>
-        <button id="labpentarank" title="choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank — the first four vertices by the names' order, the north-east one free">pentagon &middot; by rank</button>
-      </div>
-      <div class="row">
-        <span class="cat">4 &middot; the steps &mdash; once everybody stands; they queue</span>
-        <button id="labcw" class="place" title="rotate clockwise — every body to the next place in that sense, the free vertex moving with them">&#8635; clockwise</button>
-        <button id="labccw" class="place" title="rotate counterclockwise">&#8634; counterclockwise</button>
-      </div>
-    </div>
-  </section>
 </main>
 
 <script>
@@ -406,7 +362,7 @@ function parts() {
 function build(p) { return p.with.length ? `${p.head}${p.cmd.trim()} --with ${p.with.join(',')}` : `${p.head}${p.cmd}`; }
 function put(text) { line.value = text; line.focus(); line.setSelectionRange(line.value.length, line.value.length); }
 // a choreography spreads by itself, by tell (ajuste 71): its line never carries --with, and the selector is off while it is on the line
-const isChoreography = (cmd) => /^(choreograph|rotate)\b/i.test((cmd ?? parts().cmd).trim());   // both spread by themselves: no --with
+const isChoreography = (cmd) => /^(choreograph|rotate)\b/i.test((cmd ?? parts().cmd).trim());   // the warden's since propuesta 88: a golem's console refuses them
 function setLine(cmd) { const p = parts(); p.cmd = cmd; if (isChoreography(cmd)) p.with = []; put(build(p)); lightGolems(); }
 function setWhole(text) { put(text); }
 // visit / cover at the head of the command; the points already on it stay (a `then` typed by hand is replaced the same: the button went on 2-oct-2026, the command stays)
@@ -484,21 +440,6 @@ line.addEventListener('keydown', (e) => {
 document.getElementById('addpoint').onclick = () => addPoint(+document.getElementById('x').value, +document.getElementById('y').value);
 document.getElementById('move').onclick = () => compose('visit');
 document.getElementById('cover').onclick = () => compose('cover');
-document.getElementById('square').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank');
-document.getElementById('sqnear').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
-document.getElementById('penta').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank');
-document.getElementById('pentanear').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance');
-// the lab's dispute scene (ajuste 87): two lines, composed, never run by themselves
-document.getElementById('labfloor').onclick = () => { const p = parts(); p.cmd = 'enter open-floor'; p.with = ['all']; put(build(p)); lightGolems(); };
-document.getElementById('labmarks').onclick = () => { const p = parts(); p.cmd = 'place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3'; p.with = []; put(build(p)); lightGolems(); };   // place names its golems on the line: never --with
-document.getElementById('labcall').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by distance');
-document.getElementById('labrank').onclick = () => setLine('choreograph square --center 5.5,5.5 --side 2.0 --by rank');
-document.getElementById('labpenta').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by distance');
-document.getElementById('labpentarank').onclick = () => setLine('choreograph pentagon --center 5.5,5.5 --side 2.0 --by rank');
-document.getElementById('labcw').onclick = () => setLine('rotate clockwise');
-document.getElementById('labccw').onclick = () => setLine('rotate counterclockwise');
-document.getElementById('rotcw').onclick = () => setLine('rotate clockwise');
-document.getElementById('rotccw').onclick = () => setLine('rotate counterclockwise');
 document.getElementById('clear').onclick = () => setWhole(head);
 for (const [id, text] of [['pause', 'pause'], ['resume', 'resume'], ['reset', 'reset'], ['wipe', 'reset --all'],
                           ['state', 'state'], ['route', 'route'], ['where', 'where'], ['obst', 'obstacles'], ['show', 'show'], ['helpv', 'help'],

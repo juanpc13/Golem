@@ -65,33 +65,15 @@ public class GolemController : Controller
         return Answered(displacer.Cover(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
-    // The fleet takes a square, this golem its corner by rank (propuesta 59; ajuste 65) — {"figure": "square", "center": {"x": 5.5,
-    // "y": 5.5}, "side": 2.0, "by": "rank", "fleet": ["blue", "red"]}; left out, the fleet is this golem and every peer it can reach.
-    // It moves THIS golem alone: the line's --with is what carries the call to the peers.
+    // THE CHOREOGRAPHIES ARE THE WARDEN'S (propuesta 88, 2-oct-2026): a golem is called and takes the place it is given — it is not commanded
+    // into a formation on its own.
     [HttpPost("choreograph")]
-    public IActionResult Choreograph([FromBody] FormationRequest request)
-    {
-        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + FormationRequest.Shape);
-        var problems = request.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
-                                                    : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
-        var center = (request.Center.X.Value, request.Center.Y.Value);
-        return Answered(displacer.Call(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet, request.Policy));
-    }
+    public IActionResult Choreograph([FromBody] FormationRequest request) =>
+        StatusCode(409, "a choreography is the warden's: POST /choreograph on the warden, or its console — a golem answers where it stands and takes the place it is given");
 
-    /// <summary>One STEP of the formation in place (ajuste 77): every body takes the next corner in that sense once everybody stands on
-    /// its own; steps queue. It spreads by itself: command one golem.</summary>
     [HttpPost("rotate")]
-    public IActionResult Rotate([FromBody] RotateRequest request)
-    {
-        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + RotateRequest.Shape);
-        var problems = request.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Rotate(request.Sense.Trim().ToLowerInvariant()));
-    }
+    public IActionResult Rotate([FromBody] RotateRequest request) =>
+        StatusCode(409, "a step is the warden's: POST /rotate on the warden, or its console");
 
     // The operator holds the golem where its body stands, or lets it go on.
     [HttpPost("pause")]
