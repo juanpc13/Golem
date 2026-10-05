@@ -335,7 +335,20 @@ whether it could or not, so the domain resolves what follows. Consequences:
   knows nothing of what stands there.
 - `GolemDomain/` — the pure domain, one assembly, namespaces `GolemDomain` (`Golem`, the
   subject), `.Geometry`, `.Robots`, `.Maps` (information), `.Layouts` (the map on the plane),
-  `.Touches` (what was learned by touching), `.Routes` (see glossary). The engine binds
+  `.Touches` (what was learned by touching), `.Routes` (see glossary). **The domain DECIDES; the
+  calculations are a library's (ajuste 89, 5-oct-2026; Juan: "delegar esos cálculos no en el dominio sino a
+  paquetes que ya hacen estos cálculos")**: `Position`, `Pose`, `Segment`, `Rectangle`, a thing's `Extent`, the
+  figures' vertices and the angles compute through NetTopologySuite (`Vector2D`/`Vector3D`, `AngleUtility`,
+  `LineSegment`, `Envelope`, the intersection of two boxes for a shared edge, `LengthIndexedLine` along a
+  perimeter), and the planner's shortest path is QuikGraph's `ShortestPathsDijkstra` over the graph of the nodes
+  that see each other. The domain's classes stay the vocabulary and the only thing the journal and the engine
+  see (`Position.Of(coordinate)` / `AsCoordinate()` at the edge; the engine binds the domain's assembly alone, so
+  NetTopologySuite's own `Position` and `Location` never clash). What stays written by hand is a DECISION, not
+  a calculation: which nodes see each other (`Sees`), the walk zone by zone (`MapLayout.Walk`), the joining of
+  marks by closeness (`Collisions.All`). Never write a formula the library has (distance, angle, projection,
+  intersection, buffer, path): name the operation in the domain's class and call the library inside. Restore
+  with `--source https://api.nuget.org/v3/index.json --source GolemAPI/localfeed` when a new package is added:
+  the Puppeteer feed asks for credentials and hangs a plain `dotnet restore`. The engine binds
   classes by SIMPLE name: every class name in the assembly must be unique, and a class may
   not share its name with a namespace (`DomainLibrary`, not `GolemDomain`; `Collisions`
   lives in `Touches`). Tests see internals (`InternalsVisibleTo`).

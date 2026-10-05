@@ -41,7 +41,7 @@ internal sealed class Mark
     internal double Ahead(Position p)
     {
         if (p == null) throw new GolemDomainException("Mark.Ahead: 'p' was not given");
-        return (p.X - At.X) * Math.Cos(Heading) + (p.Y - At.Y) * Math.Sin(Heading);
+        return new Pose(At.X, At.Y, Heading).Ahead(p);
     }
 
     /// <summary>Whether a body of this radius, centered at a position, would run into what the mark stands for:

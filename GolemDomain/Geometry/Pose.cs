@@ -1,3 +1,5 @@
+using NetTopologySuite.Mathematics;
+
 namespace GolemDomain.Geometry;
 
 /// <summary>
@@ -18,12 +20,15 @@ internal sealed class Pose : Position
     }
 
     /// <summary>The unit step along the heading.</summary>
-    internal Position Forward => new(Math.Cos(Heading), Math.Sin(Heading));
+    internal Position Forward
+    {
+        get { var unit = Vector2D.Create(1.0, 0.0).Rotate(Heading); return new Position(unit.X, unit.Y); }
+    }
 
     /// <summary>How far ahead of this pose a position lies, along the heading (negative: behind).</summary>
     internal double Ahead(Position p)
     {
         if (p == null) throw new GolemDomainException("Pose.Ahead: 'p' was not given");
-        return (p.X - X) * Math.Cos(Heading) + (p.Y - Y) * Math.Sin(Heading);
+        return Vector2D.Create(AsCoordinate(), p.AsCoordinate()).Dot(Vector2D.Create(1.0, 0.0).Rotate(Heading));
     }
 }
