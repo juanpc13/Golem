@@ -100,18 +100,19 @@ public sealed class WardenCommander
         var lines = new List<string>();
         var root = JsonDocument.Parse(json).RootElement;
         var golems = new List<string>();
-        string call = "", figure = "", by = "", table = ""; int round = 0, stood = 0, of = 0, placed = 0, queued = 0; bool shared = false, formation = false;
+        string call = "", figure = "", by = "", table = "", givenUpNames = ""; int round = 0, stood = 0, of = 0, placed = 0, queued = 0, lost = 0, givenUp = 0; bool shared = false, formation = false;
         Walk(root, e =>
         {
             if (e.TryGetProperty("name", out var n)) golems.Add($"  {n.GetString()} · stands at ({Num(e, "x")}, {Num(e, "y")}) in {Str(e, "scenario")} · {Int(e, "words")} word(s)");
-            if (e.TryGetProperty("call", out var c)) { formation = true; call = c.GetString() ?? ""; figure = Str(e, "figure"); by = Str(e, "by"); round = Int(e, "round"); stood = Int(e, "stood"); of = Int(e, "of"); placed = Int(e, "placed"); queued = Int(e, "queued"); shared = e.TryGetProperty("shared", out var s) && s.ValueKind == JsonValueKind.True; }
+            if (e.TryGetProperty("call", out var c)) { formation = true; call = c.GetString() ?? ""; figure = Str(e, "figure"); by = Str(e, "by"); round = Int(e, "round"); stood = Int(e, "stood"); of = Int(e, "of"); placed = Int(e, "placed"); queued = Int(e, "queued"); lost = Int(e, "lost"); givenUp = Int(e, "givenUp"); givenUpNames = Str(e, "givenUpNames"); shared = e.TryGetProperty("shared", out var s) && s.ValueKind == JsonValueKind.True; }
             if (e.TryGetProperty("table", out var t)) table = t.GetString() ?? "";
         });
         lines.Add(golems.Count == 0 ? "no golem spoke yet" : $"{golems.Count} golem(s) heard from:");
         lines.AddRange(golems);
         if (formation)
         {
-            lines.Add($"formation in place: {figure} by {by}, call {call}, round {round} — {stood} of {of} stood, {(shared ? "places shared" : "places not shared yet")}, {placed} of {of} placed, {queued} step(s) queued");
+            lines.Add($"formation in place: {figure} by {by}, call {call}, round {round} — {stood} of {of} stood, {(shared ? "places shared" : "places not shared yet")}, {placed} of {of} placed, {lost} lost, {queued} step(s) queued");
+            if (givenUp > 0) lines.Add($"  given up on {givenUpNames}: lost its place too many times this round — the table is not said again for it; call again");
             if (table != "") foreach (var entry in table.Split(';')) lines.Add("  " + entry.Replace("@", " stands at ").Replace(">", " → goes to "));
         }
         return Reply.Done(string.Join(Environment.NewLine, lines), json);

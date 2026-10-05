@@ -233,4 +233,57 @@ public class WardenTests
         Assert.AreEqual(3, muster.Shares, "the step's table travelled too");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Lost(fleet.Member("purple"), marks["blue"])).Message, "is not in the fleet");
     }
+
+    [TestMethod]
+    public void AMemberThatLosesItsPlaceThreeTimesInARound_IsGivenUpOn_TheTableNotSaidAgain_UntilItsWordOrTheNextRound()
+    {
+        var warden = new Warden("warden");
+        var square = warden.Formation("square", new Position(5.5, 5.5), new Meters(2.0));
+        var fleet = new Fleet("blue,green,red,yellow");
+        var muster = warden.Muster("w-2", square, fleet, "rank");
+        muster.Convene();
+        var marks = new Dictionary<string, Position> { ["blue"] = new(6.0, 6.2), ["green"] = new(3.5, 7.5), ["red"] = new(7.0, 6.3), ["yellow"] = new(3.0, 3.0) };
+        foreach (var name in fleet.Names) muster.Stood(fleet.Member(name), marks[name]);
+        muster.Share();
+        foreach (var name in new[] { "green", "red", "yellow" }) muster.Placed(fleet.Member(name));
+        var blue = fleet.Member("blue");
+        Assert.AreEqual(3, Muster.LossesAllowed);
+
+        // the first two losses: the table said again each time
+        muster.Lost(blue, new Position(5.6, 4.45));
+        Assert.AreEqual(1, muster.LossesOf(blue));
+        Assert.IsTrue(muster.CanReshare);
+        muster.Reshare();
+        muster.Lost(blue, new Position(5.6, 4.45));
+        Assert.AreEqual(2, muster.LossesOf(blue));
+        Assert.IsTrue(muster.CanReshare, "lost again: said once more");
+        muster.Reshare();
+        Assert.AreEqual(3, muster.Shares);
+        Assert.IsFalse(muster.IsGivenUp(blue));
+
+        // the third: the warden gives up on blue — no table for it, the board says so, the step keeps waiting
+        muster.Lost(blue, new Position(5.6, 4.45));
+        Assert.AreEqual(3, muster.LossesOf(blue));
+        Assert.IsTrue(muster.IsGivenUp(blue));
+        Assert.AreEqual(1, muster.GivenUpCount);
+        Assert.AreEqual("blue", muster.GivenUpNames);
+        Assert.IsFalse(muster.CanReshare, "given up: the table is not said again for blue");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Reshare()).Message, "blue lost its place 3 times this round — the warden gave up on it");
+        Assert.AreEqual(3, muster.Shares, "nothing travelled");
+        Assert.AreEqual(1, muster.LostCount, "still lost: not placed");
+        Assert.IsFalse(muster.AllPlaced);
+        muster.Queue(square.Rotate(Sense.Clockwise), "s1");
+        Assert.IsFalse(muster.CanStep, "the step waits for the operator");
+
+        // blue's own word — it got there by itself — clears everything for it; and a new round starts every count afresh
+        muster.Placed(blue);
+        Assert.AreEqual(0, muster.LossesOf(blue));
+        Assert.IsFalse(muster.IsGivenUp(blue));
+        Assert.AreEqual("", muster.GivenUpNames);
+        Assert.IsTrue(muster.CanStep);
+        muster.Step();
+        Assert.AreEqual(0, muster.GivenUpCount);
+        muster.Lost(blue, new Position(4.5, 4.5));
+        Assert.AreEqual(1, muster.LossesOf(blue), "the round's count starts at one again");
+    }
 }

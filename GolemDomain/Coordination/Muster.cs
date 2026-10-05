@@ -23,6 +23,12 @@ internal sealed class Muster
     private readonly HashSet<string> placed = new(StringComparer.Ordinal);                // who said it stands on its place, this round
     private readonly HashSet<string> lost = new(StringComparer.Ordinal);                  // who said it lost its place, this round, and did not retake it yet
     private readonly HashSet<string> resaid = new(StringComparer.Ordinal);                // the lost ones the table was said again for — once per loss, then their word is waited for
+    private readonly Dictionary<string, int> losses = new(StringComparer.Ordinal);        // how many times each member lost its place this round
+
+    /// <summary>How many times a member may lose its place in one round before the warden GIVES UP on it (ajuste 92, 5-oct-2026): a body that
+    /// cannot move — stuck in a wall, its motors dead — would otherwise lose, be told the table and lose again without end (lab, 5-oct: 36
+    /// tables in four minutes). After the third loss the table is not said again for it: the formation waits for the operator.</summary>
+    internal const int LossesAllowed = 3;
     private readonly Queue<(Move Move, string Id)> steps = new();
     private readonly HashSet<string> stepIds = new(StringComparer.Ordinal);
 
@@ -57,9 +63,31 @@ internal sealed class Muster
     /// <summary>How many tables of this call travelled to the fleet: the first share, every step, every table said again — the once of the
     /// word that carries each.</summary>
     internal int Shares { get; private set; }
-    /// <summary>Whether the table may be SAID AGAIN now (ajuste 91): somebody lost its place and everybody else stands on its own — nobody
-    /// moves any more, so the one that lost its place finds its way clear.</summary>
-    internal bool CanReshare => IsShared && lost.Any(name => !resaid.Contains(name)) && placed.Count + lost.Count == Fleet.Count;
+    /// <summary>Whether the table may be SAID AGAIN now (ajuste 91): somebody lost its place — and was not given up on (ajuste 92) — and
+    /// everybody else stands on its own: nobody moves any more, so the one that lost its place finds its way clear.</summary>
+    internal bool CanReshare => IsShared && lost.Any(name => !resaid.Contains(name) && !IsGivenUp(name)) && placed.Count + lost.Count == Fleet.Count;
+
+    /// <summary>How many times that member lost its place this round.</summary>
+    internal int LossesOf(Member member)
+    {
+        if (member == null) throw new GolemDomainException("Muster.LossesOf: 'member' was not given");
+        return losses.TryGetValue(member.Name, out int n) ? n : 0;
+    }
+
+    /// <summary>Whether the warden gave up on that member this round: it lost its place <see cref="LossesAllowed"/> times.</summary>
+    internal bool IsGivenUp(Member member)
+    {
+        if (member == null) throw new GolemDomainException("Muster.IsGivenUp: 'member' was not given");
+        return IsGivenUp(member.Name);
+    }
+
+    private bool IsGivenUp(string name) => losses.TryGetValue(name, out int n) && n >= LossesAllowed;
+
+    /// <summary>How many members the warden gave up on this round.</summary>
+    internal int GivenUpCount => Fleet.Names.Count(IsGivenUp);
+
+    /// <summary>The members given up on, by name, comma-separated — empty when none: the board's word.</summary>
+    internal string GivenUpNames => string.Join(",", Fleet.Names.Where(IsGivenUp));
     /// <summary>Everybody stands on its place, this round.</summary>
     internal bool AllPlaced => IsShared && placed.SetEquals(Fleet.Names);
     /// <summary>Which ROUND the fleet is in: 0 while taking the formation, one more per step.</summary>
@@ -115,7 +143,8 @@ internal sealed class Muster
         if (!IsShared) throw new GolemDomainException($"the places of the call {Call} are not shared yet: nobody can lose one");
         placed.Remove(member.Name);
         lost.Add(member.Name);
-        resaid.Remove(member.Name);                       // lost again after a table said: it is said once more
+        resaid.Remove(member.Name);                       // lost again after a table said: it is said once more — while the losses allow
+        losses[member.Name] = LossesOf(member) + 1;
         stood[member.Name] = new Position(at.X, at.Y);
     }
 
@@ -126,7 +155,8 @@ internal sealed class Muster
     {
         if (!IsShared) throw new GolemDomainException($"'{Call}': the places are not shared yet");
         if (lost.Count == 0) throw new GolemDomainException($"'{Call}': nobody lost its place — nothing to say again");
-        if (lost.All(resaid.Contains)) throw new GolemDomainException($"'{Call}': the table was said again already — it waits for the word of the one that lost its place");
+        if (lost.All(IsGivenUp)) throw new GolemDomainException($"'{Call}': {GivenUpNames} lost its place {LossesAllowed} times this round — the warden gave up on it: call again");
+        if (lost.All(name => resaid.Contains(name) || IsGivenUp(name))) throw new GolemDomainException($"'{Call}': the table was said again already — it waits for the word of the one that lost its place");
         if (!CanReshare) throw new GolemDomainException($"'{Call}': {placed.Count} of {Fleet.Count - lost.Count} others stand on their places — the table waits for them");
         resaid.UnionWith(lost);
         Shares++;
@@ -168,6 +198,7 @@ internal sealed class Muster
         if (!IsShared) throw new GolemDomainException($"the places of the call {Call} are not shared yet: nobody can stand on one");
         lost.Remove(member.Name);
         resaid.Remove(member.Name);
+        losses.Remove(member.Name);
         placed.Add(member.Name);
     }
 
@@ -201,6 +232,7 @@ internal sealed class Muster
         placed.Clear();
         lost.Clear();
         resaid.Clear();
+        losses.Clear();
         Round++;
         Shares++;
         return Assignments();

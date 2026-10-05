@@ -115,7 +115,7 @@ public sealed class WardenMind
                 print muster.Call 'call', muster.Round 'round', muster.Table 'table';
                 expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY, muster.Shares shares;
             } else {
-                print muster.LostCount 'lost', muster.PlacedCount 'placed', muster.Fleet.Count 'of';
+                print muster.LostCount 'lost', muster.PlacedCount 'placed', muster.Fleet.Count 'of', muster.GivenUpCount 'givenUp', muster.GivenUpNames 'givenUpNames';
             }
         }
         ";
@@ -236,7 +236,8 @@ public sealed class WardenMind
                 if (w.Musters().Count > 0) {
                     muster = w.Current;
                     print muster.Call 'call', muster.Formation.Name 'figure', muster.Policy 'by', muster.Round 'round',
-                          muster.StoodCount 'stood', muster.Fleet.Count 'of', muster.IsShared 'shared', muster.PlacedCount 'placed', muster.Queued 'queued';
+                          muster.StoodCount 'stood', muster.Fleet.Count 'of', muster.IsShared 'shared', muster.PlacedCount 'placed', muster.Queued 'queued',
+                          muster.LostCount 'lost', muster.GivenUpCount 'givenUp', muster.GivenUpNames 'givenUpNames';
                     if (muster.IsShared) {
                         print muster.Table 'table';
                     }
