@@ -65,6 +65,12 @@ public sealed class CollisionCaptor
         }
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
         robot.Report(answer, "the touch is written; the golem concluded inside — a route corrected its way, or a standing body was touched");
+        if (answer.Ok && answer.Order is { IsEnded: true } && robot.Displacer != null)
+        {
+            // the touch ended the route (its patience spent): if it was the one to this golem's place, the place is lost — the warden is told (ajuste 91)
+            var lost = robot.Displacer.Lost();
+            if (lost.Ok) robot.Report(lost, "the place in the formation is lost — the warden is told");
+        }
         return answer;
     }
 

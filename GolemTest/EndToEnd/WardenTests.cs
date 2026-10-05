@@ -184,4 +184,53 @@ public class WardenTests
         Assert.AreEqual(0, muster.PlaceIndex(fleet.Member("blue")), "counter-clockwise: back to the north vertex");
         Assert.AreEqual(1, warden.Musters().Count, "one convocation called");
     }
+
+    [TestMethod]
+    public void AMemberThatLostItsPlace_IsToldTheTableAgain_OnceTheOthersStandStill_AndTheStepWaitsForIt()
+    {
+        var warden = new Warden("warden");
+        var square = warden.Formation("square", new Position(5.5, 5.5), new Meters(2.0));
+        var fleet = new Fleet("blue,green,red,yellow");
+        var muster = warden.Muster("w-1", square, fleet, "rank");
+        muster.Convene();
+        var marks = new Dictionary<string, Position> { ["blue"] = new(6.0, 6.2), ["green"] = new(3.5, 7.5), ["red"] = new(7.0, 6.3), ["yellow"] = new(3.0, 3.0) };
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Lost(fleet.Member("blue"), marks["blue"])).Message, "not shared yet");
+        foreach (var name in fleet.Names) muster.Stood(fleet.Member(name), marks[name]);
+        muster.Share();
+        Assert.AreEqual(1, muster.Shares, "the first table travelled");
+        Assert.IsFalse(muster.CanReshare, "nobody lost anything");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Reshare()).Message, "nobody lost its place");
+
+        // blue lost its place while green and red arrived; yellow still on its way: the table waits
+        muster.Placed(fleet.Member("green")); muster.Placed(fleet.Member("red"));
+        muster.Lost(fleet.Member("blue"), new Position(5.6, 4.45));
+        Assert.AreEqual(1, muster.LostCount);
+        Assert.AreEqual(2, muster.PlacedCount);
+        Assert.IsFalse(muster.CanReshare, "yellow still moves: blue would find it in the way again");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Reshare()).Message, "2 of 3 others stand on their places");
+        StringAssert.Contains(muster.Table, "blue@5.6,4.45>", "the table says where blue stands now");
+        muster.Queue(square.Rotate(Sense.Clockwise), "s1");
+        Assert.IsFalse(muster.CanStep, "a step waits for the one that lost its place");
+
+        // yellow placed: everybody but blue stands still — the table is said again, the same places
+        muster.Placed(fleet.Member("yellow"));
+        Assert.IsTrue(muster.CanReshare);
+        Assert.IsFalse(muster.CanStep, "3 of 4: the step still waits");
+        var again = muster.Reshare();
+        Assert.AreEqual(2, muster.Shares, "the second table travelled: a word of its own");
+        Assert.AreEqual(0.0, again.Of("blue").To.DistanceTo(muster.PlaceOf(fleet.Member("blue"))), 1e-9, "the same place for blue");
+        Assert.AreEqual(0.0, again.Of("blue").From.DistanceTo(new Position(5.6, 4.45)), 1e-9, "from where it stands");
+        Assert.IsFalse(muster.CanReshare, "said; it waits for blue's word now");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Step()).Message, "3 of 4 stand on their places");
+
+        // blue retook its place: the round completes and the step opens
+        muster.Placed(fleet.Member("blue"));
+        Assert.AreEqual(0, muster.LostCount);
+        Assert.IsTrue(muster.AllPlaced);
+        Assert.IsTrue(muster.CanStep);
+        muster.Step();
+        Assert.AreEqual(1, muster.Round);
+        Assert.AreEqual(3, muster.Shares, "the step's table travelled too");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => muster.Lost(fleet.Member("purple"), marks["blue"])).Message, "is not in the fleet");
+    }
 }

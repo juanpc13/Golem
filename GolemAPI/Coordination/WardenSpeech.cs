@@ -52,21 +52,27 @@ public sealed class WardenSpeech
                 .OnMatch("[_:Muster].Convene() expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call, $by policy;")
             .Causation.Continue(called);
 
-        // THE PLACES SHARED: the whole table of a round as one word, to every golem — on the act that shares the first round (Share) and on
-        // every step (Step); each golem takes its own place from it and the others as berths. The once carries the round.
+        // THE PLACES SHARED: the whole table of a round as one word, to every golem — on the act that shares the first round (Share), on
+        // every step (Step) and on the table said again for one that lost its place (Reshare, ajuste 91); each golem takes its own place
+        // from it and the others as berths. The once carries the share's number: every table that travels is a word of its own.
         string shared = string.Join("\n", golems.Select(g => $@"
             tell Shared with @call, @round, @table, @atX, @atY
                 to {g}
-                once 'shared-' + @call + '-' + @round + '-{g}';"));
+                once 'shared-' + @call + '-' + @round + '-' + @shares + '-{g}';"));
         wardenActor.Reactions.DefineReaction("echo-shared")
             .Cue().Company().WithSharedHydration()
             .Seek("Shared").One()
-                .OnMatch("[_:Muster].Share() expose $call call, $round round, $table table, $atX atX, $atY atY;")
+                .OnMatch("[_:Muster].Share() expose $call call, $round round, $table table, $atX atX, $atY atY, $shares shares;")
             .Causation.Continue(shared);
         wardenActor.Reactions.DefineReaction("echo-stepped")
             .Cue().Company().WithSharedHydration()
             .Seek("Stepped").One()
-                .OnMatch("[_:Muster].Step() expose $call call, $round round, $table table, $atX atX, $atY atY;")
+                .OnMatch("[_:Muster].Step() expose $call call, $round round, $table table, $atX atX, $atY atY, $shares shares;")
+            .Causation.Continue(shared);
+        wardenActor.Reactions.DefineReaction("echo-reshared")
+            .Cue().Company().WithSharedHydration()
+            .Seek("Reshared").One()
+                .OnMatch("[_:Muster].Reshare() expose $call call, $round round, $table table, $atX atX, $atY atY, $shares shares;")
             .Causation.Continue(shared);
     }
 
@@ -81,6 +87,8 @@ public sealed class WardenSpeech
                 .Command(WardenMind.UptakeStoodAt)
             .Told("PlacedAt").With<string>("call").With<int>("round").With<string>("who")
                 .Command(WardenMind.UptakePlacedAt)
+            .Told("LostAt").With<string>("call").With<int>("round").With<string>("who").With<double>("px").With<double>("py")
+                .Command(WardenMind.UptakeLostAt)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for the golems' words as '{warden}' on topic 'tell-{warden}'", DateTime.UtcNow));
         Console.WriteLine($"[warden {warden}] listening for tells on topic 'tell-{warden}'; golems on the wire: {string.Join(", ", golems)}");

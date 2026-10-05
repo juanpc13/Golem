@@ -162,4 +162,39 @@ public class PlacementTests
     {
         for (int i = 0; i < 50 && route.IsPending(); i++) route.Arrive(route.NextLeg);
     }
+
+    [TestMethod]
+    public void APlaceLost_TheRouteEndedShort_IsSaid_AndTheWardensWordRetakesItFromWhereTheBodyStands()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        blue.Wake(new Pose(6.5, 4.5, 2.356));
+        var centre = new Position(5.5, 5.5);
+        var table = new Assignments("blue@6.5,4.5>4.5,4.5;yellow@4.5,4.5>4.5,6.5");
+        var route = blue.Choreography.Take("w-1", 1, table, centre);
+        var placement = blue.Choreography.Current;
+        Assert.IsFalse(placement.IsLost);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => placement.Lost()).Message, "did not lose its place");
+
+        // the world said no: the route ends short of the place — the place is lost, and said once
+        route.Fail("no road from (5.6, 4.45) to (4.5, 4.5) through the map");
+        Assert.IsTrue(route.EndedShort);
+        Assert.IsTrue(placement.IsLost, "the route to the place ended short: the place is lost");
+        Assert.IsFalse(placement.Reached);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => placement.Placed()).Message, "does not stand on its place");
+        placement.Lost();
+        Assert.IsFalse(placement.IsLost, "said already");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => placement.Lost()).Message, "or said so already");
+
+        // the warden's word again — the same place, the same round — RETAKES it: a new route from where the old one left the body
+        var again = blue.Choreography.Take("w-1", 1, new Assignments("blue@6.5,4.5>4.5,4.5;yellow@4.5,6.5>4.5,6.5"), centre);
+        Assert.AreNotSame(route, again, "the failed route is not revived: a new one opens");
+        Assert.AreSame(again, blue.Choreography.Current.Route);
+        Assert.IsTrue(again.IsPending());
+        Assert.IsFalse(blue.Choreography.Current.IsLost);
+        Assert.AreEqual(0.0, again.Standing.DistanceTo(route.Standing), 1e-9, "from where the failed route left the body");
+        StringAssert.EndsWith(again.AsPlan(), "floor@4.5,4.5 > face@4.5,4.5", "the same place, facing the centre: " + again.AsPlan());
+        Assert.AreSame(again, blue.Choreography.Take("w-1", 1, table, centre), "the same word twice: the route alive stays");
+    }
 }

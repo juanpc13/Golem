@@ -98,6 +98,14 @@ public sealed class GolemSpeech
                     tell PlacedAt with @call, @round, @who
                         to {warden}
                         once 'placed-' + @call + '-' + @round + '-' + @who;");
+            golemActor.Reactions.DefineReaction("echo-lost")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Lost").One()
+                    .OnMatch("[_:Placement].Lost() expose $call call, $round round, $who who, $rid rid, $lostX lostX, $lostY lostY;")
+                .Causation.Continue($@"
+                    tell LostAt with @call, @round, @who, @lostX, @lostY
+                        to {warden}
+                        once 'lost-' + @call + '-' + @round + '-' + @who + '-' + @rid;");
             golemActor.Reactions.DefineReaction("echo-awoke")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Awoke").One()

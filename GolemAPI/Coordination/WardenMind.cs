@@ -63,27 +63,59 @@ public sealed class WardenMind
                 muster.Share();
                 center = muster.Formation.Center;
                 print muster.Call 'call', muster.Round 'round', muster.Table 'table';
-                expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY;
+                expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY, muster.Shares shares;
             } else {
                 print muster.StoodCount 'stood', muster.Fleet.Count 'of';
             }
         }
         ";
     // A golem stands on its place: recorded; when with it everybody is placed and a step waits, the STEP opens — the next table, shared
-    // the same way (the reaction on Step tells it; the once carries the round).
+    // the same way (the reaction on Step tells it); when with it everybody but the ones that lost their place stands still, the table is
+    // SAID AGAIN for them (ajuste 91; the reaction on Reshare tells it). ONE expose in the script, for whichever table travels: the once of
+    // the word carries the share's number.
     public const string UptakePlacedAt = @"
         {
             muster = w.Muster(@call);
             member = muster.Fleet.Member(@who);
             muster.Placed(member);
             w.Roster.Stands(@who, muster.PlaceOf(member));
+            before = muster.Shares;
             if (muster.CanStep) {
                 muster.Step();
+            } else {
+                if (muster.CanReshare) {
+                    muster.Reshare();
+                }
+            }
+            if (muster.Shares > before) {
                 center = muster.Formation.Center;
                 print muster.Call 'call', muster.Round 'round', muster.Table 'table';
-                expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY;
+                expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY, muster.Shares shares;
             } else {
-                print muster.PlacedCount 'placed', muster.Fleet.Count 'of', muster.Queued 'queued';
+                print muster.PlacedCount 'placed', muster.Fleet.Count 'of', muster.Queued 'queued', muster.LostCount 'lost';
+            }
+        }
+        ";
+    // A golem LOST its place (ajuste 91; Juan: "si otro golem pierde la posición este debe retomar la coreografía"): its route ended short
+    // of it. Recorded where it stands; when everybody else already stands on its place, the table is said again at once — the word that
+    // retakes the place — else it waits for the next PlacedAt.
+    public const string UptakeLostAt = @"
+        {
+            muster = w.Muster(@call);
+            member = muster.Fleet.Member(@who);
+            at = Position(@px, @py);
+            muster.Lost(member, at);
+            w.Roster.Stands(@who, at);
+            before = muster.Shares;
+            if (muster.CanReshare) {
+                muster.Reshare();
+            }
+            if (muster.Shares > before) {
+                center = muster.Formation.Center;
+                print muster.Call 'call', muster.Round 'round', muster.Table 'table';
+                expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY, muster.Shares shares;
+            } else {
+                print muster.LostCount 'lost', muster.PlacedCount 'placed', muster.Fleet.Count 'of';
             }
         }
         ";
@@ -142,7 +174,7 @@ public sealed class WardenMind
                             muster.Step();
                             center = muster.Formation.Center;
                             print muster.Call 'call', muster.Round 'round', muster.Table 'table';
-                            expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY;
+                            expose muster.Call call, muster.Round round, muster.Table table, center.X atX, center.Y atY, muster.Shares shares;
                         } else {
                             print muster.Queued 'queued', muster.PlacedCount 'placed', muster.Fleet.Count 'of';
                         }

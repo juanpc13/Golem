@@ -335,6 +335,13 @@ public sealed class Displacer
             var placed = Placed();
             if (placed.Ok) robot.Report(placed, $"route {was.Route}: on its place in the formation — the warden is told");
         }
+        else if (answer.Ok && answer.Order is { IsEnded: true })
+        {
+            // the route ended SHORT (no way on from where it backed off): if it was the one to this golem's place, the place is lost — said to
+            // the warden, which says the table again when the others stand still, and that word retakes the place (ajuste 91)
+            var lost = Lost();
+            if (lost.Ok) robot.Report(lost, $"route {was.Route}: the place in the formation is lost — the warden is told");
+        }
         if (!answer.Ok || !stop) return answer;
         robot.ReportLocalization(was.Route);
         if (was.Following && was.IsLastStop)
@@ -409,6 +416,33 @@ public sealed class Displacer
                     }
                 ";
 
+    // THE GOLEM LOST ITS PLACE (ajuste 91): the route to it ended short — the word to the warden, with where the route left the body. No
+    // parameter: the placement in place is the domain's to know, and the Check refuses when the golem did not lose its place, or stands in
+    // no formation — nothing is written then. Public: the bumper's report asks it too, a touch may end the route.
+    private const string LostScript = @"
+                    {
+                        placement = g.Choreography.Current;
+                        placement.Lost();
+                        route = placement.Route;
+                        standing = route.Standing;
+                        print placement.Call 'call', placement.Round 'round', route.Why 'why';
+                        expose placement.Call call, placement.Round round, g.Name who, route.Id rid, standing.X lostX, standing.Y lostY;
+                    }
+                ";
+
+    public Answer Lost()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Current.IsLost) Error 'the golem did not lose a place of the formation in place';
+                ", LostScript)
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
+
     private Answer Placed()
     {
         try
@@ -431,6 +465,8 @@ public sealed class Displacer
         robot.Mechanics.Done();
         var answer = Failed(reason);
         robot.Report(answer, $"route {was.Route} failed: {reason}");
+        var lost = Lost();
+        if (lost.Ok) robot.Report(lost, $"route {was.Route}: the place in the formation is lost — the warden is told");
         return answer;
     }
 

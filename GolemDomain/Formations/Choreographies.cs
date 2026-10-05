@@ -79,14 +79,16 @@ internal sealed class Choreographies
         var current = placements.FirstOrDefault(p => p.Call == call && p.Round == round);
         if (current != null)
         {
-            if (current.Place.DistanceTo(own.To) < 1e-6) return current.Route;      // the same place again: nothing changes
+            bool samePlace = current.Place.DistanceTo(own.To) < 1e-6;
+            if (samePlace && !current.Route.EndedShort) return current.Route;       // the same place again, the route alive or done: nothing changes
             current.Head(own.To, facing, berths);
             if (current.Route.IsPending())
             {
                 if (!current.Route.Yielding) current.Route.Yield();                 // the body carries an order of it: it stops first and says where it stood
                 return current.Route;
             }
-            if (current.Route.EndedShort) return current.Route;                      // a route that ended short is not revived by a word
+            // the route ended — at the place, or SHORT of it (the place was lost: a touch, no way, a stall; ajuste 91) — the word reopens
+            // the route from where the route left the body, with the berths told now: the golem RETAKES its place
             current.Open(golem.TakePlace(current.Route.Standing, own.To, facing, berths, Where(call, own.To)));
             return current.Route;
         }
@@ -150,11 +152,25 @@ internal sealed class Placement
     internal Route Route { get; private set; }
     /// <summary>Whether the golem said it stands on this place.</summary>
     internal bool Said { get; private set; }
+    /// <summary>Whether the golem said it lost this place.</summary>
+    internal bool SaidLost { get; private set; }
     /// <summary>The route reached the place and the golem has not said so yet.</summary>
     internal bool Reached => Route != null && !Route.IsPending() && !Route.EndedShort && !Said;
+    /// <summary>The route to the place ended SHORT of it — it failed or was abandoned: a touch with no way around, a stall — and the golem
+    /// has not said so yet (ajuste 91, 5-oct-2026; Juan: "si otro golem pierde la posición este debe retomar la coreografía").</summary>
+    internal bool IsLost => Route != null && Route.EndedShort && !SaidLost;
 
-    internal void Head(Position place, Position facing, IReadOnlyList<Peer> berths) { Place = place; Facing = facing; Berths = berths; Said = false; }
-    internal void Open(Route route) { Route = route; Said = false; }
+    internal void Head(Position place, Position facing, IReadOnlyList<Peer> berths) { Place = place; Facing = facing; Berths = berths; Said = false; SaidLost = false; }
+    internal void Open(Route route) { Route = route; Said = false; SaidLost = false; }
+
+    /// <summary>THE GOLEM LOST ITS PLACE (ajuste 91): <c>placement.Lost();</c> — the act the reaction tells the warden on, with where the
+    /// route left the body (<c>placement.Route.Standing</c>); the warden says the table again when the others stand still, and that word
+    /// retakes the place (<see cref="Choreographies.Take"/>). Refused when the route did not end short, or the word was said already.</summary>
+    internal void Lost()
+    {
+        if (!IsLost) throw new GolemDomainException($"'{Call}': the golem did not lose its place, or said so already");
+        SaidLost = true;
+    }
 
     /// <summary>THE GOLEM STANDS ON ITS PLACE (ajuste 77; propuesta 88: told to the warden): <c>placement.Placed();</c> — the act the
     /// reaction tells on. Refused when the route did not reach the place, or the word was said already.</summary>
