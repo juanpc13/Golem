@@ -198,18 +198,17 @@ public class MusterTests
         Assert.IsFalse(blue.Choreography.Reached(first), "not yet: the route is underway");
 
         // a step is queued before anybody arrived: nothing moves — the MOVE is the figure's (ajuste 84), the queue the convocation's
-        var clockwise = square.Rotate("clockwise");
+        var clockwise = square.Rotate(Sense.Clockwise);
         Assert.AreEqual("one step clockwise", clockwise.Name);
         Assert.AreEqual(-1, clockwise.Shift, "the places run counter-clockwise: clockwise steps down the order");
         Assert.AreEqual(3, clockwise.Next(0, 4), "from the first corner of four, around to the last");
-        Assert.AreEqual(1, square.Rotate("counter-clockwise").Next(0, 4));
+        Assert.AreEqual(1, square.Rotate(Sense.Counterclockwise).Next(0, 4));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => clockwise.Next(4, 4)).Message, "is none of the 4 places");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Queue(null, "step-0")).Message, "'move' was not given");
         Assert.AreEqual(1, call.Queue(clockwise, "step-1"));
         Assert.IsFalse(call.CanStep);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Step()).Message, "stand on their places");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Queue(call.Formation.Rotate("clockwise"), "step-1")).Message, "already queued");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Queue(call.Formation.Rotate("sideways"), "step-x")).Message, "turns 'clockwise' or 'counterclockwise'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Queue(call.Formation.Rotate(Sense.Clockwise), "step-1")).Message, "already queued");
 
         // red says it stands on its place; blue is not there yet: the word is kept
         Assert.AreSame(first, call.Heard(fleet.Member("red")), "red is placed, blue is still walking: the route in place comes back");
@@ -234,8 +233,8 @@ public class MusterTests
         Assert.IsFalse(blue.Choreography.Reached(first), "the first route is no longer the one to its place");
 
         // two more steps queue while they walk; the first of them opens only when both arrived again
-        call.Queue(call.Formation.Rotate("counterclockwise"), "step-2");
-        Assert.AreEqual(2, call.Queue(call.Formation.Rotate("counterclockwise"), "step-3"));
+        call.Queue(call.Formation.Rotate(Sense.Counterclockwise), "step-2");
+        Assert.AreEqual(2, call.Queue(call.Formation.Rotate(Sense.Counterclockwise), "step-3"));
         WalkToTheEnd(second);
         Assert.AreSame(second, call.Placed(call.Me), "blue stands, red does not yet: the step waits");
         var third = call.Heard(fleet.Member("red"));
@@ -261,7 +260,7 @@ public class MusterTests
         var first = call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
         StringAssert.Contains(first.AsPlan(), "floor@4.5,6.5", "red is nearer to the north-east corner: blue takes the north-west one (ajuste 86: the corners, two free)");
         Assert.AreEqual(1, call.PlaceIndex, "the index of the place the table gave");
-        call.Queue(call.Formation.Rotate("clockwise"), "step-1");
+        call.Queue(call.Formation.Rotate(Sense.Clockwise), "step-1");
         WalkToTheEnd(first);
         var step = call.Placed(call.Me);
         Assert.AreNotSame(first, step, "red's word came first; blue's completes the round: the step opens");
@@ -303,7 +302,7 @@ public class MusterTests
 
         // every step from here costs 45 degrees: from facing the centre to along the side, whichever sense
         call.Placed(call.Me); foreach (var name in new[] { "green", "purple", "yellow" }) call.Heard(fleet.Member(name));
-        call.Queue(call.Formation.Rotate("clockwise"), "s1");
+        call.Queue(call.Formation.Rotate(Sense.Clockwise), "s1");
         Assert.AreEqual(0, call.Round);
         var step = call.Step();
         Assert.AreEqual(1, call.Round, "one step opened: the second round — its words are not the first's");

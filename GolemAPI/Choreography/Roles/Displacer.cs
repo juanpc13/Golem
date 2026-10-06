@@ -192,11 +192,23 @@ public sealed class Displacer
 
     /// <summary>A STEP of the formation in place (ajuste 77): every body takes the next place in that sense — <c>clockwise</c> or
     /// <c>counterclockwise</c> — once everybody stands on its place; steps queue. The step's id, minted here, is the once of the tell that
-    /// spreads it. Refused when the fleet stands in no formation.</summary>
+    /// spreads it. Refused when the fleet stands in no formation. The sense travels as the MEMBER'S NAME of the domain's closed set
+    /// <c>Sense</c> (ajuste 90; the parameters guide: the caller never names the domain's enum type, the engine resolves the name at the
+    /// verb, the journal keeps it): <c>clockwise</c> on the line is <c>Clockwise</c> in the journal and in the tell to the peers. Declared
+    /// <c>typeof(string)</c>, not <c>typeof(Enum)</c>: this script EXPOSES the sense for the tell that spreads the step, and the engine
+    /// (2.0.1-beta.10017) refuses to expose an Enum symbol ("'Expose turning' emits a value of type 'Enum'", lab 5-oct-2026); the name as
+    /// text coerces to the enum at the verb all the same.</summary>
     public Answer Rotate(string sense)
     {
         if (string.IsNullOrWhiteSpace(sense)) return Answer.Refusal("a step needs its sense: clockwise or counterclockwise");
-        string stepId = $"{robot.Name}-step-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        string member = sense.Trim().ToLowerInvariant() switch
+        {
+            "clockwise" => "Clockwise",
+            "counterclockwise" => "Counterclockwise",
+            _ => null,
+        };
+        if (member == null) return Answer.Refusal($"a step turns clockwise or counterclockwise, not '{sense}'");
+        string stepId = $"{robot.Name}-step-{DateTime.UtcNow.Ticks}";   // ticks, not milliseconds: two steps asked in one millisecond are two steps
         try
         {
             return Answer.Of(robot.Actor.Using(
@@ -204,7 +216,7 @@ public sealed class Displacer
                     Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
                 ", RotateFormation)
                 .WithParameters(p => {
-                    p["sense", typeof(string)] = sense.Trim().ToLowerInvariant();
+                    p["sense", typeof(string)] = member;
                     p["stepId", typeof(string)] = stepId;
                 })
                 .PerformCheckThenCommand());

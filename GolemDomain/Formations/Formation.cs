@@ -39,16 +39,12 @@ internal abstract class Formation
     /// to the next place in that sense, <c>clockwise</c> or <c>counterclockwise</c> — <c>move = muster.Formation.Rotate(@sense)</c>. A figure
     /// that does not rotate refuses; the ones whose places run around a centre say what a step is (<see cref="Polygon"/>, <see cref="Circle"/>).
     /// Every figure grows its own moves here, in its class, never in the convocation.</summary>
-    internal virtual Move Rotate(string sense) => throw new GolemDomainException($"a {Name} does not rotate");
+    internal virtual Move Rotate(Sense sense) => throw new GolemDomainException($"a {Name} does not rotate");
 
-    /// <summary>The sense asked, read: true clockwise, false counter-clockwise; anything else refused.</summary>
-    protected static bool Clockwise(string sense)
-    {
-        if (string.IsNullOrWhiteSpace(sense)) throw new GolemDomainException("Formation.Rotate: 'sense' was not given");
-        string s = sense.Trim().ToLowerInvariant().Replace("-", "");
-        if (s is not ("clockwise" or "counterclockwise")) throw new GolemDomainException($"a step turns 'clockwise' or 'counterclockwise', not '{sense}'");
-        return s == "clockwise";
-    }
+    /// <summary>One place along the figure's fixed order in that sense: the places run counter-clockwise, so clockwise is one place DOWN the
+    /// order. The sense is the closed set <see cref="Sense"/> (ajuste 90), never a string.</summary>
+    protected static Move OnePlace(Sense sense) =>
+        sense == Sense.Clockwise ? new Move("one step clockwise", -1) : new Move("one step counter-clockwise", 1);
 }
 
 /// <summary>A circle of places around a centre, said by its radius: N bodies evenly spaced from due east, counter-clockwise — three
@@ -68,11 +64,7 @@ internal sealed class Circle : Formation
     internal override string Name => "circle";
 
     /// <summary>A step around the circle: its places run counter-clockwise, so clockwise is one place DOWN the order (ajuste 84).</summary>
-    internal override Move Rotate(string sense)
-    {
-        bool clockwise = Clockwise(sense);
-        return new Move(clockwise ? "one step clockwise" : "one step counter-clockwise", clockwise ? -1 : 1);
-    }
+    internal override Move Rotate(Sense sense) => OnePlace(sense);
 
     internal override IReadOnlyList<Position> Places(int count)
     {
@@ -114,11 +106,7 @@ internal abstract class Polygon : Formation
     /// <summary>A step along the perimeter (ajuste 84; Juan: "de momento quiero lograrlo para el cuadrado"): the places run
     /// counter-clockwise from the first vertex, so clockwise is one place DOWN the order — the square's and the triangle's rotation; each
     /// may add moves of its own in its class.</summary>
-    internal override Move Rotate(string sense)
-    {
-        bool clockwise = Clockwise(sense);
-        return new Move(clockwise ? "one step clockwise" : "one step counter-clockwise", clockwise ? -1 : 1);
-    }
+    internal override Move Rotate(Sense sense) => OnePlace(sense);
 
     /// <summary>The vertices, the first one first, counter-clockwise.</summary>
     internal IReadOnlyList<Position> Vertices()
