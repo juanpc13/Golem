@@ -1,0 +1,234 @@
+<Window x:Class="GolemCli.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:GolemCli"
+        Title="GolemCli — the operator's console" Height="860" Width="1400" MinHeight="640" MinWidth="1060"
+        Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13" Loaded="Window_Loaded" Closing="Window_Closing">
+    <Window.Resources>
+        <!-- a golem in the list: a box in its colour, like the sketch -->
+        <DataTemplate x:Key="GolemBox">
+            <Border BorderThickness="3" CornerRadius="3" Margin="2,3" Padding="6,4" Background="{StaticResource Well}" BorderBrush="{Binding Name, Converter={x:Static local:GolemColor.Brush}}"
+                    ToolTip="click: this golem's script in the centre · check: addressed by 'selected'">
+                <DockPanel>
+                    <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Selected}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="selected: send and paste go to the selected golems"/>
+                    <StackPanel>
+                        <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource Ink}"><Run Text="{Binding Name}"/><Run Text="  "/><Run Text="{Binding Address, Mode=OneWay}" Foreground="{StaticResource Dim}" FontSize="11" FontWeight="Normal"/></TextBlock>
+                        <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{StaticResource Ink}"/>
+                        <TextBlock Text="{Binding LastSeen, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+        <DataTemplate x:Key="ScriptOf">
+            <DockPanel Margin="6">
+                <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" Foreground="{StaticResource Dim}"><Run Text="the script for "/><Run Text="{Binding Name}" FontWeight="Bold" Foreground="#e6e1cf"/><Run Text=" — one command per line, sent in order; a line starting with # is a note"/></TextBlock>
+                <StackPanel DockPanel.Dock="Right" Width="150" Margin="8,0,0,0">
+                    <Button Content="{Binding SendLabel, Mode=OneWay}" Click="SendOne_Click" Tag="{Binding}" Height="56" FontSize="15" FontWeight="Bold" Style="{StaticResource GoGreen}"/>
+                    <Button Content="stop" Click="StopOne_Click" Tag="{Binding}"/>
+                    <Separator Margin="0,8" Background="{StaticResource Line}"/>
+                    <Button Content="SEND to selected" Click="SendSelected_Click" Height="40" Style="{StaticResource GoAmber}" ToolTip="the queues of every checked golem"/>
+                    <Button Content="SEND to ALL" Click="SendAll_Click" Height="40" Style="{StaticResource GoRed}" ToolTip="everybody's queue, each its own"/>
+                    <TextBlock Margin="4,10" Foreground="{StaticResource Dim}" TextWrapping="Wrap"><Run Text="sent "/><Run Text="{Binding Sent}"/><Run Text=" command(s) this session"/></TextBlock>
+                </StackPanel>
+                <Border BorderThickness="3,0,0,0" BorderBrush="{Binding Name, Converter={x:Static local:GolemColor.Brush}}">
+                    <TextBox Text="{Binding Script, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" AcceptsTab="True" Margin="0"
+                             VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="14" TextWrapping="NoWrap"/>
+                </Border>
+            </DockPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- THE RIBBON: our own, dark — tabs of groups of big buttons; every button composes a command on the current golem's tab -->
+        <TabControl DockPanel.Dock="Top" x:Name="Ribbon" Style="{StaticResource RibbonTabs}" Height="152">
+            <TabItem Header="Workspace">
+                <StackPanel Orientation="Horizontal">
+                    <GroupBox Header="workspace" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="New" local:Look.Glyph="✧" Click="NewWorkspace_Click" ToolTip="a clean window: no golems, no scripts"/>
+                            <Button Style="{StaticResource Big}" Content="Open…" local:Look.Glyph="📂" Click="OpenWorkspace_Click" ToolTip="a workspace folder: the golems, their queues, the routines"/>
+                            <Button Style="{StaticResource Big}" Content="Save" local:Look.Glyph="💾" Click="SaveWorkspace_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Save as…" local:Look.Glyph="💾" local:Look.Tint="{StaticResource Accent}" Click="SaveWorkspaceAs_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="recent workspaces — click to switch" Style="{StaticResource RibbonGroup}">
+                        <WrapPanel x:Name="RecentPanel" Orientation="Vertical" MaxHeight="96" VerticalAlignment="Top">
+                            <TextBlock Text="none yet" Foreground="{StaticResource Dim}" Margin="4"/>
+                        </WrapPanel>
+                    </GroupBox>
+                    <GroupBox Header="program" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="About" local:Look.Glyph="ⓘ" Click="About_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Exit" local:Look.Glyph="⏻" local:Look.Tint="{StaticResource Red}" Click="Exit_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Home" IsSelected="True">
+                <StackPanel Orientation="Horizontal">
+                    <GroupBox Header="clipboard" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Paste" local:Look.Glyph="📋" Click="Paste_Click" ToolTip="appends the clipboard's lines to this tab's script"/>
+                            <Button Style="{StaticResource Big}" Content="Copy script" local:Look.Glyph="⎘" Click="Copy_Click" ToolTip="this tab's script to the clipboard"/>
+                            <Button Style="{StaticResource Big}" Content="To selected" local:Look.Glyph="⇶" local:Look.Tint="{StaticResource Blue}" Click="CopyToSelected_Click" ToolTip="appends this tab's script to every checked golem's tab"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="errands" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Visit" local:Look.Glyph="➜" local:Look.Tint="{StaticResource Blue}" Tag="visit {point}" Click="Compose_Click" ToolTip="visit x,y — go there (the point of the coordinates box)"/>
+                            <Button Style="{StaticResource Big}" Content="Cover" local:Look.Glyph="⤳" local:Look.Tint="{StaticResource Blue}" Tag="cover {point}" Click="Compose_Click" ToolTip="cover x,y — the way decided at once"/>
+                            <Button Style="{StaticResource Big}" Content="Then" local:Look.Glyph="＋" local:Look.Tint="{StaticResource Blue}" Tag="then {point}" Click="Compose_Click" ToolTip="then x,y — one more stop on the route underway"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="hold" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Pause" local:Look.Glyph="❚❚" local:Look.Tint="{StaticResource Orange}" Tag="pause" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Resume" local:Look.Glyph="▶" local:Look.Tint="{StaticResource Green}" Tag="resume" Click="Compose_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="levers" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Reset" local:Look.Glyph="↺" local:Look.Tint="{StaticResource Red}" Tag="reset" Click="Compose_Click" ToolTip="every route let go, the body back on its mark"/>
+                            <Button Style="{StaticResource Big}" Content="Reset all" local:Look.Glyph="⟲" local:Look.Tint="{StaticResource Red}" Tag="reset --all" Click="Compose_Click" ToolTip="the journal wiped too"/>
+                            <Button Style="{StaticResource Big}" Content="Place" local:Look.Glyph="⌖" local:Look.Tint="{StaticResource Purple}" Tag="place {point}" Click="Compose_Click" ToolTip="the body carried onto the point"/>
+                            <Button Style="{StaticResource Big}" Content="Open floor" local:Look.Glyph="▦" Tag="enter open-floor" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Warehouse" local:Look.Glyph="▤" Tag="enter warehouse" Click="Compose_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="reads" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Where" local:Look.Glyph="◎" local:Look.Tint="{StaticResource Blue}" Tag="where" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Route" local:Look.Glyph="〰" local:Look.Tint="{StaticResource Blue}" Tag="route" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="State" local:Look.Glyph="ⓘ" local:Look.Tint="{StaticResource Blue}" Tag="state" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Obstacles" local:Look.Glyph="▲" local:Look.Tint="{StaticResource Orange}" Tag="obstacles" Click="Compose_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="golem's choreography" Style="{StaticResource RibbonGroup}" ToolTip="the golem's own module: the fleet agrees among itself">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Square" local:Look.Glyph="◻" local:Look.Tint="{StaticResource Green}" Tag="choreograph square --center {point} --side 2.0 --by rank" Click="Compose_Click" ToolTip="by rank"/>
+                            <Button Style="{StaticResource Big}" Content="By distance" local:Look.Glyph="◼" local:Look.Tint="{StaticResource Green}" Tag="choreograph square --center {point} --side 2.0 --by distance" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Pentagon" local:Look.Glyph="⬠" local:Look.Tint="{StaticResource Green}" Tag="choreograph pentagon --center {point} --side 2.0 --by distance" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Clockwise" local:Look.Glyph="↻" local:Look.Tint="{StaticResource Green}" Tag="rotate clockwise" Click="Compose_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Counter" local:Look.Glyph="↺" local:Look.Tint="{StaticResource Green}" Tag="rotate counterclockwise" Click="Compose_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Routines">
+                <StackPanel Orientation="Horizontal">
+                    <GroupBox Header="routine files" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Save routine" local:Look.Glyph="💾" Click="SaveRoutine_Click" ToolTip="this tab's script as a .routine file"/>
+                            <Button Style="{StaticResource Big}" Content="Load here" local:Look.Glyph="📂" Click="LoadRoutine_Click" ToolTip="a routine file appended to this tab"/>
+                            <Button Style="{StaticResource Big}" Content="Load in selected" local:Look.Glyph="📂" local:Look.Tint="{StaticResource Blue}" Click="LoadRoutineSelected_Click" ToolTip="a routine file appended to every checked golem's tab"/>
+                            <Button Style="{StaticResource Big}" Content="Clear tab" local:Look.Glyph="✕" local:Look.Tint="{StaticResource Red}" Click="ClearTab_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="formations by the console" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Lay out a figure" local:Look.Glyph="⬟" local:Look.Tint="{StaticResource Purple}" Click="Formation_Click" ToolTip="square, pentagon, triangle or circle: the places and the steps around, as visits on each tab"/>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="View">
+                <StackPanel Orientation="Horizontal">
+                    <GroupBox Header="golems" Style="{StaticResource RibbonGroup}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Big}" Content="Refresh" local:Look.Glyph="⟳" local:Look.Tint="{StaticResource Blue}" Click="Refresh_Click" ToolTip="ping every golem and ask where it stands"/>
+                            <Button Style="{StaticResource Big}" Content="Journal" local:Look.Glyph="📖" Click="Journal_Click" ToolTip="follow the current golem's journal, live"/>
+                            <Button Style="{StaticResource Big}" Content="Commands" local:Look.Glyph="?" Click="Commands_Click" ToolTip="the language the golem speaks"/>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <!-- THE BOTTOM: the log and the journal of the current golem -->
+        <TabControl DockPanel.Dock="Bottom" Height="200" Margin="4" Style="{StaticResource DarkTabs}">
+            <TabItem Header="log — what every golem answered">
+                <TextBox x:Name="LogBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
+            </TabItem>
+            <TabItem x:Name="JournalTab" Header="journal">
+                <TextBox x:Name="JournalBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
+            </TabItem>
+        </TabControl>
+
+        <!-- THE GOLEMS: boxes in their colour — the one clicked is the tab whose script the centre shows; a check addresses them together -->
+        <GroupBox DockPanel.Dock="Left" Header="golems in operation — click one for its script" Width="260">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                    <UniformGrid Columns="3">
+                        <TextBox x:Name="NewName" ToolTip="name" Text="blue"/>
+                        <TextBox x:Name="NewHost" ToolTip="host" Text="localhost"/>
+                        <TextBox x:Name="NewPort" ToolTip="port" Text="8081"/>
+                    </UniformGrid>
+                    <UniformGrid Columns="2">
+                        <Button Content="add" Click="AddGolem_Click"/>
+                        <Button Content="remove" Click="RemoveGolem_Click"/>
+                    </UniformGrid>
+                    <Button Content="add the four of the compose" Click="AddFour_Click" ToolTip="blue 8081, red 8082, green 8083, yellow 8084 on localhost"/>
+                </StackPanel>
+                <ListBox x:Name="GolemList" ItemTemplate="{StaticResource GolemBox}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" SelectionChanged="GolemList_SelectionChanged"/>
+            </DockPanel>
+        </GroupBox>
+
+        <!-- THE RIGHT COLUMN: the coordinates that build a command, then the map -->
+        <DockPanel DockPanel.Dock="Right" Width="430">
+            <GroupBox DockPanel.Dock="Top" Header="coordinates → command">
+                <StackPanel>
+                    <DockPanel>
+                        <TextBlock Text="x" VerticalAlignment="Center" Margin="4,0"/>
+                        <TextBox x:Name="XBox" Width="70" Text="5.5" TextChanged="Point_Changed"/>
+                        <TextBlock Text="y" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                        <TextBox x:Name="YBox" Width="70" Text="5.5" TextChanged="Point_Changed"/>
+                        <TextBlock Text="" />
+                    </DockPanel>
+                    <WrapPanel x:Name="Verbs" Margin="4,4,0,0">
+                        <TextBlock Text="verb" Foreground="{StaticResource Dim}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                        <RadioButton Content="visit" IsChecked="True" Checked="Point_Changed" Margin="0,0,10,0"/>
+                        <RadioButton Content="cover" Checked="Point_Changed" Margin="0,0,10,0"/>
+                        <RadioButton Content="then" Checked="Point_Changed" Margin="0,0,10,0"/>
+                        <RadioButton Content="place" Checked="Point_Changed" Margin="0,0,10,0"/>
+                        <RadioButton Content="forget" Checked="Point_Changed"/>
+                    </WrapPanel>
+                    <TextBox x:Name="BuiltBox" FontFamily="Consolas" FontSize="14" Margin="2,6" IsReadOnly="True" Text="visit 5.5,5.5"/>
+                    <UniformGrid Columns="3">
+                        <Button Content="add to this tab" Click="AddBuilt_Click"/>
+                        <Button Content="add to selected" Click="AddBuiltSelected_Click" ToolTip="the same command on every checked golem's tab"/>
+                        <Button Content="copy" Click="CopyBuilt_Click" ToolTip="the command to the clipboard, to paste in another tab"/>
+                    </UniformGrid>
+                    <DockPanel Margin="2,0">
+                        <Button DockPanel.Dock="Right" Content="clear points" Click="ClearPoints_Click" ToolTip="forget every point clicked"/>
+                        <Button DockPanel.Dock="Right" Content="undo last" Click="UndoPoint_Click" ToolTip="the last point clicked, taken back"/>
+                        <TextBlock x:Name="PointsHint" Text="click the map: every click adds a point to the visit, in order" Foreground="{StaticResource Dim}" FontSize="11" Margin="2,4" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                    </DockPanel>
+                </StackPanel>
+            </GroupBox>
+            <GroupBox Header="map — the last position asked of each golem">
+                <Grid>
+                    <Canvas x:Name="Map" Background="{StaticResource Well}" MouseLeftButtonDown="Map_Click" MouseMove="Map_MouseMove" MouseLeave="Map_MouseLeave" SizeChanged="Map_SizeChanged" ClipToBounds="True"/>
+                    <!-- the coordinates under the cursor, while it is over the floor -->
+                    <Border x:Name="Hover" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" Background="#cc0f1419" BorderBrush="{StaticResource Accent}" BorderThickness="1" CornerRadius="3" Padding="6,2">
+                        <TextBlock x:Name="HoverText" Foreground="{StaticResource Accent}" FontFamily="Consolas" FontSize="13"/>
+                    </Border>
+                </Grid>
+            </GroupBox>
+        </DockPanel>
+
+        <!-- THE CENTRE: the script of the golem clicked on the left; the script is its queue; SEND at the right -->
+        <Grid Margin="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <ContentControl x:Name="Editor" Content="{Binding SelectedItem, ElementName=GolemList}" ContentTemplate="{StaticResource ScriptOf}"/>
+                    <TextBlock x:Name="NoGolem" Text="add a golem on the left, click its box: its script is built here" Foreground="{StaticResource Dim}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14"/>
+                </Grid>
+            </Border>
+            <TextBlock Grid.Row="1" x:Name="WorkspaceLabel" Margin="6,4" Foreground="{StaticResource Dim}" Text="no workspace: the scripts live in this window until you save one"/>
+        </Grid>
+    </DockPanel>
+</Window>
