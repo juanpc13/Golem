@@ -26,8 +26,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? journalFollow;
     private string? workspace;
 
-    // the floor the map draws: the arena's interior, 11 × 11 m, as the open-floor map of the domain
-    private const double FloorSize = 11.0;
+    // the floor the map draws: the selected golem's scenario as it told it (GET /map), the arena's 11 × 11 m until one is known
+    private double FloorSize => Current?.Plan?.Extent ?? 11.0;
 
     // the verbs whose command leaves a route in the golem: the queue waits for it to end before the next line goes
     private static readonly HashSet<string> Movers = new(StringComparer.Ordinal) { "visit", "cover", "then", "resume", "choreograph", "rotate" };
@@ -76,7 +76,7 @@ public partial class MainWindow : Window
         if (golem.Name == "") { Log("a golem needs its name"); return; }
         if (golems.Any(g => g.Name == golem.Name)) { Log($"{golem.Name} is already here"); return; }
         golems.Add(golem);
-        golem.PropertyChanged += (_, args) => { if (args.PropertyName is nameof(Golem.LastX) or nameof(Golem.LastY) or nameof(Golem.LastHeading)) Draw(); };
+        golem.PropertyChanged += (_, args) => { if (args.PropertyName is nameof(Golem.LastX) or nameof(Golem.LastY) or nameof(Golem.LastHeading) or nameof(Golem.Plan)) Draw(); };
         GolemList.SelectedItem = golem;
         await ConnectAsync(golem);
     }
@@ -158,7 +158,10 @@ public partial class MainWindow : Window
         if (Current is not { } g) { Log("add a golem first: the ribbon composes on its tab"); return; }
         string template = (sender as Button)?.Tag as string ?? "";
         if (template.Contains("{point}") && !IsPoint(Point)) { Log("the point is x and y, numbers — type them or click the map"); return; }
-        g.Enqueue(template.Replace("{point}", Point));
+        // visit and cover take every point picked on the map, in order; the rest take the one in the boxes
+        string points = (template.StartsWith("visit") || template.StartsWith("cover")) && picked.Count > 1 ? string.Join(" ", picked.Select(p => $"{Fmt(p.X)},{Fmt(p.Y)}")) : Point;
+        g.Enqueue(template.Replace("{point}", points));
+        if (picked.Count > 1 && points != Point) PointsConsumed();
     }
 
     private void Point_Changed(object sender, RoutedEventArgs? e)
@@ -581,24 +584,27 @@ public partial class MainWindow : Window
 
     private void Map_Click(object sender, MouseButtonEventArgs e)
     {
-        var p = e.GetPosition(Map);
-        double scale = Scale();
-        double x = Math.Round(p.X / scale, 1), y = Math.Round((FloorSize * scale - p.Y) / scale, 1);
+        var (x, y) = FloorPoint(e.GetPosition(Map));
         if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) return;
+        x = Math.Round(x, 1); y = Math.Round(y, 1);
         picked.Add((x, y));
         ShowLastPoint();
         Point_Changed(this, null);
         Draw();
     }
 
-    private double Scale() => Math.Max(1, Math.Min(Map.ActualWidth, Map.ActualHeight) / FloorSize);
+    // the floor is drawn SQUARE and CENTRED in the map's panel, whatever the panel's shape (Juan, 6-oct-2026: the map did not fit the resolution)
+    private double Scale() => Math.Max(1, (Math.Min(Map.ActualWidth, Map.ActualHeight) - 12) / FloorSize);
+    private double OffsetX => (Map.ActualWidth - FloorSize * Scale()) / 2;
+    private double OffsetY => (Map.ActualHeight - FloorSize * Scale()) / 2;
+    private (double X, double Y) FloorPoint(Point p) => ((p.X - OffsetX) / Scale(), FloorSize - (p.Y - OffsetY) / Scale());
+    private Point Pixel(double x, double y) => new(OffsetX + x * Scale(), OffsetY + (FloorSize - y) * Scale());
 
     // the coordinates under the cursor, shown while it moves over the floor and gone when it leaves (Juan, 6-oct-2026)
     private void Map_MouseMove(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Map);
-        double scale = Scale();
-        double x = p.X / scale, y = (FloorSize * scale - p.Y) / scale;
+        var (x, y) = FloorPoint(p);
         if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) { Hover.Visibility = Visibility.Collapsed; return; }
         HoverText.Text = $"x {x.ToString("0.0", CultureInfo.InvariantCulture)}  y {y.ToString("0.0", CultureInfo.InvariantCulture)}";
         Hover.Visibility = Visibility.Visible;
@@ -615,19 +621,67 @@ public partial class MainWindow : Window
         Map.Children.Clear();
         double scale = Scale();
         var grid = new SolidColorBrush(Color.FromRgb(0x2b, 0x35, 0x40));
+        var origin = Pixel(0, FloorSize); var far = Pixel(FloorSize, 0);
+        Map.Children.Add(new Rectangle { Width = far.X - origin.X, Height = far.Y - origin.Y, Stroke = (Brush)FindResource("Line"), StrokeThickness = 1.5, Fill = new SolidColorBrush(Color.FromRgb(0x0e, 0x13, 0x19)) }.Also(r => { Canvas.SetLeft(r, origin.X); Canvas.SetTop(r, origin.Y); }));
         for (int i = 0; i <= FloorSize; i++)
         {
-            Map.Children.Add(new Line { X1 = i * scale, Y1 = 0, X2 = i * scale, Y2 = FloorSize * scale, Stroke = grid, StrokeThickness = i % 5 == 0 ? 1.2 : 0.5 });
-            Map.Children.Add(new Line { X1 = 0, Y1 = i * scale, X2 = FloorSize * scale, Y2 = i * scale, Stroke = grid, StrokeThickness = i % 5 == 0 ? 1.2 : 0.5 });
+            var a = Pixel(i, 0); var b = Pixel(i, FloorSize);
+            Map.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = grid, StrokeThickness = i % 5 == 0 ? 1.2 : 0.5 });
+            var l = Pixel(0, i); var r = Pixel(FloorSize, i);
+            Map.Children.Add(new Line { X1 = l.X, Y1 = l.Y, X2 = r.X, Y2 = r.Y, Stroke = grid, StrokeThickness = i % 5 == 0 ? 1.2 : 0.5 });
+        }
+        // THE SELECTED GOLEM'S SCENARIO, as it told it: its zones, the open sides faint, the doors marked (Juan, 6-oct-2026)
+        var plan = Current?.Plan;
+        MapHeader.Text = plan == null ? "map — the last position asked of each golem" : $"map — {Current!.Name}'s scenario: {plan.Name} · every golem where it was last asked";
+        if (plan != null)
+        {
+            var wall = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99));
+            var open = new SolidColorBrush(Color.FromRgb(0x3a, 0x46, 0x55));
+            var door = (Brush)FindResource("Accent");
+            foreach (var z in plan.Zones)
+            {
+                var tl = Pixel(z.X, z.Y + z.H); var br = Pixel(z.X + z.W, z.Y);
+                var box = new Rectangle { Width = br.X - tl.X, Height = br.Y - tl.Y, Stroke = wall, StrokeThickness = 1.5, Fill = new SolidColorBrush(Color.FromArgb(0x18, 0xe6, 0xe1, 0xcf)) };
+                Canvas.SetLeft(box, tl.X); Canvas.SetTop(box, tl.Y); Map.Children.Add(box);
+                var name = new TextBlock { Text = z.Name, Foreground = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99)), FontSize = 10 };
+                var centre = Pixel(z.X + z.W / 2, z.Y + z.H / 2); Canvas.SetLeft(name, centre.X - 3 * z.Name.Length); Canvas.SetTop(name, centre.Y - 8); Map.Children.Add(name);
+            }
+            foreach (var z in plan.Zones)
+            {
+                foreach (var to in z.Opens)
+                {
+                    var other = plan.Zones.FirstOrDefault(o => o.Name == to);
+                    if (other == null || FloorPlan.SharedEdge(z, other) is not { } e) continue;
+                    var a = Pixel(e.X0, e.Y0); var b = Pixel(e.X1, e.Y1);
+                    Map.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = open, StrokeThickness = 3 });   // the open side: the wall painted out
+                }
+                foreach (var d in z.Doors)
+                {
+                    // the door is a GAP in the wall, as wide as the map says: the wall painted out over the gap, a faint threshold across it;
+                    // the wall runs vertical when the door's point lies on the zone's left or right edge, horizontal otherwise
+                    bool vertical = Math.Abs(d.X - z.X) < 1e-6 || Math.Abs(d.X - (z.X + z.W)) < 1e-6;
+                    double half = d.Width / 2;
+                    var a = vertical ? Pixel(d.X, d.Y - half) : Pixel(d.X - half, d.Y);
+                    var b = vertical ? Pixel(d.X, d.Y + half) : Pixel(d.X + half, d.Y);
+                    Map.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = open, StrokeThickness = 3.5 });
+                    Map.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = door, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 2, 3 }, Opacity = 0.8 });
+                }
+            }
+        }
+        // the axes' numbers, every metre, so a point is read off the picture
+        for (int i = 0; i <= FloorSize; i += 1)
+        {
+            var tx = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var px = Pixel(i, 0); Canvas.SetLeft(tx, px.X - 3); Canvas.SetTop(tx, px.Y + 1); Map.Children.Add(tx);
+            var ty = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var py = Pixel(0, i); Canvas.SetLeft(ty, py.X - 12); Canvas.SetTop(ty, py.Y - 7); Map.Children.Add(ty);
         }
         // the points picked: the way the errand will go, numbered, joined by a dashed line
         var way = new SolidColorBrush(Color.FromRgb(0xff, 0xb4, 0x54));
         for (int i = 0; i < picked.Count; i++)
         {
-            double px = picked[i].X * scale, py = (FloorSize - picked[i].Y) * scale;
+            var pp = Pixel(picked[i].X, picked[i].Y); double px = pp.X, py = pp.Y;
             if (i > 0 && ManyPoints)
             {
-                double qx = picked[i - 1].X * scale, qy = (FloorSize - picked[i - 1].Y) * scale;
+                var pq = Pixel(picked[i - 1].X, picked[i - 1].Y); double qx = pq.X, qy = pq.Y;
                 Map.Children.Add(new Line { X1 = qx, Y1 = qy, X2 = px, Y2 = py, Stroke = way, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 } });
             }
             bool counts = ManyPoints || i == picked.Count - 1;
@@ -642,7 +696,7 @@ public partial class MainWindow : Window
         foreach (var g in golems)
         {
             if (g.LastX == null || g.LastY == null) continue;
-            double cx = g.LastX.Value * scale, cy = (FloorSize - g.LastY.Value) * scale, r = 0.25 * scale;
+            var pc = Pixel(g.LastX.Value, g.LastY.Value); double cx = pc.X, cy = pc.Y, r = 0.25 * scale;
             var brush = new SolidColorBrush(GolemColor.Of(g.Name));
             var dot = new Ellipse { Width = 2 * r, Height = 2 * r, Fill = brush, Stroke = g == selected ? Brushes.White : brush, StrokeThickness = g == selected ? 2 : 1 };
             Canvas.SetLeft(dot, cx - r); Canvas.SetTop(dot, cy - r);
@@ -682,4 +736,10 @@ public partial class MainWindow : Window
         string s = text.Replace("\r", " ").Replace("\n", " ⏎ ").Trim();
         return s.Length > 220 ? s[..220] + "…" : s;
     }
+}
+
+internal static class Fluent
+{
+    /// <summary>Sets up an element inline and hands it back.</summary>
+    public static T Also<T>(this T element, Action<T> setup) { setup(element); return element; }
 }

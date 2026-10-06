@@ -135,7 +135,7 @@ public class GolemController : Controller
                 print places.Name 'name', places.X 'x', places.Y 'y', places.Width 'w', places.Height 'h',
                       places.Center.X 'cx', places.Center.Y 'cy';
                 foreach (doors in places.Doorways()) {
-                    print doors.To 'to', doors.At.X 'x', doors.At.Y 'y';
+                    print doors.To 'to', doors.At.X 'x', doors.At.Y 'y', doors.Width 'w';
                 }
                 foreach (opens in places.OpenSides()) {
                     print opens.To 'to';

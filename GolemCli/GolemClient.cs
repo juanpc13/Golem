@@ -84,7 +84,20 @@ public static class GolemClient
         golem.LastHeading = JsonWalk.Number(reply.Json.Value, "heading");
         string? scenario = JsonWalk.String(reply.Json.Value, "scenario");
         golem.Status = golem.LastX == null ? "awake, position unknown" : $"in {scenario ?? "?"}";
+        if (scenario != null && (golem.Plan == null || golem.Plan.Name != scenario)) golem.Plan = await MapAsync(golem, ct);
         return true;
+    }
+
+    /// <summary>What the golem's current scenario disposes — GET /map: its zones, doors and open sides, for the console to draw.</summary>
+    public static async Task<FloorPlan?> MapAsync(Golem golem, CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await Wire.GetAsync(new Uri(golem.Url, "map"), ct);
+            if (!response.IsSuccessStatusCode) return null;
+            return FloorPlan.Parse(JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException) { return null; }
     }
 
     /// <summary>How the golem's latest route ended — `route`: its status (completed, failed, abandoned, pending) and the why when it ended

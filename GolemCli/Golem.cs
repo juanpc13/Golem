@@ -30,6 +30,10 @@ public sealed class Golem : INotifyPropertyChanged
     public double? LastY { get => lastY; set { Set(ref lastY, value); Raise(nameof(LastSeen)); } }
     public double? LastHeading { get => lastHeading; set { Set(ref lastHeading, value); Raise(nameof(LastSeen)); } }
 
+    private FloorPlan? plan;
+    /// <summary>What its current scenario disposes, as it told it last (GET /map); the console's map draws it.</summary>
+    public FloorPlan? Plan { get => plan; set => Set(ref plan, value); }
+
     public string LastSeen => LastX == null || LastY == null ? "position not asked yet" : $"({LastX:0.00}, {LastY:0.00}) facing {LastHeading:0.00} rad";
     public string SendLabel => Running ? $"sending to {Name}…" : $"send to {Name}";
     public string Address => $"{Host}:{Port}";
