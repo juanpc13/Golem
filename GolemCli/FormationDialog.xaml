@@ -33,11 +33,23 @@
         <TextBox x:Name="MeasureBox" Grid.Row="2" Grid.Column="1" Text="2.0"/>
 
         <TextBlock Grid.Row="3" Text="steps around" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
-        <DockPanel Grid.Row="3" Grid.Column="1">
-            <TextBox x:Name="StepsBox" Width="60" Text="0" ToolTip="how many places each golem moves on after taking its own"/>
-            <RadioButton x:Name="ClockwiseBox" Content="clockwise" Margin="12,0,0,0" IsChecked="True"/>
-            <RadioButton Content="counter-clockwise" Margin="12,0,0,0"/>
-        </DockPanel>
+        <StackPanel Grid.Row="3" Grid.Column="1">
+            <DockPanel>
+                <TextBox x:Name="StepsBox" Width="60" Text="0" ToolTip="how many places each golem moves on after taking its own; the queues wait for each other between steps"/>
+                <RadioButton x:Name="ClockwiseBox" Content="clockwise" Margin="12,0,0,0" IsChecked="True"/>
+                <RadioButton Content="counter-clockwise" Margin="12,0,0,0"/>
+            </DockPanel>
+            <DockPanel Margin="0,4,0,0">
+                <TextBlock Text="places shared by" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="2,0,10,0"/>
+                <RadioButton x:Name="ByRankBox" Content="rank (names sorted)" IsChecked="True" Margin="0,0,12,0"/>
+                <RadioButton Content="distance (where each stands now)" ToolTip="needs the last position of every golem: refresh first"/>
+            </DockPanel>
+            <DockPanel Margin="0,4,0,0">
+                <TextBlock Text="pace" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="2,0,10,0"/>
+                <RadioButton x:Name="OneErrandBox" Content="one visit through all the places" IsChecked="True" Margin="0,0,12,0" ToolTip="one command per golem; each walks its way at its own pace"/>
+                <RadioButton Content="rounds, waiting for each other" ToolTip="a visit per place with a @sync between: the fleet moves step by step together"/>
+            </DockPanel>
+        </StackPanel>
 
         <TextBlock Grid.Row="4" Text="golems (by rank: names sorted)" Foreground="{StaticResource Dim}" Margin="0,6,0,0"/>
         <ListBox x:Name="GolemsBox" Grid.Row="4" Grid.RowSpan="2" Grid.Column="1" Margin="2,6" SelectionMode="Multiple" Height="150"/>

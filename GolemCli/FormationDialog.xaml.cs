@@ -13,6 +13,8 @@ public partial class FormationDialog : Window
     public double Side { get; private set; }
     public int Steps { get; private set; }
     public bool Clockwise { get; private set; }
+    public string Assignment { get; private set; } = "rank";
+    public bool OneErrand { get; private set; } = true;
     public List<string> Chosen { get; private set; } = new();
 
     public FormationDialog(IReadOnlyList<string> golems, string point)
@@ -36,6 +38,8 @@ public partial class FormationDialog : Window
         Figure = Figures.Children.OfType<System.Windows.Controls.RadioButton>().FirstOrDefault(r => r.IsChecked == true)?.Content as string ?? "square";
         CenterX = cx; CenterY = cy; Side = measure; Steps = steps;
         Clockwise = ClockwiseBox.IsChecked == true;
+        Assignment = ByRankBox.IsChecked == true ? "rank" : "distance";
+        OneErrand = OneErrandBox.IsChecked == true;
         Chosen = GolemsBox.SelectedItems.Cast<string>().ToList();
         DialogResult = true;
     }

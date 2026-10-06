@@ -10,6 +10,8 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using Microsoft.Win32;
 
+using GolemCli.Choreography;
+
 namespace GolemCli;
 
 /// <summary>The console's one window. The RIBBON composes commands on the current golem's tab; a tab's script is that golem's QUEUE,
@@ -234,7 +236,7 @@ public partial class MainWindow : Window
 
     private void SendOne_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is Golem g) _ = RunQueueAsync(g);
+        if ((sender as Button)?.Tag is Golem g) _ = RunQueueAsync(g, new Batch(1));
     }
 
     private void StopOne_Click(object sender, RoutedEventArgs e)
@@ -244,14 +246,18 @@ public partial class MainWindow : Window
 
     private void SendSelected_Click(object sender, RoutedEventArgs e)
     {
-        var chosen = SelectedGolems.ToList();
-        if (chosen.Count == 0) { Log("no golem is checked"); return; }
-        foreach (var g in chosen) _ = RunQueueAsync(g);
+        var chosen = SelectedGolems.Where(g => !g.Running).ToList();
+        if (chosen.Count == 0) { Log("no golem is checked (or they are all sending already)"); return; }
+        var batch = new Batch(chosen.Count);
+        foreach (var g in chosen) _ = RunQueueAsync(g, batch);
     }
 
     private void SendAll_Click(object sender, RoutedEventArgs e)
     {
-        foreach (var g in golems.ToList()) _ = RunQueueAsync(g);
+        var all = golems.Where(g => !g.Running).ToList();
+        if (all.Count == 0) return;
+        var batch = new Batch(all.Count);
+        foreach (var g in all) _ = RunQueueAsync(g, batch);
     }
 
     private void Stop(Golem golem)
@@ -259,30 +265,84 @@ public partial class MainWindow : Window
         if (runners.Remove(golem.Name, out var cts)) { cts.Cancel(); Log($"{golem.Name} › sending stopped; the rest of the queue stays on the tab"); }
     }
 
-    // THE QUEUE RUNNER: the first line goes; a line that opens a route waits for the golem's pending routes to come back to zero; a read or
-    // a lever goes on at once. Everything runs on the window's thread, awaiting the wire, so the tab is edited live and never torn.
-    private async Task RunQueueAsync(Golem golem)
+    // THE BARRIER of a batch (propuesta 95): the queues sent together wait for each other at every @sync — a queue that reaches it waits
+    // until every other queue of the batch reached it too, or finished, or was stopped; then all go on together. The console's own
+    // directive: never sent to a golem.
+    private sealed class Batch
+    {
+        private int participants, arrived;
+        private TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Batch(int participants) { this.participants = participants; }
+
+        public Task ArriveAsync()
+        {
+            arrived++;
+            if (arrived >= participants) Open();
+            return gate.Task;
+        }
+
+        public void Leave()
+        {
+            participants--;
+            if (arrived >= participants && participants > 0) Open();
+        }
+
+        private void Open()
+        {
+            var opened = gate;
+            arrived = 0;
+            gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            opened.TrySetResult();
+        }
+    }
+
+    // THE QUEUE RUNNER: the first line goes; a line that opens a route waits for the golem's pending routes to come back to zero — THE ACK,
+    // said in the log with the time it took; a read or a lever goes on at once; @sync waits for the batch. Everything runs on the window's
+    // thread, awaiting the wire, so the tab is edited live and never torn.
+    private async Task RunQueueAsync(Golem golem, Batch batch)
     {
         if (golem.Running) return;
         var cts = new CancellationTokenSource();
         runners[golem.Name] = cts;
         golem.Running = true;
+        int done = 0, total = golem.Script.Replace("\r\n", "\n").Split('\n').Count(l => l.Trim() != "" && !l.TrimStart().StartsWith('#'));
         try
         {
             while (!cts.IsCancellationRequested)
             {
                 string? line = golem.Dequeue();
-                if (line == null) { Log($"{golem.Name} › queue done"); break; }
+                if (line == null) { Log($"{golem.Name} › queue done ({done} command(s))"); break; }
+                if (line == Choreography.Choreography.Sync)
+                {
+                    golem.Status = "waiting for the others…";
+                    await batch.ArriveAsync().WaitAsync(cts.Token);
+                    continue;
+                }
+                var started = DateTime.UtcNow;
                 var reply = await GolemClient.SendAsync(golem, line, cts.Token);
                 golem.Sent++;
-                Log($"{golem.Name} › {line} — {reply.Kind}: {OneLine(reply.Text)}");
                 if (!reply.Ok)
                 {
+                    Log($"{golem.Name} › {line} — {reply.Kind}: {OneLine(reply.Text)}");
                     if (reply.Kind == "unreachable") { golem.Status = "unreachable"; Log($"{golem.Name} › stopped: the golem does not answer; the rest of the queue stays"); break; }
                     continue;   // refused or no command: the golem said why; the queue goes on
                 }
                 string verb = line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-                if (Movers.Contains(verb)) await WaitUntilDoneAsync(golem, cts.Token);
+                if (Movers.Contains(verb))
+                {
+                    Log($"{golem.Name} › {line} — sent: {OneLine(reply.Text)}");
+                    bool finished = await WaitUntilDoneAsync(golem, cts.Token);
+                    done++;
+                    var ending = await GolemClient.LastRouteAsync(golem, cts.Token);
+                    bool completed = finished && ending.Status == "completed";
+                    Log($"{golem.Name} › {(completed ? "✓" : "✗")} {line} {(completed ? "completed" : ending.Status == "" ? "ended" : ending.Status)}{(ending.Why == "" ? "" : " — " + ending.Why)} in {(DateTime.UtcNow - started).TotalSeconds:0.0} s ({done} of {total})");
+                    if (!completed) golem.Status = $"route {ending.Status}{(ending.Why == "" ? "" : ": " + ending.Why)}";
+                }
+                else
+                {
+                    done++;
+                    Log($"{golem.Name} › ✓ {line} — {OneLine(reply.Text)} ({done} of {total})");
+                }
                 await GolemClient.RefreshWhereAsync(golem, cts.Token);
             }
         }
@@ -291,13 +351,14 @@ public partial class MainWindow : Window
         {
             golem.Running = false;
             runners.Remove(golem.Name);
+            batch.Leave();
             await GolemClient.RefreshWhereAsync(golem);
         }
     }
 
     // the golem finished when nothing is pending; a route may take a moment to open (a choreography waits for the fleet's words), so a
     // short grace is given for it to appear before "nothing pending" counts as done
-    private async Task WaitUntilDoneAsync(Golem golem, CancellationToken ct)
+    private async Task<bool> WaitUntilDoneAsync(Golem golem, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         bool seenPending = false;
@@ -305,10 +366,12 @@ public partial class MainWindow : Window
         {
             await Task.Delay(1000, ct);
             int? pending = await GolemClient.PendingAsync(golem, ct);
-            if (pending == null) { golem.Status = "unreachable"; return; }
+            if (pending == null) { golem.Status = "unreachable"; return false; }
             if (pending > 0) { seenPending = true; golem.Status = $"busy: {pending} route(s) pending"; continue; }
-            if (seenPending || (DateTime.UtcNow - started).TotalSeconds > 8) return;
+            if (seenPending) return true;
+            if ((DateTime.UtcNow - started).TotalSeconds > 8) return false;
         }
+        return false;
     }
 
     // ==================================================================
@@ -479,6 +542,13 @@ public partial class MainWindow : Window
         if (Current is { } g) g.Script = "";
     }
 
+    private void ClearAllTabs_Click(object sender, RoutedEventArgs e)
+    {
+        int n = 0;
+        foreach (var g in golems.Where(g => !g.Running)) { g.Script = ""; n++; }
+        Log(golems.Any(g => g.Running) ? $"{n} tab(s) cleared; the ones sending keep their queue — stop them first" : $"{n} tab(s) cleared");
+    }
+
     // ==================================================================
     // Formations laid out by the console: queues of visits for every golem
     // ==================================================================
@@ -490,14 +560,15 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true) return;
         try
         {
-            var queues = Formations.Queues(dialog.Figure, dialog.CenterX, dialog.CenterY, dialog.Side, dialog.Chosen, dialog.Steps, dialog.Clockwise);
-            foreach (var (name, lines) in queues)
+            var fleet = new Fleet(golems.Where(g => dialog.Chosen.Contains(g.Name)).Select(g => new Member(g.Name, g.LastX is double x && g.LastY is double y ? new Spot(x, y) : null)));
+            var choreography = new Choreography.Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, Assignment.Named(dialog.Assignment), dialog.Steps, dialog.Clockwise);
+            var scripts = choreography.Scripts(dialog.OneErrand ? Pace.OneErrand : Pace.Rounds);
+            foreach (var (name, lines) in scripts)
             {
                 var g = golems.First(x => x.Name == name);
-                g.Enqueue($"# {dialog.Figure} at ({dialog.CenterX}, {dialog.CenterY}), {dialog.Steps} step(s) {(dialog.Clockwise ? "clockwise" : "counter-clockwise")} — laid out by the console");
                 foreach (var line in lines) g.Enqueue(line);
             }
-            Log($"{dialog.Figure} laid out for {dialog.Chosen.Count} golem(s): {queues.Values.Sum(q => q.Count)} visit(s) queued — read the tabs, then SEND");
+            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit")))} visit(s) on {scripts.Count} tab(s){(dialog.OneErrand ? "" : $"; the queues wait for each other at every {Choreography.Choreography.Sync}")} — read them, then SEND to selected");
         }
         catch (ArgumentException ex) { Log(ex.Message); }
     }

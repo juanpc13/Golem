@@ -87,6 +87,15 @@ public static class GolemClient
         return true;
     }
 
+    /// <summary>How the golem's latest route ended — `route`: its status (completed, failed, abandoned, pending) and the why when it ended
+    /// short; the ACK the console says after a command that opened a route.</summary>
+    public static async Task<(string Status, string Why)> LastRouteAsync(Golem golem, CancellationToken ct = default)
+    {
+        var reply = await SendAsync(golem, "route", ct);
+        if (!reply.Ok || reply.Json == null) return ("", "");
+        return (JsonWalk.String(reply.Json.Value, "status") ?? "", JsonWalk.String(reply.Json.Value, "why") ?? "");
+    }
+
     /// <summary>How many routes the golem still has pending — `state`, read for the queue: the next command goes when it is zero.</summary>
     public static async Task<int?> PendingAsync(Golem golem, CancellationToken ct = default)
     {

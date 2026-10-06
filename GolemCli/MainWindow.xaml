@@ -121,7 +121,8 @@
                             <Button Style="{StaticResource Big}" Content="Save routine" local:Look.Glyph="💾" Click="SaveRoutine_Click" ToolTip="this tab's script as a .routine file"/>
                             <Button Style="{StaticResource Big}" Content="Load here" local:Look.Glyph="📂" Click="LoadRoutine_Click" ToolTip="a routine file appended to this tab"/>
                             <Button Style="{StaticResource Big}" Content="Load in selected" local:Look.Glyph="📂" local:Look.Tint="{StaticResource Blue}" Click="LoadRoutineSelected_Click" ToolTip="a routine file appended to every checked golem's tab"/>
-                            <Button Style="{StaticResource Big}" Content="Clear tab" local:Look.Glyph="✕" local:Look.Tint="{StaticResource Red}" Click="ClearTab_Click"/>
+                            <Button Style="{StaticResource Big}" Content="Clear tab" local:Look.Glyph="✕" local:Look.Tint="{StaticResource Red}" Click="ClearTab_Click" ToolTip="this golem's script, emptied"/>
+                            <Button Style="{StaticResource Big}" Content="Clear all tabs" local:Look.Glyph="✖" local:Look.Tint="{StaticResource Red}" Click="ClearAllTabs_Click" ToolTip="every golem's script, emptied — the queues that are sending are not touched"/>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="formations by the console" Style="{StaticResource RibbonGroup}">
