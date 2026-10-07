@@ -23,19 +23,40 @@ public sealed class Golem : INotifyPropertyChanged
 
     /// <summary>The commands built for this golem, one per line: its queue.</summary>
     public string Script { get => script; set => Set(ref script, value); }
-    public string Status { get => status; set => Set(ref status, value); }
-    public bool Running { get => running; set { Set(ref running, value); Raise(nameof(SendLabel)); } }
+    public string Status { get => status; set { Set(ref status, value); Raise(nameof(StatusLine)); } }
+    /// <summary>Whether its queue is being sent now; the box says so.</summary>
+    public bool Running { get => running; set { Set(ref running, value); Raise(nameof(StatusLine)); } }
     public int Sent { get => sent; set => Set(ref sent, value); }
-    public double? LastX { get => lastX; set { Set(ref lastX, value); Raise(nameof(LastSeen)); } }
-    public double? LastY { get => lastY; set { Set(ref lastY, value); Raise(nameof(LastSeen)); } }
-    public double? LastHeading { get => lastHeading; set { Set(ref lastHeading, value); Raise(nameof(LastSeen)); } }
+    public double? LastX { get => lastX; set { Set(ref lastX, value); Raise(nameof(LastSeen)); Raise(nameof(WhereLine)); } }
+    public double? LastY { get => lastY; set { Set(ref lastY, value); Raise(nameof(LastSeen)); Raise(nameof(WhereLine)); } }
+    public double? LastHeading { get => lastHeading; set { Set(ref lastHeading, value); Raise(nameof(LastSeen)); Raise(nameof(WhereLine)); } }
+
+    private Readings knowledge = Readings.Nothing;
+    /// <summary>What it answered to the reads last — where, state, route, obstacles: INFORMATION beside the map, drawn on it (Juan, 7-oct-2026).</summary>
+    public Readings Knowledge
+    {
+        get => knowledge;
+        set { Set(ref knowledge, value); Raise(nameof(WhereLine)); Raise(nameof(StateLine)); Raise(nameof(RouteLine)); Raise(nameof(ObstaclesLine)); }
+    }
+
+    public string WhereLine => LastX == null || LastY == null
+        ? "where · not known yet"
+        : $"where · ({LastX:0.00}, {LastY:0.00}) facing {LastHeading:0.00} rad, in {Knowledge.Zone} · {Knowledge.Scenario} · {Knowledge.Navigation}{(Knowledge.Held ? " · HELD" : "")}";
+    public string StateLine => Knowledge.Pending == null ? "state · not asked yet" : $"state · {Knowledge.Pending} pending of {Knowledge.Routes} route(s)";
+    public string RouteLine => Knowledge.RouteId == null
+        ? "route · none yet"
+        : $"route {Knowledge.RouteId} · {Knowledge.RouteStatus}{(Knowledge.RouteAction == "" ? "" : $", now {Knowledge.RouteAction}")}{(Knowledge.RouteWhy == "" ? "" : $" — {Knowledge.RouteWhy}")}{Environment.NewLine}plan · {Knowledge.RoutePlan}";
+    public string ObstaclesLine => Knowledge.Pending == null
+        ? "obstacles · not asked yet"
+        : Knowledge.Marks == 0 && Knowledge.Met == 0 ? "obstacles · nothing touched yet" : $"obstacles · {Knowledge.Things} thing(s), {Knowledge.Met} peer(s) met, {Knowledge.Marks} mark(s)";
 
     private FloorPlan? plan;
     /// <summary>What its current scenario disposes, as it told it last (GET /map); the console's map draws it.</summary>
     public FloorPlan? Plan { get => plan; set => Set(ref plan, value); }
 
     public string LastSeen => LastX == null || LastY == null ? "position not asked yet" : $"({LastX:0.00}, {LastY:0.00}) facing {LastHeading:0.00} rad";
-    public string SendLabel => Running ? $"sending to {Name}…" : $"send to {Name}";
+    /// <summary>What the box shows under the name: the status, and "sending…" while its queue goes.</summary>
+    public string StatusLine => Running ? $"{Status} · sending…" : Status;
     public string Address => $"{Host}:{Port}";
 
     public override string ToString() => Name;

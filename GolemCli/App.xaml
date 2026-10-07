@@ -59,10 +59,6 @@
             <Setter Property="Background" Value="#3a3422"/>
             <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
         </Style>
-        <Style x:Key="GoRed" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="#3a2b2b"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Red}"/>
-        </Style>
         <Style TargetType="TextBox">
             <Setter Property="Background" Value="{StaticResource Well}"/>
             <Setter Property="Foreground" Value="{StaticResource Ink}"/>

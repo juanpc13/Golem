@@ -7,30 +7,41 @@
     <Window.Resources>
         <!-- a golem in the list: a box in its colour, like the sketch -->
         <DataTemplate x:Key="GolemBox">
-            <Border BorderThickness="3" CornerRadius="3" Margin="2,3" Padding="6,4" Background="{StaticResource Well}" BorderBrush="{Binding Name, Converter={x:Static local:GolemColor.Brush}}"
+            <Border x:Name="Box" BorderThickness="3" CornerRadius="3" Margin="4,3" Padding="6,4" Background="{StaticResource Well}" BorderBrush="{Binding Name, Converter={x:Static local:GolemColor.Brush}}" Opacity="0.7"
                     ToolTip="click: this golem's script in the centre · check: addressed by 'selected'">
                 <DockPanel>
                     <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Selected}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="selected: send and paste go to the selected golems"/>
+                    <TextBlock x:Name="Marker" DockPanel.Dock="Right" Text="▶ script" Visibility="Collapsed" Foreground="{StaticResource Accent}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="6,0,0,0"/>
                     <StackPanel>
-                        <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource Ink}"><Run Text="{Binding Name}"/><Run Text="  "/><Run Text="{Binding Address, Mode=OneWay}" Foreground="{StaticResource Dim}" FontSize="11" FontWeight="Normal"/></TextBlock>
-                        <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{StaticResource Ink}"/>
-                        <TextBlock Text="{Binding LastSeen, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}"/>
+                        <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource Ink}"><Run Text="{Binding Name}"/><Run Text="  "/><Run x:Name="Addr" Text="{Binding Address, Mode=OneWay}" Foreground="{StaticResource Dim}" FontSize="11" FontWeight="Normal"/></TextBlock>
+                        <TextBlock Text="{Binding StatusLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}"/>
+                        <TextBlock x:Name="Seen" Text="{Binding LastSeen, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}"/>
                     </StackPanel>
                 </DockPanel>
             </Border>
+            <!-- the box whose script is in the centre: tinted in its golem's colour, its border a little thicker, a "script" tag in the accent;
+                 the others dimmed (Juan, 7-oct-2026: "destacar el golem seleccionado… no se nota aún" — then, on a white border and a glow: "muy exagerado") -->
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter TargetName="Box" Property="Opacity" Value="1"/>
+                    <Setter TargetName="Box" Property="Background" Value="{Binding Name, Converter={x:Static local:GolemColor.Fill}}"/>
+                    <Setter TargetName="Box" Property="BorderThickness" Value="4"/>
+                    <Setter TargetName="Marker" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="Addr" Property="Foreground" Value="{StaticResource Ink}"/>
+                    <Setter TargetName="Seen" Property="Foreground" Value="{StaticResource Ink}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ScriptOf">
             <DockPanel Margin="6">
                 <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"><Run Text="the script for "/><Run Text="{Binding Name}" FontWeight="Bold" Foreground="#e6e1cf"/><Run Text=" — one command per line, sent in order; a line starting with # is a note"/></TextBlock>
-                <!-- THE SEND COLUMN -->
-                <StackPanel DockPanel.Dock="Right" Width="150" Margin="8,0,0,0">
-                    <Button Content="{Binding SendLabel, Mode=OneWay}" Click="SendOne_Click" Tag="{Binding}" Height="56" FontSize="15" FontWeight="Bold" Style="{StaticResource GoGreen}"/>
-                    <Button Content="stop" Click="StopOne_Click" Tag="{Binding}"/>
-                    <Separator Margin="0,8" Background="{StaticResource Line}"/>
-                    <Button Content="SEND to selected" Click="SendSelected_Click" Height="40" Style="{StaticResource GoAmber}" ToolTip="the queues of every checked golem"/>
-                    <Button Content="SEND to ALL" Click="SendAll_Click" Height="40" Style="{StaticResource GoRed}" ToolTip="everybody's queue, each its own"/>
-                    <TextBlock Margin="4,10" Foreground="{StaticResource Dim}" TextWrapping="Wrap"><Run Text="sent "/><Run Text="{Binding Sent}"/><Run Text=" command(s) this session"/></TextBlock>
-                </StackPanel>
+                <!-- THE SEND COLUMN (Juan, 7-oct-2026: "sólo enviar a los selected… el stop debajo y posiciónalos hasta abajo"): one SEND, to the
+                     checked golems, at the foot of the column with stop under it; which golems go is said by the checks, never by a button -->
+                <DockPanel DockPanel.Dock="Right" Width="150" Margin="8,0,0,0" LastChildFill="False">
+                    <TextBlock DockPanel.Dock="Top" Margin="4,4" Foreground="{StaticResource Dim}" TextWrapping="Wrap"><Run Text="sent "/><Run Text="{Binding Sent}"/><Run Text=" command(s) this session"/></TextBlock>
+                    <Button DockPanel.Dock="Bottom" Content="stop" Click="StopSelected_Click" ToolTip="the checked golems that are sending stop; the rest of each queue stays on its tab"/>
+                    <Button DockPanel.Dock="Bottom" Content="SEND to selected" Click="SendSelected_Click" Height="56" FontSize="15" FontWeight="Bold" Style="{StaticResource GoGreen}" ToolTip="the queue of every checked golem, each its own, line by line; they wait for each other at @sync"/>
+                </DockPanel>
                 <!-- ABOVE THE SCRIPT: what the golem can be told (Juan, 6-oct-2026: "algunos botones siempre por arriba y al centro el comando") -->
                 <Border DockPanel.Dock="Top" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="4,2" Margin="0,0,0,4">
                     <WrapPanel>
@@ -47,11 +58,6 @@
                         <Button Content="place" Tag="place {point}" Click="Compose_Click" ToolTip="the body carried onto the point of the box"/>
                         <Button Content="open floor" Tag="enter open-floor" Click="Compose_Click" ToolTip="enter open-floor"/>
                         <Button Content="warehouse" Tag="enter warehouse" Click="Compose_Click" ToolTip="enter warehouse"/>
-                        <TextBlock Text="reads" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="10,0,2,0"/>
-                        <Button Content="where" Tag="where" Click="Compose_Click"/>
-                        <Button Content="route" Tag="route" Click="Compose_Click"/>
-                        <Button Content="state" Tag="state" Click="Compose_Click"/>
-                        <Button Content="obstacles" Tag="obstacles" Click="Compose_Click"/>
                     </WrapPanel>
                 </Border>
                 <!-- BELOW THE SCRIPT: the golem's own choreography module (the fleet agrees among itself) -->
@@ -175,7 +181,7 @@
                         </UniformGrid>
                         <Button Content="add the four of the compose" Click="AddFour_Click" ToolTip="blue 8081, red 8082, green 8083, yellow 8084 on localhost"/>
                     </StackPanel>
-                    <ListBox x:Name="GolemList" ItemTemplate="{StaticResource GolemBox}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" SelectionChanged="GolemList_SelectionChanged"/>
+                    <ListBox x:Name="GolemList" ItemTemplate="{StaticResource GolemBox}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="GolemList_SelectionChanged"/>
                 </DockPanel>
             </GroupBox>
 
@@ -225,6 +231,25 @@
                             <TextBlock x:Name="PointsHint" Text="click the map: every click adds a point to the visit, in order" Foreground="{StaticResource Dim}" FontSize="11" Margin="2,4" VerticalAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34"/>
                         </DockPanel>
                     </StackPanel>
+                </GroupBox>
+                <!-- THE READS AS INFORMATION (Juan, 7-oct-2026: "estos reads deberían ir más del lado del mapa… no como botones sino como información"):
+                     where, state, route, obstacles of the golem whose script is in the centre, asked every few seconds -->
+                <GroupBox DockPanel.Dock="Top">
+                    <GroupBox.Header>
+                        <TextBlock x:Name="KnowsHeader" Text="what the selected golem knows — where · state · route · obstacles" Foreground="{StaticResource Dim}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                    </GroupBox.Header>
+                    <ContentControl Content="{Binding SelectedItem, ElementName=GolemList}">
+                        <ContentControl.ContentTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="2,0">
+                                    <TextBlock Text="{Binding WhereLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding StateLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding RouteLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap" FontFamily="Consolas"/>
+                                    <TextBlock Text="{Binding ObstaclesLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ContentControl.ContentTemplate>
+                    </ContentControl>
                 </GroupBox>
                 <GroupBox>
                     <GroupBox.Header>

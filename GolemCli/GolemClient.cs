@@ -83,8 +83,47 @@ public static class GolemClient
         golem.LastY = JsonWalk.Number(reply.Json.Value, "y");
         golem.LastHeading = JsonWalk.Number(reply.Json.Value, "heading");
         string? scenario = JsonWalk.String(reply.Json.Value, "scenario");
+        golem.Knowledge = golem.Knowledge with
+        {
+            Zone = JsonWalk.String(reply.Json.Value, "zone") ?? "",
+            Scenario = scenario ?? "",
+            Navigation = JsonWalk.String(reply.Json.Value, "navigation") ?? "",
+            Held = JsonWalk.Find(reply.Json.Value, "held") is { ValueKind: JsonValueKind.True },
+        };
         golem.Status = golem.LastX == null ? "awake, position unknown" : $"in {scenario ?? "?"}";
         if (scenario != null && (golem.Plan == null || golem.Plan.Name != scenario)) golem.Plan = await MapAsync(golem, ct);
+        return true;
+    }
+
+    /// <summary>Everything the golem answers to its reads — where, state, route, obstacles — in one refresh (Juan, 7-oct-2026: the reads are
+    /// information beside the map, not buttons on the script); false when the golem did not answer `where`.</summary>
+    public static async Task<bool> RefreshReadingsAsync(Golem golem, CancellationToken ct = default)
+    {
+        if (!await RefreshWhereAsync(golem, ct)) return false;
+        var k = golem.Knowledge;
+        var state = await SendAsync(golem, "state", ct);
+        if (state.Ok && state.Json is { } s)
+            k = k with { Pending = (int?)JsonWalk.Number(s, "pending"), Routes = (int?)JsonWalk.Number(s, "total") };
+        var route = await SendAsync(golem, "route", ct);
+        if (route.Ok && route.Json is { } r)
+            k = k with
+            {
+                RouteId = (int?)JsonWalk.Number(r, "route"),
+                RouteStatus = JsonWalk.String(r, "status") ?? "",
+                RouteAction = JsonWalk.String(r, "action") ?? "",
+                RoutePlan = JsonWalk.String(r, "plan") ?? "",
+                RouteWhy = JsonWalk.String(r, "why") ?? "",
+            };
+        var obstacles = await SendAsync(golem, "obstacles", ct);
+        if (obstacles.Ok && obstacles.Json is { } o)
+            k = k with
+            {
+                Things = (int)(JsonWalk.Number(o, "things") ?? 0),
+                Met = (int)(JsonWalk.Number(o, "met") ?? 0),
+                Marks = (int)(JsonWalk.Number(o, "marks") ?? 0),
+                Obstacles = Obstacle.Parse(o),
+            };
+        golem.Knowledge = k;
         return true;
     }
 

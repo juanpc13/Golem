@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Microsoft.Win32;
 
 using GolemCli.Choreography;
@@ -26,6 +27,11 @@ public partial class MainWindow : Window
     private CancellationTokenSource? journalFollow;
     private string? workspace;
 
+    // THE READS, asked of the selected golem every few seconds and shown beside the map (Juan, 7-oct-2026): where, state, route, obstacles
+    private readonly DispatcherTimer readings = new() { Interval = TimeSpan.FromSeconds(3) };
+    private bool reading;
+    private int quietTicks;
+
     // the floor the map draws: the selected golem's scenario as it told it (GET /map), the arena's 11 × 11 m until one is known
     private double FloorSize => Current?.Plan?.Extent ?? 11.0;
 
@@ -37,7 +43,19 @@ public partial class MainWindow : Window
         InitializeComponent();
         GolemList.ItemsSource = golems;
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
+        readings.Tick += async (_, _) => await RefreshCurrentAsync();
+        readings.Start();
         Log("GolemCli ready — add the golems in operation, compose a script per tab, SEND.");
+    }
+
+    // the selected golem's reads, refreshed in turn; one that does not answer is asked again every fifth tick
+    private async Task RefreshCurrentAsync()
+    {
+        if (reading || Current is not { } g) return;
+        if (g.Status == "unreachable" && ++quietTicks % 5 != 0) return;
+        reading = true;
+        try { await GolemClient.RefreshReadingsAsync(g); }
+        finally { reading = false; }
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -76,7 +94,7 @@ public partial class MainWindow : Window
         if (golem.Name == "") { Log("a golem needs its name"); return; }
         if (golems.Any(g => g.Name == golem.Name)) { Log($"{golem.Name} is already here"); return; }
         golems.Add(golem);
-        golem.PropertyChanged += (_, args) => { if (args.PropertyName is nameof(Golem.LastX) or nameof(Golem.LastY) or nameof(Golem.LastHeading) or nameof(Golem.Plan)) Draw(); };
+        golem.PropertyChanged += (_, args) => { if (args.PropertyName is nameof(Golem.LastX) or nameof(Golem.LastY) or nameof(Golem.LastHeading) or nameof(Golem.Plan) or nameof(Golem.Knowledge)) Draw(); };
         GolemList.SelectedItem = golem;
         await ConnectAsync(golem);
     }
@@ -99,13 +117,14 @@ public partial class MainWindow : Window
         string? name = await GolemClient.PingAsync(golem);
         if (name == null) { golem.Status = "unreachable"; Log($"{golem.Name} › nobody answers at {golem.Url}"); return; }
         if (name != golem.Name) Log($"{golem.Name} › the golem at {golem.Address} says it is '{name}'");
-        await GolemClient.RefreshWhereAsync(golem);
+        await GolemClient.RefreshReadingsAsync(golem);
         Log($"{golem.Name} › {golem.Status} · {golem.LastSeen}");
     }
 
     private void GolemList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         Draw();
+        _ = RefreshCurrentAsync();
         if (journalFollow != null && GolemList.SelectedItem is Golem j) FollowJournal(j);
     }
 
@@ -234,18 +253,9 @@ public partial class MainWindow : Window
     }
 
     // ==================================================================
-    // Sending: a golem's queue, one command at a time; the checked ones; everybody
+    // Sending: the CHECKED golems' queues, one command at a time each, together as a batch (Juan, 7-oct-2026: "sólo enviar a los selected";
+    // the buttons for one golem and for everybody are gone — which golems go is said by the checks alone)
     // ==================================================================
-
-    private void SendOne_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as Button)?.Tag is Golem g) _ = RunQueueAsync(g, new Batch(1));
-    }
-
-    private void StopOne_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as Button)?.Tag is Golem g) Stop(g);
-    }
 
     private void SendSelected_Click(object sender, RoutedEventArgs e)
     {
@@ -255,12 +265,11 @@ public partial class MainWindow : Window
         foreach (var g in chosen) _ = RunQueueAsync(g, batch);
     }
 
-    private void SendAll_Click(object sender, RoutedEventArgs e)
+    private void StopSelected_Click(object sender, RoutedEventArgs e)
     {
-        var all = golems.Where(g => !g.Running).ToList();
-        if (all.Count == 0) return;
-        var batch = new Batch(all.Count);
-        foreach (var g in all) _ = RunQueueAsync(g, batch);
+        var sending = SelectedGolems.Where(g => g.Running).ToList();
+        if (sending.Count == 0) { Log("no checked golem is sending"); return; }
+        foreach (var g in sending) Stop(g);
     }
 
     private void Stop(Golem golem)
@@ -346,7 +355,7 @@ public partial class MainWindow : Window
                     done++;
                     Log($"{golem.Name} › ✓ {line} — {OneLine(reply.Text)} ({done} of {total})");
                 }
-                await GolemClient.RefreshWhereAsync(golem, cts.Token);
+                await GolemClient.RefreshReadingsAsync(golem, cts.Token);
             }
         }
         catch (OperationCanceledException) { }
@@ -355,7 +364,7 @@ public partial class MainWindow : Window
             golem.Running = false;
             runners.Remove(golem.Name);
             batch.Leave();
-            await GolemClient.RefreshWhereAsync(golem);
+            await GolemClient.RefreshReadingsAsync(golem);
         }
     }
 
@@ -632,7 +641,8 @@ public partial class MainWindow : Window
         }
         // THE SELECTED GOLEM'S SCENARIO, as it told it: its zones, the open sides faint, the doors marked (Juan, 6-oct-2026)
         var plan = Current?.Plan;
-        MapHeader.Text = plan == null ? "map — the last position asked of each golem" : $"map — {Current!.Name}'s scenario: {plan.Name} · every golem where it was last asked";
+        MapHeader.Text = plan == null ? "map — the last position asked of each golem" : $"map — {Current!.Name}'s scenario: {plan.Name} · every golem where it was last asked · its obstacles in red";
+        KnowsHeader.Text = Current == null ? "what the selected golem knows — where · state · route · obstacles" : $"what {Current.Name} knows — where · state · route · obstacles, asked every 3 s";
         if (plan != null)
         {
             var wall = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99));
@@ -673,6 +683,40 @@ public partial class MainWindow : Window
         {
             var tx = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var px = Pixel(i, 0); Canvas.SetLeft(tx, px.X - 3); Canvas.SetTop(tx, px.Y + 1); Map.Children.Add(tx);
             var ty = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var py = Pixel(0, i); Canvas.SetLeft(ty, py.X - 12); Canvas.SetTop(ty, py.Y - 7); Map.Children.Add(ty);
+        }
+        // THE OBSTACLES THE SELECTED GOLEM HYPOTHESIZES (Juan, 7-oct-2026: "mostrar los obstáculos en el mapa que el golem ha reconocido"): each
+        // mark of a thing as a red disc of its reach, the vertices joined — two make a line, three or more a figure; a peer met as a dashed ring
+        if (Current?.Knowledge.Obstacles is { } learned)
+        {
+            var markFill = new SolidColorBrush(Color.FromArgb(0x70, 0xe0, 0x77, 0x77));
+            var markLine = new SolidColorBrush(Color.FromArgb(0xf0, 0xe0, 0x77, 0x77));
+            var figureFill = new SolidColorBrush(Color.FromArgb(0x40, 0xe0, 0x77, 0x77));
+            var peer = new SolidColorBrush(Color.FromArgb(0xa0, 0xe0, 0x77, 0x77));
+            foreach (var o in learned)
+            {
+                if (!o.IsThing)
+                {
+                    var pc = Pixel(o.X, o.Y); double pr = Math.Max(5, 0.25 * scale);
+                    var ring = new Ellipse { Width = 2 * pr, Height = 2 * pr, Stroke = peer, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 2, 2 } };
+                    Canvas.SetLeft(ring, pc.X - pr); Canvas.SetTop(ring, pc.Y - pr); Map.Children.Add(ring);
+                    var who = new TextBlock { Text = $"peer {o.Who}", Foreground = peer, FontSize = 9 };
+                    Canvas.SetLeft(who, pc.X + pr + 2); Canvas.SetTop(who, pc.Y - 7); Map.Children.Add(who);
+                    continue;
+                }
+                foreach (var v in o.Vertices)
+                {
+                    var pv = Pixel(v.X, v.Y); double r = Math.Max(4, v.Reach * scale);
+                    var disc = new Ellipse { Width = 2 * r, Height = 2 * r, Fill = markFill, Stroke = markLine, StrokeThickness = 1.5 };
+                    Canvas.SetLeft(disc, pv.X - r); Canvas.SetTop(disc, pv.Y - r); Map.Children.Add(disc);
+                }
+                if (o.Vertices.Count >= 2)
+                {
+                    var figure = new System.Windows.Shapes.Polygon { Stroke = markLine, StrokeThickness = 2, Fill = o.Vertices.Count >= 3 ? figureFill : Brushes.Transparent };
+                    foreach (var v in o.Vertices) figure.Points.Add(Pixel(v.X, v.Y));
+                    if (o.Vertices.Count == 2) Map.Children.Add(new Line { X1 = Pixel(o.Vertices[0].X, o.Vertices[0].Y).X, Y1 = Pixel(o.Vertices[0].X, o.Vertices[0].Y).Y, X2 = Pixel(o.Vertices[1].X, o.Vertices[1].Y).X, Y2 = Pixel(o.Vertices[1].X, o.Vertices[1].Y).Y, Stroke = markLine, StrokeThickness = 2 });
+                    else Map.Children.Add(figure);
+                }
+            }
         }
         // the points picked: the way the errand will go, numbered, joined by a dashed line
         var way = new SolidColorBrush(Color.FromRgb(0xff, 0xb4, 0x54));

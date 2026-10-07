@@ -8,6 +8,10 @@ namespace GolemCli;
 public sealed class GolemColor : IValueConverter
 {
     public static readonly GolemColor Brush = new();
+    /// <summary>The same colour as a translucent FILL: the selected box is painted in its golem's colour (Juan, 7-oct-2026).</summary>
+    public static readonly GolemColor Fill = new() { alpha = 0x2c };
+
+    private byte alpha = 0xff;
 
     public static Color Of(string name) => name switch
     {
@@ -19,8 +23,11 @@ public sealed class GolemColor : IValueConverter
         _ => Color.FromRgb(0xb0, 0xb0, 0xb0),
     };
 
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        new SolidColorBrush(Of(value as string ?? ""));
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var c = Of(value as string ?? "");
+        return new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }
