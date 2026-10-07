@@ -310,7 +310,7 @@
                 <!-- the map, square and centred, with the height left -->
                 <TextBlock DockPanel.Dock="Top" x:Name="MapHeader" Text="map — the last position asked of each golem" Foreground="{StaticResource Dim}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="2,0,2,2"/>
                 <Grid>
-                    <Canvas x:Name="Map" Background="{StaticResource Well}" MouseLeftButtonDown="Map_Click" MouseMove="Map_MouseMove" MouseLeave="Map_MouseLeave" SizeChanged="Map_SizeChanged" ClipToBounds="True"/>
+                    <Canvas x:Name="Map" Background="{StaticResource Well}" MouseLeftButtonDown="Map_Click" MouseLeftButtonUp="Map_MouseUp" MouseMove="Map_MouseMove" MouseLeave="Map_MouseLeave" SizeChanged="Map_SizeChanged" ClipToBounds="True"/>
                     <!-- the coordinates under the cursor, while it is over the floor -->
                     <Border x:Name="Hover" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" Background="#cc0f1419" BorderBrush="{StaticResource Accent}" BorderThickness="1" CornerRadius="3" Padding="6,2">
                         <TextBlock x:Name="HoverText" Foreground="{StaticResource Accent}" FontFamily="Consolas" FontSize="13"/>

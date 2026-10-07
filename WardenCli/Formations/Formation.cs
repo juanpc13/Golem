@@ -41,7 +41,7 @@ public sealed class Formation : INotifyPropertyChanged
 
     /// <summary>Its order of birth in the console's list: "square #2".</summary>
     public int Number { get; }
-    public Figure Figure { get; }
+    public Figure Figure { get; private set; }
     public Fleet Fleet { get; }
     /// <summary>How many steps it has turned since it was laid out, clockwise negative — the places run counter-clockwise.</summary>
     public int Turned { get; private set; }
@@ -87,6 +87,20 @@ public sealed class Formation : INotifyPropertyChanged
         Turned += sign * steps;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Holders)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Turned)));
+        return lines;
+    }
+
+    /// <summary>A MOVE (propuesta 97, 7-oct-2026; Juan: "seleccionar la formación y poder desplazar el overlay del mapa para cambiarle el centro a
+    /// otra posición"): the same figure, its centre elsewhere — every member KEEPS ITS VERTEX and the line it gets is the <c>visit</c> to that
+    /// vertex at the new place; the rotations counted stay. Nothing is sent here; the console knows nothing of the map, so where it goes is
+    /// the operator's to judge.</summary>
+    public IReadOnlyDictionary<string, string> Move(Spot center)
+    {
+        var moved = Figure.At(center);
+        var places = moved.Places(Fleet.Count);
+        var lines = Fleet.Members.ToDictionary(m => m.Name, m => "visit " + places[held[m.Name]], StringComparer.Ordinal);
+        Figure = moved;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Figure)));
         return lines;
     }
 

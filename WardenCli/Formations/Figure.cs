@@ -26,6 +26,9 @@ public abstract class Figure
     /// <summary>The bearing of a place from the centre, in degrees from due east, counter-clockwise.</summary>
     public abstract double Bearing(int index, int count);
 
+    /// <summary>The same figure — the same kind, the same measure — with its centre elsewhere (propuesta 97: a formation moved on the map).</summary>
+    public abstract Figure At(Spot center);
+
     /// <summary>What the operator calls a vertex: its compass point from the centre (NE, N, NW…), the nearest of eight (propuesta 96).</summary>
     public string Label(int index, int count)
     {
@@ -85,6 +88,7 @@ public sealed class Square : Polygon
 {
     public Square(Spot center, double side) : base(center, side) { }
     public override string Name => "square";
+    public override Figure At(Spot center) => new Square(center, Side);
     protected override double[] Bearings => new[] { 45.0, 135.0, 225.0, 315.0 };
 }
 
@@ -92,6 +96,7 @@ public sealed class Triangle : Polygon
 {
     public Triangle(Spot center, double side) : base(center, side) { }
     public override string Name => "triangle";
+    public override Figure At(Spot center) => new Triangle(center, Side);
     protected override double[] Bearings => new[] { 90.0, 210.0, 330.0 };
 }
 
@@ -99,6 +104,7 @@ public sealed class Pentagon : Polygon
 {
     public Pentagon(Spot center, double side) : base(center, side) { }
     public override string Name => "pentagon";
+    public override Figure At(Spot center) => new Pentagon(center, Side);
     protected override double[] Bearings => new[] { 90.0, 162.0, 234.0, 306.0, 18.0 };
 }
 
@@ -113,6 +119,7 @@ public sealed class Circle : Figure
 
     public double Radius { get; }
     public override string Name => "circle";
+    public override Figure At(Spot center) => new Circle(center, Radius);
 
     public override double Bearing(int index, int count) =>
         count >= 1 && index >= 0 && index < count ? 360.0 * index / count : throw new ArgumentException($"a circle of {count} has no place {index}");

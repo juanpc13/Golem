@@ -25,6 +25,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<Golem> golems = new();
     // THE ACTIVE FORMATIONS (propuesta 96): every one laid out by the console, with the vertex each golem holds, rotated from here
     private readonly ObservableCollection<Formation> formations = new();
+    // a formation being MOVED on the map (propuesta 97): grabbed by the handle at its centre, the centre it would take while the mouse is held
+    private Formation? dragging;
+    private Spot? dragTo;
     private readonly Dictionary<string, CancellationTokenSource> runners = new();
     private CancellationTokenSource? journalFollow;
     private string? workspace;
@@ -46,7 +49,11 @@ public partial class MainWindow : Window
         GolemList.ItemsSource = golems;
         FormationList.ItemsSource = formations;
         FormationList.SelectionChanged += (_, _) => Draw();
-        formations.CollectionChanged += (_, _) => { Draw(); NoFormation.Visibility = formations.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
+        formations.CollectionChanged += (_, _) =>
+        {
+            Draw();
+            NoFormation.Text = formations.Count == 0 ? "none yet — Console › Formation lays one out here" : "select one and drag the handle at its centre on the map to move it";
+        };
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; } };
@@ -668,6 +675,15 @@ public partial class MainWindow : Window
 
     private void Map_Click(object sender, MouseButtonEventArgs e)
     {
+        if (OnHandle(e.GetPosition(Map)) is { } grabbed)
+        {
+            dragging = grabbed;
+            dragTo = grabbed.Figure.Center;
+            Map.CaptureMouse();
+            e.Handled = true;
+            Draw();
+            return;
+        }
         var (x, y) = FloorPoint(e.GetPosition(Map));
         if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) return;
         x = Math.Round(x, 1); y = Math.Round(y, 1);
@@ -684,10 +700,57 @@ public partial class MainWindow : Window
     private (double X, double Y) FloorPoint(Point p) => ((p.X - OffsetX) / Scale(), FloorSize - (p.Y - OffsetY) / Scale());
     private Point Pixel(double x, double y) => new(OffsetX + x * Scale(), OffsetY + (FloorSize - y) * Scale());
 
-    // the coordinates under the cursor, shown while it moves over the floor and gone when it leaves (Juan, 6-oct-2026)
+    // THE HANDLE of the selected formation, projected: a ring at its centre that grabs it (propuesta 97)
+    private Formation? OnHandle(Point p)
+    {
+        if (FormationList.SelectedItem is not Formation f || !f.Shown) return null;
+        var c = Pixel(f.Figure.Center.X, f.Figure.Center.Y);
+        return Math.Abs(p.X - c.X) <= 10 && Math.Abs(p.Y - c.Y) <= 10 ? f : null;
+    }
+
+    // the formation let go: moved if its centre changed — the same figure there, every golem the visit to its own vertex on its tab
+    private void Map_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (dragging is not { } formation) return;
+        Map.ReleaseMouseCapture();
+        var to = dragTo;
+        dragging = null;
+        dragTo = null;
+        if (to is Spot centre && centre != formation.Figure.Center) MoveFormation(formation, centre);
+        Draw();
+    }
+
+    private void MoveFormation(Formation formation, Spot centre)
+    {
+        try
+        {
+            var from = formation.Figure.Center;
+            var lines = formation.Move(centre);
+            int missing = 0;
+            foreach (var (name, line) in lines)
+            {
+                var g = golems.FirstOrDefault(x => x.Name == name);
+                if (g == null) { missing++; continue; }
+                g.Enqueue($"# {formation.Name} moves from {from} to {centre} — {name} keeps {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
+                g.Enqueue(line);
+            }
+            Log($"{formation.Name} › moved from {from} to {centre}: a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — {formation.Holders}; SEND to selected when ready");
+        }
+        catch (ArgumentException ex) { Log(ex.Message); }
+    }
+
+    // the coordinates under the cursor, shown while it moves over the floor and gone when it leaves (Juan, 6-oct-2026); while a formation is
+    // held, its centre follows the cursor (to a tenth of a metre, inside the floor) and the map draws it there
     private void Map_MouseMove(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Map);
+        if (dragging != null)
+        {
+            var (dx, dy) = FloorPoint(p);
+            dragTo = new Spot(Math.Round(Math.Clamp(dx, 0, FloorSize), 1), Math.Round(Math.Clamp(dy, 0, FloorSize), 1));
+            Draw();
+        }
+        Map.Cursor = dragging != null || OnHandle(p) != null ? Cursors.SizeAll : null;
         var (x, y) = FloorPoint(p);
         if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) { Hover.Visibility = Visibility.Collapsed; return; }
         HoverText.Text = $"x {x.ToString("0.0", CultureInfo.InvariantCulture)}  y {y.ToString("0.0", CultureInfo.InvariantCulture)}";
@@ -794,45 +857,23 @@ public partial class MainWindow : Window
             }
         }
         // THE ACTIVE FORMATIONS PROJECTED (propuesta 96; Juan, 7-oct-2026: "que se vea la forma de la figura encima del mapa para proyectar la
-        // formación seleccionada… un botón como un ojo"): every formation whose eye is open shows its FIGURE — the polygon through its vertices
-        // or the circle of its radius, filled faintly in purple, its centre crossed — and every vertex a diamond ringed in its holder's colour
-        // with the compass point and the holder's name, hollow when free; the one selected in the list is drawn strongest, the others dashed
-        var purple = ((SolidColorBrush)FindResource("Purple")).Color;
+        // formación seleccionada… un botón como un ojo"): every formation whose eye is open shows its figure; the one selected in the list is drawn
+        // strongest and carries the HANDLE at its centre that moves it (propuesta 97); while it is held, where it stands fades and the figure is
+        // drawn where the cursor would put it, every vertex with its holder
         var chosen = FormationList.SelectedItem as Formation;
         foreach (var f in formations.Where(f => f.Shown).OrderBy(f => f == chosen))
         {
             bool strong = f == chosen;
-            var line = new SolidColorBrush(purple) { Opacity = strong ? 1 : 0.7 };
-            var fill = new SolidColorBrush(Color.FromArgb(strong ? (byte)0x30 : (byte)0x14, purple.R, purple.G, purple.B));
-            var dash = strong ? null : new DoubleCollection { 3, 3 };
-            var vertices = f.Places;
-            var centre = Pixel(f.Figure.Center.X, f.Figure.Center.Y);
-            if (f.Figure is Circle circle)
+            if (f == dragging && dragTo is Spot to)
             {
-                double r = circle.Radius * scale;
-                var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
-                Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); Map.Children.Add(ring);
+                DrawFigure(f, f.Figure, scale, strong: false, faint: true);
+                DrawFigure(f, f.Figure.At(to), scale, strong: true, faint: false);
+                DrawHandle(to);
             }
-            else if (vertices.Count >= 3)
+            else
             {
-                var shape = new System.Windows.Shapes.Polygon { Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
-                foreach (var v in vertices) shape.Points.Add(Pixel(v.X, v.Y));
-                Map.Children.Add(shape);
-            }
-            Map.Children.Add(new Line { X1 = centre.X - 5, Y1 = centre.Y, X2 = centre.X + 5, Y2 = centre.Y, Stroke = line, StrokeThickness = 1 });
-            Map.Children.Add(new Line { X1 = centre.X, Y1 = centre.Y - 5, X2 = centre.X, Y2 = centre.Y + 5, Stroke = line, StrokeThickness = 1 });
-            var tag = new TextBlock { Text = f.Name, Foreground = line, FontSize = strong ? 10 : 9, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal };
-            Canvas.SetLeft(tag, centre.X + 6); Canvas.SetTop(tag, centre.Y + 2); Map.Children.Add(tag);
-            for (int i = 0; i < vertices.Count; i++)
-            {
-                var pv = Pixel(vertices[i].X, vertices[i].Y);
-                string? who = f.HolderOf(i);
-                var holder = who == null ? line : new SolidColorBrush(GolemColor.Of(who));
-                var diamond = new System.Windows.Shapes.Polygon { Stroke = holder, StrokeThickness = who == null ? 1 : 2, Fill = Brushes.Transparent, Opacity = who == null ? 0.6 : strong ? 1 : 0.8 };
-                diamond.Points.Add(new Point(pv.X, pv.Y - 7)); diamond.Points.Add(new Point(pv.X + 7, pv.Y)); diamond.Points.Add(new Point(pv.X, pv.Y + 7)); diamond.Points.Add(new Point(pv.X - 7, pv.Y));
-                Map.Children.Add(diamond);
-                var label = new TextBlock { Text = f.Figure.Label(i, vertices.Count) + (who == null ? " free" : " " + who), Foreground = holder, FontSize = 9, Opacity = who == null ? 0.7 : 1 };
-                Canvas.SetLeft(label, pv.X + 8); Canvas.SetTop(label, pv.Y + 2); Map.Children.Add(label);
+                DrawFigure(f, f.Figure, scale, strong, faint: false);
+                if (strong) DrawHandle(f.Figure.Center);
             }
         }
         // the points picked: the way the errand will go, numbered, joined by a dashed line
@@ -869,6 +910,57 @@ public partial class MainWindow : Window
             Canvas.SetLeft(label, nearRight ? cx - r - 6 * g.Name.Length - 4 : cx + r + 2); Canvas.SetTop(label, nearTop ? cy + r : cy - r - 4);
             Map.Children.Add(label);
         }
+    }
+
+    // one formation's figure on the map — the polygon through its vertices or the circle of its radius, filled faintly in purple, its centre
+    // crossed, every vertex a diamond ringed in its holder's colour with the compass point and the holder's name ("free" when nobody holds it)
+    private void DrawFigure(Formation f, Figure figure, double scale, bool strong, bool faint)
+    {
+        var purple = ((SolidColorBrush)FindResource("Purple")).Color;
+        var layer = new Canvas { Opacity = faint ? 0.3 : 1, IsHitTestVisible = false };
+        Map.Children.Add(layer);
+        var line = new SolidColorBrush(purple) { Opacity = strong ? 1 : 0.7 };
+        var fill = new SolidColorBrush(Color.FromArgb(strong ? (byte)0x30 : (byte)0x14, purple.R, purple.G, purple.B));
+        var dash = strong ? null : new DoubleCollection { 3, 3 };
+        var vertices = figure.Places(f.Fleet.Count);
+        var centre = Pixel(figure.Center.X, figure.Center.Y);
+        if (figure is Circle circle)
+        {
+            double r = circle.Radius * scale;
+            var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
+            Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); layer.Children.Add(ring);
+        }
+        else if (vertices.Count >= 3)
+        {
+            var shape = new System.Windows.Shapes.Polygon { Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
+            foreach (var v in vertices) shape.Points.Add(Pixel(v.X, v.Y));
+            layer.Children.Add(shape);
+        }
+        layer.Children.Add(new Line { X1 = centre.X - 5, Y1 = centre.Y, X2 = centre.X + 5, Y2 = centre.Y, Stroke = line, StrokeThickness = 1 });
+        layer.Children.Add(new Line { X1 = centre.X, Y1 = centre.Y - 5, X2 = centre.X, Y2 = centre.Y + 5, Stroke = line, StrokeThickness = 1 });
+        var tag = new TextBlock { Text = $"{f.Name} · {figure.Center}", Foreground = line, FontSize = strong ? 10 : 9, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal };
+        Canvas.SetLeft(tag, centre.X + 12); Canvas.SetTop(tag, centre.Y + 2); layer.Children.Add(tag);
+        for (int i = 0; i < vertices.Count; i++)
+        {
+            var pv = Pixel(vertices[i].X, vertices[i].Y);
+            string? who = f.HolderOf(i);
+            var holder = who == null ? line : new SolidColorBrush(GolemColor.Of(who));
+            var diamond = new System.Windows.Shapes.Polygon { Stroke = holder, StrokeThickness = who == null ? 1 : 2, Fill = Brushes.Transparent, Opacity = who == null ? 0.6 : strong ? 1 : 0.8 };
+            diamond.Points.Add(new Point(pv.X, pv.Y - 7)); diamond.Points.Add(new Point(pv.X + 7, pv.Y)); diamond.Points.Add(new Point(pv.X, pv.Y + 7)); diamond.Points.Add(new Point(pv.X - 7, pv.Y));
+            layer.Children.Add(diamond);
+            var label = new TextBlock { Text = figure.Label(i, vertices.Count) + (who == null ? " free" : " " + who), Foreground = holder, FontSize = 9, Opacity = who == null ? 0.7 : 1 };
+            Canvas.SetLeft(label, pv.X + 8); Canvas.SetTop(label, pv.Y + 2); layer.Children.Add(label);
+        }
+    }
+
+    // the handle that moves the selected formation: a ring at its centre (drag it; the cursor turns to the four arrows over it)
+    private void DrawHandle(Spot centre)
+    {
+        var purple = ((SolidColorBrush)FindResource("Purple")).Color;
+        var c = Pixel(centre.X, centre.Y);
+        var ring = new Ellipse { Width = 18, Height = 18, Stroke = new SolidColorBrush(purple), StrokeThickness = 2, Fill = new SolidColorBrush(Color.FromArgb(0x55, purple.R, purple.G, purple.B)), ToolTip = "drag to move the formation's centre" };
+        Canvas.SetLeft(ring, c.X - 9); Canvas.SetTop(ring, c.Y - 9);
+        Map.Children.Add(ring);
     }
 
     // ==================================================================

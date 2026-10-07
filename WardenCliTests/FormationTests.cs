@@ -48,6 +48,25 @@ public class FormationTests
     }
 
     [TestMethod]
+    public void AMove_TakesTheFigureElsewhere_EveryoneKeepsItsVertex_AndGetsTheVisitToItThere()
+    {
+        var fleet = new Fleet(new[] { new Member("blue", null), new Member("red", null), new Member("green", null), new Member("yellow", null) });
+        var square = new Square(new Spot(5.5, 5.5), 2.0);
+        var formation = new Choreography(square, fleet, new ByRank(), 0, clockwise: true).Outcome(1);
+        formation.Rotate(Sense.Clockwise);
+        Assert.AreEqual("green NE · red NW · yellow SW · blue SE", formation.Holders);
+
+        var lines = formation.Move(new Spot(4.0, 5.0));
+        Assert.AreEqual(new Spot(4.0, 5.0), formation.Figure.Center);
+        Assert.AreEqual(2.0, ((Square)formation.Figure).Side, "the same square, elsewhere");
+        Assert.AreEqual("visit 5,4", lines["blue"], "blue keeps the south-east corner, now at 5,4");
+        Assert.AreEqual("visit 5,6", lines["green"], "green keeps the north-east");
+        Assert.AreEqual("green NE · red NW · yellow SW · blue SE", formation.Holders, "nobody changes vertex");
+        Assert.AreEqual(-1, formation.Turned, "the rotations counted stay");
+        Assert.AreEqual(1.5, ((Circle)new Circle(new Spot(5.5, 5.5), 1.5).At(new Spot(2.0, 2.0))).Radius, "a circle moves with its radius");
+    }
+
+    [TestMethod]
     public void FourOnAPentagon_TheFreeVertexMovesWithTheFleet()
     {
         var fleet = new Fleet(new[] { new Member("blue", null), new Member("red", null), new Member("green", null), new Member("yellow", null) });
