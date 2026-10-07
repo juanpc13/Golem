@@ -147,17 +147,53 @@
             </TabItem>
         </TabControl>
 
-        <!-- THE BOTTOM: the log and the journal of the current golem -->
-        <TabControl DockPanel.Dock="Bottom" Height="200" Margin="4" Style="{StaticResource DarkTabs}">
+        <!-- THE BOTTOM: the log, the journal of the current golem, the active formations -->
+        <TabControl DockPanel.Dock="Bottom" Height="180" Margin="4" Style="{StaticResource DarkTabs}">
             <TabItem Header="log — what every golem answered">
                 <TextBox x:Name="LogBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
             </TabItem>
             <TabItem x:Name="JournalTab" Header="journal">
                 <TextBox x:Name="JournalBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
             </TabItem>
+            <!-- THE ACTIVE FORMATIONS (propuesta 96, 7-oct-2026; Juan: "cuando uno cree una formación se cree una lista de formaciones activas… para
+                 realizar las operaciones de rotar… un objeto que guarde el vértice que corresponde a cada golem"; "podrías moverlo a un tab"): every
+                 formation laid out, who holds which vertex, and the rotations the operator asks of it — each writes a visit on every member's tab -->
+            <TabItem x:Name="FormationsTab" Header="formations — the console's">
+                <DockPanel Margin="4">
+                    <StackPanel DockPanel.Dock="Left" Width="170" Margin="0,0,8,0">
+                        <DockPanel>
+                            <TextBlock Text="steps per rotation" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center"/>
+                            <TextBox x:Name="RotateSteps" DockPanel.Dock="Right" Width="36" Text="1" ToolTip="how many vertices each rotation moves everybody" TextAlignment="Center" HorizontalAlignment="Right"/>
+                        </DockPanel>
+                        <TextBlock x:Name="NoFormation" Text="none yet — Console › Formation lays one out and it appears here, with the vertex each golem holds; ↻ ↺ write the next visit on every member's tab" Foreground="{StaticResource Dim}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="FormationList">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="340" BorderThickness="1" BorderBrush="{StaticResource Purple}" CornerRadius="3" Margin="2,3" Padding="6,4" Background="{StaticResource Well}">
+                                        <StackPanel>
+                                            <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  at "/><Run Text="{Binding Figure.Center, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="  turned "/><Run Text="{Binding Turned, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/></TextBlock>
+                                            <TextBlock Text="{Binding Holders, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap" Margin="0,2"/>
+                                            <UniformGrid Columns="3">
+                                                <Button Content="↻ step clockwise" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="everybody one vertex clockwise (down the figure's order): a visit on every member's tab"/>
+                                                <Button Content="↺ step counter" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="everybody one vertex counter-clockwise: a visit on every member's tab"/>
+                                                <Button Content="dissolve" Tag="{Binding}" Click="Dissolve_Click" ToolTip="the formation leaves the list; the golems stay where they are"/>
+                                            </UniformGrid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
         </TabControl>
 
-        <!-- THE THREE COLUMNS: the golems (fixed), the script (grows), the coordinates and the map (a share of the window, so the map fits the
+        <!-- THE THREE COLUMNS: the golems (fixed), the script (grows), the golem debugger (a share of the window, so the map fits the
              resolution — Juan, 6-oct-2026: "el mapa como que no se ajusta muy bien a la resolución actual") -->
         <Grid>
             <Grid.ColumnDefinitions>
@@ -200,61 +236,61 @@
                 <TextBlock Grid.Row="1" x:Name="WorkspaceLabel" Margin="6,4" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" Text="no workspace: the scripts live in this window until you save one"/>
             </Grid>
 
-            <!-- THE RIGHT COLUMN: the coordinates that build a command, then the map, square and centred -->
-            <DockPanel Grid.Column="2">
-                <GroupBox DockPanel.Dock="Top" Header="coordinates → command">
-                    <StackPanel>
-                        <DockPanel>
-                            <TextBlock Text="x" VerticalAlignment="Center" Margin="4,0"/>
-                            <TextBox x:Name="XBox" Width="70" Text="5.5" TextChanged="Point_Changed"/>
-                            <TextBlock Text="y" VerticalAlignment="Center" Margin="8,0,4,0"/>
-                            <TextBox x:Name="YBox" Width="70" Text="5.5" TextChanged="Point_Changed"/>
-                            <TextBlock Text="" />
-                        </DockPanel>
-                        <WrapPanel x:Name="Verbs" Margin="4,4,0,0">
-                            <TextBlock Text="verb" Foreground="{StaticResource Dim}" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                            <RadioButton Content="visit" IsChecked="True" Checked="Point_Changed" Margin="0,0,10,0"/>
-                            <RadioButton Content="cover" Checked="Point_Changed" Margin="0,0,10,0"/>
-                            <RadioButton Content="then" Checked="Point_Changed" Margin="0,0,10,0"/>
-                            <RadioButton Content="place" Checked="Point_Changed" Margin="0,0,10,0"/>
-                            <RadioButton Content="forget" Checked="Point_Changed"/>
-                        </WrapPanel>
-                        <TextBox x:Name="BuiltBox" FontFamily="Consolas" FontSize="14" Margin="2,6" IsReadOnly="True" Text="visit 5.5,5.5"/>
-                        <UniformGrid Columns="3">
-                            <Button Content="add to this tab" Click="AddBuilt_Click"/>
-                            <Button Content="add to selected" Click="AddBuiltSelected_Click" ToolTip="the same command on every checked golem's tab"/>
-                            <Button Content="copy" Click="CopyBuilt_Click" ToolTip="the command to the clipboard, to paste in another tab"/>
-                        </UniformGrid>
-                        <DockPanel Margin="2,0">
-                            <Button DockPanel.Dock="Right" Content="clear points" Click="ClearPoints_Click" ToolTip="forget every point clicked"/>
-                            <Button DockPanel.Dock="Right" Content="undo last" Click="UndoPoint_Click" ToolTip="the last point clicked, taken back"/>
-                            <TextBlock x:Name="PointsHint" Text="click the map: every click adds a point to the visit, in order" Foreground="{StaticResource Dim}" FontSize="11" Margin="2,4" VerticalAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34"/>
-                        </DockPanel>
-                    </StackPanel>
-                </GroupBox>
-                <!-- THE READS AS INFORMATION (Juan, 7-oct-2026: "estos reads deberían ir más del lado del mapa… no como botones sino como información"):
-                     where, state, route, obstacles of the golem whose script is in the centre, asked every few seconds -->
-                <GroupBox DockPanel.Dock="Top">
-                    <GroupBox.Header>
-                        <TextBlock x:Name="KnowsHeader" Text="what the selected golem knows — where · state · route · obstacles" Foreground="{StaticResource Dim}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                    </GroupBox.Header>
-                    <ContentControl Content="{Binding SelectedItem, ElementName=GolemList}">
-                        <ContentControl.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Margin="2,0">
-                                    <TextBlock Text="{Binding WhereLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding StateLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding RouteLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap" FontFamily="Consolas"/>
-                                    <TextBlock Text="{Binding ObstaclesLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+            <!-- THE RIGHT COLUMN IS ONE PANEL, THE GOLEM DEBUGGER (Juan, 7-oct-2026: "toda esa zona sea un solo panel, la del mapa, porque básicamente es la
+                 lectura del golem; esa sección debería llamarse algo como debugger del golem porque hace lecturas junto con el mapa y permite crear los visit"):
+                 what the selected golem knows (where, state, route, obstacles, asked every 3 s), its map with everybody and its obstacles, and the tool
+                 that builds a command from a point — the map's clicks accumulate the visit's points -->
+            <GroupBox Grid.Column="2">
+                <GroupBox.Header>
+                    <TextBlock x:Name="KnowsHeader" Text="golem debugger — select a golem: what it knows, its map, a command from a point" Foreground="{StaticResource Dim}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                </GroupBox.Header>
+                <DockPanel>
+                    <!-- the reads, as information -->
+                    <Border DockPanel.Dock="Top" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="6,3" Margin="0,0,0,4">
+                        <ContentControl Content="{Binding SelectedItem, ElementName=GolemList}">
+                            <ContentControl.ContentTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding WhereLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding StateLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding RouteLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap" FontFamily="Consolas"/>
+                                        <TextBlock Text="{Binding ObstaclesLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ContentControl.ContentTemplate>
+                        </ContentControl>
+                    </Border>
+                    <!-- the tool: a point and a verb build one command; the points clicked on the map accumulate for visit and cover -->
+                    <Border DockPanel.Dock="Bottom" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="6,4" Margin="0,4,0,0">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="x" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBox DockPanel.Dock="Left" x:Name="XBox" Width="56" Text="5.5" TextChanged="Point_Changed"/>
+                                <TextBlock DockPanel.Dock="Left" Text="y" VerticalAlignment="Center" Margin="6,0,4,0"/>
+                                <TextBox DockPanel.Dock="Left" x:Name="YBox" Width="56" Text="5.5" TextChanged="Point_Changed"/>
+                                <TextBox x:Name="BuiltBox" FontFamily="Consolas" FontSize="14" IsReadOnly="True" Text="visit 5.5,5.5" VerticalContentAlignment="Center" Margin="10,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,4,0,0">
+                                <StackPanel DockPanel.Dock="Left" x:Name="Verbs" Orientation="Horizontal" VerticalAlignment="Center" ToolTip="the verb of the command built">
+                                    <RadioButton Content="visit" IsChecked="True" Checked="Point_Changed" Margin="0,0,6,0"/>
+                                    <RadioButton Content="cover" Checked="Point_Changed" Margin="0,0,6,0"/>
+                                    <RadioButton Content="then" Checked="Point_Changed" Margin="0,0,6,0"/>
+                                    <RadioButton Content="place" Checked="Point_Changed" Margin="0,0,6,0"/>
+                                    <RadioButton Content="forget" Checked="Point_Changed"/>
                                 </StackPanel>
-                            </DataTemplate>
-                        </ContentControl.ContentTemplate>
-                    </ContentControl>
-                </GroupBox>
-                <GroupBox>
-                    <GroupBox.Header>
-                        <TextBlock x:Name="MapHeader" Text="map — the last position asked of each golem" Foreground="{StaticResource Dim}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                    </GroupBox.Header>
+                                <TextBlock x:Name="PointsHint" Text="click the map: every click adds a point to the visit, in order" Foreground="{StaticResource Dim}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
+                            </DockPanel>
+                            <WrapPanel Margin="0,4,0,0">
+                                <Button Content="add to this tab" Click="AddBuilt_Click"/>
+                                <Button Content="add to selected" Click="AddBuiltSelected_Click" ToolTip="the same command on every checked golem's tab"/>
+                                <Button Content="copy" Click="CopyBuilt_Click" ToolTip="the command to the clipboard, to paste in another tab"/>
+                                <Button Content="undo" Click="UndoPoint_Click" Margin="10,0,0,0" ToolTip="the last point clicked, taken back"/>
+                                <Button Content="clear" Click="ClearPoints_Click" ToolTip="forget every point clicked"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <!-- the map, square and centred, with the height left -->
+                    <TextBlock DockPanel.Dock="Top" x:Name="MapHeader" Text="map — the last position asked of each golem" Foreground="{StaticResource Dim}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="2,0,2,2"/>
                     <Grid>
                         <Canvas x:Name="Map" Background="{StaticResource Well}" MouseLeftButtonDown="Map_Click" MouseMove="Map_MouseMove" MouseLeave="Map_MouseLeave" SizeChanged="Map_SizeChanged" ClipToBounds="True"/>
                         <!-- the coordinates under the cursor, while it is over the floor -->
@@ -262,8 +298,8 @@
                             <TextBlock x:Name="HoverText" Foreground="{StaticResource Accent}" FontFamily="Consolas" FontSize="13"/>
                         </Border>
                     </Grid>
-                </GroupBox>
-            </DockPanel>
+                </DockPanel>
+            </GroupBox>
         </Grid>
     </DockPanel>
 </Window>

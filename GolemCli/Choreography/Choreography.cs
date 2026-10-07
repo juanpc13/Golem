@@ -35,13 +35,21 @@ public sealed class Choreography
 
     /// <summary>The place of a member at a round: its place at round 0 moved along the figure's order one place per step — down the order
     /// clockwise (the places run counter-clockwise), up it otherwise; the hole of a free place moves with the fleet.</summary>
-    public Spot PlaceAt(string member, int round)
+    public Spot PlaceAt(string member, int round) => Places[IndexAt(member, round)];
+
+    /// <summary>The index, in the figure's order, of a member's place at a round.</summary>
+    public int IndexAt(string member, int round)
     {
-        var places = Places;
+        int count = Places.Count;
         int index = Shared[member];
         int shift = Clockwise ? -round : round;
-        return places[((index + shift) % places.Count + places.Count) % places.Count];
+        return ((index + shift) % count + count) % count;
     }
+
+    /// <summary>THE FORMATION THIS CHOREOGRAPHY LEAVES IN FORCE once its scripts are walked (propuesta 96, 7-oct-2026): every member holding the
+    /// vertex its last round takes it to — what the console keeps in its list of active formations, to rotate from there.</summary>
+    public Formation Outcome(int number) =>
+        new(number, Figure, Fleet, Fleet.Names.ToDictionary(n => n, n => IndexAt(n, Steps), StringComparer.Ordinal));
 
     /// <summary>THE SCRIPTS: for every member, its lines. Two PACES (Juan, 6-oct-2026: "con visit de todos los puntos calculados cubre parte de
     /// completar una coreografía"): ONE ERRAND — a single <c>visit</c> through every place of its way, the golem walks them in order at its

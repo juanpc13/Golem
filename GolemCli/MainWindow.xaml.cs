@@ -23,6 +23,8 @@ namespace GolemCli;
 public partial class MainWindow : Window
 {
     private readonly ObservableCollection<Golem> golems = new();
+    // THE ACTIVE FORMATIONS (propuesta 96): every one laid out by the console, with the vertex each golem holds, rotated from here
+    private readonly ObservableCollection<Formation> formations = new();
     private readonly Dictionary<string, CancellationTokenSource> runners = new();
     private CancellationTokenSource? journalFollow;
     private string? workspace;
@@ -42,6 +44,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         GolemList.ItemsSource = golems;
+        FormationList.ItemsSource = formations;
+        formations.CollectionChanged += (_, _) => { Draw(); NoFormation.Visibility = formations.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
         readings.Start();
@@ -581,8 +585,46 @@ public partial class MainWindow : Window
                 foreach (var line in lines) g.Enqueue(line);
             }
             Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit")))} visit(s) on {scripts.Count} tab(s){(dialog.OneErrand ? "" : $"; the queues wait for each other at every {Choreography.Choreography.Sync}")} — read them, then SEND to selected");
+            // the formation this leaves in force joins the list: from here on it is rotated from the console (propuesta 96)
+            var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);
+            formation.PropertyChanged += (_, _) => Draw();
+            formations.Add(formation);
+            FormationsTab.IsSelected = true;
+            Log($"active: {formation.Describe()}");
         }
         catch (ArgumentException ex) { Log(ex.Message); }
+    }
+
+    // A ROTATION OF AN ACTIVE FORMATION (propuesta 96): the formation moves every member the steps asked in the sense and writes the visit each
+    // golem gets; the console puts it on each member's tab and keeps the vertices held for the next rotation. Nothing goes until SEND.
+    private void RotateClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise);
+    private void RotateCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise);
+
+    private void Rotate(object sender, Sense sense)
+    {
+        if ((sender as Button)?.Tag is not Formation formation) return;
+        if (!int.TryParse(RotateSteps.Text.Trim(), out int steps)) { Log("the steps are a number"); return; }
+        try
+        {
+            var lines = formation.Rotate(sense, steps);
+            int missing = 0;
+            foreach (var (name, line) in lines)
+            {
+                var g = golems.FirstOrDefault(x => x.Name == name);
+                if (g == null) { missing++; continue; }
+                g.Enqueue($"# {formation.Name} rotates {steps} {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} — {name} to {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
+                g.Enqueue(line);
+            }
+            Log($"{formation.Name} › {steps} step(s) {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}: a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
+        }
+        catch (ArgumentException ex) { Log(ex.Message); }
+    }
+
+    private void Dissolve_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not Formation formation) return;
+        formations.Remove(formation);
+        Log($"{formation.Name} dissolved — the golems stay where they are");
     }
 
     // ==================================================================
@@ -642,7 +684,7 @@ public partial class MainWindow : Window
         // THE SELECTED GOLEM'S SCENARIO, as it told it: its zones, the open sides faint, the doors marked (Juan, 6-oct-2026)
         var plan = Current?.Plan;
         MapHeader.Text = plan == null ? "map — the last position asked of each golem" : $"map — {Current!.Name}'s scenario: {plan.Name} · every golem where it was last asked · its obstacles in red";
-        KnowsHeader.Text = Current == null ? "what the selected golem knows — where · state · route · obstacles" : $"what {Current.Name} knows — where · state · route · obstacles, asked every 3 s";
+        KnowsHeader.Text = Current == null ? "golem debugger — select a golem: what it knows, its map, a command from a point" : $"golem debugger — {Current.Name}: what it knows (asked every 3 s), its map, a command from a point";
         if (plan != null)
         {
             var wall = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99));
@@ -716,6 +758,30 @@ public partial class MainWindow : Window
                     if (o.Vertices.Count == 2) Map.Children.Add(new Line { X1 = Pixel(o.Vertices[0].X, o.Vertices[0].Y).X, Y1 = Pixel(o.Vertices[0].X, o.Vertices[0].Y).Y, X2 = Pixel(o.Vertices[1].X, o.Vertices[1].Y).X, Y2 = Pixel(o.Vertices[1].X, o.Vertices[1].Y).Y, Stroke = markLine, StrokeThickness = 2 });
                     else Map.Children.Add(figure);
                 }
+            }
+        }
+        // THE ACTIVE FORMATIONS (propuesta 96): each figure's outline dashed in purple, every vertex a diamond — ringed in its holder's colour
+        // with the holder's name, hollow when free — so the operator sees who holds what before and after a rotation
+        var purple = (Brush)FindResource("Purple");
+        foreach (var f in formations)
+        {
+            var vertices = f.Places;
+            var outline = new System.Windows.Shapes.Polygon { Stroke = purple, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 3, 3 }, Opacity = 0.7 };
+            foreach (var v in vertices) outline.Points.Add(Pixel(v.X, v.Y));
+            if (vertices.Count >= 3) Map.Children.Add(outline);
+            var centre = Pixel(f.Figure.Center.X, f.Figure.Center.Y);
+            var tag = new TextBlock { Text = f.Name, Foreground = purple, FontSize = 9, Opacity = 0.9 };
+            Canvas.SetLeft(tag, centre.X - 3 * f.Name.Length); Canvas.SetTop(tag, centre.Y - 7); Map.Children.Add(tag);
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                var pv = Pixel(vertices[i].X, vertices[i].Y);
+                string? who = f.HolderOf(i);
+                var ring = who == null ? purple : new SolidColorBrush(GolemColor.Of(who));
+                var diamond = new System.Windows.Shapes.Polygon { Stroke = ring, StrokeThickness = who == null ? 1 : 2, Fill = Brushes.Transparent, Opacity = who == null ? 0.6 : 1 };
+                diamond.Points.Add(new Point(pv.X, pv.Y - 7)); diamond.Points.Add(new Point(pv.X + 7, pv.Y)); diamond.Points.Add(new Point(pv.X, pv.Y + 7)); diamond.Points.Add(new Point(pv.X - 7, pv.Y));
+                Map.Children.Add(diamond);
+                var label = new TextBlock { Text = f.Figure.Label(i, vertices.Count) + (who == null ? "" : " " + who), Foreground = ring, FontSize = 9, Opacity = who == null ? 0.7 : 1 };
+                Canvas.SetLeft(label, pv.X + 8); Canvas.SetTop(label, pv.Y + 2); Map.Children.Add(label);
             }
         }
         // the points picked: the way the errand will go, numbered, joined by a dashed line

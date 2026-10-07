@@ -23,6 +23,17 @@ public abstract class Figure
     /// <summary>The places, in the figure's fixed order; a circle spreads as many as asked, a polygon has its vertices.</summary>
     public abstract IReadOnlyList<Spot> Places(int count);
 
+    /// <summary>The bearing of a place from the centre, in degrees from due east, counter-clockwise.</summary>
+    public abstract double Bearing(int index, int count);
+
+    /// <summary>What the operator calls a vertex: its compass point from the centre (NE, N, NW…), the nearest of eight (propuesta 96).</summary>
+    public string Label(int index, int count)
+    {
+        string[] points = { "E", "NE", "N", "NW", "W", "SW", "S", "SE" };
+        double deg = ((Bearing(index, count) % 360) + 360) % 360;
+        return points[(int)Math.Round(deg / 45) % 8];
+    }
+
     /// <summary>The figure named, with its natural measure: a polygon by its side, a circle by its radius.</summary>
     public static Figure Named(string name, Spot center, double measure) => name.Trim().ToLowerInvariant() switch
     {
@@ -47,6 +58,9 @@ public abstract class Polygon : Figure
 
     public double Side { get; }
     protected abstract double[] Bearings { get; }
+
+    public override double Bearing(int index, int count) =>
+        index >= 0 && index < Bearings.Length ? Bearings[index] : throw new ArgumentException($"a {Name} has {Bearings.Length} vertices: no vertex {index}");
 
     /// <summary>The radius of the circle through the vertices: the side over twice the sine of half the angle each side spans.</summary>
     public double Circumradius => Side / (2 * Math.Sin(Math.PI / Bearings.Length));
@@ -99,6 +113,9 @@ public sealed class Circle : Figure
 
     public double Radius { get; }
     public override string Name => "circle";
+
+    public override double Bearing(int index, int count) =>
+        count >= 1 && index >= 0 && index < count ? 360.0 * index / count : throw new ArgumentException($"a circle of {count} has no place {index}");
 
     public override IReadOnlyList<Spot> Places(int count)
     {
