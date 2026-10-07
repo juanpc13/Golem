@@ -1,7 +1,7 @@
 <Window x:Class="GolemCli.FormationDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Lay out a figure as queues" Height="430" Width="470" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Title="Formation — a figure laid out as queues" Height="430" Width="470" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13">
     <Grid Margin="12">
         <Grid.ColumnDefinitions>

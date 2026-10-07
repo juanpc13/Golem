@@ -129,7 +129,7 @@
                     </GroupBox>
                     <GroupBox Header="choreography by the console" Style="{StaticResource RibbonGroup}">
                         <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource Big}" Content="Lay out a figure" local:Look.Glyph="⬟" local:Look.Tint="{StaticResource Purple}" Click="Formation_Click" ToolTip="square, pentagon, triangle or circle: the console writes every golem's script — the places, the steps around"/>
+                            <Button Style="{StaticResource Big}" Content="Formation" local:Look.Glyph="⬟" local:Look.Tint="{StaticResource Purple}" Click="Formation_Click" ToolTip="square, pentagon, triangle or circle: the console writes every golem's script — the places, the steps around"/>
                         </StackPanel>
                     </GroupBox>
                 </StackPanel>
