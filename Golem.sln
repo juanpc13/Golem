@@ -9,9 +9,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GolemDomain", "GolemDomain\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GolemAPI", "GolemAPI\GolemAPI.csproj", "{91A7149A-AFB7-C98D-5C1B-954478289861}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GolemCli", "GolemCli\GolemCli.csproj", "{DDE6F496-9C95-458C-9153-24074293825D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WardenCli", "WardenCli\WardenCli.csproj", "{DDE6F496-9C95-458C-9153-24074293825D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GolemCliTests", "GolemCliTests\GolemCliTests.csproj", "{C84490A3-B9D4-4A34-A81B-959051DAA554}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WardenCliTests", "WardenCliTests\WardenCliTests.csproj", "{C84490A3-B9D4-4A34-A81B-959051DAA554}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

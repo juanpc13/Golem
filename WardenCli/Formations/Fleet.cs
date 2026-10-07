@@ -1,4 +1,4 @@
-namespace GolemCli.Choreography;
+namespace WardenCli.Formations;
 
 /// <summary>A golem that takes part, as the console knows it: its name and where it was last seen standing — the last `where` it
 /// answered — when the console knows it (null when it never answered).</summary>

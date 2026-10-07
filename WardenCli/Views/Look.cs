@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 
-namespace GolemCli;
+namespace WardenCli.Views;
 
 /// <summary>The look of a ribbon button, declared in XAML: the glyph drawn above its label and the tint of that glyph. The button's
 /// <c>Tag</c> stays what it composes; the look is attached apart, so the two never mix.</summary>

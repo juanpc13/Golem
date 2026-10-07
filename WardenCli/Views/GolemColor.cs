@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
 
-namespace GolemCli;
+namespace WardenCli.Views;
 
 /// <summary>Each golem's colour, the one its body wears in the world: the boxes of the list, the tabs and the map share it.</summary>
 public sealed class GolemColor : IValueConverter

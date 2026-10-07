@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace GolemCli;
+namespace WardenCli;
 
 /// <summary>A WORKSPACE is ONE FILE, <c>name.golemws</c> (Alvaro, 6-oct-2026: "otro archivo más que es un workspace… los golems con los que está
 /// trabajando y el último script de cada golem, para hacer switch entre workspaces"): the golems in operation — name, host, port — and the
@@ -37,9 +37,11 @@ public static class Workspace
     public static string RoutinesFolder(string? workspacePath) =>
         workspacePath == null ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) : Path.GetDirectoryName(Path.GetFullPath(workspacePath))!;
 
-    // ---- the console's memory of workspaces: %AppData%\GolemCli\settings.json ----
+    // ---- the console's memory of workspaces: %AppData%\WardenCli\settings.json ----
 
-    private static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GolemCli", "settings.json");
+    private static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WardenCli", "settings.json");
+    // where they lived while the console was GolemCli (until 7-oct-2026): read while the new file does not exist yet, so nothing is lost
+    private static string LegacySettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GolemCli", "settings.json");
 
     public static IReadOnlyList<string> Recent() => ReadSettings().Recent.Where(File.Exists).ToList();
 
@@ -69,8 +71,9 @@ public static class Workspace
     {
         try
         {
-            if (File.Exists(SettingsPath))
-                return JsonSerializer.Deserialize<Settings>(File.ReadAllText(SettingsPath)) ?? new Settings(new List<string>(), null);
+            string path = File.Exists(SettingsPath) ? SettingsPath : LegacySettingsPath;
+            if (File.Exists(path))
+                return JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new Settings(new List<string>(), null);
         }
         catch (Exception ex) when (ex is JsonException or IOException) { }
         return new Settings(new List<string>(), null);

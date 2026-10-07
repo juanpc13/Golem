@@ -1,4 +1,4 @@
-namespace GolemCli.Choreography;
+namespace WardenCli.Formations;
 
 /// <summary>A point on the floor, as the console reckons it: metres, x east, y north.</summary>
 public readonly record struct Spot(double X, double Y)

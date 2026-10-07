@@ -1,4 +1,4 @@
-namespace GolemCli.Choreography;
+namespace WardenCli.Formations;
 
 /// <summary>THE CHOREOGRAPHY PRECALCULATED BY THE CONSOLE (propuesta 95, 6-oct-2026; Juan: "operaciones que vamos a pedirle al CLI para que
 /// nos ayude a generar los scripts completos para todos los golems en la operación para poder crear dicha coreografía precalculada… podemos

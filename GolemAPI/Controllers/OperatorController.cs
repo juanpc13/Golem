@@ -30,10 +30,10 @@ public class OperatorController : Controller
     }
 
     // The web panel is gone (propuesta 93, 6-oct-2026; Juan: "eliminemos el panel de los golems web"): the operator's console is the
-    // desktop program GolemCli, a client of /command, /commands, /body and /events. The root says so to a browser.
+    // desktop program WardenCli, a client of /command, /commands, /body and /events. The root says so to a browser.
     [HttpGet("/")]
     public IActionResult Root() =>
-        Content($"golem {identity.Golem}: no web panel — command it from GolemCli (the desktop console) through POST /command; GET /commands lists the language, GET /body the telemetry, GET /events the journal's feed.", "text/plain; charset=utf-8");
+        Content($"golem {identity.Golem}: no web panel — command it from WardenCli (the desktop console) through POST /command; GET /commands lists the language, GET /body the telemetry, GET /events the journal's feed.", "text/plain; charset=utf-8");
 
     // Host telemetry (not domain state): who I am, my body, the journal's entry, the pose the
     // golem BELIEVES (and acts on), the pose the world reports (for the operator's eyes: the

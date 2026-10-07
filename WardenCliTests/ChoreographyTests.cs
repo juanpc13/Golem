@@ -1,7 +1,7 @@
-using GolemCli.Choreography;
+using WardenCli.Formations;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace GolemCliTests;
+namespace WardenCliTests;
 
 [TestClass]
 public class ChoreographyTests

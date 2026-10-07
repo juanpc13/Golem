@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace GolemCli.Choreography;
+namespace WardenCli.Formations;
 
 /// <summary>The SENSE of a turn around a figure — the console's own closed set, the same two words as the golem's module.</summary>
 public enum Sense

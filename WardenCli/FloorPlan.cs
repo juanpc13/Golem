@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace GolemCli;
+namespace WardenCli;
 
 /// <summary>What a golem's map disposes, as the golem tells it on <c>GET /map</c> (Juan, 6-oct-2026: "que el mapa del CLI muestre lo que
 /// tiene actualmente el golem seleccionado en su mapa"): the scenario's name, its zones as rectangles with their doors and open sides. The

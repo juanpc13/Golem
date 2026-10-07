@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace GolemCli;
+namespace WardenCli;
 
 /// <summary>A golem in operation, as the console knows it: its name, where to reach it (host and port), the SCRIPT being built for it
 /// — one command per line, the queue the console sends line by line — and the last things it answered: where it stood when last asked,

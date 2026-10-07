@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- GolemCli — the operator's console as a DESKTOP program (propuesta 93, 6-oct-2026; Juan: "una aplicación de escritorio…
+  <!-- WardenCli — the operator's console as a DESKTOP program (propuesta 93, 6-oct-2026; Juan: "una aplicación de escritorio…
        básicamente el CLI pero… más bien es como un editor o IDE"): a toolbox at the top that composes commands, the golems in
        operation reached by host and port, a map with each golem where it was last asked, a vertical tab per golem with the script
        being built for it, a button to send it that golem's queue and one to send everybody's, workspaces and routine files, and
@@ -12,8 +12,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <RootNamespace>GolemCli</RootNamespace>
-    <AssemblyName>GolemCli</AssemblyName>
+    <RootNamespace>WardenCli</RootNamespace>
+    <AssemblyName>WardenCli</AssemblyName>
     <ApplicationManifest></ApplicationManifest>
   </PropertyGroup>
 

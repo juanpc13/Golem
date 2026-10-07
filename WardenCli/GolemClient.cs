@@ -2,7 +2,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-namespace GolemCli;
+namespace WardenCli;
 
 /// <summary>What a golem answered to a line: done, refused (the domain's words), syntax (the parser's), or unreachable.</summary>
 public sealed record Reply(string Kind, string Text, JsonElement? Json)

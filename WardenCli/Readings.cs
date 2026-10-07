@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace GolemCli;
+namespace WardenCli;
 
 /// <summary>What the golem answered to its READS — where, state, route, obstacles — kept as INFORMATION beside the map, never as commands
 /// on the script (Juan, 7-oct-2026: "estos reads deberían ir más del lado del mapa… no tanto como botones sino como información"). The console

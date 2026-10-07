@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\GolemCli\GolemCli.csproj" />
+    <ProjectReference Include="..\WardenCli\WardenCli.csproj" />
   </ItemGroup>
 
 </Project>

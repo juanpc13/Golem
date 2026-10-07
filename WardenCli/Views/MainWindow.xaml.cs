@@ -11,9 +11,9 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
-using GolemCli.Choreography;
+using WardenCli.Formations;
 
-namespace GolemCli;
+namespace WardenCli.Views;
 
 /// <summary>The console's one window. The RIBBON composes commands on the current golem's tab; a tab's script is that golem's QUEUE,
 /// sent one command at a time — the next goes when the golem finished the one before (its pending routes back to zero); the golems are
@@ -51,7 +51,7 @@ public partial class MainWindow : Window
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; } };
         readings.Start();
-        Log("GolemCli ready — add the golems in operation, compose a script per tab, SEND.");
+        Log("WardenCli ready — add the golems in operation, compose a script per tab, SEND.");
     }
 
     // the selected golem's reads, refreshed in turn; one that does not answer is asked again every fifth tick
@@ -342,7 +342,7 @@ public partial class MainWindow : Window
             {
                 string? line = golem.Dequeue();
                 if (line == null) { Log($"{golem.Name} › queue done ({done} command(s))"); break; }
-                if (line == Choreography.Choreography.Sync)
+                if (line == Choreography.Sync)
                 {
                     golem.Status = "waiting for the others…";
                     await batch.ArriveAsync().WaitAsync(cts.Token);
@@ -462,7 +462,7 @@ public partial class MainWindow : Window
         foreach (var g in golems.ToList()) Stop(g);
         golems.Clear();
         workspace = null;
-        Title = "GolemCli — the operator's console";
+        Title = "WardenCli — the operator's console";
         WorkspaceLabel.Text = "no workspace: the scripts live in this window until you save one";
         RefreshRecent();
     }
@@ -486,7 +486,7 @@ public partial class MainWindow : Window
             foreach (var g in loaded) Add(g);
             if (golems.Count > 0) GolemList.SelectedItem = golems[0];
             WorkspaceLabel.Text = $"workspace: {workspace}";
-            Title = $"GolemCli — {System.IO.Path.GetFileNameWithoutExtension(path)}";
+            Title = $"WardenCli — {System.IO.Path.GetFileNameWithoutExtension(path)}";
             Log($"workspace opened: {path} — {loaded.Count} golem(s)");
             RefreshRecent();
         }
@@ -508,7 +508,7 @@ public partial class MainWindow : Window
         workspace = dialog.FileName;
         Workspace.Save(workspace, golems);
         WorkspaceLabel.Text = $"workspace: {workspace}";
-        Title = $"GolemCli — {System.IO.Path.GetFileNameWithoutExtension(workspace)}";
+        Title = $"WardenCli — {System.IO.Path.GetFileNameWithoutExtension(workspace)}";
         Log($"workspace saved: {workspace}");
         RefreshRecent();
     }
@@ -591,14 +591,14 @@ public partial class MainWindow : Window
         try
         {
             var fleet = new Fleet(golems.Where(g => dialog.Chosen.Contains(g.Name)).Select(g => new Member(g.Name, g.LastX is double x && g.LastY is double y ? new Spot(x, y) : null)));
-            var choreography = new Choreography.Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, Assignment.Named(dialog.Assignment), dialog.Steps, dialog.Clockwise);
+            var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, Assignment.Named(dialog.Assignment), dialog.Steps, dialog.Clockwise);
             var scripts = choreography.Scripts(dialog.OneErrand ? Pace.OneErrand : Pace.Rounds);
             foreach (var (name, lines) in scripts)
             {
                 var g = golems.First(x => x.Name == name);
                 foreach (var line in lines) g.Enqueue(line);
             }
-            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit")))} visit(s) on {scripts.Count} tab(s){(dialog.OneErrand ? "" : $"; the queues wait for each other at every {Choreography.Choreography.Sync}")} — read them, then SEND to selected");
+            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit")))} visit(s) on {scripts.Count} tab(s){(dialog.OneErrand ? "" : $"; the queues wait for each other at every {Choreography.Sync}")} — read them, then SEND to selected");
             // the formation this leaves in force joins the list: from here on it is rotated from the console (propuesta 96)
             var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);
             formation.PropertyChanged += (_, _) => Draw();
@@ -618,19 +618,19 @@ public partial class MainWindow : Window
     private void Rotate(object sender, Sense sense)
     {
         if ((sender as Button)?.Tag is not Formation formation) return;
-        if (!int.TryParse(RotateSteps.Text.Trim(), out int steps)) { Log("the steps are a number"); return; }
+        // ONE STEP PER CLICK (Juan, 7-oct-2026: "quítala, deja siempre un paso por clic"): two steps are two clicks, two visits on each tab
         try
         {
-            var lines = formation.Rotate(sense, steps);
+            var lines = formation.Rotate(sense);
             int missing = 0;
             foreach (var (name, line) in lines)
             {
                 var g = golems.FirstOrDefault(x => x.Name == name);
                 if (g == null) { missing++; continue; }
-                g.Enqueue($"# {formation.Name} rotates {steps} {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} — {name} to {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
+                g.Enqueue($"# {formation.Name} rotates one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} — {name} to {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
                 g.Enqueue(line);
             }
-            Log($"{formation.Name} › {steps} step(s) {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}: a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
+            Log($"{formation.Name} › one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}: a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
         }
         catch (ArgumentException ex) { Log(ex.Message); }
     }
@@ -882,7 +882,7 @@ public partial class MainWindow : Window
     }
 
     private void About_Click(object sender, RoutedEventArgs e) =>
-        MessageBox.Show(this, "GolemCli — the operator's console for the golems.\n\nThe ribbon composes commands on each golem's tab; a tab's script is its queue, sent one command at a time, the next when the golem finished the one before. Check golems to address them together. Workspaces and routines are files. Formations laid out here are queues of visits; the golem's own choreography module stays apart.", "About GolemCli");
+        MessageBox.Show(this, "WardenCli — the operator's console for the golems.\n\nThe ribbon composes commands on each golem's tab; a tab's script is its queue, sent one command at a time, the next when the golem finished the one before. Check golems to address them together. Workspaces and routines are files. Formations laid out here are queues of visits; the golem's own choreography module stays apart.", "About WardenCli");
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 

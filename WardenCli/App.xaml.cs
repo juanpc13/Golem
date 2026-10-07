@@ -2,7 +2,7 @@
 using System.Data;
 using System.Windows;
 
-namespace GolemCli;
+namespace WardenCli;
 
 /// <summary>
 /// Interaction logic for App.xaml

@@ -1,8 +1,8 @@
-<Window x:Class="GolemCli.MainWindow"
+<Window x:Class="WardenCli.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:GolemCli"
-        Title="GolemCli — the operator's console" Height="860" Width="1400" MinHeight="640" MinWidth="1060"
+        xmlns:local="clr-namespace:WardenCli.Views"
+        Title="WardenCli — the operator's console" Height="860" Width="1400" MinHeight="640" MinWidth="1060"
         Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13" Loaded="Window_Loaded" Closing="Window_Closing">
     <Window.Resources>
         <!-- a golem in the list: a box in its colour, like the sketch -->
@@ -39,8 +39,8 @@
                      checked golems, at the foot of the column with stop under it; which golems go is said by the checks, never by a button -->
                 <DockPanel DockPanel.Dock="Right" Width="150" Margin="8,0,0,0" LastChildFill="False">
                     <TextBlock DockPanel.Dock="Top" Margin="4,4" Foreground="{StaticResource Dim}" TextWrapping="Wrap"><Run Text="sent "/><Run Text="{Binding Sent}"/><Run Text=" command(s) this session"/></TextBlock>
-                    <Button DockPanel.Dock="Bottom" Content="stop" Click="StopSelected_Click" ToolTip="the checked golems that are sending stop; the rest of each queue stays on its tab"/>
                     <Button DockPanel.Dock="Bottom" Content="SEND to selected" Click="SendSelected_Click" Height="56" FontSize="15" FontWeight="Bold" Style="{StaticResource GoGreen}" ToolTip="the queue of every checked golem, each its own, line by line; they wait for each other at @sync"/>
+                    <Button DockPanel.Dock="Bottom" Content="stop" Margin="2,2,2,4" Click="StopSelected_Click" ToolTip="the checked golems that are sending stop; the rest of each queue stays on its tab"/>
                 </DockPanel>
                 <!-- ABOVE THE SCRIPT: what the golem can be told (Juan, 6-oct-2026: "algunos botones siempre por arriba y al centro el comando") -->
                 <Border DockPanel.Dock="Top" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="4,2" Margin="0,0,0,4">
@@ -284,8 +284,6 @@
                     <TabItem x:Name="FormationsTab" Header="formations">
                         <DockPanel Background="{StaticResource Well}">
                             <DockPanel DockPanel.Dock="Top" Margin="6,4,6,2">
-                                <TextBox x:Name="RotateSteps" DockPanel.Dock="Right" Width="36" Text="1" ToolTip="how many vertices each rotation moves everybody" TextAlignment="Center"/>
-                                <TextBlock DockPanel.Dock="Right" Text="steps per rotation" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <TextBlock x:Name="NoFormation" Text="none yet — Console › Formation lays one out here" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             </DockPanel>
                             <ListBox x:Name="FormationList" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">

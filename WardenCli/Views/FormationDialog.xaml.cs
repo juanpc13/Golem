@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Windows;
 
-namespace GolemCli;
+namespace WardenCli.Views;
 
 /// <summary>The operator says which figure, where, how big, how many steps around and which golems take part; the console lays it out
 /// as queues of visits on their tabs (<see cref="Formations"/>). Nothing is sent from here.</summary>
