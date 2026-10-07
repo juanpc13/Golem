@@ -15,7 +15,7 @@ public static class Workspace
 
     private sealed record SavedGolem(string Name, string Host, int Port, string Script);
     private sealed record File_(string Kind, int Version, List<SavedGolem> Golems);
-    private sealed record Settings(List<string> Recent, string? Last);
+    private sealed record Settings(List<string> Recent, string? Last, PaneSizes? Panes = null);
 
     public static void Save(string path, IEnumerable<Golem> golems)
     {
@@ -58,7 +58,7 @@ public static class Workspace
     {
         var s = ReadSettings();
         s.Recent.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
-        WriteSettings(new Settings(s.Recent, string.Equals(s.Last, path, StringComparison.OrdinalIgnoreCase) ? null : s.Last));
+        WriteSettings(new Settings(s.Recent, string.Equals(s.Last, path, StringComparison.OrdinalIgnoreCase) ? null : s.Last, s.Panes));
     }
 
     private static void Remember(string path)
@@ -67,7 +67,17 @@ public static class Workspace
         var s = ReadSettings();
         s.Recent.RemoveAll(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase));
         s.Recent.Insert(0, full);
-        WriteSettings(new Settings(s.Recent.Take(8).ToList(), full));
+        WriteSettings(new Settings(s.Recent.Take(8).ToList(), full, s.Panes));
+    }
+
+    /// <summary>The sizes the operator gave the panes when the console last closed; null before it ever did (Juan, 7-oct-2026: "que los
+    /// tamaños de los paneles se recuerden al cerrar"). The machine's, not the workspace's: they stay whatever workspace is open.</summary>
+    public static PaneSizes? Panes() => ReadSettings().Panes;
+
+    public static void RememberPanes(PaneSizes panes)
+    {
+        var s = ReadSettings();
+        WriteSettings(new Settings(s.Recent, s.Last, panes));
     }
 
     private static Settings ReadSettings()
@@ -92,3 +102,8 @@ public static class Workspace
         catch (IOException) { }
     }
 }
+
+/// <summary>The sizes of the console's panes, as the dividers left them: the golems' column (px), the console and the debugger's shares of the
+/// window (stars — their ratio is what counts), the log's height (px), the map's height if the operator set it (px; null: as high as it is
+/// wide), and whether the debugger was shown.</summary>
+public sealed record PaneSizes(double GolemsWidth, double ConsoleShare, double DebuggerShare, double LogHeight, double? MapHeight, bool DebuggerShown);

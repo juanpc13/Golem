@@ -80,13 +80,49 @@ public partial class MainWindow : Window
     {
         Point_Changed(this, null);
         RefreshRecent();
+        RestorePanes();
         // the workspace named on the command line, else the last one opened: the console starts where it was left
         string? start = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(a => a.EndsWith(Workspace.Extension, StringComparison.OrdinalIgnoreCase)) ?? Workspace.Last();
         if (start != null) OpenWorkspace(start);
     }
 
     // the scripts are saved as they are when the window closes, when a workspace is open
-    private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e) => AutoSave();
+    private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+        AutoSave();
+        RememberPanes();
+    }
+
+    // THE PANES' SIZES, remembered when the console closes and given back when it opens (Juan, 7-oct-2026: "que los tamaños de los paneles se
+    // recuerden al cerrar"): the golems' column, the console and the debugger's shares, the log's height, the map's own height, the debugger
+    // shown or hidden — kept in the console's settings, not in the workspace
+    private void RememberPanes()
+    {
+        var debugger = DebuggerPanel.Visibility == Visibility.Visible ? DebuggerColumn.Width : debuggerWidth;
+        Workspace.RememberPanes(new PaneSizes(
+            GolemsColumn.ActualWidth,
+            ConsoleColumn.Width.IsStar ? ConsoleColumn.Width.Value : ConsoleColumn.ActualWidth,
+            debugger.IsStar ? debugger.Value : 1,
+            LogRow.ActualHeight,
+            mapHeight,
+            DebuggerPanel.Visibility == Visibility.Visible));
+    }
+
+    private void RestorePanes()
+    {
+        if (Workspace.Panes() is not { } p) return;
+        if (p.GolemsWidth >= GolemsColumn.MinWidth) GolemsColumn.Width = new GridLength(p.GolemsWidth);
+        if (p.ConsoleShare > 0 && p.DebuggerShare > 0)
+        {
+            ConsoleColumn.Width = new GridLength(p.ConsoleShare, GridUnitType.Star);
+            debuggerWidth = new GridLength(p.DebuggerShare, GridUnitType.Star);
+            DebuggerColumn.Width = debuggerWidth;
+        }
+        if (p.LogHeight >= LogRow.MinHeight) LogRow.Height = new GridLength(p.LogHeight);
+        mapHeight = p.MapHeight is > 0 ? p.MapHeight : null;
+        if (!p.DebuggerShown) SetDebugger(false);
+        FitDebugger();
+    }
 
     private Golem? Current => GolemList.SelectedItem as Golem;
     private IEnumerable<Golem> SelectedGolems => golems.Where(g => g.Selected);
@@ -712,7 +748,7 @@ public partial class MainWindow : Window
                      + MapDivider.ActualHeight;
         double room = DebuggerBody.ActualHeight - above - DebuggerFoot.MinHeight - DebuggerFoot.Margin.Top;
         double side = Math.Max(120, Math.Min(mapHeight ?? DebuggerBody.ActualWidth, room));
-        if (mapHeight != null) mapHeight = side;
+        // the height the operator chose is kept as chosen: only what is drawn is cut to the room there is (a window opened small, then maximized)
         if (double.IsNaN(MapArea.Height) || Math.Abs(MapArea.Height - side) > 1) MapArea.Height = side;
     }
 

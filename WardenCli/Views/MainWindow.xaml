@@ -75,7 +75,7 @@
 
     <Grid x:Name="Shell">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*" MinWidth="642"/>
+            <ColumnDefinition x:Name="ConsoleColumn" Width="2*" MinWidth="642"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition x:Name="DebuggerColumn" Width="*" MinWidth="330"/>
         </Grid.ColumnDefinitions>
@@ -155,14 +155,14 @@
              resolution — Juan, 6-oct-2026: "el mapa como que no se ajusta muy bien a la resolución actual") -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="262" MinWidth="190"/>
+                <ColumnDefinition x:Name="GolemsColumn" Width="262" MinWidth="190"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*" MinWidth="380"/>
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" MinHeight="300"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="180" MinHeight="70"/>
+                <RowDefinition x:Name="LogRow" Height="180" MinHeight="70"/>
             </Grid.RowDefinitions>
             <!-- the dividers: between the golems and the script, and between them and the log -->
             <GridSplitter Grid.Column="1" Style="{StaticResource DividerV}" ToolTip="drag to share the width between the golems and the script"/>
