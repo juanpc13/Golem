@@ -114,6 +114,9 @@ public static class GolemClient
                 RoutePlan = JsonWalk.String(r, "plan") ?? "",
                 RouteWhy = JsonWalk.String(r, "why") ?? "",
             };
+        var scenarios = await SendAsync(golem, "scenarios", ct);
+        if (scenarios.Ok && scenarios.Json is { } sc)
+            k = k with { Scenarios = Readings.ParseScenarios(sc) };
         var obstacles = await SendAsync(golem, "obstacles", ct);
         if (obstacles.Ok && obstacles.Json is { } o)
             k = k with

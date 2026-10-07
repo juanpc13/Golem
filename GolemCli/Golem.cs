@@ -36,8 +36,11 @@ public sealed class Golem : INotifyPropertyChanged
     public Readings Knowledge
     {
         get => knowledge;
-        set { Set(ref knowledge, value); Raise(nameof(WhereLine)); Raise(nameof(StateLine)); Raise(nameof(RouteLine)); Raise(nameof(ObstaclesLine)); }
+        set { Set(ref knowledge, value); Raise(nameof(WhereLine)); Raise(nameof(StateLine)); Raise(nameof(RouteLine)); Raise(nameof(ObstaclesLine)); Raise(nameof(ScenarioOptions)); }
     }
+
+    /// <summary>The scenarios it knows, for the drop-down that composes `enter <scenario>`; the one it is in says so.</summary>
+    public IReadOnlyList<ScenarioOption> ScenarioOptions => Knowledge.Scenarios.Select(n => new ScenarioOption(n, n == Knowledge.Scenario)).ToList();
 
     public string WhereLine => LastX == null || LastY == null
         ? "where · not known yet"

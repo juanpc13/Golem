@@ -56,8 +56,9 @@
                         <Button Content="reset" Tag="reset" Click="Compose_Click" ToolTip="every route let go, the body back on its mark"/>
                         <Button Content="reset all" Tag="reset --all" Click="Compose_Click" ToolTip="reset --all: the journal wiped too"/>
                         <Button Content="place" Tag="place {point}" Click="Compose_Click" ToolTip="the body carried onto the point of the box"/>
-                        <Button Content="open floor" Tag="enter open-floor" Click="Compose_Click" ToolTip="enter open-floor"/>
-                        <Button Content="warehouse" Tag="enter warehouse" Click="Compose_Click" ToolTip="enter warehouse"/>
+                        <!-- the scenario is changed through the list the golem itself gives (Juan, 7-oct-2026: "por el mismo drop down que él nos proporciona
+                             la lista de mapas que tiene, no tanto un botón de warehouse/openfloor"): picking one composes 'enter <scenario>' on the tab -->
+                        <ComboBox Width="190" Tag="enter a scenario…" ItemsSource="{Binding ScenarioOptions, Mode=OneWay}" DisplayMemberPath="Label" SelectionChanged="Scenario_Selected" ToolTip="the scenarios this golem knows, as it lists them — pick one and 'enter &lt;scenario&gt;' goes on the tab"/>
                     </WrapPanel>
                 </Border>
                 <!-- BELOW THE SCRIPT: the golem's own choreography module (the fleet agrees among itself) -->

@@ -7,10 +7,28 @@ namespace GolemCli;
 /// asks every few seconds and shows what came back; it decides nothing.</summary>
 public sealed record Readings(string Zone, string Scenario, string Navigation, bool Held, int? Pending, int? Routes,
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
-                              int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles)
+                              int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios)
 {
     /// <summary>Before anything was asked.</summary>
-    public static readonly Readings Nothing = new("", "", "", false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>());
+    public static readonly Readings Nothing = new("", "", "", false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>());
+
+    /// <summary>The names the `scenarios` read lists under `known`.</summary>
+    public static IReadOnlyList<string> ParseScenarios(JsonElement json)
+    {
+        var names = new List<string>();
+        if (JsonWalk.Find(json, "known") is { ValueKind: JsonValueKind.Array } known)
+            foreach (var k in known.EnumerateArray())
+                if (k.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String) names.Add(n.GetString() ?? "");
+        return names;
+    }
+}
+
+/// <summary>A scenario the golem knows, offered in the drop-down that changes its map (Juan, 7-oct-2026: "por el mismo drop down que él nos
+/// proporciona la lista de mapas que tiene"): its name, and whether it is the one the golem is in.</summary>
+public sealed record ScenarioOption(string Name, bool Current)
+{
+    public string Label => Current ? $"{Name} · current" : Name;
+    public override string ToString() => Label;
 }
 
 /// <summary>An obstacle the golem hypothesizes from what its body touched — a THING (its vertices joined: two make a line, three or more a

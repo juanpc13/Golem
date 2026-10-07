@@ -187,6 +187,18 @@ public partial class MainWindow : Window
         if (picked.Count > 1 && points != Point) PointsConsumed();
     }
 
+    // the scenario drop-down is a MENU: the pick composes 'enter <scenario>' on this golem's tab and the box empties again (the golem's
+    // current scenario is said in the list itself and in what it knows); nothing goes until SEND
+    private void Scenario_Selected(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox box || box.SelectedItem is not ScenarioOption chosen) return;
+        box.SelectedIndex = -1;
+        if (box.DataContext is not Golem g) return;
+        if (chosen.Current) { Log($"{g.Name} › already in {chosen.Name}"); return; }
+        g.Enqueue($"enter {chosen.Name}");
+        Log($"{g.Name} › enter {chosen.Name} on its tab — SEND to selected when ready");
+    }
+
     private void Point_Changed(object sender, RoutedEventArgs? e)
     {
         if (BuiltBox == null || Verbs == null || PointsHint == null) return;
