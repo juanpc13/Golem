@@ -52,7 +52,7 @@ public static class CommandLine
         new CommandHelp("obstacles", "obstacles", "what the bodies learned by touching: the things outlined, the peers met", "obstacles"),
         new CommandHelp("place", "place x,y | place blue@x,y red@x,y …", "a lab lever (ajuste 87): the body carried onto that mark — every pending route let go, the body re-anchored there, the golem awake where it stands; with names, each golem of the fleet carried onto its own mark (this golem's own by its name or bare, every peer's line carried to it); never --with", "place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3"),
         new CommandHelp("optimize", "optimize on-the-way|door-by-door", "how the golem optimizes the routes it computes from here on: switches on one of its two strategies — the doors crossed on the way (fewer stops), or every door a leg of its own (the direct way, nothing converted); every route is born direct and the script improves it with a dash while on-the-way is active — at birth and at its next arrival (ajustes 62, 63; was adopt, ajuste 82)", "optimize on-the-way"),
-        new CommandHelp("enter", "enter <scenario>", "the golem enters a scenario it knows — its map and its collisions from here on (warehouse, open-floor); refused while a route is pending", "enter open-floor"),
+        new CommandHelp("use", "use map <scenario>", "the golem uses that map — it enters the scenario it knows by that name, its collisions with it, from here on (warehouse, open-floor); refused while a route is pending (was enter, 7-oct-2026)", "use map open-floor"),
         new CommandHelp("scenarios", "scenarios", "the scenarios the golem knows, and the one it is in", "scenarios"),
         new CommandHelp("set", "set name x,y [x,y …]", "the console keeps a value under that name, to write @name on a line (visit @stops)", "set stops 2,9.5 9,8"),
         new CommandHelp("show", "show [name]", "the values the console keeps", "show"),
@@ -149,9 +149,13 @@ public static class CommandLine
             case "optimize":
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("on-the-way" or "door-by-door")) throw new CommandSyntaxException("optimize: expected the strategy, on-the-way or door-by-door");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+            case "use":
+                // the map the golem uses (Juan, 7-oct-2026: "cambiar en el lenguaje del api el comando de enter por use map"): `use map open-floor`
+                // — the scenario named after that map; the domain's verb stays g.Enter
+                if (args.Count != 2 || args[0].ToLowerInvariant() != "map" || !Name.IsMatch(args[1])) throw new CommandSyntaxException("use: expected map and the scenario's name, like use map open-floor");
+                return new Command(named, with, verb, none, noOptions, args[1].ToLowerInvariant());
             case "enter":
-                if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("enter: expected the scenario's name, like enter open-floor");
-                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+                throw new CommandSyntaxException("enter is now use map <scenario>, like use map open-floor");
             case "pause":
             case "resume":
             case "state":

@@ -102,7 +102,7 @@ public sealed class Commander
             "route" => Route(),
             "where" => Where(),
             "obstacles" => Obstacles(),
-            "enter" => Answered(golem.Enter(command.Text), $"in {command.Text}"),
+            "use" => Answered(golem.Enter(command.Text), $"using map {command.Text}"),
             "optimize" => Answered(golem.Optimize(command.Text), $"navigating {command.Text.Replace('-', ' ')}"),
             "scenarios" => Scenarios(),
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),

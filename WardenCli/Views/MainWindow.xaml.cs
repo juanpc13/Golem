@@ -251,7 +251,7 @@ public partial class MainWindow : Window
         box.SelectedIndex = -1;
         if (box.DataContext is not Golem g) return;
         if (chosen.Current) { Log($"{g.Name} › already in {chosen.Name}"); return; }
-        await ActNowAsync(g, $"enter {chosen.Name}");
+        await ActNowAsync(g, $"use map {chosen.Name}");
     }
 
     private async void Navigation_Selected(object sender, SelectionChangedEventArgs e)

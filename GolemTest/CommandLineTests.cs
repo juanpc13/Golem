@@ -86,12 +86,18 @@ public class CommandLineTests
     {
         Assert.AreEqual("", CommandLine.Parse("help").Text);
         Assert.AreEqual("visit", CommandLine.Parse("help VISIT").Text);
-        CollectionAssert.AreEqual(new[] { "visit", "cover", "choreograph", "rotate", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "place", "optimize", "enter", "scenarios", "set", "show", "help", "--with" },
+        CollectionAssert.AreEqual(new[] { "visit", "cover", "choreograph", "rotate", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "place", "optimize", "use", "scenarios", "set", "show", "help", "--with" },
                                   CommandLine.Help.Select(h => h.Verb).ToList(), "every command the language has, in the help's order — no script of the actor's among them");
         Assert.IsTrue(CommandLine.Help.All(h => h.Usage != "" && h.What != "" && h.Example != ""), "each with how it is written, what it does and an example");
         StringAssert.Contains(Refused("help fly"), "help: 'fly' is no command; the commands are visit, cover, choreograph");
         Assert.AreEqual("on-the-way", CommandLine.Parse("optimize On-The-Way").Text, "the strategy the routes are optimized by (ajustes 61, 82)");
         StringAssert.Contains(Refused("optimize fast"), "optimize: expected the strategy, on-the-way or door-by-door");
+        // the map the golem uses (7-oct-2026, was enter): use map <scenario>
+        var use = CommandLine.Parse("use Map Open-Floor");
+        Assert.AreEqual("use", use.Verb); Assert.AreEqual("open-floor", use.Text, "the scenario named after the map, lower case");
+        StringAssert.Contains(Refused("use open-floor"), "use: expected map and the scenario's name, like use map open-floor");
+        StringAssert.Contains(Refused("use map"), "use: expected map and the scenario's name");
+        StringAssert.Contains(Refused("enter open-floor"), "enter is now use map <scenario>", "the old word says what replaced it");
         // place (ajuste 87, a lab lever): this golem's mark bare, every other golem's by its name
         var place = CommandLine.Parse("place blue@6,6.2 Red@7,6.3 3,3");
         Assert.AreEqual("place", place.Verb);
@@ -104,7 +110,7 @@ public class CommandLineTests
         StringAssert.Contains(Refused("place blue@1,1 blue@2,2"), "blue's mark was given twice");
         StringAssert.Contains(Refused("place @spots"), "a name the console resolves");
         StringAssert.Contains(Refused("dash 9,1.5"), "'dash' is no command", "the dash is a strategy now, not a verb");
-        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, choreograph, rotate, then, pause, resume, forget, reset, state, route, where, obstacles, place, optimize, enter, scenarios, set, show, help, --with — help tells each");
+        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, choreograph, rotate, then, pause, resume, forget, reset, state, route, where, obstacles, place, optimize, use, scenarios, set, show, help, --with — help tells each");
         StringAssert.Contains(Refused("query { print g.Standing.X 'x'; }"), "'query' is no command", "the actor's scripts never travel on a line");
         StringAssert.Contains(Refused(""), "nothing to do: write a command, or help");
         StringAssert.Contains(Refused("golem"), "nothing to do");
