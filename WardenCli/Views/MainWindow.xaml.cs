@@ -708,22 +708,45 @@ public partial class MainWindow : Window
         if (DebuggerBody.ActualHeight <= 0 || DebuggerBody.ActualWidth <= 0) return;
         double above = DebuggerTitle.ActualHeight + DebuggerTitle.Margin.Top + DebuggerTitle.Margin.Bottom
                      + ReadsBox.ActualHeight + ReadsBox.Margin.Top + ReadsBox.Margin.Bottom
-                     + MapHeader.ActualHeight + MapHeader.Margin.Top + MapHeader.Margin.Bottom;
+                     + MapHeader.ActualHeight + MapHeader.Margin.Top + MapHeader.Margin.Bottom
+                     + MapDivider.ActualHeight;
         double room = DebuggerBody.ActualHeight - above - DebuggerFoot.MinHeight - DebuggerFoot.Margin.Top;
-        double side = Math.Max(120, Math.Min(DebuggerBody.ActualWidth, room));
+        double side = Math.Max(120, Math.Min(mapHeight ?? DebuggerBody.ActualWidth, room));
+        if (mapHeight != null) mapHeight = side;
         if (double.IsNaN(MapArea.Height) || Math.Abs(MapArea.Height - side) > 1) MapArea.Height = side;
+    }
+
+    // THE MAP'S OWN DIVIDER (Juan, 7-oct-2026: "poder hacer resize de las siguientes zonas"): dragged, the map takes the height the operator
+    // gives it (still never under 120 nor over what leaves the tabs their least); double-clicked, it is as high as it is wide again
+    private double? mapHeight;
+    private void MapDivider_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        mapHeight = (double.IsNaN(MapArea.Height) ? MapArea.ActualHeight : MapArea.Height) + e.VerticalChange;
+        FitDebugger();
+    }
+
+    private void MapDivider_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        mapHeight = null;
+        FitDebugger();
     }
 
     private void HideDebugger_Click(object sender, RoutedEventArgs e) => SetDebugger(false);
     private void ShowDebugger_Click(object sender, MouseButtonEventArgs e) => SetDebugger(true);
     private void ToggleDebugger_Click(object sender, RoutedEventArgs e) => SetDebugger(DebuggerPanel.Visibility != Visibility.Visible);
 
+    // the width the operator gave the debugger with the divider, kept while it is hidden and given back when it shows again
+    private GridLength debuggerWidth = new(1, GridUnitType.Star);
+
     private void SetDebugger(bool shown)
     {
+        bool wasShown = DebuggerPanel.Visibility == Visibility.Visible;
+        if (wasShown && !shown) debuggerWidth = DebuggerColumn.Width;
         DebuggerPanel.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
         DebuggerStrip.Visibility = shown ? Visibility.Collapsed : Visibility.Visible;
+        ShellDivider.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
         DebuggerColumn.MinWidth = shown ? 330 : 0;
-        DebuggerColumn.Width = shown ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        DebuggerColumn.Width = shown ? debuggerWidth : GridLength.Auto;
         if (shown) Draw();
     }
 

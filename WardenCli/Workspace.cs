@@ -39,9 +39,12 @@ public static class Workspace
 
     // ---- the console's memory of workspaces: %AppData%\WardenCli\settings.json ----
 
-    private static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WardenCli", "settings.json");
+    // WARDENCLI_SETTINGS names another file — a console started for a test keeps its recents apart from the operator's (7-oct-2026: a test
+    // console writing the shared file while the operator's started left it opening no workspace)
+    private static string? SettingsOverride => Environment.GetEnvironmentVariable("WARDENCLI_SETTINGS") is { Length: > 0 } path ? path : null;
+    private static string SettingsPath => SettingsOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WardenCli", "settings.json");
     // where they lived while the console was GolemCli (until 7-oct-2026): read while the new file does not exist yet, so nothing is lost
-    private static string LegacySettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GolemCli", "settings.json");
+    private static string LegacySettingsPath => SettingsOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GolemCli", "settings.json");
 
     public static IReadOnlyList<string> Recent() => ReadSettings().Recent.Where(File.Exists).ToList();
 

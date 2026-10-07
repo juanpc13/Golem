@@ -37,7 +37,7 @@ public sealed class Golem : INotifyPropertyChanged
     public Readings Knowledge
     {
         get => knowledge;
-        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); }
+        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); }
     }
 
     /// <summary>The scenarios it knows, for the environment's drop-down that enters one at once; the one it is in says so.</summary>
@@ -58,6 +58,10 @@ public sealed class Golem : INotifyPropertyChanged
     public string RoutesText => Knowledge.Pending == null ? "not asked yet" : $"{Knowledge.Pending} pending of {Knowledge.Routes}";
     public string RouteTitle => Knowledge.RouteId == null ? "none yet" : $"#{Knowledge.RouteId}";
     public string RouteNow => Knowledge.RouteAction == "" ? "" : $"asks now: {Knowledge.RouteAction}";
+    // every row of the card always there, a dash when it has nothing to say: the card keeps one height whatever golem is selected, so the map
+    // under it never moves (Juan, 7-oct-2026: "el cambio entre golem… hace resize el cuadro de los datos del golem")
+    public string WhyText => Knowledge.RouteWhy == "" ? "—" : Knowledge.RouteWhy;
+    public string PlanText => Knowledge.RoutePlan == "" ? "—" : Knowledge.RoutePlan;
     public string ObstaclesText => Knowledge.Pending == null
         ? "not asked yet"
         : Knowledge.Marks == 0 && Knowledge.Met == 0 ? "nothing touched yet" : $"{Knowledge.Things} thing(s) · {Knowledge.Met} peer(s) met · {Knowledge.Marks} mark(s)";

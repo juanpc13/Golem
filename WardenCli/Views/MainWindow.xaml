@@ -76,6 +76,7 @@
     <Grid x:Name="Shell">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="2*" MinWidth="642"/>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition x:Name="DebuggerColumn" Width="*" MinWidth="330"/>
         </Grid.ColumnDefinitions>
     <DockPanel Grid.Column="0">
@@ -154,17 +155,22 @@
              resolution — Juan, 6-oct-2026: "el mapa como que no se ajusta muy bien a la resolución actual") -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="262"/>
+                <ColumnDefinition Width="262" MinWidth="190"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*" MinWidth="380"/>
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="*" MinHeight="300"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="180" MinHeight="70"/>
             </Grid.RowDefinitions>
+            <!-- the dividers: between the golems and the script, and between them and the log -->
+            <GridSplitter Grid.Column="1" Style="{StaticResource DividerV}" ToolTip="drag to share the width between the golems and the script"/>
+            <GridSplitter Grid.Row="1" Grid.ColumnSpan="3" Style="{StaticResource DividerH}" ToolTip="drag to give the log more or less height"/>
 
             <!-- THE BOTTOM: the log and the journal of the current golem, under the golems and the script only — the debugger keeps the
                  whole height of its column, so the map is not squeezed by the foot under it (7-oct-2026) -->
-            <TabControl Grid.Row="1" Grid.ColumnSpan="2" Height="180" Margin="4" Style="{StaticResource DarkTabs}">
+            <TabControl Grid.Row="2" Grid.ColumnSpan="3" Margin="4" Style="{StaticResource DarkTabs}">
                 <TabItem Header="log — what every golem answered">
                     <TextBox x:Name="LogBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
                 </TabItem>
@@ -214,7 +220,7 @@
             </GroupBox>
 
             <!-- THE CENTRE: the script of the golem clicked on the left; the script is its queue -->
-            <Grid Grid.Column="1" Margin="4">
+            <Grid Grid.Column="2" Margin="4">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
@@ -231,12 +237,14 @@
         </Grid>
     </DockPanel>
 
+        <!-- the divider between the console and the debugger -->
+        <GridSplitter x:Name="ShellDivider" Grid.Column="1" Style="{StaticResource DividerV}" ToolTip="drag to share the width between the console and the debugger"/>
         <!-- THE GOLEM DEBUGGER TAKES THE WHOLE RIGHT SIDE, from the top of the window beside the ribbon, and hides on demand (Juan, 7-oct-2026:
              "que ese panel use todo el lateral derecho para aprovechar ese espacio y que se pueda ocultar y mostrar"). It was ONE PANEL (Juan, 7-oct-2026: "toda esa zona sea un solo panel, la del mapa, porque básicamente es la
              lectura del golem; esa sección debería llamarse algo como debugger del golem porque hace lecturas junto con el mapa y permite crear los visit"):
              what the selected golem knows (where, state, route, obstacles, asked every 3 s), its map with everybody and its obstacles, and the tool
              that builds a command from a point — the map's clicks accumulate the visit's points -->
-        <GroupBox x:Name="DebuggerPanel" Grid.Column="1">
+        <GroupBox x:Name="DebuggerPanel" Grid.Column="2">
             <DockPanel x:Name="DebuggerBody">
                 <!-- its title, and the lever that hides it -->
                 <DockPanel x:Name="DebuggerTitle" DockPanel.Dock="Top" Margin="2,0,0,4">
@@ -278,33 +286,33 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
                                     <TextBlock Grid.Row="0" Text="position" Style="{StaticResource FieldLabel}"/>
-                                    <WrapPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
                                         <TextBlock Text="{Binding PositionText, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource Ink}" Margin="0,2,12,2"/>
                                         <TextBlock Text="{Binding HeadingText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" Margin="0,2"/>
-                                    </WrapPanel>
+                                    </StackPanel>
                                     <TextBlock Grid.Row="1" Text="in" Style="{StaticResource FieldLabel}"/>
-                                    <WrapPanel Grid.Row="1" Grid.Column="1">
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" ClipToBounds="True">
                                         <Border Style="{StaticResource Chip}" ToolTip="the zone it stands in"><TextBlock Text="{Binding Knowledge.Zone, Mode=OneWay}" FontSize="11"/></Border>
                                         <Border Style="{StaticResource Chip}" ToolTip="the scenario it is in"><TextBlock Text="{Binding Knowledge.Scenario, Mode=OneWay}" FontSize="11"/></Border>
                                         <Border Style="{StaticResource Chip}" ToolTip="how its routes take the doors"><TextBlock Text="{Binding Knowledge.Navigation, Mode=OneWay}" FontSize="11"/></Border>
                                         <Border x:Name="HeldChip" Style="{StaticResource Chip}" Visibility="Collapsed" BorderBrush="{StaticResource Accent}" ToolTip="the operator holds it: paused"><TextBlock Text="HELD" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Accent}"/></Border>
-                                    </WrapPanel>
+                                    </StackPanel>
                                     <TextBlock Grid.Row="2" Text="routes" Style="{StaticResource FieldLabel}"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RoutesText, Mode=OneWay}" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RoutesText, Mode=OneWay}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,2"/>
                                     <TextBlock Grid.Row="3" Text="last route" Style="{StaticResource FieldLabel}"/>
-                                    <WrapPanel Grid.Row="3" Grid.Column="1">
+                                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" ClipToBounds="True">
                                         <TextBlock Text="{Binding RouteTitle, Mode=OneWay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,2,6,2"/>
                                         <Border x:Name="StatusChip" Style="{StaticResource Chip}">
                                             <TextBlock x:Name="StatusText" Text="{Binding Knowledge.RouteStatus, Mode=OneWay}" FontSize="11" FontWeight="Bold"/>
                                         </Border>
                                         <TextBlock Text="{Binding RouteNow, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" VerticalAlignment="Center"/>
-                                    </WrapPanel>
+                                    </StackPanel>
                                     <TextBlock x:Name="WhyLabel" Grid.Row="4" Text="why" Style="{StaticResource FieldLabel}"/>
-                                    <TextBlock x:Name="WhyText" Grid.Row="4" Grid.Column="1" Text="{Binding Knowledge.RouteWhy, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Red}" TextWrapping="Wrap" Margin="0,2"/>
+                                    <TextBlock x:Name="WhyText" Grid.Row="4" Grid.Column="1" Text="{Binding WhyText, Mode=OneWay}" ToolTip="{Binding WhyText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Red}" TextTrimming="CharacterEllipsis" Margin="0,2"/>
                                     <TextBlock x:Name="PlanLabel" Grid.Row="5" Text="plan" Style="{StaticResource FieldLabel}"/>
-                                    <TextBlock x:Name="PlanText" Grid.Row="5" Grid.Column="1" Text="{Binding Knowledge.RoutePlan, Mode=OneWay}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,2"/>
+                                    <TextBlock x:Name="PlanText" Grid.Row="5" Grid.Column="1" Text="{Binding PlanText, Mode=OneWay}" ToolTip="{Binding PlanText, Mode=OneWay}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" Margin="0,2"/>
                                     <TextBlock Grid.Row="6" Text="touched" Style="{StaticResource FieldLabel}"/>
-                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ObstaclesText, Mode=OneWay}" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ObstaclesText, Mode=OneWay}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,2"/>
                                 </Grid>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding Knowledge.RouteStatus}" Value="completed">
@@ -326,12 +334,7 @@
                                         <Setter TargetName="HeldChip" Property="Visibility" Value="Visible"/>
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Knowledge.RouteWhy}" Value="">
-                                        <Setter TargetName="WhyLabel" Property="Visibility" Value="Collapsed"/>
-                                        <Setter TargetName="WhyText" Property="Visibility" Value="Collapsed"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Knowledge.RoutePlan}" Value="">
-                                        <Setter TargetName="PlanLabel" Property="Visibility" Value="Collapsed"/>
-                                        <Setter TargetName="PlanText" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="WhyText" Property="Foreground" Value="{StaticResource Dim}"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -357,9 +360,11 @@
                         <TextBlock x:Name="HoverText" Foreground="{StaticResource Accent}" FontFamily="Consolas" FontSize="13"/>
                     </Border>
                 </Grid>
+                <!-- the divider between the map and its tabs: dragged, the map takes that height; double-click, as high as it is wide again -->
+                <Thumb x:Name="MapDivider" DockPanel.Dock="Top" Style="{StaticResource DividerThumb}" DragDelta="MapDivider_DragDelta" MouseDoubleClick="MapDivider_DoubleClick" ToolTip="drag to give the map or its tabs more height — double-click: the map square again"/>
                 <!-- THE DEBUGGER'S FOOT, under the map (Juan, 7-oct-2026: "agrega mejor este tab como parte baja del mapa, ahí veremos las formaciones"):
                      two tabs of one height, so switching never moves the map; right under the map, the height left is theirs — the tool that builds a command from a point, and the active formations -->
-                <TabControl x:Name="DebuggerFoot" MinHeight="176" Margin="0,4,0,0" Style="{StaticResource DarkTabs}">
+                <TabControl x:Name="DebuggerFoot" MinHeight="176" Margin="0" Style="{StaticResource DarkTabs}">
                     <TabItem Header="point → command">
                         <!-- the tool: a point and a verb build one command; the points clicked on the map accumulate for visit and cover -->
                         <Border Background="{StaticResource Well}" Padding="6,4">
@@ -433,7 +438,7 @@
             </DockPanel>
         </GroupBox>
         <!-- the strip the debugger leaves when hidden: one click brings it back -->
-        <Border x:Name="DebuggerStrip" Grid.Column="1" Visibility="Collapsed" Width="30" Margin="0,4,4,4" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Cursor="Hand" MouseLeftButtonUp="ShowDebugger_Click" ToolTip="show the golem debugger (F9)">
+        <Border x:Name="DebuggerStrip" Grid.Column="2" Visibility="Collapsed" Width="30" Margin="0,4,4,4" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Cursor="Hand" MouseLeftButtonUp="ShowDebugger_Click" ToolTip="show the golem debugger (F9)">
             <TextBlock Text="◂  golem debugger" Foreground="{StaticResource Dim}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0">
                 <TextBlock.LayoutTransform>
                     <RotateTransform Angle="90"/>

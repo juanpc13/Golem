@@ -151,6 +151,82 @@
             <Setter Property="VerticalAlignment" Value="Top"/>
         </Style>
 
+        <!-- THE DIVIDERS between panes (Juan, 7-oct-2026: "quisiera poder hacer resize de las siguientes zonas"): a thin bar that drags to resize,
+             its grip lit in the accent under the cursor and while dragged — between columns, between rows, and the map's own (a Thumb) -->
+        <Style x:Key="DividerV" TargetType="GridSplitter">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="ResizeBehavior" Value="PreviousAndNext"/>
+            <Setter Property="ResizeDirection" Value="Columns"/>
+            <Setter Property="Cursor" Value="SizeWE"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="Transparent">
+                            <Border x:Name="Grip" Background="{StaticResource Line}" CornerRadius="1" Width="2" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{StaticResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{StaticResource Accent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DividerH" TargetType="GridSplitter">
+            <Setter Property="Height" Value="6"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="ResizeBehavior" Value="PreviousAndNext"/>
+            <Setter Property="ResizeDirection" Value="Rows"/>
+            <Setter Property="Cursor" Value="SizeNS"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="Transparent">
+                            <Border x:Name="Grip" Background="{StaticResource Line}" CornerRadius="1" Width="48" Height="2" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{StaticResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{StaticResource Accent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DividerThumb" TargetType="Thumb">
+            <Setter Property="Height" Value="8"/>
+            <Setter Property="Cursor" Value="SizeNS"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="Transparent">
+                            <Border x:Name="Grip" Background="{StaticResource Line}" CornerRadius="1" Width="48" Height="2" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{StaticResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Grip" Property="Background" Value="{StaticResource Accent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- THE EYE: a toggle that shows or hides something on the map — open and lit in purple when on, dim and struck through when off -->
         <Style x:Key="EyeToggle" TargetType="ToggleButton">
             <Setter Property="Width" Value="30"/>
