@@ -292,15 +292,25 @@
                                         <DockPanel Margin="4,2">
                                             <ToggleButton DockPanel.Dock="Left" Style="{StaticResource EyeToggle}" IsChecked="{Binding Shown}" ToolTip="show or hide this figure on the map"/>
                                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Button x:Name="ShotButton" Content="shot" Tag="{Binding}" Click="Shot_Click" Margin="2,2,8,2" ToolTip="write the formation as it stands on the tabs: every golem's visit to its vertex"/>
                                                 <Button Content="↻" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="everybody one step clockwise (down the figure's order): a visit on every member's tab"/>
                                                 <Button Content="↺" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="everybody one step counter-clockwise: a visit on every member's tab"/>
                                                 <Button Content="✕" Tag="{Binding}" Click="Dissolve_Click" ToolTip="dissolve: the formation leaves the list; the golems stay where they are"/>
                                             </StackPanel>
                                             <StackPanel VerticalAlignment="Center">
-                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  at "/><Run Text="{Binding Figure.Center, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="  turned "/><Run Text="{Binding Turned, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/></TextBlock>
+                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  at "/><Run Text="{Binding Figure.Center, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="  turned "/><Run Text="{Binding Turned, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run x:Name="Draft" Text="" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
                                                 <TextBlock Text="{Binding Holders, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
                                         </DockPanel>
+                                        <!-- changed on the map and not on the tabs yet: the shot lit, the line says so (Juan, 7-oct-2026: "un botón para agregar a los tabs… como un shot formation") -->
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding Unshot}" Value="True">
+                                                <Setter TargetName="ShotButton" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                                <Setter TargetName="ShotButton" Property="Foreground" Value="{StaticResource Accent}"/>
+                                                <Setter TargetName="ShotButton" Property="FontWeight" Value="Bold"/>
+                                                <Setter TargetName="Draft" Property="Text" Value="  · draft"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>

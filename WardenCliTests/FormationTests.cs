@@ -48,7 +48,7 @@ public class FormationTests
     }
 
     [TestMethod]
-    public void AMove_TakesTheFigureElsewhere_EveryoneKeepsItsVertex_AndGetsTheVisitToItThere()
+    public void AMove_TakesTheFigureElsewhere_EveryoneKeepsItsVertex_AndTheShotWritesTheVisitToItThere()
     {
         var fleet = new Fleet(new[] { new Member("blue", null), new Member("red", null), new Member("green", null), new Member("yellow", null) });
         var square = new Square(new Spot(5.5, 5.5), 2.0);
@@ -56,7 +56,11 @@ public class FormationTests
         formation.Rotate(Sense.Clockwise);
         Assert.AreEqual("green NE · red NW · yellow SW · blue SE", formation.Holders);
 
-        var lines = formation.Move(new Spot(4.0, 5.0));
+        Assert.IsFalse(formation.Unshot, "laid out and stepped: its lines are on the tabs");
+        formation.Move(new Spot(4.0, 5.0));
+        Assert.IsTrue(formation.Unshot, "a move is a draft until the shot");
+        var lines = formation.Shot();
+        Assert.IsFalse(formation.Unshot, "the shot wrote it");
         Assert.AreEqual(new Spot(4.0, 5.0), formation.Figure.Center);
         Assert.AreEqual(2.0, ((Square)formation.Figure).Side, "the same square, elsewhere");
         Assert.AreEqual("visit 5,4", lines["blue"], "blue keeps the south-east corner, now at 5,4");
@@ -64,6 +68,36 @@ public class FormationTests
         Assert.AreEqual("green NE · red NW · yellow SW · blue SE", formation.Holders, "nobody changes vertex");
         Assert.AreEqual(-1, formation.Turned, "the rotations counted stay");
         Assert.AreEqual(1.5, ((Circle)new Circle(new Spot(5.5, 5.5), 1.5).At(new Spot(2.0, 2.0))).Radius, "a circle moves with its radius");
+    }
+
+    [TestMethod]
+    public void AFigure_TurnsAndResizes_EveryoneKeepsItsVertex_AndTheCompassFollows()
+    {
+        var fleet = new Fleet(new[] { new Member("blue", null), new Member("red", null), new Member("green", null), new Member("yellow", null) });
+        var square = new Square(new Spot(5.5, 5.5), 2.0);
+        var formation = new Choreography(square, fleet, new ByRank(), 0, clockwise: true).Outcome(1);
+        Assert.AreEqual("blue NE · green NW · red SW · yellow SE", formation.Holders);
+
+        formation.Orient(45);
+        var turned = formation.Shot();
+        Assert.AreEqual("visit 5.5,6.914", turned["blue"], "blue's corner, the north-east, turned 45° stands due north");
+        Assert.AreEqual("blue N · green W · red S · yellow E", formation.Holders, "nobody changes vertex; the compass follows the turn");
+        Assert.AreEqual(45.0, formation.Figure.Angle);
+        Assert.AreEqual(0, formation.Turned, "a turn of the figure is no step of the fleet");
+
+        formation.Resize(4.0);
+        var sized = formation.Shot();
+        Assert.AreEqual("visit 5.5,8.328", sized["blue"], "a side of 4: the corner 2.83 m from the centre");
+        Assert.AreEqual(4.0, ((Square)formation.Figure).Side);
+        Assert.AreEqual(45.0, formation.Figure.Angle, "a resize keeps the orientation");
+        StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => formation.Resize(0)).Message, "side above zero");
+        formation.Orient(90);
+        formation.Rotate(Sense.Clockwise);
+        Assert.IsFalse(formation.Unshot, "a step writes its own visits onto the figure as it stands: nothing left to shoot");
+
+        Assert.AreEqual(2.0, new Square(new Spot(0, 0), 2.0).MeasureFor(Math.Sqrt(2)), 1e-9, "the side that puts the corners that far");
+        Assert.AreEqual(0.0, new Square(new Spot(0, 0), 2.0, 360).Angle, "an orientation is kept in [0, 360)");
+        Assert.AreEqual(new Spot(5.5, 6.5), new Circle(new Spot(5.5, 5.5), 1.0, 90).Places(4)[0], "a circle's first place turns too");
     }
 
     [TestMethod]

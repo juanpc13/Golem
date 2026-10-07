@@ -85,23 +85,51 @@ public sealed class Formation : INotifyPropertyChanged
             held[member.Name] = Mod(from + sign * steps, places.Count);
         }
         Turned += sign * steps;
+        Unshot = false;   // its visits take everybody onto the figure as it stands now
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Holders)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Turned)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
         return lines;
     }
 
     /// <summary>A MOVE (propuesta 97, 7-oct-2026; Juan: "seleccionar la formación y poder desplazar el overlay del mapa para cambiarle el centro a
-    /// otra posición"): the same figure, its centre elsewhere — every member KEEPS ITS VERTEX and the line it gets is the <c>visit</c> to that
-    /// vertex at the new place; the rotations counted stay. Nothing is sent here; the console knows nothing of the map, so where it goes is
-    /// the operator's to judge.</summary>
-    public IReadOnlyDictionary<string, string> Move(Spot center)
+    /// otra posición"): the same figure, its centre elsewhere. A DRAFT until <see cref="Shot"/> (Juan, 7-oct-2026: "cuando suelto el clic
+    /// termina de poner el comando visit… quizás quisiera un botón para agregar a los tabs, como un shot formation"). The console knows nothing
+    /// of the map, so where it goes is the operator's to judge.</summary>
+    public void Move(Spot center) => Reshape(Figure.At(center));
+
+    /// <summary>A TURN OF THE FIGURE ITSELF (propuesta 98, 7-oct-2026; Juan: "rotar y redimensionar esa figura de la formación"): the same figure,
+    /// the same centre and size, at this orientation, degrees counter-clockwise from the way the golem's module lays it. Not
+    /// <see cref="Rotate"/>, which passes every member to the next vertex: here nobody changes vertex, the vertices themselves turn. A draft.</summary>
+    public void Orient(double angle) => Reshape(Figure.Oriented(angle));
+
+    /// <summary>A RESIZE (propuesta 98): the same figure, bigger or smaller — a polygon by its side, a circle by its radius. A draft.</summary>
+    public void Resize(double measure) => Reshape(Figure.Sized(measure));
+
+    /// <summary>Whether the figure changed — moved, turned, resized — since its lines last went to the tabs: what <see cref="Shot"/> would write.</summary>
+    public bool Unshot { get; private set; }
+
+    /// <summary>THE SHOT: the formation as it stands, in lines — every member's <c>visit</c> to the vertex it holds, where that vertex is now.
+    /// The draft is over; nothing is sent here.</summary>
+    public IReadOnlyDictionary<string, string> Shot()
     {
-        var moved = Figure.At(center);
-        var places = moved.Places(Fleet.Count);
+        var places = Places;
         var lines = Fleet.Members.ToDictionary(m => m.Name, m => "visit " + places[held[m.Name]], StringComparer.Ordinal);
-        Figure = moved;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Figure)));
+        Unshot = false;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
         return lines;
+    }
+
+    // what a move, a turn and a resize share: the figure changes, every member KEEPS ITS VERTEX, the rotations counted stay, and the
+    // formation waits for its shot
+    private void Reshape(Figure next)
+    {
+        next.Places(Fleet.Count);   // a figure the fleet does not fit is refused before anything changes
+        Figure = next;
+        Unshot = true;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Figure)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Holders)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
     }
 
     /// <summary>Who holds what, vertex by vertex in the figure's order — "blue NE · green NW · red SW · yellow SE"; a free vertex says so.</summary>

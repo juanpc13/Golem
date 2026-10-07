@@ -25,9 +25,12 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<Golem> golems = new();
     // THE ACTIVE FORMATIONS (propuesta 96): every one laid out by the console, with the vertex each golem holds, rotated from here
     private readonly ObservableCollection<Formation> formations = new();
-    // a formation being MOVED on the map (propuesta 97): grabbed by the handle at its centre, the centre it would take while the mouse is held
+    // a formation being RESHAPED on the map (propuestas 97, 98): grabbed by one of the grips of the selected one — its centre moves it, the
+    // square on its first vertex resizes it, the knob beyond that vertex turns it — and the figure it would become while the mouse is held
+    private enum Grip { Move, Size, Turn }
     private Formation? dragging;
-    private Spot? dragTo;
+    private Grip grip;
+    private Figure? ghost;
     private readonly Dictionary<string, CancellationTokenSource> runners = new();
     private CancellationTokenSource? journalFollow;
     private string? workspace;
@@ -52,7 +55,7 @@ public partial class MainWindow : Window
         formations.CollectionChanged += (_, _) =>
         {
             Draw();
-            NoFormation.Text = formations.Count == 0 ? "none yet — Console › Formation lays one out here" : "select one and drag the handle at its centre on the map to move it";
+            NoFormation.Text = formations.Count == 0 ? "none yet — Console › Formation lays one out here" : "select one: on the map its centre moves it, the square resizes it, the knob turns it — 'shot' puts it on the tabs";
         };
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
@@ -675,10 +678,10 @@ public partial class MainWindow : Window
 
     private void Map_Click(object sender, MouseButtonEventArgs e)
     {
-        if (OnHandle(e.GetPosition(Map)) is { } grabbed)
+        if (OnGrip(e.GetPosition(Map)) is { } grabbed)
         {
-            dragging = grabbed;
-            dragTo = grabbed.Figure.Center;
+            (dragging, grip) = grabbed;
+            ghost = dragging.Figure;
             Map.CaptureMouse();
             e.Handled = true;
             Draw();
@@ -700,43 +703,99 @@ public partial class MainWindow : Window
     private (double X, double Y) FloorPoint(Point p) => ((p.X - OffsetX) / Scale(), FloorSize - (p.Y - OffsetY) / Scale());
     private Point Pixel(double x, double y) => new(OffsetX + x * Scale(), OffsetY + (FloorSize - y) * Scale());
 
-    // THE HANDLE of the selected formation, projected: a ring at its centre that grabs it (propuesta 97)
-    private Formation? OnHandle(Point p)
+    // THE GRIPS of the selected formation, projected (propuestas 97, 98): the ring at its centre moves it, the square on its first vertex
+    // resizes it, the knob beyond that vertex turns it; null when the point is on none of them
+    private (Formation Formation, Grip Grip)? OnGrip(Point p)
     {
         if (FormationList.SelectedItem is not Formation f || !f.Shown) return null;
-        var c = Pixel(f.Figure.Center.X, f.Figure.Center.Y);
-        return Math.Abs(p.X - c.X) <= 10 && Math.Abs(p.Y - c.Y) <= 10 ? f : null;
+        var (centre, size, knob) = Grips(f.Figure, f.Fleet.Count);
+        bool near(Point q, double r) => Math.Abs(p.X - q.X) <= r && Math.Abs(p.Y - q.Y) <= r;
+        if (near(size, 8)) return (f, Grip.Size);
+        if (near(knob, 9)) return (f, Grip.Turn);
+        if (near(centre, 10)) return (f, Grip.Move);
+        return null;
     }
 
-    // the formation let go: moved if its centre changed — the same figure there, every golem the visit to its own vertex on its tab
+    // where the grips of a figure stand on the map: its centre, its first vertex, and the knob 26 px beyond that vertex, away from the centre
+    private (Point Centre, Point Size, Point Knob) Grips(Figure figure, int count)
+    {
+        var c = Pixel(figure.Center.X, figure.Center.Y);
+        var first = figure.Places(count)[0];
+        var v = Pixel(first.X, first.Y);
+        double dx = v.X - c.X, dy = v.Y - c.Y, len = Math.Max(1, Math.Sqrt(dx * dx + dy * dy));
+        return (c, v, new Point(v.X + dx / len * 26, v.Y + dy / len * 26));
+    }
+
+    // the figure the grip held would make of it with the cursor here: a centre to a tenth of a metre inside the floor, a measure to a tenth
+    // of a metre (at least a tenth), an orientation to five degrees
+    private Figure Reshaped(Formation f, Grip held, Point p)
+    {
+        var (x, y) = FloorPoint(p);
+        var figure = f.Figure;
+        switch (held)
+        {
+            case Grip.Move:
+                return figure.At(new Spot(Math.Round(Math.Clamp(x, 0, FloorSize), 1), Math.Round(Math.Clamp(y, 0, FloorSize), 1)));
+            case Grip.Size:
+                double reach = new Spot(x, y).DistanceTo(figure.Center);
+                return figure.Sized(Math.Max(0.1, Math.Round(figure.MeasureFor(reach), 1)));
+            default:
+                double cursor = Math.Atan2(y - figure.Center.Y, x - figure.Center.X) * 180 / Math.PI;
+                double laidOut = figure.Bearing(0, f.Fleet.Count) - figure.Angle;
+                return figure.Oriented(Math.Round((cursor - laidOut) / 5) * 5);
+        }
+    }
+
+    // what the figure became, in the operator's words: its centre, its measure, its orientation
+    private static string Shape(Figure figure) =>
+        $"at {figure.Center}, {(figure is Circle ? "radius" : "side")} {Spot.Fmt(figure.Measure)} m, {Spot.Fmt(figure.Angle)}°";
+
+    // the formation let go: reshaped if its figure changed — every golem the visit to its own vertex on its tab
     private void Map_MouseUp(object sender, MouseButtonEventArgs e)
     {
         if (dragging is not { } formation) return;
         Map.ReleaseMouseCapture();
-        var to = dragTo;
+        var next = ghost;
+        var held = grip;
         dragging = null;
-        dragTo = null;
-        if (to is Spot centre && centre != formation.Figure.Center) MoveFormation(formation, centre);
+        ghost = null;
+        if (next != null && Shape(next) != Shape(formation.Figure)) Reshape(formation, held, next);
         Draw();
     }
 
-    private void MoveFormation(Formation formation, Spot centre)
+    // the grip let go: the formation takes the figure — a DRAFT, nothing on the tabs until its shot (Juan, 7-oct-2026: "cuando suelto el clic
+    // termina de poner el comando visit… quizás quisiera un botón para agregar a los tabs")
+    private void Reshape(Formation formation, Grip held, Figure next)
     {
         try
         {
-            var from = formation.Figure.Center;
-            var lines = formation.Move(centre);
-            int missing = 0;
-            foreach (var (name, line) in lines)
+            string before = Shape(formation.Figure);
+            switch (held)
             {
-                var g = golems.FirstOrDefault(x => x.Name == name);
-                if (g == null) { missing++; continue; }
-                g.Enqueue($"# {formation.Name} moves from {from} to {centre} — {name} keeps {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
-                g.Enqueue(line);
+                case Grip.Move: formation.Move(next.Center); break;
+                case Grip.Size: formation.Resize(next.Measure); break;
+                default: formation.Orient(next.Angle); break;
             }
-            Log($"{formation.Name} › moved from {from} to {centre}: a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — {formation.Holders}; SEND to selected when ready");
+            string what = held switch { Grip.Move => "moved", Grip.Size => "resized", _ => "turned" };
+            Log($"{formation.Name} › {what} from {before} to {Shape(formation.Figure)} — {formation.Holders}; 'shot' puts it on the tabs");
         }
         catch (ArgumentException ex) { Log(ex.Message); }
+    }
+
+    // THE SHOT: the formation as it stands goes to the tabs — every golem's visit to the vertex it holds, with a note; nothing is sent
+    private void Shot_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not Formation formation) return;
+        var lines = formation.Shot();
+        int missing = 0;
+        foreach (var (name, line) in lines)
+        {
+            var g = golems.FirstOrDefault(x => x.Name == name);
+            if (g == null) { missing++; continue; }
+            g.Enqueue($"# {formation.Name} shot: {Shape(formation.Figure)} — {name} at {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
+            g.Enqueue(line);
+        }
+        Log($"{formation.Name} › shot: {Shape(formation.Figure)} — a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")}; SEND to selected when ready");
     }
 
     // the coordinates under the cursor, shown while it moves over the floor and gone when it leaves (Juan, 6-oct-2026); while a formation is
@@ -746,14 +805,16 @@ public partial class MainWindow : Window
         var p = e.GetPosition(Map);
         if (dragging != null)
         {
-            var (dx, dy) = FloorPoint(p);
-            dragTo = new Spot(Math.Round(Math.Clamp(dx, 0, FloorSize), 1), Math.Round(Math.Clamp(dy, 0, FloorSize), 1));
+            ghost = Reshaped(dragging, grip, p);
             Draw();
         }
-        Map.Cursor = dragging != null || OnHandle(p) != null ? Cursors.SizeAll : null;
+        var over = dragging != null ? grip : OnGrip(p)?.Grip;
+        Map.Cursor = over switch { Grip.Move => Cursors.SizeAll, Grip.Size => Cursors.SizeNWSE, Grip.Turn => Cursors.Hand, _ => null };
         var (x, y) = FloorPoint(p);
         if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) { Hover.Visibility = Visibility.Collapsed; return; }
-        HoverText.Text = $"x {x.ToString("0.0", CultureInfo.InvariantCulture)}  y {y.ToString("0.0", CultureInfo.InvariantCulture)}";
+        HoverText.Text = dragging != null && ghost != null && grip != Grip.Move
+            ? (grip == Grip.Size ? $"{(ghost is Circle ? "radius" : "side")} {Spot.Fmt(ghost.Measure)} m" : $"{Spot.Fmt(ghost.Angle)}°")
+            : $"x {x.ToString("0.0", CultureInfo.InvariantCulture)}  y {y.ToString("0.0", CultureInfo.InvariantCulture)}";
         Hover.Visibility = Visibility.Visible;
         double left = p.X + 14, top = p.Y + 14;
         if (left + 110 > Map.ActualWidth) left = p.X - 118;
@@ -864,16 +925,16 @@ public partial class MainWindow : Window
         foreach (var f in formations.Where(f => f.Shown).OrderBy(f => f == chosen))
         {
             bool strong = f == chosen;
-            if (f == dragging && dragTo is Spot to)
+            if (f == dragging && ghost != null)
             {
                 DrawFigure(f, f.Figure, scale, strong: false, faint: true);
-                DrawFigure(f, f.Figure.At(to), scale, strong: true, faint: false);
-                DrawHandle(to);
+                DrawFigure(f, ghost, scale, strong: true, faint: false);
+                DrawGrips(ghost, f.Fleet.Count);
             }
             else
             {
                 DrawFigure(f, f.Figure, scale, strong, faint: false);
-                if (strong) DrawHandle(f.Figure.Center);
+                if (strong) DrawGrips(f.Figure, f.Fleet.Count);
             }
         }
         // the points picked: the way the errand will go, numbered, joined by a dashed line
@@ -938,8 +999,9 @@ public partial class MainWindow : Window
         }
         layer.Children.Add(new Line { X1 = centre.X - 5, Y1 = centre.Y, X2 = centre.X + 5, Y2 = centre.Y, Stroke = line, StrokeThickness = 1 });
         layer.Children.Add(new Line { X1 = centre.X, Y1 = centre.Y - 5, X2 = centre.X, Y2 = centre.Y + 5, Stroke = line, StrokeThickness = 1 });
-        var tag = new TextBlock { Text = $"{f.Name} · {figure.Center}", Foreground = line, FontSize = strong ? 10 : 9, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal };
-        Canvas.SetLeft(tag, centre.X + 12); Canvas.SetTop(tag, centre.Y + 2); layer.Children.Add(tag);
+        var tag = new TextBlock { Text = strong ? $"{f.Name} · {Shape(figure)}" : $"{f.Name} · {figure.Center}", Foreground = line, FontSize = strong ? 10 : 9, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal };
+        tag.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));   // under the centre, centred: clear of the vertices whatever the turn
+        Canvas.SetLeft(tag, centre.X - tag.DesiredSize.Width / 2); Canvas.SetTop(tag, centre.Y + 11); layer.Children.Add(tag);
         for (int i = 0; i < vertices.Count; i++)
         {
             var pv = Pixel(vertices[i].X, vertices[i].Y);
@@ -953,14 +1015,21 @@ public partial class MainWindow : Window
         }
     }
 
-    // the handle that moves the selected formation: a ring at its centre (drag it; the cursor turns to the four arrows over it)
-    private void DrawHandle(Spot centre)
+    // the grips of the selected formation: a ring at its centre (move), a square on its first vertex (resize), a knob beyond it on a thin
+    // stem (turn); the cursor tells them apart — four arrows, the diagonal, the hand
+    private void DrawGrips(Figure figure, int count)
     {
         var purple = ((SolidColorBrush)FindResource("Purple")).Color;
-        var c = Pixel(centre.X, centre.Y);
-        var ring = new Ellipse { Width = 18, Height = 18, Stroke = new SolidColorBrush(purple), StrokeThickness = 2, Fill = new SolidColorBrush(Color.FromArgb(0x55, purple.R, purple.G, purple.B)), ToolTip = "drag to move the formation's centre" };
-        Canvas.SetLeft(ring, c.X - 9); Canvas.SetTop(ring, c.Y - 9);
-        Map.Children.Add(ring);
+        var stroke = new SolidColorBrush(purple);
+        var fill = new SolidColorBrush(Color.FromArgb(0x55, purple.R, purple.G, purple.B));
+        var (c, v, k) = Grips(figure, count);
+        var ring = new Ellipse { Width = 18, Height = 18, Stroke = stroke, StrokeThickness = 2, Fill = fill, ToolTip = "drag to move the formation" };
+        Canvas.SetLeft(ring, c.X - 9); Canvas.SetTop(ring, c.Y - 9); Map.Children.Add(ring);
+        Map.Children.Add(new Line { X1 = v.X, Y1 = v.Y, X2 = k.X, Y2 = k.Y, Stroke = stroke, StrokeThickness = 1.2, StrokeDashArray = new DoubleCollection { 2, 2 } });
+        var size = new Rectangle { Width = 12, Height = 12, Stroke = stroke, StrokeThickness = 2, Fill = fill, ToolTip = "drag in or out to resize the figure" };
+        Canvas.SetLeft(size, v.X - 6); Canvas.SetTop(size, v.Y - 6); Map.Children.Add(size);
+        var knob = new Ellipse { Width = 14, Height = 14, Stroke = stroke, StrokeThickness = 2, Fill = new SolidColorBrush(Color.FromArgb(0xaa, purple.R, purple.G, purple.B)), ToolTip = "drag around the centre to turn the figure" };
+        Canvas.SetLeft(knob, k.X - 7); Canvas.SetTop(knob, k.Y - 7); Map.Children.Add(knob);
     }
 
     // ==================================================================
