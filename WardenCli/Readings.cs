@@ -23,9 +23,9 @@ public sealed record Readings(string Zone, string Scenario, string Navigation, b
     }
 }
 
-/// <summary>A scenario the golem knows, offered in the drop-down that changes its map (Juan, 7-oct-2026: "por el mismo drop down que él nos
-/// proporciona la lista de mapas que tiene"): its name, and whether it is the one the golem is in.</summary>
-public sealed record ScenarioOption(string Name, bool Current)
+/// <summary>One choice of the golem's environment, offered in a drop-down — a scenario it knows (Juan, 7-oct-2026: "por el mismo drop down que
+/// él nos proporciona la lista de mapas que tiene"), a way of taking the doors: its name, and whether it is the one in force.</summary>
+public sealed record Choice(string Name, bool Current)
 {
     public string Label => Current ? $"{Name} · current" : Name;
     public override string ToString() => Label;

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace WardenCli;
@@ -27,31 +28,39 @@ public sealed class Golem : INotifyPropertyChanged
     /// <summary>Whether its queue is being sent now; the box says so.</summary>
     public bool Running { get => running; set { Set(ref running, value); Raise(nameof(StatusLine)); } }
     public int Sent { get => sent; set => Set(ref sent, value); }
-    public double? LastX { get => lastX; set { Set(ref lastX, value); Raise(nameof(LastSeen)); Raise(nameof(WhereLine)); } }
-    public double? LastY { get => lastY; set { Set(ref lastY, value); Raise(nameof(LastSeen)); Raise(nameof(WhereLine)); } }
-    public double? LastHeading { get => lastHeading; set { Set(ref lastHeading, value); Raise(nameof(LastSeen)); Raise(nameof(WhereLine)); } }
+    public double? LastX { get => lastX; set { Set(ref lastX, value); Raise(nameof(LastSeen)); Raise(nameof(PositionText)); } }
+    public double? LastY { get => lastY; set { Set(ref lastY, value); Raise(nameof(LastSeen)); Raise(nameof(PositionText)); } }
+    public double? LastHeading { get => lastHeading; set { Set(ref lastHeading, value); Raise(nameof(LastSeen)); Raise(nameof(HeadingText)); } }
 
     private Readings knowledge = Readings.Nothing;
     /// <summary>What it answered to the reads last — where, state, route, obstacles: INFORMATION beside the map, drawn on it (Juan, 7-oct-2026).</summary>
     public Readings Knowledge
     {
         get => knowledge;
-        set { Set(ref knowledge, value); Raise(nameof(WhereLine)); Raise(nameof(StateLine)); Raise(nameof(RouteLine)); Raise(nameof(ObstaclesLine)); Raise(nameof(ScenarioOptions)); }
+        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); }
     }
 
-    /// <summary>The scenarios it knows, for the drop-down that composes `enter <scenario>`; the one it is in says so.</summary>
-    public IReadOnlyList<ScenarioOption> ScenarioOptions => Knowledge.Scenarios.Select(n => new ScenarioOption(n, n == Knowledge.Scenario)).ToList();
+    /// <summary>The scenarios it knows, for the environment's drop-down that enters one at once; the one it is in says so.</summary>
+    public IReadOnlyList<Choice> ScenarioOptions => Knowledge.Scenarios.Select(n => new Choice(n, n == Knowledge.Scenario)).ToList();
 
-    public string WhereLine => LastX == null || LastY == null
-        ? "where · not known yet"
-        : $"where · ({LastX:0.00}, {LastY:0.00}) facing {LastHeading:0.00} rad, in {Knowledge.Zone} · {Knowledge.Scenario} · {Knowledge.Navigation}{(Knowledge.Held ? " · HELD" : "")}";
-    public string StateLine => Knowledge.Pending == null ? "state · not asked yet" : $"state · {Knowledge.Pending} pending of {Knowledge.Routes} route(s)";
-    public string RouteLine => Knowledge.RouteId == null
-        ? "route · none yet"
-        : $"route {Knowledge.RouteId} · {Knowledge.RouteStatus}{(Knowledge.RouteAction == "" ? "" : $", now {Knowledge.RouteAction}")}{(Knowledge.RouteWhy == "" ? "" : $" — {Knowledge.RouteWhy}")}{Environment.NewLine}plan · {Knowledge.RoutePlan}";
-    public string ObstaclesLine => Knowledge.Pending == null
-        ? "obstacles · not asked yet"
-        : Knowledge.Marks == 0 && Knowledge.Met == 0 ? "obstacles · nothing touched yet" : $"obstacles · {Knowledge.Things} thing(s), {Knowledge.Met} peer(s) met, {Knowledge.Marks} mark(s)";
+    /// <summary>The two ways it may take the doors, as `where` names them, for the environment's drop-down (`optimize …`).</summary>
+    public IReadOnlyList<Choice> NavigationOptions => new[] { "door by door", "on the way" }.Select(n => new Choice(n, n == Knowledge.Navigation)).ToList();
+
+    /// <summary>What the environment's drop-downs show while closed: what is in force (the arrow says it can change).</summary>
+    public string ScenarioPrompt => Knowledge.Scenario == "" ? "a scenario…" : Knowledge.Scenario;
+    public string NavigationPrompt => Knowledge.Navigation == "" ? "a way…" : Knowledge.Navigation;
+
+    // ---- THE DEBUGGER'S CARD, a field each (Juan, 7-oct-2026: "la parte de los datos del golem que él sabe o le consultamos… se ve muy simple");
+    // numbers with a decimal point whatever the machine's culture, the heading in degrees too ----
+    private static string N(double v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+    public string PositionText => LastX is double x && LastY is double y ? $"x {N(x)}   y {N(y)}" : "not known yet";
+    public string HeadingText => LastHeading is double h ? $"facing {(h * 180 / Math.PI).ToString("0", CultureInfo.InvariantCulture)}°  ({N(h)} rad)" : "";
+    public string RoutesText => Knowledge.Pending == null ? "not asked yet" : $"{Knowledge.Pending} pending of {Knowledge.Routes}";
+    public string RouteTitle => Knowledge.RouteId == null ? "none yet" : $"#{Knowledge.RouteId}";
+    public string RouteNow => Knowledge.RouteAction == "" ? "" : $"asks now: {Knowledge.RouteAction}";
+    public string ObstaclesText => Knowledge.Pending == null
+        ? "not asked yet"
+        : Knowledge.Marks == 0 && Knowledge.Met == 0 ? "nothing touched yet" : $"{Knowledge.Things} thing(s) · {Knowledge.Met} peer(s) met · {Knowledge.Marks} mark(s)";
 
     private FloorPlan? plan;
     /// <summary>What its current scenario disposes, as it told it last (GET /map); the console's map draws it.</summary>

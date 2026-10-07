@@ -134,6 +134,23 @@
         <Style TargetType="Separator">
             <Setter Property="Background" Value="{StaticResource Line}"/>
         </Style>
+        <!-- a CHIP: a short value in a rounded box (a zone, a scenario, a status); and the label of a field in the debugger's card -->
+        <Style x:Key="Chip" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Raised}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="7,0,7,1"/>
+            <Setter Property="Margin" Value="0,1,5,1"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Dim}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,2,8,2"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+        </Style>
+
         <!-- THE EYE: a toggle that shows or hides something on the map — open and lit in purple when on, dim and struck through when off -->
         <Style x:Key="EyeToggle" TargetType="ToggleButton">
             <Setter Property="Width" Value="30"/>

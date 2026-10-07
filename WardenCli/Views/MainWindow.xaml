@@ -52,13 +52,6 @@
                         <TextBlock Text="hold" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="10,0,2,0"/>
                         <Button Content="pause" Tag="pause" Click="Compose_Click"/>
                         <Button Content="resume" Tag="resume" Click="Compose_Click"/>
-                        <TextBlock Text="levers" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="10,0,2,0"/>
-                        <Button Content="reset" Tag="reset" Click="Compose_Click" ToolTip="every route let go, the body back on its mark"/>
-                        <Button Content="reset all" Tag="reset --all" Click="Compose_Click" ToolTip="reset --all: the journal wiped too"/>
-                        <Button Content="place" Tag="place {point}" Click="Compose_Click" ToolTip="the body carried onto the point of the box"/>
-                        <!-- the scenario is changed through the list the golem itself gives (Juan, 7-oct-2026: "por el mismo drop down que él nos proporciona
-                             la lista de mapas que tiene, no tanto un botón de warehouse/openfloor"): picking one composes 'enter <scenario>' on the tab -->
-                        <ComboBox Width="190" Tag="enter a scenario…" ItemsSource="{Binding ScenarioOptions, Mode=OneWay}" DisplayMemberPath="Label" SelectionChanged="Scenario_Selected" ToolTip="the scenarios this golem knows, as it lists them — pick one and 'enter &lt;scenario&gt;' goes on the tab"/>
                     </WrapPanel>
                 </Border>
                 <!-- BELOW THE SCRIPT: the golem's own choreography module (the fleet agrees among itself) -->
@@ -183,18 +176,39 @@
             <!-- THE GOLEMS: boxes in their colour — the one clicked is the tab whose script the centre shows; a check addresses them together -->
             <GroupBox Grid.Column="0" Header="golems in operation — click one for its script">
                 <DockPanel>
-                    <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                        <UniformGrid Columns="3">
-                            <TextBox x:Name="NewName" ToolTip="name" Text="blue"/>
-                            <TextBox x:Name="NewHost" ToolTip="host" Text="localhost"/>
-                            <TextBox x:Name="NewPort" ToolTip="port" Text="8081"/>
-                        </UniformGrid>
-                        <UniformGrid Columns="2">
-                            <Button Content="add" Click="AddGolem_Click"/>
-                            <Button Content="remove" Click="RemoveGolem_Click"/>
-                        </UniformGrid>
-                        <Button Content="add the four of the compose" Click="AddFour_Click" ToolTip="blue 8081, red 8082, green 8083, yellow 8084 on localhost"/>
-                    </StackPanel>
+                    <!-- adding and removing golems: a dialog, not fields always in sight (Juan, 7-oct-2026: "¿no debería salir como parte de un modal,
+                         un botón que permita agregar nuevos golems al CLI, en vez de verlo de primera entrada?") -->
+                    <UniformGrid DockPanel.Dock="Bottom" Columns="2" Margin="0,6,0,0">
+                        <Button Content="+ add golem…" Click="AddGolem_Click" ToolTip="a golem in operation, by its host and port — or the four of the compose"/>
+                        <Button Content="remove" Click="RemoveGolem_Click" ToolTip="the selected golem leaves this workspace, its script with it (asks first); the golem itself is untouched"/>
+                    </UniformGrid>
+                    <!-- THE GOLEM'S ENVIRONMENT (Juan, 7-oct-2026: "eso quizás debería estar en la configuración del golem… parece más de ambiente del
+                         golem, no tanto de operaciones de los scripts"): the selected golem's scenario, its way of taking the doors, and its levers —
+                         acted AT ONCE on that golem, never a line of its script; reset all asks first -->
+                    <Border DockPanel.Dock="Bottom" Margin="0,6,0,0" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="6,4">
+                        <ContentControl Content="{Binding SelectedItem, ElementName=GolemList}">
+                            <ContentControl.ContentTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock FontSize="11" Foreground="{StaticResource Dim}" Margin="2,0,0,4" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}" FontWeight="Bold" Foreground="{Binding Name, Mode=OneWay, Converter={x:Static local:GolemColor.Brush}}"/><Run Text="'s environment — acted at once"/></TextBlock>
+                                        <DockPanel>
+                                            <TextBlock Text="scenario" Width="62" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center"/>
+                                            <ComboBox Tag="{Binding ScenarioPrompt, Mode=OneWay}" ItemsSource="{Binding ScenarioOptions, Mode=OneWay}" DisplayMemberPath="Label" SelectionChanged="Scenario_Selected" ToolTip="the scenarios this golem knows, as it lists them — pick one and it enters it now"/>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="navigation" Width="62" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center"/>
+                                            <ComboBox Tag="{Binding NavigationPrompt, Mode=OneWay}" ItemsSource="{Binding NavigationOptions, Mode=OneWay}" DisplayMemberPath="Label" SelectionChanged="Navigation_Selected" ToolTip="how its routes take the doors — door by door, or the doors crossed on the way; pick one and it switches now"/>
+                                        </DockPanel>
+                                        <UniformGrid Columns="3" Margin="0,2,0,0">
+                                            <Button Content="place" Tag="{Binding}" Click="PlaceNow_Click" ToolTip="the body carried onto the debugger's point (x, y) — now"/>
+                                            <Button Content="reset" Tag="{Binding}" Click="ResetNow_Click" ToolTip="every route let go, the body back on its mark — now"/>
+                                            <Button Content="reset all" Tag="{Binding}" Click="ResetAllNow_Click" Foreground="{StaticResource Red}" ToolTip="reset --all: its journal wiped too — asks first"/>
+                                        </UniformGrid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ContentControl.ContentTemplate>
+                        </ContentControl>
+                    </Border>
                     <ListBox x:Name="GolemList" ItemTemplate="{StaticResource GolemBox}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="GolemList_SelectionChanged"/>
                 </DockPanel>
             </GroupBox>
@@ -223,30 +237,129 @@
              what the selected golem knows (where, state, route, obstacles, asked every 3 s), its map with everybody and its obstacles, and the tool
              that builds a command from a point — the map's clicks accumulate the visit's points -->
         <GroupBox x:Name="DebuggerPanel" Grid.Column="1">
-            <DockPanel>
+            <DockPanel x:Name="DebuggerBody">
                 <!-- its title, and the lever that hides it -->
-                <DockPanel DockPanel.Dock="Top" Margin="2,0,0,4">
+                <DockPanel x:Name="DebuggerTitle" DockPanel.Dock="Top" Margin="2,0,0,4">
                     <Button DockPanel.Dock="Right" Content="hide ▸" Click="HideDebugger_Click" ToolTip="hide the debugger: the script and the log take the width — F9, View › Debugger or the strip at the right edge bring it back"/>
-                    <TextBlock x:Name="KnowsHeader" Text="golem debugger — select a golem: what it knows, its map, a command from a point" Foreground="{StaticResource Dim}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <!-- the title: what this panel is, and whose — the golem's name in its own colour (Juan, 7-oct-2026: "el título mejóralo") -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="GOLEM DEBUGGER" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ContentControl Content="{Binding SelectedItem, ElementName=GolemList}" VerticalAlignment="Center">
+                            <ContentControl.ContentTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Chip}" BorderBrush="{Binding Name, Mode=OneWay, Converter={x:Static local:GolemColor.Brush}}" Background="{Binding Name, Mode=OneWay, Converter={x:Static local:GolemColor.Fill}}">
+                                        <TextBlock Text="{Binding Name, Mode=OneWay}" FontWeight="Bold" FontSize="12" Foreground="{Binding Name, Mode=OneWay, Converter={x:Static local:GolemColor.Brush}}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ContentControl.ContentTemplate>
+                        </ContentControl>
+                        <TextBlock Text="what it knows, asked every 3 s" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                    </StackPanel>
                 </DockPanel>
                 <!-- the reads, as information -->
-                <Border DockPanel.Dock="Top" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="6,3" Margin="0,0,0,4">
+                <Border x:Name="ReadsBox" DockPanel.Dock="Top" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="8,5" Margin="0,0,0,6">
                     <ContentControl Content="{Binding SelectedItem, ElementName=GolemList}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding WhereLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding StateLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding RouteLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap" FontFamily="Consolas"/>
-                                    <TextBlock Text="{Binding ObstaclesLine, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
-                                </StackPanel>
+                                <!-- THE CARD: what the golem knows, a field each (Juan, 7-oct-2026: "se ve muy simple") — where it stands, where it is, its
+                                     routes, the last one with its status in colour and why it ended short, its plan, and what it touched -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="62"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="position" Style="{StaticResource FieldLabel}"/>
+                                    <WrapPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding PositionText, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource Ink}" Margin="0,2,12,2"/>
+                                        <TextBlock Text="{Binding HeadingText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" Margin="0,2"/>
+                                    </WrapPanel>
+                                    <TextBlock Grid.Row="1" Text="in" Style="{StaticResource FieldLabel}"/>
+                                    <WrapPanel Grid.Row="1" Grid.Column="1">
+                                        <Border Style="{StaticResource Chip}" ToolTip="the zone it stands in"><TextBlock Text="{Binding Knowledge.Zone, Mode=OneWay}" FontSize="11"/></Border>
+                                        <Border Style="{StaticResource Chip}" ToolTip="the scenario it is in"><TextBlock Text="{Binding Knowledge.Scenario, Mode=OneWay}" FontSize="11"/></Border>
+                                        <Border Style="{StaticResource Chip}" ToolTip="how its routes take the doors"><TextBlock Text="{Binding Knowledge.Navigation, Mode=OneWay}" FontSize="11"/></Border>
+                                        <Border x:Name="HeldChip" Style="{StaticResource Chip}" Visibility="Collapsed" BorderBrush="{StaticResource Accent}" ToolTip="the operator holds it: paused"><TextBlock Text="HELD" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Accent}"/></Border>
+                                    </WrapPanel>
+                                    <TextBlock Grid.Row="2" Text="routes" Style="{StaticResource FieldLabel}"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RoutesText, Mode=OneWay}" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Grid.Row="3" Text="last route" Style="{StaticResource FieldLabel}"/>
+                                    <WrapPanel Grid.Row="3" Grid.Column="1">
+                                        <TextBlock Text="{Binding RouteTitle, Mode=OneWay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,2,6,2"/>
+                                        <Border x:Name="StatusChip" Style="{StaticResource Chip}">
+                                            <TextBlock x:Name="StatusText" Text="{Binding Knowledge.RouteStatus, Mode=OneWay}" FontSize="11" FontWeight="Bold"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding RouteNow, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" VerticalAlignment="Center"/>
+                                    </WrapPanel>
+                                    <TextBlock x:Name="WhyLabel" Grid.Row="4" Text="why" Style="{StaticResource FieldLabel}"/>
+                                    <TextBlock x:Name="WhyText" Grid.Row="4" Grid.Column="1" Text="{Binding Knowledge.RouteWhy, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Red}" TextWrapping="Wrap" Margin="0,2"/>
+                                    <TextBlock x:Name="PlanLabel" Grid.Row="5" Text="plan" Style="{StaticResource FieldLabel}"/>
+                                    <TextBlock x:Name="PlanText" Grid.Row="5" Grid.Column="1" Text="{Binding Knowledge.RoutePlan, Mode=OneWay}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,2"/>
+                                    <TextBlock Grid.Row="6" Text="touched" Style="{StaticResource FieldLabel}"/>
+                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ObstaclesText, Mode=OneWay}" FontSize="11" Margin="0,2"/>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Knowledge.RouteStatus}" Value="completed">
+                                        <Setter TargetName="StatusChip" Property="BorderBrush" Value="{StaticResource Green}"/>
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource Green}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Knowledge.RouteStatus}" Value="failed">
+                                        <Setter TargetName="StatusChip" Property="BorderBrush" Value="{StaticResource Red}"/>
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource Red}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Knowledge.RouteStatus}" Value="pending">
+                                        <Setter TargetName="StatusChip" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource Accent}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Knowledge.RouteStatus}" Value="">
+                                        <Setter TargetName="StatusChip" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Knowledge.Held}" Value="True">
+                                        <Setter TargetName="HeldChip" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Knowledge.RouteWhy}" Value="">
+                                        <Setter TargetName="WhyLabel" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="WhyText" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Knowledge.RoutePlan}" Value="">
+                                        <Setter TargetName="PlanLabel" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="PlanText" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ContentControl.ContentTemplate>
                     </ContentControl>
                 </Border>
+                <!-- the map, as high as it is wide — the floor is square — so the foot sits right under it (Juan, 7-oct-2026: "está muy abajo esta lista");
+                     a short window takes height from the map, never from the foot's least (FitDebugger) -->
+                <!-- the map's title: its scenario in a chip, what is drawn on it, and whether the other golems are shown too — the selected one always is
+                     (Juan, 7-oct-2026: "agrégale un checkbox para mostrar la posición de los otros golems, pero la del golem seleccionado siempre mostrarla") -->
+                <DockPanel DockPanel.Dock="Top" x:Name="MapHeader" Margin="2,0,2,3">
+                    <CheckBox x:Name="OthersBox" DockPanel.Dock="Right" Content="other golems" IsChecked="True" FontSize="11" VerticalAlignment="Center" Checked="Others_Changed" Unchecked="Others_Changed" ToolTip="draw the other golems where they were last seen — the selected one is always drawn"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="MAP" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Border Style="{StaticResource Chip}" ToolTip="the scenario the selected golem is in, as it tells it"><TextBlock x:Name="MapScenario" Text="no scenario yet" FontSize="11"/></Border>
+                        <TextBlock x:Name="MapNote" Text="" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </DockPanel>
+                <Grid x:Name="MapArea" DockPanel.Dock="Top">
+                    <Canvas x:Name="Map" Background="{StaticResource Well}" MouseLeftButtonDown="Map_Click" MouseLeftButtonUp="Map_MouseUp" MouseMove="Map_MouseMove" MouseLeave="Map_MouseLeave" SizeChanged="Map_SizeChanged" ClipToBounds="True"/>
+                    <!-- the coordinates under the cursor, while it is over the floor -->
+                    <Border x:Name="Hover" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" Background="#cc0f1419" BorderBrush="{StaticResource Accent}" BorderThickness="1" CornerRadius="3" Padding="6,2">
+                        <TextBlock x:Name="HoverText" Foreground="{StaticResource Accent}" FontFamily="Consolas" FontSize="13"/>
+                    </Border>
+                </Grid>
                 <!-- THE DEBUGGER'S FOOT, under the map (Juan, 7-oct-2026: "agrega mejor este tab como parte baja del mapa, ahí veremos las formaciones"):
-                     two tabs of one height, so switching never moves the map — the tool that builds a command from a point, and the active formations -->
-                <TabControl x:Name="DebuggerFoot" DockPanel.Dock="Bottom" Height="152" Margin="0,4,0,0" Style="{StaticResource DarkTabs}">
+                     two tabs of one height, so switching never moves the map; right under the map, the height left is theirs — the tool that builds a command from a point, and the active formations -->
+                <TabControl x:Name="DebuggerFoot" MinHeight="176" Margin="0,4,0,0" Style="{StaticResource DarkTabs}">
                     <TabItem Header="point → command">
                         <!-- the tool: a point and a verb build one command; the points clicked on the map accumulate for visit and cover -->
                         <Border Background="{StaticResource Well}" Padding="6,4">
@@ -317,15 +430,6 @@
                         </DockPanel>
                     </TabItem>
                 </TabControl>
-                <!-- the map, square and centred, with the height left -->
-                <TextBlock DockPanel.Dock="Top" x:Name="MapHeader" Text="map — the last position asked of each golem" Foreground="{StaticResource Dim}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="2,0,2,2"/>
-                <Grid>
-                    <Canvas x:Name="Map" Background="{StaticResource Well}" MouseLeftButtonDown="Map_Click" MouseLeftButtonUp="Map_MouseUp" MouseMove="Map_MouseMove" MouseLeave="Map_MouseLeave" SizeChanged="Map_SizeChanged" ClipToBounds="True"/>
-                    <!-- the coordinates under the cursor, while it is over the floor -->
-                    <Border x:Name="Hover" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" Background="#cc0f1419" BorderBrush="{StaticResource Accent}" BorderThickness="1" CornerRadius="3" Padding="6,2">
-                        <TextBlock x:Name="HoverText" Foreground="{StaticResource Accent}" FontFamily="Consolas" FontSize="13"/>
-                    </Border>
-                </Grid>
             </DockPanel>
         </GroupBox>
         <!-- the strip the debugger leaves when hidden: one click brings it back -->

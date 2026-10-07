@@ -1,0 +1,38 @@
+<Window x:Class="WardenCli.Views.AddGolemDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add a golem" SizeToContent="Height" Width="440" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13">
+    <!-- A GOLEM IN OPERATION, ADDED TO THE CONSOLE (Juan, 7-oct-2026: "¿no debería salir como parte de un modal, un botón que permita agregar
+         nuevos golems al CLI, en vez de verlo de primera entrada?"): where it answers — host and port — and its name, which the golem itself
+         can say; or the four of the compose at once. Nothing is sent to the golem but the question of its name. -->
+    <StackPanel Margin="14">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Text="host" Foreground="{StaticResource Dim}" VerticalAlignment="Center"/>
+            <TextBox x:Name="HostBox" Grid.Column="1" Grid.ColumnSpan="2" Text="localhost"/>
+            <TextBlock Grid.Row="1" Text="port" Foreground="{StaticResource Dim}" VerticalAlignment="Center"/>
+            <TextBox x:Name="PortBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="8081"/>
+            <TextBlock Grid.Row="2" Text="name" Foreground="{StaticResource Dim}" VerticalAlignment="Center"/>
+            <TextBox x:Name="NameBox" Grid.Row="2" Grid.Column="1"/>
+            <Button Grid.Row="2" Grid.Column="2" Content="ask its name" Click="Ask_Click" ToolTip="ask the golem at that host and port who it is"/>
+        </Grid>
+        <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" Margin="2,8,2,0" TextWrapping="Wrap"/>
+        <DockPanel Margin="0,10,0,0">
+            <Button DockPanel.Dock="Left" Content="the four of the compose" Click="Four_Click" ToolTip="blue 8081, red 8082, green 8083, yellow 8084 on localhost — those not here yet"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="add" Click="Add_Click" IsDefault="True" Style="{StaticResource GoGreen}" Padding="18,6"/>
+                <Button Content="cancel" IsCancel="True"/>
+            </StackPanel>
+        </DockPanel>
+    </StackPanel>
+</Window>

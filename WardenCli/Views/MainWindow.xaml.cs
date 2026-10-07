@@ -59,6 +59,8 @@ public partial class MainWindow : Window
         };
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
+        DebuggerBody.SizeChanged += (_, _) => FitDebugger();
+        ReadsBox.SizeChanged += (_, _) => FitDebugger();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; } };
         readings.Start();
         Log("WardenCli ready — add the golems in operation, compose a script per tab, SEND.");
@@ -93,16 +95,14 @@ public partial class MainWindow : Window
     // The golems in operation
     // ==================================================================
 
+    // the golems to add, said in a dialog (Juan, 7-oct-2026): one by host, port and name, or the four of the compose; the port offered is the
+    // one after the highest here
     private void AddGolem_Click(object sender, RoutedEventArgs e)
     {
-        if (!int.TryParse(NewPort.Text.Trim(), out int port)) { Log("the port is a number"); return; }
-        Add(new Golem { Name = NewName.Text, Host = NewHost.Text, Port = port });
-    }
-
-    private void AddFour_Click(object sender, RoutedEventArgs e)
-    {
-        var four = new (string Name, int Port)[] { ("blue", 8081), ("red", 8082), ("green", 8083), ("yellow", 8084) };
-        foreach (var (name, port) in four) Add(new Golem { Name = name, Host = "localhost", Port = port });
+        int next = golems.Count == 0 ? 8081 : golems.Max(g => g.Port) + 1;
+        var dialog = new AddGolemDialog(golems.Select(g => g.Name).ToList(), next) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        foreach (var (name, host, port) in dialog.Chosen) Add(new Golem { Name = name, Host = host, Port = port });
     }
 
     private async void Add(Golem golem)
@@ -118,8 +118,12 @@ public partial class MainWindow : Window
     private void RemoveGolem_Click(object sender, RoutedEventArgs e)
     {
         if (Current is not { } g) return;
+        int lines = g.Script.Replace("\r\n", "\n").Split('\n').Count(l => l.Trim() != "");
+        string script = lines == 0 ? "its tab is empty" : $"its script ({lines} line(s)) goes with it";
+        if (MessageBox.Show(this, $"remove {g.Name} from this workspace? {script}; the golem itself keeps running.", $"remove {g.Name}", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         Stop(g);
         golems.Remove(g);
+        Log($"{g.Name} › removed from this workspace");
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e)
@@ -199,16 +203,56 @@ public partial class MainWindow : Window
         if (picked.Count > 1 && points != Point) PointsConsumed();
     }
 
-    // the scenario drop-down is a MENU: the pick composes 'enter <scenario>' on this golem's tab and the box empties again (the golem's
-    // current scenario is said in the list itself and in what it knows); nothing goes until SEND
-    private void Scenario_Selected(object sender, SelectionChangedEventArgs e)
+    // ==================================================================
+    // THE GOLEM'S ENVIRONMENT (Juan, 7-oct-2026: "parece más de ambiente del golem, no tanto de operaciones de los scripts"): its scenario,
+    // its way of taking the doors, its levers — acted at once on the selected golem, never queued on its script
+    // ==================================================================
+
+    // the drop-downs are MENUS: the pick acts and the box empties again; the prompt says what is in force
+    private async void Scenario_Selected(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is not ComboBox box || box.SelectedItem is not ScenarioOption chosen) return;
+        if (sender is not ComboBox box || box.SelectedItem is not Choice chosen) return;
         box.SelectedIndex = -1;
         if (box.DataContext is not Golem g) return;
         if (chosen.Current) { Log($"{g.Name} › already in {chosen.Name}"); return; }
-        g.Enqueue($"enter {chosen.Name}");
-        Log($"{g.Name} › enter {chosen.Name} on its tab — SEND to selected when ready");
+        await ActNowAsync(g, $"enter {chosen.Name}");
+    }
+
+    private async void Navigation_Selected(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox box || box.SelectedItem is not Choice chosen) return;
+        box.SelectedIndex = -1;
+        if (box.DataContext is not Golem g) return;
+        if (chosen.Current) { Log($"{g.Name} › already goes {chosen.Name}"); return; }
+        await ActNowAsync(g, $"optimize {chosen.Name.Replace(' ', '-')}");
+    }
+
+    private async void PlaceNow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not Golem g) return;
+        if (!IsPoint(Point)) { Log("the point is x and y, numbers — type them in the debugger's box or click the map"); return; }
+        await ActNowAsync(g, $"place {Point}");
+    }
+
+    private async void ResetNow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is Golem g) await ActNowAsync(g, "reset");
+    }
+
+    private async void ResetAllNow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not Golem g) return;
+        var sure = MessageBox.Show(this, $"reset --all wipes {g.Name}'s journal: every route, every mark, every scenario it learned. Go on?", $"reset {g.Name} entirely", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (sure != MessageBoxResult.Yes) { Log($"{g.Name} › reset --all not sent"); return; }
+        await ActNowAsync(g, "reset --all");
+    }
+
+    // one line to the golem now, its answer in the log, its reads asked again
+    private async Task ActNowAsync(Golem g, string line)
+    {
+        var reply = await GolemClient.SendAsync(g, line);
+        Log($"{g.Name} › {line} — {(reply.Ok ? "done" : reply.Kind)}: {OneLine(reply.Text)}");
+        await GolemClient.RefreshReadingsAsync(g);
     }
 
     private void Point_Changed(object sender, RoutedEventArgs? e)
@@ -657,6 +701,19 @@ public partial class MainWindow : Window
     // lateral derecho… y que se pueda ocultar y mostrar"); hidden, it leaves a strip at the right edge and the console takes the width
     // ==================================================================
 
+    // the map as high as it is wide — the floor is square — so the foot sits right under it and keeps the height left; a short window takes
+    // height from the map (never under 120), never from the foot's least (Juan, 7-oct-2026: "está muy abajo esta lista de points y formations")
+    private void FitDebugger()
+    {
+        if (DebuggerBody.ActualHeight <= 0 || DebuggerBody.ActualWidth <= 0) return;
+        double above = DebuggerTitle.ActualHeight + DebuggerTitle.Margin.Top + DebuggerTitle.Margin.Bottom
+                     + ReadsBox.ActualHeight + ReadsBox.Margin.Top + ReadsBox.Margin.Bottom
+                     + MapHeader.ActualHeight + MapHeader.Margin.Top + MapHeader.Margin.Bottom;
+        double room = DebuggerBody.ActualHeight - above - DebuggerFoot.MinHeight - DebuggerFoot.Margin.Top;
+        double side = Math.Max(120, Math.Min(DebuggerBody.ActualWidth, room));
+        if (double.IsNaN(MapArea.Height) || Math.Abs(MapArea.Height - side) > 1) MapArea.Height = side;
+    }
+
     private void HideDebugger_Click(object sender, RoutedEventArgs e) => SetDebugger(false);
     private void ShowDebugger_Click(object sender, MouseButtonEventArgs e) => SetDebugger(true);
     private void ToggleDebugger_Click(object sender, RoutedEventArgs e) => SetDebugger(DebuggerPanel.Visibility != Visibility.Visible);
@@ -675,6 +732,8 @@ public partial class MainWindow : Window
     // ==================================================================
 
     private void Map_SizeChanged(object sender, SizeChangedEventArgs e) => Draw();
+    // the box is born checked while the window is being built, before the map exists: draw only once loaded
+    private void Others_Changed(object sender, RoutedEventArgs e) { if (IsLoaded) Draw(); }
 
     private void Map_Click(object sender, MouseButtonEventArgs e)
     {
@@ -840,8 +899,8 @@ public partial class MainWindow : Window
         }
         // THE SELECTED GOLEM'S SCENARIO, as it told it: its zones, the open sides faint, the doors marked (Juan, 6-oct-2026)
         var plan = Current?.Plan;
-        MapHeader.Text = plan == null ? "map — the last position asked of each golem" : $"map — {Current!.Name}'s scenario: {plan.Name} · every golem where it was last asked · its obstacles in red";
-        KnowsHeader.Text = Current == null ? "golem debugger — select a golem: what it knows, its map, a command from a point" : $"golem debugger — {Current.Name}: what it knows (asked every 3 s), its map, a command from a point";
+        MapScenario.Text = plan?.Name ?? "no scenario yet";
+        MapNote.Text = Current == null ? "" : $"as {Current.Name} knows it · its obstacles in red";
         if (plan != null)
         {
             var wall = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99));
@@ -959,6 +1018,7 @@ public partial class MainWindow : Window
         foreach (var g in golems)
         {
             if (g.LastX == null || g.LastY == null) continue;
+            if (g != selected && OthersBox.IsChecked != true) continue;   // the selected golem is always drawn; the others when the box says so
             var pc = Pixel(g.LastX.Value, g.LastY.Value); double cx = pc.X, cy = pc.Y, r = 0.25 * scale;
             var brush = new SolidColorBrush(GolemColor.Of(g.Name));
             var dot = new Ellipse { Width = 2 * r, Height = 2 * r, Fill = brush, Stroke = g == selected ? Brushes.White : brush, StrokeThickness = g == selected ? 2 : 1 };
