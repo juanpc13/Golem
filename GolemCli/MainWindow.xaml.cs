@@ -45,9 +45,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         GolemList.ItemsSource = golems;
         FormationList.ItemsSource = formations;
+        FormationList.SelectionChanged += (_, _) => Draw();
         formations.CollectionChanged += (_, _) => { Draw(); NoFormation.Visibility = formations.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; } };
         readings.Start();
         Log("GolemCli ready — add the golems in operation, compose a script per tab, SEND.");
     }
@@ -601,6 +603,7 @@ public partial class MainWindow : Window
             var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);
             formation.PropertyChanged += (_, _) => Draw();
             formations.Add(formation);
+            FormationList.SelectedItem = formation;
             FormationsTab.IsSelected = true;
             Log($"active: {formation.Describe()}");
         }
@@ -637,6 +640,24 @@ public partial class MainWindow : Window
         if ((sender as Button)?.Tag is not Formation formation) return;
         formations.Remove(formation);
         Log($"{formation.Name} dissolved — the golems stay where they are");
+    }
+
+    // ==================================================================
+    // The golem debugger: the window's right side, whole height, hidden and shown on demand (Juan, 7-oct-2026: "que ese panel use todo el
+    // lateral derecho… y que se pueda ocultar y mostrar"); hidden, it leaves a strip at the right edge and the console takes the width
+    // ==================================================================
+
+    private void HideDebugger_Click(object sender, RoutedEventArgs e) => SetDebugger(false);
+    private void ShowDebugger_Click(object sender, MouseButtonEventArgs e) => SetDebugger(true);
+    private void ToggleDebugger_Click(object sender, RoutedEventArgs e) => SetDebugger(DebuggerPanel.Visibility != Visibility.Visible);
+
+    private void SetDebugger(bool shown)
+    {
+        DebuggerPanel.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        DebuggerStrip.Visibility = shown ? Visibility.Collapsed : Visibility.Visible;
+        DebuggerColumn.MinWidth = shown ? 330 : 0;
+        DebuggerColumn.Width = shown ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        if (shown) Draw();
     }
 
     // ==================================================================
@@ -772,27 +793,45 @@ public partial class MainWindow : Window
                 }
             }
         }
-        // THE ACTIVE FORMATIONS (propuesta 96): each figure's outline dashed in purple, every vertex a diamond — ringed in its holder's colour
-        // with the holder's name, hollow when free — so the operator sees who holds what before and after a rotation
-        var purple = (Brush)FindResource("Purple");
-        foreach (var f in formations)
+        // THE ACTIVE FORMATIONS PROJECTED (propuesta 96; Juan, 7-oct-2026: "que se vea la forma de la figura encima del mapa para proyectar la
+        // formación seleccionada… un botón como un ojo"): every formation whose eye is open shows its FIGURE — the polygon through its vertices
+        // or the circle of its radius, filled faintly in purple, its centre crossed — and every vertex a diamond ringed in its holder's colour
+        // with the compass point and the holder's name, hollow when free; the one selected in the list is drawn strongest, the others dashed
+        var purple = ((SolidColorBrush)FindResource("Purple")).Color;
+        var chosen = FormationList.SelectedItem as Formation;
+        foreach (var f in formations.Where(f => f.Shown).OrderBy(f => f == chosen))
         {
+            bool strong = f == chosen;
+            var line = new SolidColorBrush(purple) { Opacity = strong ? 1 : 0.7 };
+            var fill = new SolidColorBrush(Color.FromArgb(strong ? (byte)0x30 : (byte)0x14, purple.R, purple.G, purple.B));
+            var dash = strong ? null : new DoubleCollection { 3, 3 };
             var vertices = f.Places;
-            var outline = new System.Windows.Shapes.Polygon { Stroke = purple, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 3, 3 }, Opacity = 0.7 };
-            foreach (var v in vertices) outline.Points.Add(Pixel(v.X, v.Y));
-            if (vertices.Count >= 3) Map.Children.Add(outline);
             var centre = Pixel(f.Figure.Center.X, f.Figure.Center.Y);
-            var tag = new TextBlock { Text = f.Name, Foreground = purple, FontSize = 9, Opacity = 0.9 };
-            Canvas.SetLeft(tag, centre.X - 3 * f.Name.Length); Canvas.SetTop(tag, centre.Y - 7); Map.Children.Add(tag);
+            if (f.Figure is Circle circle)
+            {
+                double r = circle.Radius * scale;
+                var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
+                Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); Map.Children.Add(ring);
+            }
+            else if (vertices.Count >= 3)
+            {
+                var shape = new System.Windows.Shapes.Polygon { Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
+                foreach (var v in vertices) shape.Points.Add(Pixel(v.X, v.Y));
+                Map.Children.Add(shape);
+            }
+            Map.Children.Add(new Line { X1 = centre.X - 5, Y1 = centre.Y, X2 = centre.X + 5, Y2 = centre.Y, Stroke = line, StrokeThickness = 1 });
+            Map.Children.Add(new Line { X1 = centre.X, Y1 = centre.Y - 5, X2 = centre.X, Y2 = centre.Y + 5, Stroke = line, StrokeThickness = 1 });
+            var tag = new TextBlock { Text = f.Name, Foreground = line, FontSize = strong ? 10 : 9, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal };
+            Canvas.SetLeft(tag, centre.X + 6); Canvas.SetTop(tag, centre.Y + 2); Map.Children.Add(tag);
             for (int i = 0; i < vertices.Count; i++)
             {
                 var pv = Pixel(vertices[i].X, vertices[i].Y);
                 string? who = f.HolderOf(i);
-                var ring = who == null ? purple : new SolidColorBrush(GolemColor.Of(who));
-                var diamond = new System.Windows.Shapes.Polygon { Stroke = ring, StrokeThickness = who == null ? 1 : 2, Fill = Brushes.Transparent, Opacity = who == null ? 0.6 : 1 };
+                var holder = who == null ? line : new SolidColorBrush(GolemColor.Of(who));
+                var diamond = new System.Windows.Shapes.Polygon { Stroke = holder, StrokeThickness = who == null ? 1 : 2, Fill = Brushes.Transparent, Opacity = who == null ? 0.6 : strong ? 1 : 0.8 };
                 diamond.Points.Add(new Point(pv.X, pv.Y - 7)); diamond.Points.Add(new Point(pv.X + 7, pv.Y)); diamond.Points.Add(new Point(pv.X, pv.Y + 7)); diamond.Points.Add(new Point(pv.X - 7, pv.Y));
                 Map.Children.Add(diamond);
-                var label = new TextBlock { Text = f.Figure.Label(i, vertices.Count) + (who == null ? "" : " " + who), Foreground = ring, FontSize = 9, Opacity = who == null ? 0.7 : 1 };
+                var label = new TextBlock { Text = f.Figure.Label(i, vertices.Count) + (who == null ? " free" : " " + who), Foreground = holder, FontSize = 9, Opacity = who == null ? 0.7 : 1 };
                 Canvas.SetLeft(label, pv.X + 8); Canvas.SetTop(label, pv.Y + 2); Map.Children.Add(label);
             }
         }

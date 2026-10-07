@@ -46,6 +46,15 @@ public sealed class Formation : INotifyPropertyChanged
     /// <summary>How many steps it has turned since it was laid out, clockwise negative — the places run counter-clockwise.</summary>
     public int Turned { get; private set; }
 
+    private bool shown = true;
+    /// <summary>Whether the console PROJECTS its figure on the map — the eye beside it in the list (Juan, 7-oct-2026: "un botón como un ojo
+    /// para mostrar ese overlay de la figura en el mapa"); on when it is laid out.</summary>
+    public bool Shown
+    {
+        get => shown;
+        set { if (shown == value) return; shown = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Shown))); }
+    }
+
     public string Name => $"{Figure.Name} #{Number}";
     public IReadOnlyList<Spot> Places => Figure.Places(Fleet.Count);
 

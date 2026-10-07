@@ -134,6 +134,39 @@
         <Style TargetType="Separator">
             <Setter Property="Background" Value="{StaticResource Line}"/>
         </Style>
+        <!-- THE EYE: a toggle that shows or hides something on the map — open and lit in purple when on, dim and struck through when off -->
+        <Style x:Key="EyeToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Face" Background="{StaticResource Raised}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3">
+                            <Grid Width="18" Height="12">
+                                <Path x:Name="Lid" Data="M 0,6 C 4,-1 14,-1 18,6 C 14,13 4,13 0,6 Z" Stroke="{StaticResource Dim}" StrokeThickness="1.3"/>
+                                <Ellipse x:Name="Pupil" Width="5" Height="5" Fill="{StaticResource Dim}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Line x:Name="Slash" X1="1" Y1="12" X2="17" Y2="0" Stroke="{StaticResource Dim}" StrokeThickness="1.5"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Lid" Property="Stroke" Value="{StaticResource Purple}"/>
+                                <Setter TargetName="Pupil" Property="Fill" Value="{StaticResource Purple}"/>
+                                <Setter TargetName="Slash" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource Purple}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Face" Property="Background" Value="{StaticResource Hover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- the drop-down, dark through and through: the box, its arrow, the list that opens; Tag is the text shown while nothing is chosen -->
         <Style TargetType="ComboBoxItem">
             <Setter Property="Foreground" Value="{StaticResource Ink}"/>
