@@ -135,4 +135,6 @@ public static class Workspace
 /// <summary>The sizes of the console's panes, as the dividers left them: the golems' column (px), the console and the debugger's shares of the
 /// window (stars — their ratio is what counts), the log's height (px), the map's height if the operator set it (px; null: as high as it is
 /// wide), and whether the debugger was shown.</summary>
-public sealed record PaneSizes(double GolemsWidth, double ConsoleShare, double DebuggerShare, double LogHeight, double? MapHeight, bool DebuggerShown);
+// …and whether the map shows the other golems (8-oct-2026; Juan: "guarda el checkbox de other golems… o tal vez al cerrar"): a way of looking,
+// the machine's like the sizes, not the workspace's; absent, they are shown
+public sealed record PaneSizes(double GolemsWidth, double ConsoleShare, double DebuggerShare, double LogHeight, double? MapHeight, bool DebuggerShown, bool? ShowOthers = null);

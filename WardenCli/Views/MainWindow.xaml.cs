@@ -111,7 +111,8 @@ public partial class MainWindow : Window
             debugger.IsStar ? debugger.Value : 1,
             LogRow.ActualHeight,
             mapHeight,
-            DebuggerPanel.Visibility == Visibility.Visible));
+            DebuggerPanel.Visibility == Visibility.Visible,
+            OthersBox.IsChecked == true));
     }
 
     private void RestorePanes()
@@ -127,6 +128,7 @@ public partial class MainWindow : Window
         if (p.LogHeight >= LogRow.MinHeight) LogRow.Height = new GridLength(p.LogHeight);
         mapHeight = p.MapHeight is > 0 ? p.MapHeight : null;
         if (!p.DebuggerShown) SetDebugger(false);
+        if (p.ShowOthers is bool others) OthersBox.IsChecked = others;
         FitDebugger();
     }
 
@@ -197,7 +199,7 @@ public partial class MainWindow : Window
     private string Point => $"{XBox.Text.Trim()},{YBox.Text.Trim()}";
 
     // THE POINTS PICKED ON THE MAP (Juan, 6-oct-2026: "cada click en el mapa acumula una lista de coordenadas para el comando visit"): every
-    // click appends one, in order; visit and cover take them all, then/place take the last (forget is the obstacles' tab's 'gone' since 8-oct-2026); the boxes show the last one, and editing
+    // click appends one, in order; visit and cover take them all (then, place and forget left the tool on 8-oct-2026: then was refused once its visit had ended, place is the map's button, forget the obstacles' tab's 'gone'); the boxes show the last one, and editing
     // them edits that last point. The map draws them numbered and joined, the way the errand will go.
     private readonly List<(double X, double Y)> picked = new();
     private bool editingPicked;
@@ -267,13 +269,6 @@ public partial class MainWindow : Window
         if (box.DataContext is not Golem g) return;
         if (chosen.Current) { Log($"{g.Name} › already goes {chosen.Name}"); return; }
         await ActNowAsync(g, $"optimize {chosen.Name.Replace(' ', '-')}");
-    }
-
-    private async void PlaceNow_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as Button)?.Tag is not Golem g) return;
-        if (!IsPoint(Point)) { Log("the point is x and y, numbers — type them in the debugger's box or click the map"); return; }
-        await ActNowAsync(g, $"place {Point}");
     }
 
     private async void ResetNow_Click(object sender, RoutedEventArgs e)

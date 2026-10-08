@@ -48,7 +48,6 @@
                         <TextBlock Text="errands" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="4,0,2,0"/>
                         <Button Content="visit" Tag="visit {point}" Click="Compose_Click" ToolTip="visit x,y — go there, through every point picked on the map"/>
                         <Button Content="cover" Tag="cover {point}" Click="Compose_Click" ToolTip="cover x,y — the way decided at once"/>
-                        <Button Content="then" Tag="then {point}" Click="Compose_Click" ToolTip="then x,y — one more stop on the route underway"/>
                         <TextBlock Text="hold" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="10,0,2,0"/>
                         <Button Content="pause" Tag="pause" Click="Compose_Click"/>
                         <Button Content="resume" Tag="resume" Click="Compose_Click"/>
@@ -205,8 +204,8 @@
                                             <TextBlock Text="navigation" Width="62" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center"/>
                                             <ComboBox Tag="{Binding NavigationPrompt, Mode=OneWay}" ItemsSource="{Binding NavigationOptions, Mode=OneWay}" DisplayMemberPath="Label" SelectionChanged="Navigation_Selected" ToolTip="how its routes take the doors — door by door, or the doors crossed on the way; pick one and it switches now"/>
                                         </DockPanel>
-                                        <UniformGrid Columns="3" Margin="0,2,0,0">
-                                            <Button Content="place" Tag="{Binding}" Click="PlaceNow_Click" ToolTip="the body carried onto the debugger's point (x, y) — now"/>
+                                        <!-- no place here (Juan, 8-oct-2026: "quita el place del ambiente del golem"): it is the map's ⌖ place button -->
+                                        <UniformGrid Columns="2" Margin="0,2,0,0">
                                             <Button Content="reset" Tag="{Binding}" Click="ResetNow_Click" ToolTip="every route let go, the body back on its mark — now"/>
                                             <Button Content="reset all" Tag="{Binding}" Click="ResetAllNow_Click" Foreground="{StaticResource Red}" ToolTip="reset --all: its journal wiped too — asks first"/>
                                         </UniformGrid>
@@ -385,8 +384,9 @@
                                 <DockPanel Margin="0,4,0,0">
                                     <StackPanel DockPanel.Dock="Left" x:Name="Verbs" Orientation="Horizontal" VerticalAlignment="Center" ToolTip="the verb of the command built">
                                         <RadioButton Content="visit" IsChecked="True" Checked="Point_Changed" Margin="0,0,6,0"/>
-                                        <RadioButton Content="cover" Checked="Point_Changed" Margin="0,0,6,0"/>
-                                        <RadioButton Content="then" Checked="Point_Changed"/>
+                                        <!-- no then (Juan, 8-oct-2026: "sí, quítalo de la consola"): a queued then came after its visit had ended and was refused;
+                                             a visit through every point clicked is the errand of several stops -->
+                                        <RadioButton Content="cover" Checked="Point_Changed"/>
                                     </StackPanel>
                                     <TextBlock x:Name="PointsHint" Text="click the map: every click adds a point to the visit, in order" Foreground="{StaticResource Dim}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
                                 </DockPanel>
