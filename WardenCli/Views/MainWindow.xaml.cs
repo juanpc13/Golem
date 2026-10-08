@@ -692,8 +692,9 @@ public partial class MainWindow : Window
         try
         {
             var fleet = new Fleet(golems.Where(g => dialog.Chosen.Contains(g.Name)).Select(g => new Member(g.Name, g.LastX is double x && g.LastY is double y ? new Spot(x, y) : null)));
-            var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, Assignment.Named(dialog.Assignment), dialog.Steps, dialog.Clockwise);
-            var pace = dialog.OneErrand ? Pace.OneErrand : Pace.Rounds;
+            // no steps around at birth (8-oct-2026): every golem to its first vertex; the formation turns afterwards with ↻ ↺, a step per click
+            var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, Assignment.Named(dialog.Assignment), 0, clockwise: true);
+            var pace = Pace.OneErrand;
             // the formation this leaves in force (propuesta 96), first: its name is what the golems are told (propuesta 99)
             var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);
             // a polygon is TOLD to the golems — form, then the number of each one's vertex — and each resolves where it stands; a circle goes as visits
@@ -703,7 +704,7 @@ public partial class MainWindow : Window
                 var g = golems.First(x => x.Name == name);
                 foreach (var line in lines) g.Enqueue(line);
             }
-            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit") || l.StartsWith("take")))} {(formation.CanForm ? "take(s)" : "visit(s)")} on {scripts.Count} tab(s){(dialog.OneErrand ? "" : $"; the queues wait for each other at every {Choreography.Sync}")} — read them, then SEND to selected");
+            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit") || l.StartsWith("take")))} {(formation.CanForm ? "take(s)" : "visit(s)")} on {scripts.Count} tab(s); turn it with ↻ ↺ — read them, then SEND to selected");
             formation.PropertyChanged += (_, _) => Draw();
             formations.Add(formation);
             FormationList.SelectedItem = formation;
@@ -725,12 +726,14 @@ public partial class MainWindow : Window
         try
         {
             bool tellAgain = formation.Unshot;   // the figure changed since the golems were told it: told again before the step
+            bool barrier = Queued(formation);    // steps queued after others: each one waits for the whole fleet (8-oct-2026)
             var lines = formation.Rotate(sense);
             int missing = 0;
             foreach (var (name, line) in lines)
             {
                 var g = golems.FirstOrDefault(x => x.Name == name);
                 if (g == null) { missing++; continue; }
+                if (barrier) g.Enqueue(Choreography.Sync);
                 g.Enqueue($"# {formation.Name} rotates one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} — {name} to {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
                 if (formation.CanForm)
                 {
@@ -739,7 +742,7 @@ public partial class MainWindow : Window
                 }
                 else g.Enqueue(line);
             }
-            Log($"{formation.Name} › one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}: a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
+            Log($"{formation.Name} › one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}{(barrier ? $", after a {Choreography.Sync}" : "")}: a {(formation.CanForm ? "take" : "visit")} on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
         }
         catch (ArgumentException ex) { Log(ex.Message); }
     }
@@ -767,6 +770,13 @@ public partial class MainWindow : Window
         if (apart == 0 && i == mine.Count) Log($"{golem.Name} › {formation.WireName}: the golem's {i} vertices agree with the console's");
         else if (i != mine.Count) Log($"{golem.Name} › ⚠ {formation.WireName}: the golem resolved {i} vertices, the console draws {mine.Count}");
     }
+
+    // THE BARRIER BETWEEN STEPS (8-oct-2026; the "rounds" the dialog had, moved to ↻ ↺): when any member of the formation already has lines
+    // queued, a step or a shot is written after a @sync on EVERY member's tab — sent together, nobody starts the next step before the whole
+    // fleet finished the one before; the first step on empty tabs needs none
+    private bool Queued(Formation formation) =>
+        formation.Fleet.Names.Any(n => golems.FirstOrDefault(g => g.Name == n) is { } g
+            && g.Script.Replace("\r\n", "\n").Split('\n').Any(l => l.Trim() != "" && !l.TrimStart().StartsWith('#')));
 
     private void Dissolve_Click(object sender, RoutedEventArgs e)
     {
@@ -947,12 +957,14 @@ public partial class MainWindow : Window
     private void Shot_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as Button)?.Tag is not Formation formation) return;
+        bool barrier = Queued(formation);   // a shot queued after other lines waits for the whole fleet too (8-oct-2026)
         var lines = formation.Shot();
         int missing = 0;
         foreach (var (name, line) in lines)
         {
             var g = golems.FirstOrDefault(x => x.Name == name);
             if (g == null) { missing++; continue; }
+            if (barrier) g.Enqueue(Choreography.Sync);
             g.Enqueue($"# {formation.Name} shot: {Shape(formation.Figure)} — {name} at {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
             if (formation.CanForm)
             {

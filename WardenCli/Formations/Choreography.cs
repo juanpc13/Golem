@@ -85,7 +85,8 @@ public sealed class Choreography
         var scripts = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var member in Fleet.Members)
         {
-            var lines = new List<string> { $"# {Describe()}, {(pace == Pace.OneErrand ? "one take after another" : "in rounds")} — {member.Name}'s part: the golem resolves its vertex", formLine };
+            string paced = Steps == 0 ? "" : pace == Pace.OneErrand ? ", one take after another" : ", in rounds";
+            var lines = new List<string> { $"# {Describe()}{paced} — {member.Name}'s part: the golem resolves its vertex", formLine };
             for (int round = 0; round <= Steps; round++)
             {
                 if (round > 0 && pace == Pace.Rounds) lines.Add(Sync);
@@ -97,7 +98,7 @@ public sealed class Choreography
     }
 
     public string Describe() =>
-        $"{Figure.Name} at {Figure.Center}, by {Assignment.Name}, {Steps} step(s) {(Clockwise ? "clockwise" : "counter-clockwise")}, {Fleet.Count} golem(s)";
+        $"{Figure.Name} at {Figure.Center}, by {Assignment.Name}{(Steps == 0 ? "" : $", {Steps} step(s) {(Clockwise ? "clockwise" : "counter-clockwise")}")}, {Fleet.Count} golem(s)";
 }
 
 /// <summary>How the fleet paces a choreography: one errand per golem through all its places, or rounds with a barrier between places.</summary>
