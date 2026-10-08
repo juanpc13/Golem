@@ -109,16 +109,44 @@ public class FormationTests
         Assert.IsTrue(formation.CanForm);
         Assert.AreEqual("square-1", formation.WireName);
         Assert.AreEqual("form square-1 square --center 5.5,5.5 --side 2 --angle 0", formation.FormLine());
-        Assert.AreEqual("take square-1 --vertex 3", formation.TakeLine("blue"), "blue, one step clockwise from the north-east: vertex 3");
+        Assert.AreEqual("take square-1 --place 3", formation.TakeLine("blue"), "blue, one step clockwise from the north-east: place 3");
 
         var scripts = laidOut.TakeScripts(formation.WireName, formation.FormLine(), Pace.Rounds);
-        CollectionAssert.AreEqual(new[] { "form square-1 square --center 5.5,5.5 --side 2 --angle 0", "take square-1 --vertex 0", Choreography.Sync, "take square-1 --vertex 3" },
+        CollectionAssert.AreEqual(new[] { "form square-1 square --center 5.5,5.5 --side 2 --angle 0", "take square-1 --place 0", Choreography.Sync, "take square-1 --place 3" },
                                   scripts["blue"].Skip(1).ToList(), "told the formation, then its vertex round by round: no coordinate");
         Assert.IsFalse(scripts.Values.SelectMany(l => l).Any(l => l.StartsWith("visit")));
 
         formation.Orient(45);
         Assert.AreEqual("form square-1 square --center 5.5,5.5 --side 2 --angle 45", formation.FormLine(), "a turn is told as the figure's orientation");
         Assert.IsFalse(new Choreography(new Circle(new Spot(5.5, 5.5), 1.0), fleet, new ByRank(), 0, clockwise: true).Outcome(2).CanForm, "a circle goes as visits");
+    }
+
+    // MORE GOLEMS THAN VERTICES (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI"): the console lays them out by the golem's own
+    // rule (ajuste 100) — the corners first, the rest on the sides — tells the golems how many, and each one the number of its place
+    [TestMethod]
+    public void FourOnATriangle_TakeTheCornersAndTheMiddleOfTheFirstSide_AndTheGolemsAreToldHowMany()
+    {
+        var fleet = new Fleet(new[] { new Member("blue", null), new Member("red", null), new Member("green", null), new Member("yellow", null) });
+        var triangle = new Triangle(new Spot(5.5, 5.5), 2.0);
+        var formation = new Choreography(triangle, fleet, new ByRank(), 0, clockwise: true).Outcome(1);
+        var places = formation.Places;
+        Assert.AreEqual(4, places.Count, "three corners and one more");
+        var v = triangle.Vertices();
+        Assert.AreEqual(v[0], places[0], "the apex first");
+        Assert.AreEqual(new Spot(Math.Round((v[0].X + v[1].X) / 2, 3), Math.Round((v[0].Y + v[1].Y) / 2, 3)), places[1], "then the middle of the first side");
+        Assert.AreEqual(v[1], places[2]); Assert.AreEqual(v[2], places[3], "and every corner taken");
+        Assert.AreEqual("blue N · green NW · red SW · yellow SE", formation.Holders, "the middle of the north-west side, between the apex and the next corner");
+        Assert.AreEqual("form triangle-1 triangle --center 5.5,5.5 --side 2 --angle 0 --places 4", formation.FormLine(), "the golems are told for how many");
+        Assert.AreEqual("take triangle-1 --place 1", formation.TakeLine("green"), "green the place of a side, by its number");
+
+        formation.Rotate(Sense.Counterclockwise);
+        Assert.AreEqual("yellow N · blue NW · green SW · red SE", formation.Holders, "a step moves everybody one place round the same set");
+
+        var six = new Square(new Spot(5.5, 5.5), 2.0).Places(6);
+        CollectionAssert.AreEqual(new[] { new Spot(6.5, 6.5), new Spot(5.5, 6.5), new Spot(4.5, 6.5), new Spot(4.5, 4.5), new Spot(5.5, 4.5), new Spot(6.5, 4.5) }, six.ToList(),
+            "six on a square: the corners and the middles of the north and south sides, as the golem's module lays them");
+        var square = new Choreography(new Square(new Spot(5.5, 5.5), 2.0), fleet, new ByRank(), 0, clockwise: true).Outcome(2);
+        Assert.AreEqual("form square-2 square --center 5.5,5.5 --side 2 --angle 0", square.FormLine(), "no more golems than vertices: nothing more to say");
     }
 
     [TestMethod]

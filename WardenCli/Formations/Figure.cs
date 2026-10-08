@@ -81,8 +81,14 @@ public abstract class Figure
 
     protected Spot AtBearing(double degrees, double reach)
     {
+        var p = Toward(degrees, reach);
+        return new Spot(Math.Round(p.X, 3), Math.Round(p.Y, 3));
+    }
+
+    protected Spot Toward(double degrees, double reach)
+    {
         double a = degrees * Math.PI / 180;
-        return new Spot(Math.Round(Center.X + reach * Math.Cos(a), 3), Math.Round(Center.Y + reach * Math.Sin(a), 3));
+        return new Spot(Center.X + reach * Math.Cos(a), Center.Y + reach * Math.Sin(a));
     }
 }
 
@@ -102,8 +108,19 @@ public abstract class Polygon : Figure
     public override double MeasureFor(double reach) => reach * 2 * Math.Sin(Math.PI / Bearings.Length);
     protected abstract double[] Bearings { get; }
 
-    public override double Bearing(int index, int count) =>
-        index >= 0 && index < Bearings.Length ? Bearings[index] + Angle : throw new ArgumentException($"a {Name} has {Bearings.Length} vertices: no vertex {index}");
+    /// <summary>The bearing of a place from the centre: a vertex's own, or a point of a side's (ajuste 101), the orientation included.</summary>
+    public override double Bearing(int index, int count)
+    {
+        int n = Bearings.Length;
+        if (index < 0 || index >= Math.Max(count, n)) throw new ArgumentException($"a {Name} of {Math.Max(count, n)} places has no place {index}");
+        if (count <= n) return Bearings[index] + Angle;
+        var p = Exact(count)[index];
+        double deg = Math.Atan2(p.Y - Center.Y, p.X - Center.X) * 180 / Math.PI;
+        return Angle + ((deg - Angle) % 360 + 360) % 360;   // the same turn of the circle the vertices' bearings are in
+    }
+
+    /// <summary>How many vertices it has.</summary>
+    public int VertexCount => Bearings.Length;
 
     /// <summary>The radius of the circle through the vertices: the side over twice the sine of half the angle each side spans.</summary>
     public double Circumradius => Side / (2 * Math.Sin(Math.PI / Bearings.Length));
@@ -111,12 +128,36 @@ public abstract class Polygon : Figure
     public IReadOnlyList<Spot> Vertices() => Bearings.Select(deg => AtBearing(deg + Angle, Circumradius)).ToList();
 
     /// <summary>The vertices, all of them, while the bodies do not exceed them — fewer bodies leave vertices free, as the golem's module does
-    /// (ajuste 86); more bodies than vertices are refused: the console lays out vertices only.</summary>
-    public override IReadOnlyList<Spot> Places(int count)
+    /// (ajuste 86). MORE bodies than vertices (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI"), the SAME RULE as the golem's
+    /// module (ajuste 100): the corners first, always taken, and the bodies left over on the sides — shared out by turns on sides spread round
+    /// the figure, evenly between a side's two corners —, in the way round the perimeter: a corner, the points of its side, the next corner.</summary>
+    public override IReadOnlyList<Spot> Places(int count) =>
+        Exact(count).Select(p => new Spot(Math.Round(p.X, 3), Math.Round(p.Y, 3))).ToList();
+
+    private IReadOnlyList<Spot> Exact(int count)
     {
-        var v = Vertices();
-        if (count > v.Count) throw new ArgumentException($"a {Name} has {v.Count} places: {count} golems do not fit — the console lays out the vertices only");
-        return v;
+        if (count < 1) throw new ArgumentException($"a {Name} needs at least one golem");
+        if (count > 100) throw new ArgumentException($"a {Name} is laid out for 100 golems at most");
+        var v = Bearings.Select(deg => Toward(deg + Angle, Circumradius)).ToList();
+        int n = v.Count;
+        if (count <= n) return v;
+        int left = count - n;
+        var onSide = Enumerable.Repeat(left / n, n).ToArray();
+        int rest = left % n;
+        for (int i = 0; i < rest; i++)
+            onSide[(int)Math.Round(i * (double)n / rest, MidpointRounding.AwayFromZero) % n]++;
+        var places = new List<Spot>();
+        for (int k = 0; k < n; k++)
+        {
+            places.Add(v[k]);
+            var next = v[(k + 1) % n];
+            for (int j = 1; j <= onSide[k]; j++)
+            {
+                double t = (double)j / (onSide[k] + 1);
+                places.Add(new Spot(v[k].X + t * (next.X - v[k].X), v[k].Y + t * (next.Y - v[k].Y)));
+            }
+        }
+        return places;
     }
 }
 

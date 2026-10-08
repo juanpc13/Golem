@@ -100,9 +100,12 @@ public class CommandLineTests
         StringAssert.Contains(Refused("form square-1 circle --center 5,5 --side 1"), "form: the figure is square, pentagon or triangle");
         StringAssert.Contains(Refused("form square-1 square --side 2"), "expected --center x,y and --side s");
         StringAssert.Contains(Refused("form square-1 square --center 5,5 --side 2 --angle north"), "--angle expects degrees");
-        var take = CommandLine.Parse("take square-1 --vertex 2");
-        Assert.AreEqual("take", take.Verb); Assert.AreEqual("square-1", take.Text); Assert.AreEqual("2", take.Values["vertex"]);
-        StringAssert.Contains(Refused("take square-1 2"), "take: expected the formation's name and --vertex n");
+        Assert.AreEqual("6", CommandLine.Parse("form t triangle --center 5,5 --side 2 --places 6").Values["places"], "laid out for six golems (ajuste 101)");
+        StringAssert.Contains(Refused("form t triangle --center 5,5 --side 2 --places 0"), "--places expects how many golems, from 1");
+        var take = CommandLine.Parse("take square-1 --place 2");
+        Assert.AreEqual("take", take.Verb); Assert.AreEqual("square-1", take.Text); Assert.AreEqual("2", take.Values["place"]);
+        Assert.AreEqual("2", CommandLine.Parse("take square-1 --vertex 2").Values["place"], "a vertex is a place: the same number");
+        StringAssert.Contains(Refused("take square-1 2"), "take: expected the formation's name and --place n");
         StringAssert.Contains(Refused("take square-1 --vertex -1"), "--vertex expects a number from 0");
         Assert.AreEqual("formations", CommandLine.Parse("formations").Verb);
         // the map the golem uses (7-oct-2026, was enter): use map <scenario>

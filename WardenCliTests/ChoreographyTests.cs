@@ -17,7 +17,8 @@ public class ChoreographyTests
         Assert.AreEqual(new Spot(4.5, 4.5), v[2], "south-west");
         Assert.AreEqual(new Spot(6.5, 4.5), v[3], "south-east");
         Assert.AreEqual(2.0, v[0].DistanceTo(v[1]), 1e-9, "the side");
-        StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => square.Places(5)).Message, "4 places");
+        Assert.AreEqual(new Spot(5.5, 6.5), square.Places(5)[1], "five: the corners and the middle of the north side (ajuste 101)");
+        StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => square.Places(101)).Message, "100 golems at most");
         StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => new Square(new Spot(0, 0), 0)).Message, "side above zero");
         Assert.AreEqual("pentagon", Figure.Named("Pentagon", new Spot(5.5, 5.5), 2.0).Name);
         Assert.AreEqual(5, Figure.Named("pentagon", new Spot(5.5, 5.5), 2.0).Places(4).Count, "four on a pentagon: the five vertices, one free");

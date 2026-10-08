@@ -147,32 +147,33 @@ public sealed class Commander
     {
         var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
                                       double.Parse(command.Values["side"], CultureInfo.InvariantCulture),
-                                      command.Values.TryGetValue("angle", out var a) ? double.Parse(a, CultureInfo.InvariantCulture) : 0.0);
+                                      command.Values.TryGetValue("angle", out var a) ? double.Parse(a, CultureInfo.InvariantCulture) : 0.0,
+                                      command.Values.TryGetValue("places", out var n) ? int.Parse(n, CultureInfo.InvariantCulture) : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        var answer = displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure, (request.Center.X.Value, request.Center.Y.Value), request.Side.Value, request.Angle ?? 0.0);
+        var answer = displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure, (request.Center.X.Value, request.Center.Y.Value), request.Side.Value, request.Angle ?? 0.0, request.Places);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
-        var vertices = new List<string>();
+        var places = new List<string>();
         try
         {
             var printed = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
-            if (printed.TryGetProperty("vertices", out var v) && v.ValueKind == JsonValueKind.Array)
+            if (printed.TryGetProperty("places", out var v) && v.ValueKind == JsonValueKind.Array)
                 for (int i = 0; i < v.GetArrayLength(); i++)
-                    vertices.Add($"{i}: {Num(v[i], "x")},{Num(v[i], "y")}");
+                    places.Add($"{i}: {Num(v[i], "x")},{Num(v[i], "y")}");
         }
         catch (JsonException) { }
-        return Reply.Done($"formed {request.Name.Trim().ToLowerInvariant()} — vertices {string.Join("  ", vertices)}", answer.Print ?? "");
+        return Reply.Done($"formed {request.Name.Trim().ToLowerInvariant()} — places {string.Join("  ", places)}", answer.Print ?? "");
     }
 
-    // a vertex taken (propuesta 99): the same validation as POST /take; the route's first order, as any errand's
+    // a place taken (propuesta 99; ajuste 101): the same validation as POST /take; the route's first order, as any errand's
     private Reply Take(Command command)
     {
-        var request = new TakeRequest(command.Text, int.Parse(command.Values["vertex"], CultureInfo.InvariantCulture));
+        var request = new TakeRequest(command.Text, null, int.Parse(command.Values["place"], CultureInfo.InvariantCulture));
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Vertex.Value));
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value));
     }
 
     private Reply Formations()

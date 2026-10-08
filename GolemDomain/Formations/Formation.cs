@@ -135,6 +135,26 @@ internal abstract class Polygon : Formation
         return vertices;
     }
 
+    /// <summary>How many bodies the warden laid it out for (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI") — 0 when it was not
+    /// said: then its places are its vertices. Told by <see cref="Choreographies.Form(string, string, Position, Units.Length, Units.Angle, int)"/>.</summary>
+    internal int Bodies { get; set; }
+
+    /// <summary>Its places AS TOLD — the vertices, or, laid out for more bodies than vertices, the corners and the bodies left over on the
+    /// sides (ajuste 100), in the way round the perimeter.</summary>
+    internal IReadOnlyList<Position> Places() => Places(Math.Max(Bodies, 1));
+
+    /// <summary>How many places it has as told: its vertices, or as many as the bodies it was laid out for when they are more.</summary>
+    internal int PlaceCount => Places().Count;
+
+    /// <summary>The place of that NUMBER among its places as told (ajuste 101): what a golem told "your place is 5" resolves by itself — a
+    /// vertex when the number is one, a point of a side when the formation was laid out for more bodies than vertices. Out of range refused.</summary>
+    internal Position PlaceNumbered(int index)
+    {
+        var places = Places();
+        if (index < 0 || index >= places.Count) throw new GolemDomainException($"{(Called == "" ? "the " + Name : Called)} has places 0 to {places.Count - 1}: there is no place {index}");
+        return places[index];
+    }
+
     /// <summary>The vertex of that number (propuesta 99): 0 the first — the square's north-east, the pentagon's and the triangle's north, before
     /// any turn —, then counter-clockwise. A number the polygon does not have is refused.</summary>
     internal override Position Vertex(int index)

@@ -82,6 +82,19 @@ internal sealed class Choreographies
         return formation;
     }
 
+    /// <summary>A formation told FOR THAT MANY BODIES (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI"): the same as
+    /// <see cref="Form(string, string, Position, Units.Length, Units.Angle)"/>, and its places are as many as the bodies when they are more
+    /// than its vertices — the corners first, the rest on the sides (ajuste 100) —
+    /// <c>formation = g.Choreography.Form(@formationName, @figure, center, side, turn, @bodies);</c>. The warden says how many golems it lays
+    /// out; who takes which place is still the warden's, by number.</summary>
+    internal Polygon Form(string name, string figure, Position center, Units.Length side, Units.Angle turn, int places)
+    {
+        if (places < 1 || places > 100) throw new GolemDomainException($"a formation is laid out for 1 to 100 bodies; {places} were said");
+        var formation = Form(name, figure, center, side, turn);
+        formation.Bodies = places;
+        return formation;
+    }
+
     /// <summary>The formation of that name, formed before — <c>formation = g.Choreography.Find(@name);</c>, the one place its name enters
     /// after <see cref="Form"/>, like a route's id. Refused when the golem was told no formation by that name.</summary>
     internal Polygon Find(string name)
@@ -106,14 +119,14 @@ internal sealed class Choreographies
     /// <c>route = g.Choreography.Take(from, formation, vertex);</c> — the golem's own errand (<see cref="Golem.TakePlace"/>): refused when the
     /// vertex is nowhere on the map or leaves no room for the body, and ending FACING THE CENTRE of the formation, as in the golem's own
     /// choreography (ajuste 79). No berths: no round of words told it where the others stand; a body met on the way is the touches'.</summary>
-    internal Route Take(Position from, Formation formation, Position vertex)
+    internal Route Take(Position from, Formation formation, Position place)
     {
         if (from == null) throw new GolemDomainException("Choreographies.Take: 'from' was not given");
         if (formation == null) throw new GolemDomainException("Choreographies.Take: 'formation' was not given");
-        if (vertex == null) throw new GolemDomainException("Choreographies.Take: 'vertex' was not given");
-        string where = string.Format(CultureInfo.InvariantCulture, "the vertex at ({0:0.##}, {1:0.##}) of {2}", vertex.X, vertex.Y,
+        if (place == null) throw new GolemDomainException("Choreographies.Take: 'place' was not given");
+        string where = string.Format(CultureInfo.InvariantCulture, "the place at ({0:0.##}, {1:0.##}) of {2}", place.X, place.Y,
                                      formation.Called == "" ? "the " + formation.Name : formation.Called);
-        return golem.TakePlace(from, vertex, formation.Center, Array.Empty<Peer>(), where);
+        return golem.TakePlace(from, place, formation.Center, Array.Empty<Peer>(), where);
     }
 
     /// <summary>The CONVOCATION of that call (ajuste 73; by rank too since ajuste 77): found by the call's identity, or opened — by the

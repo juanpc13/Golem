@@ -86,7 +86,7 @@ public static class Readings
             {
                 print g.Choreography.Formations().Count 'count';
                 foreach (told in g.Choreography.Formations()) {
-                    print told.Called 'called', told.Name 'shape', told.Center.X 'atX', told.Center.Y 'atY', told.Side.InMeters 'length', told.Turn.InDegrees 'degrees';
+                    print told.Called 'called', told.Name 'shape', told.Center.X 'atX', told.Center.Y 'atY', told.Side.InMeters 'length', told.Turn.InDegrees 'degrees', told.PlaceCount 'places';
                 }
             }
         ")

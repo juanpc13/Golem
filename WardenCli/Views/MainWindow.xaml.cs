@@ -754,7 +754,7 @@ public partial class MainWindow : Window
         var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (words.Length < 2 || reply.Json is not { } json) return;
         var formation = formations.FirstOrDefault(f => f.WireName == words[1].ToLowerInvariant());
-        if (formation == null || JsonWalk.Find(json, "vertices") is not { ValueKind: JsonValueKind.Array } vertices) return;
+        if (formation == null || (JsonWalk.Find(json, "places") ?? JsonWalk.Find(json, "vertices")) is not { ValueKind: JsonValueKind.Array } vertices) return;
         var mine = formation.Places;
         int i = 0, apart = 0;
         foreach (var v in vertices.EnumerateArray())

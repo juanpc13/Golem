@@ -97,8 +97,9 @@ public sealed record FormationRequest(string Figure, PointRequest Center, double
 }
 
 /// <summary>A FORMATION TOLD (propuesta 99) — <c>{"name": "square-1", "figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
-/// "angle": 0}</c>: the golem keeps it by its name, made again when the name is known.</summary>
-public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side, double? Angle = null)
+/// "angle": 0}</c>: the golem keeps it by its name, made again when the name is known; <c>"places": 6</c> lays it out for that many golems
+/// (ajuste 101: the corners first, the rest on the sides).</summary>
+public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side, double? Angle = null, int? Places = null)
 {
     public const string Shape = "{\"name\": \"square-1\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0}";
     public static readonly string[] Figures = { "square", "pentagon", "triangle" };   // the circle's places hang on how many bodies take it
@@ -111,19 +112,24 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
         else foreach (var p in Center.Problems()) yield return "centre: " + p;
         if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
         if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
+        if (Places.HasValue && (Places.Value < 1 || Places.Value > 100)) yield return "the places are how many golems it is laid out for, 1 to 100";
     }
 }
 
-/// <summary>A VERTEX TAKEN (propuesta 99) — <c>{"name": "square-1", "vertex": 2}</c>: the golem resolves where that vertex of that formation
-/// stands and goes there.</summary>
-public sealed record TakeRequest(string Name, int? Vertex)
+/// <summary>A PLACE TAKEN (propuesta 99; ajuste 101) — <c>{"name": "square-1", "place": 2}</c>, or <c>"vertex": 2</c>, which says the same:
+/// the golem resolves where that place of that formation stands and goes there.</summary>
+public sealed record TakeRequest(string Name, int? Vertex, int? Place = null)
 {
-    public const string Shape = "{\"name\": \"square-1\", \"vertex\": 2}";
+    public const string Shape = "{\"name\": \"square-1\", \"place\": 2}";
+
+    /// <summary>The number of the place, whichever word said it.</summary>
+    public int? Number => Place ?? Vertex;
 
     public IEnumerable<string> Problems()
     {
         if (string.IsNullOrWhiteSpace(Name)) yield return "which formation? its name: " + Shape;
-        if (!Vertex.HasValue || Vertex.Value < 0) yield return "the vertex is a number from 0: " + Shape;
+        if (Place.HasValue && Vertex.HasValue) yield return "say the place once — place or vertex, not both: " + Shape;
+        else if (!Number.HasValue || Number.Value < 0) yield return "the place is a number from 0: " + Shape;
     }
 }
 

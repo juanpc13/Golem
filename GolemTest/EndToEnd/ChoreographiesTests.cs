@@ -68,6 +68,34 @@ public class ChoreographiesTests
 
         var far = blue.Choreography.Form("far", "square", new Position(10.5, 10.5), new Meters(2.0), new Degrees(0.0));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Take(new Pose(5.5, 2.0, 1.5708), far, far.Vertex(0))).Message,
-            "the vertex at (11.5, 11.5) of far is nowhere on the map");
+            "the place at (11.5, 11.5) of far is nowhere on the map");
+    }
+
+    // MORE GOLEMS THAN VERTICES, BY THE WARDEN (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI"): the formation told for how many
+    // golems it lays out — the corners first, the rest on the sides (ajuste 100) — and each golem told the NUMBER of its place
+    [TestMethod]
+    public void AFormationToldForMoreGolemsThanVertices_HasTheCornersAndPointsOfItsSides_TakenByNumber()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+
+        var square = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), 6);
+        Assert.AreEqual(6, square.PlaceCount, "laid out for six golems: six places");
+        Assert.AreEqual(5.5, square.PlaceNumbered(1).X, 1e-9, "place 1: the middle of the north side");
+        Assert.AreEqual(6.5, square.PlaceNumbered(1).Y, 1e-9);
+        Assert.AreEqual(4.5, square.PlaceNumbered(2).X, 1e-9, "place 2: the north-west corner");
+        Assert.AreEqual(6.5, square.PlaceNumbered(2).Y, 1e-9);
+        Assert.AreEqual(4.5, square.Vertex(2).X, 1e-9, "the vertices keep their own numbers");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => square.PlaceNumbered(6)).Message, "square-1 has places 0 to 5: there is no place 6");
+        var route = blue.Choreography.Take(new Pose(5.5, 2.0, 1.5708), square, square.PlaceNumbered(4));
+        StringAssert.Contains(route.AsPlan(), "face@5.5,4.5", "place 4, the middle of the south side, faced at the end");
+
+        var few = blue.Choreography.Form("square-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), 2);
+        Assert.AreEqual(4, few.PlaceCount, "fewer golems than vertices: the vertices, the rest free");
+        var plain = blue.Choreography.Form("square-3", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0));
+        Assert.AreEqual(4, plain.PlaceCount, "told for nobody in particular: its vertices");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("x", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), 0)).Message,
+            "a formation is laid out for 1 to 100 bodies");
     }
 }

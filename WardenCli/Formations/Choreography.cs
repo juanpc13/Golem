@@ -76,7 +76,7 @@ public sealed class Choreography
     }
 
     /// <summary>THE SCRIPTS IN CONTEXT (propuesta 99): for every member, the formation told (<paramref name="formLine"/>, the same line for
-    /// all) and then, round by round, the NUMBER of the vertex it takes — <c>take square-1 --vertex 3</c> —; in rounds, the console's
+    /// all) and then, round by round, the NUMBER of the place it takes — <c>take square-1 --place 3</c> —; in rounds, the console's
     /// <c>@sync</c> between them. The golem resolves where each vertex stands; no coordinate travels.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> TakeScripts(string formation, string formLine, Pace pace = Pace.OneErrand)
     {
@@ -90,7 +90,7 @@ public sealed class Choreography
             for (int round = 0; round <= Steps; round++)
             {
                 if (round > 0 && pace == Pace.Rounds) lines.Add(Sync);
-                lines.Add($"take {formation} --vertex {IndexAt(member.Name, round)}");
+                lines.Add($"take {formation} --place {IndexAt(member.Name, round)}");
             }
             scripts[member.Name] = lines;
         }

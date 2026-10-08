@@ -237,6 +237,25 @@ public class CommandConsoleTests
 
     // PLACE (ajuste 87, a lab lever; Juan: "el botón que los ponga en la posición"): the body carried onto a mark — the pending routes let go, the
     // body re-anchored, the golem awake there; with names, every golem of the fleet onto its own mark, each peer's line carried to it.
+    // THE FORMATIONS THE WARDEN NAMES (propuesta 99; ajuste 101): told for four golems, a triangle has its three corners and the middle of its
+    // first side; the golem resolves them on its own map and takes the one of the number it is told — no coordinate on the line
+    [TestMethod]
+    public async Task AFormationToldForMoreGolemsThanVertices_IsResolvedByTheGolem_AndItsPlaceTakenByNumber()
+    {
+        await using var world = new MockWorld();
+        await world.PlaceGolemAsync("red");                                         // on its mark in the living room, (2.5, 2.5)
+        var console = new Commander(world.HostOf("red").Embodiment);
+
+        var formed = await console.ExecuteAsync("form tri-1 triangle --center 2,2 --side 1 --places 4");
+        Assert.IsTrue(formed.Ok, formed.Text);
+        StringAssert.StartsWith(formed.Text, "formed tri-1 — places 0: 2,2.58  1: 1.75,2.14  2: 1.5,1.71  3: 2.5,1.71", "the apex, the middle of the first side, the other corners: " + formed.Text);
+        StringAssert.Contains((await console.ExecuteAsync("formations")).Json, "\"places\":4", "the formations read says for how many it was told");
+        var taken = await console.ExecuteAsync("take tri-1 --place 1");
+        Assert.IsTrue(taken.Ok, taken.Text);
+        StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@1.75,2.14", "the middle of a side, taken by its number, faced at the end");
+        Assert.AreEqual("refused", (await console.ExecuteAsync("take tri-1 --vertex 4")).Kind, "four places: 0 to 3");
+    }
+
     [TestMethod]
     public async Task Place_CarriesTheBodyOntoAMark_AndWithNames_EveryGolemOntoItsOwn()
     {
