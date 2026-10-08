@@ -5,7 +5,7 @@
         Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13">
     <!-- A GOLEM IN OPERATION, ADDED TO THE CONSOLE (Juan, 7-oct-2026: "¿no debería salir como parte de un modal, un botón que permita agregar
          nuevos golems al CLI, en vez de verlo de primera entrada?"): where it answers — host and port — and its name, which the golem itself
-         can say; or the four of the compose at once. Nothing is sent to the golem but the question of its name. -->
+         can say; or the golems of the compose at once. Nothing is sent to the golem but the question of its name. -->
     <StackPanel Margin="14">
         <Grid>
             <Grid.ColumnDefinitions>
@@ -28,7 +28,7 @@
         </Grid>
         <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" Margin="2,8,2,0" TextWrapping="Wrap"/>
         <DockPanel Margin="0,10,0,0">
-            <Button DockPanel.Dock="Left" Content="the four of the compose" Click="Four_Click" ToolTip="blue 8081, red 8082, green 8083, yellow 8084 on localhost — those not here yet"/>
+            <Button DockPanel.Dock="Left" Content="the golems of the compose" Click="Four_Click" ToolTip="blue 8081, red 8082, green 8083, yellow 8084, orange 8085, cyan 8086 on localhost — those not here yet"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="add" Click="Add_Click" IsDefault="True" Style="{StaticResource GoGreen}" Padding="18,6"/>
                 <Button Content="cancel" IsCancel="True"/>

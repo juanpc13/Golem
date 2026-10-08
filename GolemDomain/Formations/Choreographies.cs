@@ -150,20 +150,6 @@ internal sealed class Choreographies
         return golem.TakePlace(from, place, formation.Center, Array.Empty<Peer>(), where);
     }
 
-    /// <summary>A STEP TAKEN (ajuste 102, 8-oct-2026): the place of that formation reached ROUND THE FIGURE in that sense —
-    /// <c>route = g.Choreography.Take(from, formation, place, @sense);</c> — through the way the figure gives (<see cref="Formation.Way"/>:
-    /// along the arc on a circle, the place alone on a polygon), one route with every point of it a stop, ending facing the centre. The sense
-    /// is the closed set <see cref="Sense"/>; the warden says it with the number of the place.</summary>
-    internal Route Take(Position from, Formation formation, Position place, Sense sense)
-    {
-        if (from == null) throw new GolemDomainException("Choreographies.Take: 'from' was not given");
-        if (formation == null) throw new GolemDomainException("Choreographies.Take: 'formation' was not given");
-        if (place == null) throw new GolemDomainException("Choreographies.Take: 'place' was not given");
-        string where = string.Format(CultureInfo.InvariantCulture, "the place at ({0:0.##}, {1:0.##}) of {2}", place.X, place.Y,
-                                     formation.Called == "" ? "the " + formation.Name : formation.Called);
-        return golem.TakePlace(from, formation.Way(from, place, sense), formation.Center, where);
-    }
-
     /// <summary>The CONVOCATION of that call (ajuste 73; by rank too since ajuste 77): found by the call's identity, or opened — by the
     /// golem's own word or a peer's that came first — <c>muster = g.Choreography.Muster(@callId, formation, fleet);</c>.</summary>
     internal Muster Muster(string call, Formation formation, Fleet fleet)

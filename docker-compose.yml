@@ -7,6 +7,7 @@
 # Operate:   http://localhost:8081 (blue-golem) · http://localhost:8082 (red-golem)
 #            http://localhost:8083 (green-golem: lives on its wheels' reckoning, like a real robot)
 #            http://localhost:8084 (yellow-golem) — the fleet of four (29-sep-2026)
+#            http://localhost:8085 (orange-golem) · http://localhost:8086 (cyan-golem) — six since 8-oct-2026 (two rings of three)
 # Membrane:  ws://localhost:9090  (rosbridge: the bodies' topics as JSON)
 services:
   sim:
@@ -19,7 +20,7 @@ services:
     environment:
       - KIOSK=true   # false = headless: physics and bridges only, no picture (saves ~5 cores of software rendering)
       # The bodies' nodes (sim/bridge/body.py): each body takes its golem's orders and reports to its golem's endpoints
-      - GOLEMS=blue=http://blue-golem:8080;red=http://red-golem:8080;green=http://green-golem:8080;yellow=http://yellow-golem:8080
+      - GOLEMS=blue=http://blue-golem:8080;red=http://red-golem:8080;green=http://green-golem:8080;yellow=http://yellow-golem:8080;orange=http://orange-golem:8080;cyan=http://cyan-golem:8080
       - POSE_SOURCES=   # every body on the world's pose for now (29-sep-2026); green=wheels puts green's body on its wheels' reckoning
     shm_size: 512m
     security_opt:
@@ -65,7 +66,7 @@ services:
       - PANEL_PORT=8080
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller);
       # the route to green carries no tells — it only lets "reset everything" reach green too
-      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_ROUTES=tell-red=http://red-golem:8080,tell-blue.acks=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-orange=http://orange-golem:8080,tell-cyan=http://cyan-golem:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
@@ -91,7 +92,7 @@ services:
       - PANEL_PORT=8080
       # tells TO blue go to blue; acks for tells addressed to ME return to blue;
       # the route to green carries no tells — it only lets "reset everything" reach green too
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red.acks=http://blue-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-orange=http://orange-golem:8080,tell-cyan=http://cyan-golem:8080
       - TELL_RETRY_SECONDS=30
       # - TELL_DONE_TO=blue  # red tells blue every visited point — off for the choreographies (29-sep-2026): a follower leaves its place
     volumes:
@@ -121,7 +122,7 @@ services:
       - HOME_AT=10,10.5
       - POSE_SOURCE=world   # for now (29-sep-2026); wheels = dead reckoning, anchored once, like a real robot
       - PANEL_PORT=8080
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-yellow=http://yellow-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-yellow=http://yellow-golem:8080,tell-orange=http://orange-golem:8080,tell-cyan=http://cyan-golem:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal
@@ -147,7 +148,61 @@ services:
       - HOME_AT=9.5,1.5
       - POSE_SOURCE=world
       - PANEL_PORT=8080
-      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-orange=http://orange-golem:8080,tell-cyan=http://cyan-golem:8080
+      - TELL_RETRY_SECONDS=30
+    volumes:
+      - ./journal:/golem/journal
+    depends_on:
+      - sim
+    restart: unless-stopped
+
+  # orange (8-oct-2026, the fleet of six — Juan: "metamos 6 golems para ver cómo hacen el anillo interno 3 y el superior los otros 3"): the same
+  # golem, on the world's pose, told everything.
+  orange-golem:
+    build:
+      context: .
+      dockerfile: GolemAPI/Dockerfile
+    image: golemapi
+    container_name: orange-golem
+    ports:
+      - "8085:8080"  # orange's endpoints
+    environment:
+      - ROSBRIDGE_URL=ws://sim:9090
+      - JOURNAL_PATH=/golem/journal
+      - GOLEM=orange
+      - BODY=orange
+      - ROLES=displacer,collision-captor
+      - HOME_AT=1.5,9.5
+      - POSE_SOURCE=world
+      - PANEL_PORT=8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-cyan=http://cyan-golem:8080
+      - TELL_RETRY_SECONDS=30
+    volumes:
+      - ./journal:/golem/journal
+    depends_on:
+      - sim
+    restart: unless-stopped
+
+  # cyan (8-oct-2026, the fleet of six — Juan: "metamos 6 golems para ver cómo hacen el anillo interno 3 y el superior los otros 3"): the same
+  # golem, on the world's pose, told everything.
+  cyan-golem:
+    build:
+      context: .
+      dockerfile: GolemAPI/Dockerfile
+    image: golemapi
+    container_name: cyan-golem
+    ports:
+      - "8086:8080"  # cyan's endpoints
+    environment:
+      - ROSBRIDGE_URL=ws://sim:9090
+      - JOURNAL_PATH=/golem/journal
+      - GOLEM=cyan
+      - BODY=cyan
+      - ROLES=displacer,collision-captor
+      - HOME_AT=5.5,1.5
+      - POSE_SOURCE=world
+      - PANEL_PORT=8080
+      - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-orange=http://orange-golem:8080
       - TELL_RETRY_SECONDS=30
     volumes:
       - ./journal:/golem/journal

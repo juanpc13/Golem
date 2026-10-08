@@ -60,7 +60,7 @@ public sealed class Choreography
         var scripts = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var member in Fleet.Members)
         {
-            var lines = new List<string> { $"# {Describe()}, {(pace == Pace.OneErrand ? "one errand" : "in rounds")} — {member.Name}'s part, laid out by the console" };
+            var lines = new List<string>();   // no note on the tab (8-oct-2026: the console writes commands alone)
             var way = Enumerable.Range(0, Steps + 1).Select(round => PlaceAt(member.Name, round)).ToList();
             if (pace == Pace.OneErrand)
                 lines.Add("visit " + string.Join(" ", way));
@@ -85,8 +85,7 @@ public sealed class Choreography
         var scripts = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var member in Fleet.Members)
         {
-            string paced = Steps == 0 ? "" : pace == Pace.OneErrand ? ", one take after another" : ", in rounds";
-            var lines = new List<string> { $"# {Describe()}{paced} — {member.Name}'s part: the golem resolves its vertex", formLine };
+            var lines = new List<string> { formLine };   // no note on the tab (8-oct-2026: the console writes commands alone)
             for (int round = 0; round <= Steps; round++)
             {
                 if (round > 0 && pace == Pace.Rounds) lines.Add(Sync);

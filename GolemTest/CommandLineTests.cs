@@ -107,8 +107,7 @@ public class CommandLineTests
         StringAssert.Contains(Refused("form r circle --center 5,5 --radius 1"), "a circle's places hang on how many golems ride it");
         StringAssert.Contains(Refused("form r circle --center 5,5 --side 1 --places 2"), "a circle is said by its --radius");
         StringAssert.Contains(Refused("form s square --center 5,5 --radius 1"), "a square is said by its --side");
-        Assert.AreEqual("clockwise", CommandLine.Parse("take double-ring-1-inner --place 1 --sense Clockwise").Values["sense"], "a step round the ring in a sense");
-        StringAssert.Contains(Refused("take r --place 1 --sense north"), "--sense is clockwise or counterclockwise");
+        StringAssert.Contains(Refused("take r --place 1 --sense clockwise"), "take: expected the formation's name and --place n", "no sense any more: a step is the place, straight (ajuste 103)");
         var take = CommandLine.Parse("take square-1 --place 2");
         Assert.AreEqual("take", take.Verb); Assert.AreEqual("square-1", take.Text); Assert.AreEqual("2", take.Values["place"]);
         Assert.AreEqual("2", CommandLine.Parse("take square-1 --vertex 2").Values["place"], "a vertex is a place: the same number");

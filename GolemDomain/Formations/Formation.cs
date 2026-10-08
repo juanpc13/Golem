@@ -55,17 +55,6 @@ internal abstract class Formation
         return places[index];
     }
 
-    /// <summary>THE WAY OF A STEP (ajuste 102, 8-oct-2026; Juan, on the double ring sent as visits: "no con el contexto del doble anillo para
-    /// decirle cuál es su posición del vértice que le pertenece"): the stops a body takes from where it stands to a place of the figure when it
-    /// moves round it in that sense — the place alone on a polygon (a step runs along a side), along the ARC on a circle (<see cref="Circle"/>):
-    /// two bodies on a ring are half a turn apart, and the chord would send both through the centre at once.</summary>
-    internal virtual IReadOnlyList<Position> Way(Position from, Position place, Sense sense)
-    {
-        if (from == null) throw new GolemDomainException("Formation.Way: 'from' was not given");
-        if (place == null) throw new GolemDomainException("Formation.Way: 'place' was not given");
-        return new[] { place };
-    }
-
     /// <summary>What the journal and the panel call this figure.</summary>
     internal abstract string Name { get; }
 
@@ -118,25 +107,6 @@ internal sealed class Circle : Formation
     internal override string Name => "circle";
 
     internal override Units.Length Measure => Radius;
-
-    /// <summary>The way of a step round the circle (ajuste 102): ALONG THE ARC from where the body stands — its bearing from the centre — to
-    /// the place, in that sense, through points of the circle no more than 60° apart, the place last; a body already there goes straight.</summary>
-    internal override IReadOnlyList<Position> Way(Position from, Position place, Sense sense)
-    {
-        if (from == null) throw new GolemDomainException("Circle.Way: 'from' was not given");
-        if (place == null) throw new GolemDomainException("Circle.Way: 'place' was not given");
-        double start = AngleUtility.ToDegrees(AngleUtility.Angle(Center.AsCoordinate(), from.AsCoordinate()));
-        double end = AngleUtility.ToDegrees(AngleUtility.Angle(Center.AsCoordinate(), place.AsCoordinate()));
-        double delta = ((end - start) % 360 + 360) % 360;                 // counter-clockwise, in [0, 360)
-        if (delta < 1e-6 || 360 - delta < 1e-6) return new[] { place };
-        if (sense == Sense.Clockwise) delta -= 360;                       // clockwise, the other way round
-        int segments = (int)Math.Ceiling(Math.Abs(delta) / 60 - 1e-9);
-        var way = new List<Position>();
-        for (int k = 1; k < segments; k++)
-            way.Add(Center.Along(AngleUtility.ToRadians(start + delta * k / segments), Radius.InMeters));
-        way.Add(place);
-        return way;
-    }
 
     /// <summary>A step around the circle: its places run counter-clockwise, so clockwise is one place DOWN the order (ajuste 84).</summary>
     internal override Move Rotate(Sense sense) => OnePlace(sense);

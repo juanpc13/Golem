@@ -20,6 +20,8 @@ public sealed class GolemColor : IValueConverter
         "green" => Color.FromRgb(0xaa, 0xd9, 0x4c),
         "yellow" => Color.FromRgb(0xff, 0xd1, 0x73),
         "purple" => Color.FromRgb(0xd2, 0xa6, 0xff),
+        "orange" => Color.FromRgb(0xff, 0x9e, 0x45),   // the fleet of six (8-oct-2026)
+        "cyan" => Color.FromRgb(0x4c, 0xd9, 0xd9),
         _ => Color.FromRgb(0xb0, 0xb0, 0xb0),
     };
 

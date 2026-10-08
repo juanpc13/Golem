@@ -133,13 +133,8 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
 
 /// <summary>A PLACE TAKEN (propuesta 99; ajuste 101) — <c>{"name": "square-1", "place": 2}</c>, or <c>"vertex": 2</c>, which says the same:
 /// the golem resolves where that place of that formation stands and goes there.</summary>
-public sealed record TakeRequest(string Name, int? Vertex, int? Place = null, string? Sense = null)
+public sealed record TakeRequest(string Name, int? Vertex, int? Place = null)
 {
-    public static readonly string[] Senses = { "clockwise", "counterclockwise" };
-
-    /// <summary>The sense of a step round the figure as the domain's member name (ajuste 102: <c>Clockwise</c>), or null for a place taken straight.</summary>
-    public string? SenseName => string.IsNullOrWhiteSpace(Sense) ? null : Sense.Trim().ToLowerInvariant() == "clockwise" ? "Clockwise" : "Counterclockwise";
-
     public const string Shape = "{\"name\": \"square-1\", \"place\": 2}";
 
     /// <summary>The number of the place, whichever word said it.</summary>
@@ -150,7 +145,6 @@ public sealed record TakeRequest(string Name, int? Vertex, int? Place = null, st
         if (string.IsNullOrWhiteSpace(Name)) yield return "which formation? its name: " + Shape;
         if (Place.HasValue && Vertex.HasValue) yield return "say the place once — place or vertex, not both: " + Shape;
         else if (!Number.HasValue || Number.Value < 0) yield return "the place is a number from 0: " + Shape;
-        if (!string.IsNullOrWhiteSpace(Sense) && !Senses.Contains(Sense.Trim().ToLowerInvariant())) yield return "the sense of a step is clockwise or counterclockwise";
     }
 }
 

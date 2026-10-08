@@ -29,7 +29,7 @@ public class ScenarioTests
     public void TheWorldInMemory_IsBuiltFromTheSamePlanAsGazebo()
     {
         var plan = FloorPlan.Load();
-        Assert.AreEqual(4, plan.Bodies.Count, "blue, red, green and yellow, on their marks (four since 29-sep-2026)");
+        Assert.AreEqual(6, plan.Bodies.Count, "blue, red, green, yellow, orange and cyan, on their marks (four since 29-sep-2026, six since 8-oct-2026)");
         Assert.IsTrue(plan.Walls.Count > 20, "every edge of every place, less the openings, with the doors cut out: " + plan.Walls.Count);
         Assert.IsFalse(plan.Walls.Any(w => w.Closest(4.0, 9.5) == (4.0, 9.5)), "the kitchen's door to the north hall is a gap, not a wall");
         Assert.IsTrue(plan.Walls.Any(w => w.Closest(4.0, 8.5) == (4.0, 8.5)), "the rest of that edge is wall");

@@ -3,7 +3,7 @@ using System.Windows;
 namespace WardenCli.Views;
 
 /// <summary>The golems to add to the console: one by its host, port and name — the name asked of the golem itself if the operator likes — or
-/// the four of the compose, those not here yet. The window adds them and connects; the golems are untouched.</summary>
+/// the golems of the compose (six since 8-oct-2026), those not here yet. The window adds them and connects; the golems are untouched.</summary>
 public partial class AddGolemDialog : Window
 {
     private readonly IReadOnlyCollection<string> present;
@@ -43,9 +43,9 @@ public partial class AddGolemDialog : Window
 
     private void Four_Click(object sender, RoutedEventArgs e)
     {
-        var four = new (string Name, int Port)[] { ("blue", 8081), ("red", 8082), ("green", 8083), ("yellow", 8084) };
-        foreach (var (name, port) in four.Where(f => !present.Contains(f.Name))) Chosen.Add((name, "localhost", port));
-        if (Chosen.Count == 0) { Problem.Text = "the four of the compose are all here"; return; }
+        var compose = new (string Name, int Port)[] { ("blue", 8081), ("red", 8082), ("green", 8083), ("yellow", 8084), ("orange", 8085), ("cyan", 8086) };   // six since 8-oct-2026
+        foreach (var (name, port) in compose.Where(f => !present.Contains(f.Name))) Chosen.Add((name, "localhost", port));
+        if (Chosen.Count == 0) { Problem.Text = "the golems of the compose are all here"; return; }
         DialogResult = true;
     }
 

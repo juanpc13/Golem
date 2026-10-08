@@ -47,11 +47,6 @@ public abstract class Figure
     /// <summary>The bearing of a place from the centre, in degrees from due east, counter-clockwise, the orientation included.</summary>
     public abstract double Bearing(int index, int count);
 
-    /// <summary>The WAY a body takes from one place to the next in a step, in that sense: the next place alone on a polygon (its side is a
-    /// straight run); ALONG THE ARC on a circle (8-oct-2026: two on a ring are half a turn apart, and the chord would send both through the
-    /// centre at once) — points of the arc no more than 60° apart, the place last.</summary>
-    public virtual IReadOnlyList<Spot> Way(int from, int to, int count, Sense sense) => new[] { Places(count)[to] };
-
     /// <summary>The ORBITS of the figure: the runs of places a step moves round, each as its first place and how many — one for every figure,
     /// the whole of its places; two for a double ring, the outer ring then the inner one.</summary>
     public virtual IReadOnlyList<(int Start, int Count)> Orbits(int count) => new[] { (0, Places(count).Count) };
@@ -92,17 +87,6 @@ public abstract class Figure
     {
         var p = Toward(degrees, reach);
         return new Spot(Math.Round(p.X, 3), Math.Round(p.Y, 3));
-    }
-
-    /// <summary>The points of the arc of that radius from one bearing to another in that sense, no more than 60° apart, the last one the
-    /// arrival — what a step round a circle walks.</summary>
-    protected IReadOnlyList<Spot> Arc(double fromDegrees, double toDegrees, double radius, Sense sense)
-    {
-        double delta = ((toDegrees - fromDegrees) % 360 + 360) % 360;      // counter-clockwise, in (0, 360)
-        if (sense == Sense.Clockwise) delta -= 360;                        // clockwise, the other way round
-        if (Math.Abs(delta) < 1e-9 || Math.Abs(Math.Abs(delta) - 360) < 1e-9) return new[] { AtBearing(toDegrees, radius) };
-        int segments = (int)Math.Ceiling(Math.Abs(delta) / 60 - 1e-9);
-        return Enumerable.Range(1, segments).Select(k => AtBearing(fromDegrees + delta * k / segments, radius)).ToList();
     }
 
     protected Spot Toward(double degrees, double reach)
@@ -230,8 +214,6 @@ public sealed class Circle : Figure
         return Enumerable.Range(0, count).Select(k => AtBearing(360.0 * k / count + Angle, Radius)).ToList();
     }
 
-    public override IReadOnlyList<Spot> Way(int from, int to, int count, Sense sense) =>
-        Arc(Bearing(from, count), Bearing(to, count), Radius, sense);
 }
 
 /// <summary>THE DOUBLE RING (8-oct-2026; Juan: "para poder crear los dos anillos necesitamos una formación que sea así, que pregunte por los
@@ -285,6 +267,4 @@ public sealed class DoubleRing : Figure
 
     public override IReadOnlyList<(int Start, int Count)> Orbits(int count) => new[] { (0, OuterPlaces), (OuterPlaces, InnerPlaces) };
 
-    public override IReadOnlyList<Spot> Way(int from, int to, int count, Sense sense) =>
-        Arc(Bearing(from, count), Bearing(to, count), IsInner(from) ? InnerRadius : OuterRadius, sense);
 }

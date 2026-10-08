@@ -223,17 +223,6 @@ internal sealed class Golem
         return Entrust(from, place, following: false, choosesOrder: false, facing: facing, berths: berths);   // facing the centre (79), around the peers (80)
     }
 
-    /// <summary>A place of a formation reached THROUGH A WAY (ajuste 102: a step round a circle along its arc) — every point of it a stop of
-    /// one route, the place the last, ending facing the centre; refused when any of them is off the map or leaves no room for the body.</summary>
-    internal Route TakePlace(Position from, IReadOnlyList<Position> way, Position facing, string where)
-    {
-        if (from == null) throw new GolemDomainException("Golem.TakePlace: 'from' was not given");
-        if (way == null || way.Count == 0) throw new GolemDomainException("Golem.TakePlace: 'way' was not given");
-        if (facing == null) throw new GolemDomainException("Golem.TakePlace: 'facing' was not given");
-        foreach (var stop in way) CheckPlace(stop, where);
-        return Entrust(from, way[0], following: false, choosesOrder: false, facing: facing, more: way.Skip(1).ToList());
-    }
-
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
     internal Route Cover(Position from, Position stop)
     {
@@ -582,7 +571,7 @@ internal sealed class Golem
     // A new route with this stop, its way decided from `from` at once: the handle is the next one, minted here (a
     // deterministic function of the routes the golem holds, so the same on replay), and never reused — the idempotency
     // keys of the host hang on it. Opened while the golem is free, `from` is where its body stands: kept.
-    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder, Position facing = null, IReadOnlyList<Peer> berths = null, IReadOnlyList<Position> more = null)
+    private Route Entrust(Position from, Position stop, bool following, bool choosesOrder, Position facing = null, IReadOnlyList<Peer> berths = null)
     {
         if (!HasPendingMission()) collisions.PeersMovedOn();   // an idle golem sets out afresh: whoever it met while standing has moved on
         // the fleet's other members, where they stand and where they go (ajuste 80): bodies in the way while this route lasts, planned
@@ -596,7 +585,6 @@ internal sealed class Golem
         // born with the golem's direct way, whatever is active (ajuste 62): the script improves it with a dash when the strategy says so
         var route = new Route(lastHandle + 1, stop, following, choosesOrder, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, this);
         if (facing != null) route.Faces(facing);   // a place of a formation: the body ends facing the centre (ajuste 79)
-        if (more != null) foreach (var next in more) route.Then(next);   // the stops of a way round a figure (ajuste 102), before it is decided
         route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
         if (!HasPendingMission()) standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
         routes.Add(route);

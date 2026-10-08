@@ -100,10 +100,9 @@ public class ChoreographiesTests
     }
 
     // A RING TOLD (ajuste 102, 8-oct-2026; Juan, on the double ring sent as visits: "no con el contexto del doble anillo para decirle cuál es su
-    // posición"): a circle told for how many golems ride it, its place taken by number — and a STEP round it in a sense goes along the arc,
-    // never across: two on a ring are half a turn apart
+    // posición"): a circle told for how many golems ride it, its place taken by number
     [TestMethod]
-    public void ARingTold_HasItsPlacesByNumber_AndAStepRoundItGoesAlongTheArc()
+    public void ARingTold_HasItsPlacesByNumber_AndItsPlaceIsTakenStraight()
     {
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var red = new Golem(body, "red");
@@ -115,11 +114,10 @@ public class ChoreographiesTests
         Assert.AreEqual(4.5, ring.PlaceNumbered(1).X, 1e-9, "place 1 due west");
         Assert.AreEqual(1.0, ring.Measure.InMeters, 1e-9, "a circle's measure is its radius");
 
-        var plan = red.Choreography.Take(new Pose(6.5, 5.5, 3.1416), ring, ring.PlaceNumbered(1), Sense.Clockwise).AsPlan();
-        StringAssert.Contains(plan, "floor@6,4.63 > floor@5,4.63 > floor@4.5,5.5 > face@4.5,5.5", "half a turn clockwise, by the south, along the arc: " + plan);
-        var other = red.Choreography.Take(new Pose(4.5, 5.5, 0.0), ring, ring.PlaceNumbered(0), Sense.Clockwise).AsPlan();
-        StringAssert.Contains(other, "floor@5,6.37 > floor@6,6.37 > floor@6.5,5.5", "the other one by the north: they never meet in the centre — " + other);
-        StringAssert.Contains(red.Choreography.Take(new Pose(6.5, 5.5, 3.1416), ring, ring.PlaceNumbered(1)).AsPlan(), "floor@4.5,5.5", "without a sense: straight to the place");
+        // a step of a rotation is the place of the one ahead, taken STRAIGHT (ajuste 103; Juan: "la idea es que no sigan el arco… será un tramo
+        // recto hacia la posición del otro"): no point between
+        var plan = red.Choreography.Take(new Pose(6.5, 5.5, 3.1416), ring, ring.PlaceNumbered(1)).AsPlan();
+        Assert.AreEqual("floor@4.5,5.5 > face@4.5,5.5", plan.Split('\n').First(l => l.Contains("floor@")).Trim().Replace("way: ", ""), "one straight run to the place, then facing the centre: " + plan);
 
         var turned = red.Choreography.Form("double-ring-1-outer", "circle", new Position(5.5, 5.5), new Meters(2.5), new Degrees(90.0), 2);
         Assert.AreEqual(8.0, turned.PlaceNumbered(0).Y, 1e-9, "a ring turned 90°: its first place due north");

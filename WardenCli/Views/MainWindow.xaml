@@ -51,6 +51,10 @@
                         <TextBlock Text="hold" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="10,0,2,0"/>
                         <Button Content="pause" Tag="pause" Click="Compose_Click"/>
                         <Button Content="resume" Tag="resume" Click="Compose_Click"/>
+                        <!-- WAIT (Juan, 8-oct-2026: "el wait déjalo en la parte superior de los comandos"): a @sync on this tab — the console's barrier,
+                             never sent: this golem waits there until every golem sent with it reached its own @sync, or finished -->
+                        <TextBlock Text="together" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="10,0,2,0"/>
+                        <Button Content="wait" Tag="@sync" Click="Compose_Click" ToolTip="@sync — this golem waits here until every golem sent with it reaches its own @sync (or has nothing left); never sent to the golem"/>
                     </WrapPanel>
                 </Border>
                 <!-- BELOW THE SCRIPT: the golem's own choreography module (the fleet agrees among itself) -->
@@ -478,7 +482,7 @@
                                                 <Button Content="↺" Tag="{Binding}" Click="RotateInnerCounter_Click" ToolTip="the inner ring one step counter-clockwise, along its arc"/>
                                             </StackPanel>
                                             <StackPanel VerticalAlignment="Center">
-                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  at "/><Run Text="{Binding Figure.Center, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding TurnedText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run x:Name="Draft" Text="" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
+                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  at "/><Run Text="{Binding Figure.Center, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding TurnedText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding DraftText, Mode=OneWay}" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
                                                 <TextBlock Text="{Binding Holders, Mode=OneWay}" ToolTip="{Binding Holders, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
                                         </DockPanel>
@@ -488,7 +492,6 @@
                                                 <Setter TargetName="ShotButton" Property="BorderBrush" Value="{StaticResource Accent}"/>
                                                 <Setter TargetName="ShotButton" Property="Foreground" Value="{StaticResource Accent}"/>
                                                 <Setter TargetName="ShotButton" Property="FontWeight" Value="Bold"/>
-                                                <Setter TargetName="Draft" Property="Text" Value="  · draft"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsDoubleRing}" Value="True">
                                                 <Setter TargetName="WholeTurn" Property="Visibility" Value="Collapsed"/>

@@ -101,7 +101,7 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value, request.SenseName));
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value));
     }
 
     /// <summary>One STEP of the formation in place (ajuste 77): every body takes the next corner in that sense once everybody stands on

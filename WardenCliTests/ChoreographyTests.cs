@@ -57,18 +57,17 @@ public class ChoreographyTests
         // one errand (Juan: "con visit de todos los puntos calculados cubre parte de completar una coreografía"): one line per golem
         var errands = square.Scripts(Pace.OneErrand);
         Assert.AreEqual(4, errands.Count);
-        Assert.IsTrue(errands["blue"][0].StartsWith("# square at 5.5,5.5, by rank, 2 step(s) clockwise, 4 golem(s), one errand"), errands["blue"][0]);
-        Assert.AreEqual("visit 6.5,6.5 6.5,4.5 4.5,4.5", errands["blue"][1], "blue: north-east, then clockwise down the order: south-east, south-west");
-        Assert.AreEqual("visit 4.5,6.5 6.5,6.5 6.5,4.5", errands["green"][1], "green, second: north-west, then north-east");
-        Assert.AreEqual(2, errands["blue"].Count, "a note and one visit");
+        Assert.AreEqual("visit 6.5,6.5 6.5,4.5 4.5,4.5", errands["blue"][0], "blue: north-east, then clockwise down the order: south-east, south-west");
+        Assert.AreEqual("visit 4.5,6.5 6.5,6.5 6.5,4.5", errands["green"][0], "green, second: north-west, then north-east");
+        Assert.AreEqual(1, errands["blue"].Count, "one visit, no note (8-oct-2026)");
 
         // rounds: a visit per place, a @sync between
         var rounds = square.Scripts(Pace.Rounds);
-        CollectionAssert.AreEqual(new[] { "visit 6.5,6.5", "@sync", "visit 6.5,4.5", "@sync", "visit 4.5,4.5" }, rounds["blue"].Skip(1).ToList());
+        CollectionAssert.AreEqual(new[] { "visit 6.5,6.5", "@sync", "visit 6.5,4.5", "@sync", "visit 4.5,4.5" }, rounds["blue"].ToList());
         Assert.AreEqual(8, rounds.Values.Sum(s => s.Count(l => l == Choreography.Sync)), "two syncs per golem");
 
         var counter = new Choreography(new Square(new Spot(5.5, 5.5), 2.0), fleet, new ByRank(), 1, clockwise: false);
-        Assert.AreEqual("visit 6.5,6.5 4.5,6.5", counter.Scripts()["blue"][1], "counter-clockwise: blue from the north-east to the north-west");
+        Assert.AreEqual("visit 6.5,6.5 4.5,6.5", counter.Scripts()["blue"][0], "counter-clockwise: blue from the north-east to the north-west");
 
         // four on a pentagon: the free vertex moves with the fleet
         var pentagon = new Choreography(new Pentagon(new Spot(5.5, 5.5), 2.0), fleet, new ByRank(), 1, clockwise: true);

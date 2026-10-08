@@ -56,7 +56,9 @@ public class FormationTests
         formation.Rotate(Sense.Clockwise);
         Assert.AreEqual("green NE · red NW · yellow SW · blue SE", formation.Holders);
 
-        Assert.IsFalse(formation.Unshot, "laid out and stepped: its lines are on the tabs");
+        Assert.IsTrue(formation.Unshot, "a step is a draft until the shot (8-oct-2026)");
+        formation.Shot();
+        Assert.IsFalse(formation.Unshot, "laid out, stepped and shot: its lines are on the tabs");
         formation.Move(new Spot(4.0, 5.0));
         Assert.IsTrue(formation.Unshot, "a move is a draft until the shot");
         var lines = formation.Shot();
@@ -93,7 +95,13 @@ public class FormationTests
         StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => formation.Resize(0)).Message, "side above zero");
         formation.Orient(90);
         formation.Rotate(Sense.Clockwise);
-        Assert.IsFalse(formation.Unshot, "a step writes its own visits onto the figure as it stands: nothing left to shoot");
+        // a DRAFT (8-oct-2026): the steps wait for the shot, which writes them in order, each with the place it leaves everybody on
+        Assert.IsTrue(formation.Unshot, "turned, then a step drafted: both wait for the shot");
+        Assert.AreEqual(1, formation.Drafted.Count);
+        Assert.AreEqual("  · 1 step(s) to shoot, reshaped", formation.DraftText);
+        formation.Shot();
+        Assert.IsFalse(formation.Unshot, "shot: nothing waits");
+        Assert.AreEqual(0, formation.Drafted.Count);
 
         Assert.AreEqual(2.0, new Square(new Spot(0, 0), 2.0).MeasureFor(Math.Sqrt(2)), 1e-9, "the side that puts the corners that far");
         Assert.AreEqual(0.0, new Square(new Spot(0, 0), 2.0, 360).Angle, "an orientation is kept in [0, 360)");
@@ -113,7 +121,7 @@ public class FormationTests
 
         var scripts = laidOut.TakeScripts(formation.WireName, formation.FormLine(), Pace.Rounds);
         CollectionAssert.AreEqual(new[] { "form square-1 square --center 5.5,5.5 --side 2 --angle 0", "take square-1 --place 0", Choreography.Sync, "take square-1 --place 3" },
-                                  scripts["blue"].Skip(1).ToList(), "told the formation, then its vertex round by round: no coordinate");
+                                  scripts["blue"].ToList(), "told the formation, then its vertex round by round: no coordinate");
         Assert.IsFalse(scripts.Values.SelectMany(l => l).Any(l => l.StartsWith("visit")));
 
         formation.Orient(45);
@@ -154,7 +162,7 @@ public class FormationTests
     // THE DOUBLE RING (8-oct-2026; Juan: "una formación que pregunte por los diámetros de los dos anillos y que se pueda rotar el superior y el
     // inferior… seleccionar cuáles serían los golems del anillo inferior y superior"): two rings round one centre, each turning on its own
     [TestMethod]
-    public void ADoubleRing_HasTheGolemsOnTheirRings_AndEachRingTurnsAlone_AlongItsArc()
+    public void ADoubleRing_HasTheGolemsOnTheirRings_AndEachRingTurnsAlone_Straight()
     {
         var rings = Formation.DoubleRing(1, new Spot(5.5, 5.5), 5.0, 2.0, new[] { "green", "blue" }, new[] { "yellow", "red" });
         Assert.AreEqual("double ring #1", rings.Name);
@@ -171,19 +179,33 @@ public class FormationTests
         Assert.AreEqual("take double-ring-1-inner --place 1", rings.TakeLine("yellow"), "yellow the second place of the inner ring");
         var inner = rings.Rotate(Sense.Clockwise, 1, Ring.Inner);
         CollectionAssert.AreEquivalent(new[] { "red", "yellow" }, inner.Keys.ToList(), "the inner ring alone: the outer golems get no line");
-        Assert.AreEqual("visit 6,4.634 5,4.634 4.5,5.5", inner["red"], "half a turn clockwise along the arc, never through the centre");
-        Assert.AreEqual("visit 5,6.366 6,6.366 6.5,5.5", inner["yellow"], "and the other one round the other half: they never meet");
+        Assert.AreEqual("visit 4.5,5.5", inner["red"], "straight to the place of the one ahead (ajuste 103)");
+        Assert.AreEqual("visit 6.5,5.5", inner["yellow"]);
         var outer = rings.Rotate(Sense.Counterclockwise, 1, Ring.Outer);
-        Assert.AreEqual("visit 6.75,7.665 4.25,7.665 3,5.5", outer["blue"], "the outer ring the other way round");
+        Assert.AreEqual("visit 3,5.5", outer["blue"], "the outer ring the other way round, straight too");
         Assert.AreEqual("outer: green E · blue W — inner: yellow E · red W", rings.Holders);
         Assert.AreEqual("  outer 1 · inner -1", rings.TurnedText);
-        Assert.AreEqual("take double-ring-1-inner --place 1 --sense clockwise", rings.TakeLine("red", Sense.Clockwise), "a step round the ring: the sense, so the golem goes along the arc");
-        Assert.AreEqual("take double-ring-1-outer --place 0 --sense counterclockwise", rings.TakeLine("green", Sense.Counterclockwise));
+        Assert.AreEqual("take double-ring-1-inner --place 1", rings.TakeLine("red"), "a step: the place on its ring, no sense, straight (ajuste 103)");
 
         StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => Formation.DoubleRing(2, new Spot(5.5, 5.5), 5.0, 2.0, new[] { "blue" }, new[] { "blue" })).Message, "a golem rides one ring");
         StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => Formation.DoubleRing(2, new Spot(5.5, 5.5), 2.0, 5.0, new[] { "blue" }, new[] { "red" })).Message, "wider than the inner one");
         var square = new Choreography(new Square(new Spot(5.5, 5.5), 2.0), new Fleet(new[] { new Member("blue", null) }), new ByRank(), 0, clockwise: true).Outcome(3);
         StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => square.Rotate(Sense.Clockwise, 1, Ring.Inner)).Message, "has no rings");
+        // the rings turn TOGETHER (8-oct-2026; Juan: "que giraran al mismo tiempo"; "retoma lo del giro en sync"): two steps of each ring, clicked
+        // in any order, are two rounds with a step of each — the n-th of the inner ring and the n-th of the outer one set out at once
+        rings.Shot();
+        rings.Rotate(Sense.Clockwise, 1, Ring.Inner);
+        rings.Rotate(Sense.Clockwise, 1, Ring.Inner);
+        rings.Rotate(Sense.Counterclockwise, 1, Ring.Outer);
+        rings.Rotate(Sense.Counterclockwise, 1, Ring.Outer);
+        var rounds = rings.Rounds();
+        Assert.AreEqual(2, rounds.Count, "four steps, two rounds");
+        CollectionAssert.AreEquivalent(new Ring?[] { Ring.Inner, Ring.Outer }, rounds[0].Select(s => s.Ring).ToList(), "each round turns both rings");
+        CollectionAssert.AreEquivalent(new Ring?[] { Ring.Inner, Ring.Outer }, rounds[1].Select(s => s.Ring).ToList());
+        rings.Rotate(Sense.Counterclockwise);
+        Assert.AreEqual(3, rings.Rounds().Count, "a step of the whole figure takes a round of its own, after the rings' steps");
+        rings.Shot();
+        Assert.IsFalse(rings.Unshot, "shot: the steps went to the tabs");
         rings.Resize(2.0);   // its measure is the outer radius: a diameter of 4
         Assert.AreEqual(1.6, ((DoubleRing)rings.Figure).InnerDiameter, 1e-9, "resized, the inner ring keeps its proportion");
     }

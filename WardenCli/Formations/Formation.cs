@@ -9,6 +9,12 @@ public enum Sense
     Counterclockwise,
 }
 
+/// <summary>A STEP DRAFTED (8-oct-2026; Juan: "cuando doy clic a rotar escribe en el tab… es hasta que uno le da clic a shot que debería
+/// escribir en el tab de los involucrados"): its sense, the ring when it turned one alone, the place each member it moved holds after it, and
+/// the visit each would get — what the shot writes, step by step.</summary>
+public sealed record DraftStep(Sense Sense, Ring? Ring, IReadOnlyDictionary<string, int> To, IReadOnlyDictionary<string, string> Visits);
+
+
 /// <summary>Which ring of a double ring (8-oct-2026): the OUTER one — the wider, Juan's "superior" — or the INNER one, his "inferior".</summary>
 public enum Ring
 {
@@ -27,6 +33,7 @@ public sealed class Formation : INotifyPropertyChanged
 {
     private readonly Dictionary<string, int> held;
     private readonly int[] turned;
+    private readonly List<DraftStep> drafted = new();
 
     /// <param name="turned">the steps it had turned, and <paramref name="unshot"/> whether its figure had changed since its last shot — what a
     /// formation saved in a workspace is born again with (7-oct-2026); a formation laid out now starts at 0, with nothing to shoot;
@@ -49,7 +56,7 @@ public sealed class Formation : INotifyPropertyChanged
             this.held[member.Name] = index;
         }
         this.turned = Figure.Orbits(Fleet.Count).Count > 1 ? new[] { turned, innerTurned } : new[] { turned };
-        Unshot = unshot;
+        Reshaped = unshot;
     }
 
     /// <summary>A DOUBLE RING laid out (8-oct-2026; Juan: "seleccionar cuáles serían los golems del anillo inferior y superior"): the outer
@@ -135,18 +142,19 @@ public sealed class Formation : INotifyPropertyChanged
             for (int k = 1; k <= steps; k++)
             {
                 int next = start + Mod(here - start + sign, n);
-                way.AddRange(Figure.Way(here, next, Fleet.Count, sense));
+                way.Add(Places[next]);   // straight to the place of the one ahead (ajuste 103): no point between
                 here = next;
             }
             lines[member.Name] = "visit " + string.Join(" ", way);
             held[member.Name] = here;
         }
         foreach (int o in turning) turned[o] += sign * steps;
-        Unshot = false;   // its visits take everybody onto the figure as it stands now
+        // a DRAFT, like a move, a turn or a resize (8-oct-2026): nothing goes to the tabs until the shot, which writes the steps in order
+        drafted.Add(new DraftStep(sense, ring, lines.Keys.ToDictionary(n => n, n => held[n], StringComparer.Ordinal), lines));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Holders)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Turned)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnedText)));
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
+        Drafting();
         return lines;
     }
 
@@ -164,8 +172,42 @@ public sealed class Formation : INotifyPropertyChanged
     /// <summary>A RESIZE (propuesta 98): the same figure, bigger or smaller — a polygon by its side, a circle by its radius. A draft.</summary>
     public void Resize(double measure) => Reshape(Figure.Sized(measure));
 
-    /// <summary>Whether the figure changed — moved, turned, resized — since its lines last went to the tabs: what <see cref="Shot"/> would write.</summary>
-    public bool Unshot { get; private set; }
+    /// <summary>Whether the figure changed — moved, turned, resized — since its lines last went to the tabs.</summary>
+    public bool Reshaped { get; private set; }
+
+    /// <summary>The steps drafted since the last shot, in the order they were clicked (8-oct-2026).</summary>
+    public IReadOnlyList<DraftStep> Drafted => drafted;
+
+    /// <summary>THE STEPS DRAFTED IN ROUNDS (8-oct-2026; Juan: "que el giro del anillo de afuera y el de adentro se vieran en simultáneo, que
+    /// giraran al mismo tiempo"; taken up again the same evening: "retoma lo del giro en sync que tenías"): a step goes in the first round
+    /// after every round any of its golems already moves in — so the n-th step of the inner ring and the n-th of the outer one share a round,
+    /// whatever order they were clicked in; a step of the whole figure takes a round of its own. What the shot writes round by round, a @sync
+    /// on every member's tab between them, so the rings set out together every round.</summary>
+    public IReadOnlyList<IReadOnlyList<DraftStep>> Rounds()
+    {
+        var next = new Dictionary<string, int>(StringComparer.Ordinal);   // the first round each member is free in
+        var rounds = new List<List<DraftStep>>();
+        foreach (var step in drafted)
+        {
+            int round = step.To.Keys.Select(m => next.TryGetValue(m, out int r) ? r : 0).DefaultIfEmpty(0).Max();
+            while (rounds.Count <= round) rounds.Add(new List<DraftStep>());
+            rounds[round].Add(step);
+            foreach (var m in step.To.Keys) next[m] = round + 1;
+        }
+        return rounds;
+    }
+
+    /// <summary>Whether anything waits for the shot: the figure changed, or steps were drafted.</summary>
+    public bool Unshot => Reshaped || drafted.Count > 0;
+
+    /// <summary>What the list says of the draft: "  · 2 step(s) to shoot", "  · draft" for a figure changed, nothing when all went to the tabs.</summary>
+    public string DraftText => drafted.Count > 0 ? $"  · {drafted.Count} step(s) to shoot{(Reshaped ? ", reshaped" : "")}" : Reshaped ? "  · draft" : "";
+
+    private void Drafting()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DraftText)));
+    }
 
     /// <summary>THE SHOT: the formation as it stands, in lines — every member's <c>visit</c> to the vertex it holds, where that vertex is now.
     /// The draft is over; nothing is sent here.</summary>
@@ -173,8 +215,9 @@ public sealed class Formation : INotifyPropertyChanged
     {
         var places = Places;
         var lines = Fleet.Members.ToDictionary(m => m.Name, m => "visit " + places[held[m.Name]], StringComparer.Ordinal);
-        Unshot = false;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
+        Reshaped = false;
+        drafted.Clear();   // read Rounds before the shot: what it writes
+        Drafting();
         return lines;
     }
 
@@ -184,10 +227,10 @@ public sealed class Formation : INotifyPropertyChanged
     {
         next.Places(Fleet.Count);   // a figure the fleet does not fit is refused before anything changes
         Figure = next;
-        Unshot = true;
+        Reshaped = true;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Figure)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Holders)));
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
+        Drafting();
     }
 
     // ==================================================================
@@ -238,20 +281,19 @@ public sealed class Formation : INotifyPropertyChanged
     }
 
     /// <summary>The line that tells a member which place it takes: the number it holds now — a vertex, or a point of a side (ajuste 101).</summary>
-    public string TakeLine(string member) => TakeLine(member, null);
+    public string TakeLine(string member) => TakeLine(member, IndexOf(member));
 
-    /// <summary>The line that tells a member its place — and, for a STEP round a ring (ajuste 102), the sense, so the golem goes along the arc;
-    /// on a double ring the number is the place on the member's own ring.</summary>
-    public string TakeLine(string member, Sense? sense)
+    /// <summary>The line that tells a member to take THAT place — a drafted step's, written by the shot after later steps moved it on; on a
+    /// double ring the number is the place on the member's own ring. Straight, always (ajuste 103: a step is the place of the one ahead).</summary>
+    public string TakeLine(string member, int place)
     {
-        string step = sense.HasValue && Figure is Circle or global::WardenCli.Formations.DoubleRing ? $" --sense {(sense == Sense.Clockwise ? "clockwise" : "counterclockwise")}" : "";
         if (Figure is DoubleRing)
         {
             var ring = RingOf(member);
             int start = Figure.Orbits(Fleet.Count)[ring == Ring.Outer ? 0 : 1].Start;
-            return $"take {RingWireName(ring)} --place {IndexOf(member) - start}{step}";
+            return $"take {RingWireName(ring)} --place {place - start}";
         }
-        return $"take {WireName} --place {IndexOf(member)}{step}";
+        return $"take {WireName} --place {place}";
     }
 
     /// <summary>Who holds what, vertex by vertex in the figure's order — "blue NE · green NW · red SW · yellow SE"; a free vertex says so.</summary>

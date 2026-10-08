@@ -255,13 +255,13 @@ public class CommandConsoleTests
         StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@1.75,2.14", "the middle of a side, taken by its number, faced at the end");
         Assert.AreEqual("refused", (await console.ExecuteAsync("take tri-1 --vertex 4")).Kind, "four places: 0 to 3");
 
-        // a ring told (ajuste 102): a circle for two, and a step round it in a sense — along the arc, the sense resolved to the domain's enum
+        // a ring told (ajuste 102): a circle for two, and its place taken straight (ajuste 103)
         var ring = await console.ExecuteAsync("form ring-1 circle --center 2.5,2.5 --radius 0.7 --places 2");
         Assert.IsTrue(ring.Ok, ring.Text);
         StringAssert.StartsWith(ring.Text, "formed ring-1 — places 0: 3.2,2.5  1: 1.8,2.5", ring.Text);
-        var step = await console.ExecuteAsync("take ring-1 --place 1 --sense clockwise");
+        var step = await console.ExecuteAsync("take ring-1 --place 1");
         Assert.IsTrue(step.Ok, step.Text);
-        StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@1.8,2.5", "round the ring to its west place, facing the centre");
+        StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@1.8,2.5", "straight to its west place, facing the centre");
     }
 
     [TestMethod]

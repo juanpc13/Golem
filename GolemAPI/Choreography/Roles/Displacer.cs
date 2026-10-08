@@ -227,42 +227,16 @@ public sealed class Displacer
     /// <summary>The place of that number of the formation of that name, TAKEN (a vertex, or a point of a side when it was laid out for more
     /// bodies than vertices — ajuste 101): the route from where the errand starts (`g.Destination`) to where the golem resolves that place stands, ending facing the centre; refused off the map, without room, or for a formation the
     /// golem was not told. The first order is pushed to the body by the reaction on the act (next-order-take).</summary>
-    public Answer Take(string name, int place, string? sense = null)
+    public Answer Take(string name, int place)
     {
         try
         {
-            // two fixed templates (ajuste 102): the place taken straight, or a STEP round the figure in that sense — along the arc on a circle
             var answer = Answer.Of(robot.Actor.Using(
                 @"
                     Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
                     Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name: form it first';
                 ",
-                sense != null
-                ? @"
-                    {
-                        from = g.Destination;
-                        formation = g.Choreography.Find(@formationName);
-                        place = formation.PlaceNumbered(@index);
-                        route = g.Choreography.Take(from, formation, place, @sense);
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
-                            }
-                        } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
-                        }
-                    }
-                "
-                : @"
+                @"
                     {
                         from = g.Destination;
                         formation = g.Choreography.Find(@formationName);
@@ -289,7 +263,6 @@ public sealed class Displacer
                 .WithParameters(p => {
                     p["formationName", typeof(string)] = name;   // never @name: the route's print has a label 'name'
                     p["index", typeof(int)] = place;
-                    if (sense != null) p["sense", typeof(string)] = sense;   // the member's name; the engine resolves it to the domain's Sense (ajuste 90)
                 })
                 .PerformCheckThenCommand());
             return answer.Ok ? answer : Answer.Refusal($"take {name} place {place}: " + answer.Refused);

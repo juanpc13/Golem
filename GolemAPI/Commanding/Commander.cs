@@ -170,12 +170,11 @@ public sealed class Commander
     // a place taken (propuesta 99; ajuste 101): the same validation as POST /take; the route's first order, as any errand's
     private Reply Take(Command command)
     {
-        var request = new TakeRequest(command.Text, null, int.Parse(command.Values["place"], CultureInfo.InvariantCulture),
-                                      command.Values.TryGetValue("sense", out var sense) ? sense : null);
+        var request = new TakeRequest(command.Text, null, int.Parse(command.Values["place"], CultureInfo.InvariantCulture));
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value, request.SenseName));
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value));
     }
 
     private Reply Formations()
