@@ -43,7 +43,9 @@ public class PentagonTests
         var four = pentagon.Places(4);
         Assert.AreEqual(5, four.Count, "four bodies, five places: the one nobody takes stays free");
         for (int i = 0; i < 5; i++) Assert.AreEqual(0.0, four[i].DistanceTo(v[i]), 1e-9, "the places are the vertices, in their order");
-        Assert.AreEqual(6, pentagon.Places(6).Count, "more bodies than vertices: spread along the perimeter (ajuste 65)");
+        var six = pentagon.Places(6);
+        Assert.AreEqual(6, six.Count, "more bodies than vertices: the five corners and one side's middle (ajuste 100)");
+        Assert.AreEqual(5, six.Count(p => v.Any(c => c.DistanceTo(p) < 1e-9)), "every corner taken");
 
         // the fleet of four takes it by rank, every route ending facing the centre; a step moves everybody one vertex — and the hole with them
         var fleet = new Fleet("blue,green,red,yellow");

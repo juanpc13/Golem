@@ -11,8 +11,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace GolemTest;
 
 // THE TRIANGLE (propuesta 59, 29-sep-2026; Juan: "la coreografía para un triángulo también… en total 5 golems"): an equilateral
-// triangle said by its side (ajuste 65), its apex north, and the fleet spread evenly along its perimeter — three bodies take the
-// vertices, five stand a fifth of the perimeter apart. Joined and turned like the circle: the formation's own places. Set aside from
+// triangle said by its side (ajuste 65), its apex north — three bodies take the vertices; five take the vertices and the middles
+// of two sides (ajuste 100: the corners first, the bodies left over on the sides). Joined and turned like the circle: the formation's own places. Set aside from
 // the command line for now (ajuste 65: the square alone); kept in the repertoire. A side of 2√3 is the triangle whose corners stand 2 m
 // from the centre.
 [TestClass]
@@ -33,11 +33,14 @@ public class TriangleTests
         Assert.AreEqual(3, three.Count);
         for (int k = 0; k < 3; k++) Assert.AreEqual(0.0, three[k].DistanceTo(v[k]), 0.001, "three bodies: the vertices, the apex first, counter-clockwise");
 
+        // five on a triangle (ajuste 100): the three corners always, the two left over on two of its sides — the first and the third
         var five = triangle.Places(5);
         Assert.AreEqual(5, five.Count);
         Assert.AreEqual(0.0, five[0].DistanceTo(v[0]), 0.001, "the first at the apex");
-        double spacing = 3 * v[0].DistanceTo(v[1]) / 5;
-        Assert.AreEqual(spacing, five[0].DistanceTo(five[1]), 0.001, "the second a fifth of the perimeter down the first side");
+        Assert.AreEqual(0.0, five[1].DistanceTo(new Position((v[0].X + v[1].X) / 2, (v[0].Y + v[1].Y) / 2)), 0.001, "the second the middle of the first side");
+        Assert.AreEqual(0.0, five[2].DistanceTo(v[1]), 0.001, "then the second corner");
+        Assert.AreEqual(0.0, five[3].DistanceTo(v[2]), 0.001, "and the third: every corner taken");
+        Assert.AreEqual(0.0, five[4].DistanceTo(new Position((v[2].X + v[0].X) / 2, (v[2].Y + v[0].Y) / 2)), 0.001, "the last the middle of the third side");
         foreach (var place in five)
         {
             double d = place.DistanceTo(triangle.Center);

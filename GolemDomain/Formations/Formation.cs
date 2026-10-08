@@ -3,6 +3,7 @@ using GolemDomain.Geometry;
 using NetTopologySuite.Algorithm;
 using NetTopologySuite.LinearReferencing;
 using GeometryFactory = NetTopologySuite.Geometries.GeometryFactory;
+using LineSegment = NetTopologySuite.Geometries.LineSegment;
 
 namespace GolemDomain.Formations;
 
@@ -143,18 +144,32 @@ internal abstract class Polygon : Formation
         return vertices[index];
     }
 
+    /// <summary>The places for a fleet of that many bodies. Up to as many bodies as vertices, THE VERTICES — the ones nobody takes stay free
+    /// (ajuste 86). With MORE bodies than vertices (ajuste 100, 8-oct-2026; Juan: "la opción 2 me parece correcta"): THE CORNERS FIRST, ALWAYS
+    /// TAKEN, and the bodies left over on the SIDES — shared out by turns, the sides that get one more spread around the figure (two left on a
+    /// square: two opposite sides), each side's points evenly between its two corners. So the figure still reads as itself: six on a square
+    /// are its four corners and the middles of two opposite sides; eight, the corners and every middle. The order is the WAY ROUND THE
+    /// PERIMETER from the first vertex, counter-clockwise — a corner, the points of its side, the next corner — so a step (one place down or up
+    /// the order) moves the whole fleet round the figure and the places stay the same set.</summary>
     internal override IReadOnlyList<Position> Places(int count)
     {
         if (count < 1) throw new GolemDomainException($"{Name}: a formation needs at least one body");
         var v = Vertices();
         int n = v.Count;
         if (count <= n) return v;                             // the vertices, all of them: the ones nobody takes stay free (ajuste 86)
-        var ring = GeometryFactory.Default.CreateLineString(v.Concat(new[] { v[0] }).Select(p => p.AsCoordinate()).ToArray());
-        var perimeter = new LengthIndexedLine(ring);
-        double spacing = ring.Length / count;
+        int left = count - n;
+        var onSide = Enumerable.Repeat(left / n, n).ToArray();                // as many on every side as divide evenly
+        int rest = left % n;
+        for (int i = 0; i < rest; i++)                                       // the rest, one more on sides spread round the figure
+            onSide[(int)Math.Round(i * (double)n / rest, MidpointRounding.AwayFromZero) % n]++;
         var places = new List<Position>();
-        for (int k = 0; k < count; k++)
-            places.Add(Position.Of(perimeter.ExtractPoint(k * spacing)));   // the way along the perimeter from the first vertex
+        for (int k = 0; k < n; k++)
+        {
+            places.Add(v[k]);
+            var side = new LineSegment(v[k].AsCoordinate(), v[(k + 1) % n].AsCoordinate());
+            for (int j = 1; j <= onSide[k]; j++)
+                places.Add(Position.Of(side.PointAlong((double)j / (onSide[k] + 1))));   // evenly between the side's two corners
+        }
         return places;
     }
 }
