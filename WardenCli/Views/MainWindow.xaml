@@ -396,6 +396,51 @@
                             </StackPanel>
                         </Border>
                     </TabItem>
+                    <!-- THE OBSTACLES (Juan, 8-oct-2026: "creo que haría falta poner algo de colisiones y poder removerlos si ya no están… como un tab, así
+                         como antes manejábamos en el panel web"): what the selected golem learned by touching — a thing with its marks, a peer met — read
+                         with the rest every 3 s; a row under the cursor is lit on the map; 'gone' says at once that it is no longer there: `forget x,y` at
+                         its centre, the golem forgets it, marks and all, and tells its peers -->
+                    <TabItem x:Name="ObstaclesTab">
+                        <TabItem.Header>
+                            <TextBlock><Run Text="obstacles"/><Run Text="{Binding SelectedItem.Knowledge.Obstacles.Count, ElementName=GolemList, Mode=OneWay, StringFormat=' ({0})'}"/></TextBlock>
+                        </TabItem.Header>
+                        <DockPanel Background="{StaticResource Well}">
+                            <TextBlock DockPanel.Dock="Top" Margin="6,4,6,2" Foreground="{StaticResource Dim}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                       Text="what the selected golem learned by touching — 'gone' when it is no longer there: it forgets it and tells its peers"/>
+                            <TextBlock DockPanel.Dock="Top" Margin="6,6" Foreground="{StaticResource Dim}" FontSize="12" Text="nothing touched yet">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedItem.Knowledge.Obstacles.Count, ElementName=GolemList}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <ListBox x:Name="ObstacleList" ItemsSource="{Binding SelectedItem.Knowledge.Obstacles, ElementName=GolemList}" BorderThickness="0" Background="Transparent"
+                                     HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="4,2" Background="Transparent" MouseEnter="ObstacleRow_MouseEnter" MouseLeave="ObstacleRow_MouseLeave">
+                                            <Button x:Name="Gone" DockPanel.Dock="Right" Content="gone" Tag="{Binding}" Click="ForgetObstacle_Click" VerticalAlignment="Center"
+                                                    ToolTip="it is no longer there: the golem forgets it, marks and all, and tells its peers — forget x,y at its centre, at once"/>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock TextTrimming="CharacterEllipsis"><Run Text="{Binding Title, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource Red}"/><Run Text="  "/><Run Text="{Binding Where, Mode=OneWay}" Foreground="{StaticResource Ink}" FontSize="11"/></TextBlock>
+                                                <TextBlock Text="{Binding Marks, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" FontFamily="Consolas"/>
+                                            </StackPanel>
+                                        </DockPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsThing}" Value="False">
+                                                <Setter TargetName="Gone" Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </TabItem>
                     <!-- THE ACTIVE FORMATIONS (propuesta 96): every formation laid out, who holds which vertex, its eye — the figure PROJECTED on the
                          map (Juan, 7-oct-2026: "que se vea la forma de la figura encima del mapa para proyectar la formación seleccionada… un botón
                          como un ojo") — and the rotations the operator asks of it, each a visit on every member's tab; the one selected is drawn strongest -->

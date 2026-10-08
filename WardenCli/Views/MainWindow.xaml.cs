@@ -771,6 +771,28 @@ public partial class MainWindow : Window
         else if (i != mine.Count) Log($"{golem.Name} › ⚠ {formation.WireName}: the golem resolved {i} vertices, the console draws {mine.Count}");
     }
 
+    // THE OBSTACLES' TAB (8-oct-2026): a row under the cursor lit on the map; 'gone' forgets it at once — the golem's own lever, like the
+    // environment's, never a line of the script
+    private Obstacle? litObstacle;
+
+    private void ObstacleRow_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is Obstacle o) { litObstacle = o; Draw(); }
+    }
+
+    private void ObstacleRow_MouseLeave(object sender, MouseEventArgs e)
+    {
+        litObstacle = null;
+        Draw();
+    }
+
+    private async void ForgetObstacle_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not Obstacle o || Current is not { } g) return;
+        litObstacle = null;
+        await ActNowAsync(g, $"forget {o.Point}");
+    }
+
     // THE BARRIER BETWEEN STEPS (8-oct-2026; the "rounds" the dialog had, moved to ↻ ↺): when any member of the formation already has lines
     // queued, a step or a shot is written after a @sync on EVERY member's tab — sent together, nobody starts the next step before the whole
     // fleet finished the one before; the first step on empty tabs needs none
@@ -1093,6 +1115,18 @@ public partial class MainWindow : Window
                     if (o.Vertices.Count == 2) Map.Children.Add(new Line { X1 = Pixel(o.Vertices[0].X, o.Vertices[0].Y).X, Y1 = Pixel(o.Vertices[0].X, o.Vertices[0].Y).Y, X2 = Pixel(o.Vertices[1].X, o.Vertices[1].Y).X, Y2 = Pixel(o.Vertices[1].X, o.Vertices[1].Y).Y, Stroke = markLine, StrokeThickness = 2 });
                     else Map.Children.Add(figure);
                 }
+            }
+        }
+        // the obstacle under the cursor in the obstacles' tab, lit on the map: a ring in the accent around its marks
+        if (litObstacle is { } lit)
+        {
+            var accent = (Brush)FindResource("Accent");
+            var points = lit.IsThing && lit.Vertices.Count > 0 ? lit.Vertices.Select(v => (v.X, v.Y, R: v.Reach)).ToList() : new List<(double X, double Y, double R)> { (lit.X, lit.Y, 0.25) };
+            foreach (var (x, y, reach) in points)
+            {
+                var pl = Pixel(x, y); double rl = Math.Max(9, reach * scale + 6);
+                var halo = new Ellipse { Width = 2 * rl, Height = 2 * rl, Stroke = accent, StrokeThickness = 2.5 };
+                Canvas.SetLeft(halo, pl.X - rl); Canvas.SetTop(halo, pl.Y - rl); Map.Children.Add(halo);
             }
         }
         // THE ACTIVE FORMATIONS PROJECTED (propuesta 96; Juan, 7-oct-2026: "que se vea la forma de la figura encima del mapa para proyectar la

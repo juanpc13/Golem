@@ -37,6 +37,14 @@ public sealed record Obstacle(string Kind, string Who, string Shape, string Zone
 {
     public bool IsThing => Kind == "thing";
 
+    // ---- what the obstacles' tab shows (8-oct-2026), numbers with a decimal point whatever the machine's culture ----
+    private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    public string Title => IsThing ? $"thing · {Shape}" : $"peer met · {Who}";
+    public string Where => $"at {N(X)},{N(Y)}{(Zone == "" ? "" : $" in {Zone}")}";
+    public string Marks => IsThing ? $"{Vertices.Count} mark(s): {string.Join("  ", Vertices.Select(v => $"{N(v.X)},{N(v.Y)}"))}" : "a body met: history, it moves on";
+    /// <summary>The point a <c>forget</c> is said at: the obstacle's centre.</summary>
+    public string Point => $"{N(X)},{N(Y)}";
+
     public static IReadOnlyList<Obstacle> Parse(JsonElement json)
     {
         var list = new List<Obstacle>();
