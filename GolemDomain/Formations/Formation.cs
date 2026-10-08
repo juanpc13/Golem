@@ -25,6 +25,13 @@ internal abstract class Formation
     /// <summary>What the journal and the panel call this figure.</summary>
     internal abstract string Name { get; }
 
+    /// <summary>The name the warden gave this formation (propuesta 99: <c>square-1</c>), "" for a figure nobody named — the convocations'.</summary>
+    internal string Called { get; set; } = "";
+
+    /// <summary>The place of the vertex of that NUMBER, in the figure's fixed order (propuesta 99) — what a golem told "your vertex is 2"
+    /// resolves by itself. A figure whose places hang on how many bodies there are (the circle) has no vertex by number.</summary>
+    internal virtual Position Vertex(int index) => throw new GolemDomainException($"a {Name}'s places depend on how many bodies take it: it has no vertex by number");
+
     /// <summary>The places of this figure for a fleet of that many bodies, in a fixed order.</summary>
     internal abstract IReadOnlyList<Position> Places(int count);
 
@@ -89,11 +96,19 @@ internal abstract class Polygon : Formation
 {
     internal Units.Length Side { get; }
 
-    protected Polygon(Position center, Units.Length side) : base(center)
+    /// <summary>Its ORIENTATION (propuesta 99, 8-oct-2026): how far it is turned counter-clockwise from the way it is laid out — added to every
+    /// vertex's bearing, the order of the vertices unchanged. Zero for the figures of the golem's own choreography.</summary>
+    internal Units.Angle Turn { get; }
+
+    protected Polygon(Position center, Units.Length side) : this(center, side, new Units.Degrees(0.0)) { }
+
+    protected Polygon(Position center, Units.Length side, Units.Angle turn) : base(center)
     {
         if (side == null) throw new GolemDomainException($"{GetType().Name}.{GetType().Name}: 'side' was not given");
+        if (turn == null) throw new GolemDomainException($"{GetType().Name}.{GetType().Name}: 'turn' was not given");
         if (side.InMeters <= 0) throw new GolemDomainException($"a {Name} needs a side greater than zero");
         Side = side;
+        Turn = turn;
     }
 
     /// <summary>The radius of the circle through the vertices, in metres: the side over twice the sine of half the angle each side
@@ -108,15 +123,24 @@ internal abstract class Polygon : Formation
     /// may add moves of its own in its class.</summary>
     internal override Move Rotate(Sense sense) => OnePlace(sense);
 
-    /// <summary>The vertices, the first one first, counter-clockwise.</summary>
+    /// <summary>The vertices, the first one first, counter-clockwise — turned by the polygon's orientation.</summary>
     internal IReadOnlyList<Position> Vertices()
     {
         var vertices = new List<Position>();
         foreach (double degrees in Bearings)
         {
-            vertices.Add(Center.Along(AngleUtility.ToRadians(degrees), Circumradius));
+            vertices.Add(Center.Along(AngleUtility.ToRadians(degrees + Turn.InDegrees), Circumradius));
         }
         return vertices;
+    }
+
+    /// <summary>The vertex of that number (propuesta 99): 0 the first — the square's north-east, the pentagon's and the triangle's north, before
+    /// any turn —, then counter-clockwise. A number the polygon does not have is refused.</summary>
+    internal override Position Vertex(int index)
+    {
+        var vertices = Vertices();
+        if (index < 0 || index >= vertices.Count) throw new GolemDomainException($"a {Name} has vertices 0 to {vertices.Count - 1}: there is no vertex {index}");
+        return vertices[index];
     }
 
     internal override IReadOnlyList<Position> Places(int count)
@@ -141,6 +165,7 @@ internal abstract class Polygon : Formation
 internal sealed class Triangle : Polygon
 {
     internal Triangle(Position center, Units.Length side) : base(center, side) { }
+    internal Triangle(Position center, Units.Length side, Units.Angle turn) : base(center, side, turn) { }
     internal override string Name => "triangle";
     protected override IReadOnlyList<double> Bearings => new[] { 90.0, 210.0, 330.0 };
 }
@@ -153,6 +178,7 @@ internal sealed class Triangle : Polygon
 internal sealed class Square : Polygon
 {
     internal Square(Position center, Units.Length side) : base(center, side) { }
+    internal Square(Position center, Units.Length side, Units.Angle turn) : base(center, side, turn) { }
     internal override string Name => "square";
     protected override IReadOnlyList<double> Bearings => new[] { 45.0, 135.0, 225.0, 315.0 };
 }
@@ -164,6 +190,7 @@ internal sealed class Square : Polygon
 internal sealed class Pentagon : Polygon
 {
     internal Pentagon(Position center, Units.Length side) : base(center, side) { }
+    internal Pentagon(Position center, Units.Length side, Units.Angle turn) : base(center, side, turn) { }
     internal override string Name => "pentagon";
     protected override IReadOnlyList<double> Bearings => new[] { 90.0, 162.0, 234.0, 306.0, 18.0 };
 }

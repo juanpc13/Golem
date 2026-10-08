@@ -96,6 +96,37 @@ public sealed record FormationRequest(string Figure, PointRequest Center, double
     }
 }
 
+/// <summary>A FORMATION TOLD (propuesta 99) — <c>{"name": "square-1", "figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
+/// "angle": 0}</c>: the golem keeps it by its name, made again when the name is known.</summary>
+public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side, double? Angle = null)
+{
+    public const string Shape = "{\"name\": \"square-1\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0}";
+    public static readonly string[] Figures = { "square", "pentagon", "triangle" };   // the circle's places hang on how many bodies take it
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Name) || !System.Text.RegularExpressions.Regex.IsMatch(Name.Trim(), @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "the formation needs a name like square-1: " + Shape;
+        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square, pentagon or triangle: " + Shape;
+        if (Center == null) yield return "give the centre: " + Shape;
+        else foreach (var p in Center.Problems()) yield return "centre: " + p;
+        if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
+        if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
+    }
+}
+
+/// <summary>A VERTEX TAKEN (propuesta 99) — <c>{"name": "square-1", "vertex": 2}</c>: the golem resolves where that vertex of that formation
+/// stands and goes there.</summary>
+public sealed record TakeRequest(string Name, int? Vertex)
+{
+    public const string Shape = "{\"name\": \"square-1\", \"vertex\": 2}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Name)) yield return "which formation? its name: " + Shape;
+        if (!Vertex.HasValue || Vertex.Value < 0) yield return "the vertex is a number from 0: " + Shape;
+    }
+}
+
 /// <summary>One STEP of the formation in place (ajuste 77) — <c>{"sense": "clockwise"}</c> or <c>"counterclockwise"</c>: every body takes
 /// the next corner in that sense once everybody stands on its own; steps queue.</summary>
 public sealed record RotateRequest(string Sense)

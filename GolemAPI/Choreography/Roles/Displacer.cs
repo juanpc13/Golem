@@ -168,6 +168,92 @@ public sealed class Displacer
     /// the fleet's names (this golem among them) and the policy that shares the places — <c>rank</c> or <c>distance</c>. This golem says
     /// where it stands; every peer is told and says where it stands; the routes open when everybody spoke — this golem's with its own word
     /// when the fleet is just itself, else with the last word heard. The order is pushed by the reaction on the act that opens it.</summary>
+    // ==================================================================
+    // THE FORMATIONS THE WARDEN NAMES (propuesta 99, 8-oct-2026; Juan: "darle contexto al golem pero nunca darle la coordenada exacta de su
+    // visit"): FORM tells the golem a formation — its name, figure, centre, side and orientation — and the golem keeps it by its name; TAKE
+    // tells it which VERTEX of it to take, by number: where that vertex stands the golem resolves on its own map, and the route ends facing
+    // the centre. Who takes which vertex is the warden's (WardenCli); no fleet, no rank, no word between golems.
+    // ==================================================================
+
+    /// <summary>A formation told — made, or made again with its new figure when the name is known. Its print is the vertices the golem
+    /// resolved, so the warden can compare them with its own. No route: nothing for the body to do.</summary>
+    public Answer Form(string name, string figure, (double X, double Y) center, double side, double angle)
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    {
+                        center = Position(@cx, @cy);
+                        side = Meters(@sideLength);
+                        turn = Degrees(@angle);
+                        formation = g.Choreography.Form(@formationName, @figure, center, side, turn);
+                        print formation.Called 'called', formation.Name 'shape', formation.Center.X 'atX', formation.Center.Y 'atY',
+                              formation.Side.InMeters 'length', formation.Turn.InDegrees 'degrees';
+                        foreach (vertices in formation.Vertices()) {
+                            print vertices.X 'x', vertices.Y 'y';
+                        }
+                    }
+                ")
+                .WithParameters(p => {
+                    p["formationName", typeof(string)] = name;   // never @name: the route's print has a label 'name'
+                    p["figure", typeof(string)] = figure;
+                    p["cx", typeof(double)] = Resolution.Metres(center.X);
+                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
+                    p["sideLength", typeof(double)] = Resolution.Metres(side);   // never @side: the script's own local is named so
+                    p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
+                })
+                .PerformCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The vertex of that number of the formation of that name, TAKEN: the route from where the errand starts (`g.Destination`)
+    /// to where the golem resolves that vertex stands, ending facing the centre; refused off the map, without room, or for a formation the
+    /// golem was not told. The first order is pushed to the body by the reaction on the act (next-order-take).</summary>
+    public Answer Take(string name, int vertex)
+    {
+        try
+        {
+            var answer = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
+                    Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name: form it first';
+                ",
+                @"
+                    {
+                        from = g.Destination;
+                        formation = g.Choreography.Find(@formationName);
+                        vertex = formation.Vertex(@index);
+                        route = g.Choreography.Take(from, formation, vertex);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ")
+                .WithParameters(p => {
+                    p["formationName", typeof(string)] = name;   // never @name: the route's print has a label 'name'
+                    p["index", typeof(int)] = vertex;
+                })
+                .PerformCheckThenCommand());
+            return answer.Ok ? answer : Answer.Refusal($"take {name} vertex {vertex}: " + answer.Refused);
+        }
+        catch (Exception ex) { return Answer.Refusal($"take {name} vertex {vertex}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
     public Answer Call(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet, string policy)
     {
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");

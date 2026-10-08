@@ -80,6 +80,18 @@ public static class Readings
         .PerformQuery();
 
     /// <summary>The scenarios the golem knows — each with what was learned in it — and the one it is in (ajuste 60).</summary>
+    /// <summary>The formations the warden told the golem (propuesta 99): each one's name, figure, centre, side and orientation.</summary>
+    public static string Formations(ActorV2 actor) =>
+        actor.Using(@"
+            {
+                print g.Choreography.Formations().Count 'count';
+                foreach (told in g.Choreography.Formations()) {
+                    print told.Called 'called', told.Name 'shape', told.Center.X 'atX', told.Center.Y 'atY', told.Side.InMeters 'length', told.Turn.InDegrees 'degrees';
+                }
+            }
+        ")
+        .PerformQuery();
+
     public static string Scenarios(ActorV2 actor) =>
         actor.Using(@"
             {

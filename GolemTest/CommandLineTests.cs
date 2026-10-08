@@ -86,12 +86,25 @@ public class CommandLineTests
     {
         Assert.AreEqual("", CommandLine.Parse("help").Text);
         Assert.AreEqual("visit", CommandLine.Parse("help VISIT").Text);
-        CollectionAssert.AreEqual(new[] { "visit", "cover", "choreograph", "rotate", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "place", "optimize", "use", "scenarios", "set", "show", "help", "--with" },
+        CollectionAssert.AreEqual(new[] { "visit", "cover", "choreograph", "rotate", "form", "take", "formations", "then", "pause", "resume", "forget", "reset", "state", "route", "where", "obstacles", "place", "optimize", "use", "scenarios", "set", "show", "help", "--with" },
                                   CommandLine.Help.Select(h => h.Verb).ToList(), "every command the language has, in the help's order — no script of the actor's among them");
         Assert.IsTrue(CommandLine.Help.All(h => h.Usage != "" && h.What != "" && h.Example != ""), "each with how it is written, what it does and an example");
         StringAssert.Contains(Refused("help fly"), "help: 'fly' is no command; the commands are visit, cover, choreograph");
         Assert.AreEqual("on-the-way", CommandLine.Parse("optimize On-The-Way").Text, "the strategy the routes are optimized by (ajustes 61, 82)");
         StringAssert.Contains(Refused("optimize fast"), "optimize: expected the strategy, on-the-way or door-by-door");
+        // a formation told and a vertex taken (propuesta 99): the context, never the coordinate
+        var form = CommandLine.Parse("form Square-1 Square --side 2 --center 5.5,5.5 --angle 45");
+        Assert.AreEqual("form", form.Verb); Assert.AreEqual("square-1", form.Text); Assert.AreEqual("square", form.Values["figure"]);
+        Assert.AreEqual((5.5, 5.5), form.Points[0]); Assert.AreEqual("2", form.Values["side"]); Assert.AreEqual("45", form.Values["angle"]);
+        Assert.IsFalse(CommandLine.Parse("form p pentagon --center 5,5 --side 1.5").Values.ContainsKey("angle"), "no turn said: none");
+        StringAssert.Contains(Refused("form square-1 circle --center 5,5 --side 1"), "form: the figure is square, pentagon or triangle");
+        StringAssert.Contains(Refused("form square-1 square --side 2"), "expected --center x,y and --side s");
+        StringAssert.Contains(Refused("form square-1 square --center 5,5 --side 2 --angle north"), "--angle expects degrees");
+        var take = CommandLine.Parse("take square-1 --vertex 2");
+        Assert.AreEqual("take", take.Verb); Assert.AreEqual("square-1", take.Text); Assert.AreEqual("2", take.Values["vertex"]);
+        StringAssert.Contains(Refused("take square-1 2"), "take: expected the formation's name and --vertex n");
+        StringAssert.Contains(Refused("take square-1 --vertex -1"), "--vertex expects a number from 0");
+        Assert.AreEqual("formations", CommandLine.Parse("formations").Verb);
         // the map the golem uses (7-oct-2026, was enter): use map <scenario>
         var use = CommandLine.Parse("use Map Open-Floor");
         Assert.AreEqual("use", use.Verb); Assert.AreEqual("open-floor", use.Text, "the scenario named after the map, lower case");
@@ -110,7 +123,7 @@ public class CommandLineTests
         StringAssert.Contains(Refused("place blue@1,1 blue@2,2"), "blue's mark was given twice");
         StringAssert.Contains(Refused("place @spots"), "a name the console resolves");
         StringAssert.Contains(Refused("dash 9,1.5"), "'dash' is no command", "the dash is a strategy now, not a verb");
-        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, choreograph, rotate, then, pause, resume, forget, reset, state, route, where, obstacles, place, optimize, use, scenarios, set, show, help, --with — help tells each");
+        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, choreograph, rotate, form, take, formations, then, pause, resume, forget, reset, state, route, where, obstacles, place, optimize, use, scenarios, set, show, help, --with — help tells each");
         StringAssert.Contains(Refused("query { print g.Standing.X 'x'; }"), "'query' is no command", "the actor's scripts never travel on a line");
         StringAssert.Contains(Refused(""), "nothing to do: write a command, or help");
         StringAssert.Contains(Refused("golem"), "nothing to do");

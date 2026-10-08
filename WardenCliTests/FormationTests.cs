@@ -101,6 +101,27 @@ public class FormationTests
     }
 
     [TestMethod]
+    public void AFormation_IsToldToTheGolems_ByItsName_AndEachOneItsVertexByNumber_NeverACoordinate()
+    {
+        var fleet = new Fleet(new[] { new Member("blue", null), new Member("red", null), new Member("green", null), new Member("yellow", null) });
+        var laidOut = new Choreography(new Square(new Spot(5.5, 5.5), 2.0), fleet, new ByRank(), 1, clockwise: true);
+        var formation = laidOut.Outcome(1);
+        Assert.IsTrue(formation.CanForm);
+        Assert.AreEqual("square-1", formation.WireName);
+        Assert.AreEqual("form square-1 square --center 5.5,5.5 --side 2 --angle 0", formation.FormLine());
+        Assert.AreEqual("take square-1 --vertex 3", formation.TakeLine("blue"), "blue, one step clockwise from the north-east: vertex 3");
+
+        var scripts = laidOut.TakeScripts(formation.WireName, formation.FormLine(), Pace.Rounds);
+        CollectionAssert.AreEqual(new[] { "form square-1 square --center 5.5,5.5 --side 2 --angle 0", "take square-1 --vertex 0", Choreography.Sync, "take square-1 --vertex 3" },
+                                  scripts["blue"].Skip(1).ToList(), "told the formation, then its vertex round by round: no coordinate");
+        Assert.IsFalse(scripts.Values.SelectMany(l => l).Any(l => l.StartsWith("visit")));
+
+        formation.Orient(45);
+        Assert.AreEqual("form square-1 square --center 5.5,5.5 --side 2 --angle 45", formation.FormLine(), "a turn is told as the figure's orientation");
+        Assert.IsFalse(new Choreography(new Circle(new Spot(5.5, 5.5), 1.0), fleet, new ByRank(), 0, clockwise: true).Outcome(2).CanForm, "a circle goes as visits");
+    }
+
+    [TestMethod]
     public void FourOnAPentagon_TheFreeVertexMovesWithTheFleet()
     {
         var fleet = new Fleet(new[] { new Member("blue", null), new Member("red", null), new Member("green", null), new Member("yellow", null) });

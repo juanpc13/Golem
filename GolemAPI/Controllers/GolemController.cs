@@ -81,6 +81,29 @@ public class GolemController : Controller
         return Answered(displacer.Call(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet, request.Policy));
     }
 
+    /// <summary>A FORMATION TOLD (propuesta 99): the golem keeps it by its name and answers the vertices it resolved.</summary>
+    [HttpPost("form")]
+    public IActionResult Form([FromBody] FormRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + FormRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure.Trim().ToLowerInvariant(),
+                                       (request.Center.X.Value, request.Center.Y.Value), request.Side.Value, request.Angle ?? 0.0));
+    }
+
+    /// <summary>A VERTEX TAKEN (propuesta 99): the golem resolves where that vertex of that formation stands and goes there, facing the centre.</summary>
+    [HttpPost("take")]
+    public IActionResult Take([FromBody] TakeRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + TakeRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Vertex.Value));
+    }
+
     /// <summary>One STEP of the formation in place (ajuste 77): every body takes the next corner in that sense once everybody stands on
     /// its own; steps queue. It spreads by itself: command one golem.</summary>
     [HttpPost("rotate")]

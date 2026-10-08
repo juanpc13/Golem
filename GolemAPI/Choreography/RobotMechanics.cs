@@ -64,6 +64,7 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-find",   "[_:Golem].Find($id)"),        // a route in hand by its handle: Then
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
+            ("next-order-take",   "[_:Choreographies].Take(_, _, _)"),     // a vertex of a formation the warden named, taken (propuesta 99)
             ("next-order-convene", "[_:Muster].Convene(_, _)"),              // the golem says where it stands: the round complete, its route opens (ajustes 73, 80, 81)
             ("next-order-stood",   "[_:Muster].Stood(_, _)"),               // …and a peer's word may interrupt its route
             ("next-order-placed",  "[_:Muster].Placed(_)"),                 // this golem stands on its place: the next step may open (ajuste 77)

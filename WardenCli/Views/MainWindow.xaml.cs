@@ -44,7 +44,7 @@ public partial class MainWindow : Window
     private double FloorSize => Current?.Plan?.Extent ?? 11.0;
 
     // the verbs whose command leaves a route in the golem: the queue waits for it to end before the next line goes
-    private static readonly HashSet<string> Movers = new(StringComparer.Ordinal) { "visit", "cover", "then", "resume", "choreograph", "rotate" };
+    private static readonly HashSet<string> Movers = new(StringComparer.Ordinal) { "visit", "cover", "then", "resume", "choreograph", "rotate", "take" };
 
     public MainWindow()
     {
@@ -462,6 +462,7 @@ public partial class MainWindow : Window
                 {
                     done++;
                     Log($"{golem.Name} › ✓ {line} — {OneLine(reply.Text)} ({done} of {total})");
+                    if (verb == "form") CompareVertices(golem, line, reply);
                 }
                 await GolemClient.RefreshReadingsAsync(golem, cts.Token);
             }
@@ -692,15 +693,17 @@ public partial class MainWindow : Window
         {
             var fleet = new Fleet(golems.Where(g => dialog.Chosen.Contains(g.Name)).Select(g => new Member(g.Name, g.LastX is double x && g.LastY is double y ? new Spot(x, y) : null)));
             var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, Assignment.Named(dialog.Assignment), dialog.Steps, dialog.Clockwise);
-            var scripts = choreography.Scripts(dialog.OneErrand ? Pace.OneErrand : Pace.Rounds);
+            var pace = dialog.OneErrand ? Pace.OneErrand : Pace.Rounds;
+            // the formation this leaves in force (propuesta 96), first: its name is what the golems are told (propuesta 99)
+            var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);
+            // a polygon is TOLD to the golems — form, then the number of each one's vertex — and each resolves where it stands; a circle goes as visits
+            var scripts = formation.CanForm ? choreography.TakeScripts(formation.WireName, formation.FormLine(), pace) : choreography.Scripts(pace);
             foreach (var (name, lines) in scripts)
             {
                 var g = golems.First(x => x.Name == name);
                 foreach (var line in lines) g.Enqueue(line);
             }
-            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit")))} visit(s) on {scripts.Count} tab(s){(dialog.OneErrand ? "" : $"; the queues wait for each other at every {Choreography.Sync}")} — read them, then SEND to selected");
-            // the formation this leaves in force joins the list: from here on it is rotated from the console (propuesta 96)
-            var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);
+            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit") || l.StartsWith("take")))} {(formation.CanForm ? "take(s)" : "visit(s)")} on {scripts.Count} tab(s){(dialog.OneErrand ? "" : $"; the queues wait for each other at every {Choreography.Sync}")} — read them, then SEND to selected");
             formation.PropertyChanged += (_, _) => Draw();
             formations.Add(formation);
             FormationList.SelectedItem = formation;
@@ -721,6 +724,7 @@ public partial class MainWindow : Window
         // ONE STEP PER CLICK (Juan, 7-oct-2026: "quítala, deja siempre un paso por clic"): two steps are two clicks, two visits on each tab
         try
         {
+            bool tellAgain = formation.Unshot;   // the figure changed since the golems were told it: told again before the step
             var lines = formation.Rotate(sense);
             int missing = 0;
             foreach (var (name, line) in lines)
@@ -728,11 +732,40 @@ public partial class MainWindow : Window
                 var g = golems.FirstOrDefault(x => x.Name == name);
                 if (g == null) { missing++; continue; }
                 g.Enqueue($"# {formation.Name} rotates one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} — {name} to {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
-                g.Enqueue(line);
+                if (formation.CanForm)
+                {
+                    if (tellAgain) g.Enqueue(formation.FormLine());
+                    g.Enqueue(formation.TakeLine(name));   // the context, never the coordinate (propuesta 99)
+                }
+                else g.Enqueue(line);
             }
             Log($"{formation.Name} › one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}: a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
         }
         catch (ArgumentException ex) { Log(ex.Message); }
+    }
+
+    // THE GOLEM'S ANSWER TO A FORM (propuesta 99): the vertices it resolved, set against the ones the console draws — they share the figure's
+    // fixed order and the same geometry, so a difference means the golem was told another formation, or the two figures disagree
+    private void CompareVertices(Golem golem, string line, Reply reply)
+    {
+        var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 2 || reply.Json is not { } json) return;
+        var formation = formations.FirstOrDefault(f => f.WireName == words[1].ToLowerInvariant());
+        if (formation == null || JsonWalk.Find(json, "vertices") is not { ValueKind: JsonValueKind.Array } vertices) return;
+        var mine = formation.Places;
+        int i = 0, apart = 0;
+        foreach (var v in vertices.EnumerateArray())
+        {
+            double x = JsonWalk.Number(v, "x") ?? double.NaN, y = JsonWalk.Number(v, "y") ?? double.NaN;
+            if (i >= mine.Count || Math.Abs(mine[i].X - x) > 0.01 || Math.Abs(mine[i].Y - y) > 0.01)
+            {
+                apart++;
+                Log($"{golem.Name} › ⚠ {formation.WireName} vertex {i}: the golem resolved it at {Spot.Fmt(x)},{Spot.Fmt(y)}, the console draws it at {(i < mine.Count ? mine[i].ToString() : "nothing")}");
+            }
+            i++;
+        }
+        if (apart == 0 && i == mine.Count) Log($"{golem.Name} › {formation.WireName}: the golem's {i} vertices agree with the console's");
+        else if (i != mine.Count) Log($"{golem.Name} › ⚠ {formation.WireName}: the golem resolved {i} vertices, the console draws {mine.Count}");
     }
 
     private void Dissolve_Click(object sender, RoutedEventArgs e)
@@ -921,7 +954,12 @@ public partial class MainWindow : Window
             var g = golems.FirstOrDefault(x => x.Name == name);
             if (g == null) { missing++; continue; }
             g.Enqueue($"# {formation.Name} shot: {Shape(formation.Figure)} — {name} at {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
-            g.Enqueue(line);
+            if (formation.CanForm)
+            {
+                g.Enqueue(formation.FormLine());   // the context, never the coordinate (propuesta 99)
+                g.Enqueue(formation.TakeLine(name));
+            }
+            else g.Enqueue(line);
         }
         Log($"{formation.Name} › shot: {Shape(formation.Figure)} — a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")}; SEND to selected when ready");
     }

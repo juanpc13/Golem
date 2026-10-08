@@ -47,6 +47,9 @@ public sealed class Commander
         if (command.Verb is "choreograph" or "rotate" && command.With.Count > 0)
             return Reply.Syntax($"{command.Verb}: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, optimize)");
         // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
+        // take: every golem has a vertex of its own (propuesta 99) — never the same line carried to the peers
+        if (command.Verb == "take" && command.With.Count > 0)
+            return Reply.Syntax("take gives this golem its own vertex — every golem has its own: write the line on each golem's console, not --with");
         if (command.Verb == "place" && command.With.Count > 0)
             return Reply.Syntax("place carries each golem to its own mark — write the names on the line, place blue@6,6.2 red@7,6.3, not --with");
         if (command.With.Count == 0) return await MineAsync(command, line);
@@ -92,6 +95,9 @@ public sealed class Commander
             "visit" or "cover" => Errand(command),
             "choreograph" => Choreograph(command),
             "rotate" => Motors(out var m, out var noMotors) ? Stepped(m.Rotate(command.Text), command.Text) : noMotors,
+            "form" => Form(command),
+            "take" => Take(command),
+            "formations" => Formations(),
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
@@ -134,6 +140,50 @@ public sealed class Commander
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
         return Called(displacer.Call(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet, request.Policy));
+    }
+
+    // a formation told (propuesta 99): the same validation as POST /form; the answer says the vertices the golem resolved
+    private Reply Form(Command command)
+    {
+        var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
+                                      double.Parse(command.Values["side"], CultureInfo.InvariantCulture),
+                                      command.Values.TryGetValue("angle", out var a) ? double.Parse(a, CultureInfo.InvariantCulture) : 0.0);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        var answer = displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure, (request.Center.X.Value, request.Center.Y.Value), request.Side.Value, request.Angle ?? 0.0);
+        if (!answer.Ok) return Reply.Refused(answer.Refused);
+        var vertices = new List<string>();
+        try
+        {
+            var printed = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
+            if (printed.TryGetProperty("vertices", out var v) && v.ValueKind == JsonValueKind.Array)
+                for (int i = 0; i < v.GetArrayLength(); i++)
+                    vertices.Add($"{i}: {Num(v[i], "x")},{Num(v[i], "y")}");
+        }
+        catch (JsonException) { }
+        return Reply.Done($"formed {request.Name.Trim().ToLowerInvariant()} — vertices {string.Join("  ", vertices)}", answer.Print ?? "");
+    }
+
+    // a vertex taken (propuesta 99): the same validation as POST /take; the route's first order, as any errand's
+    private Reply Take(Command command)
+    {
+        var request = new TakeRequest(command.Text, int.Parse(command.Values["vertex"], CultureInfo.InvariantCulture));
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Vertex.Value));
+    }
+
+    private Reply Formations()
+    {
+        string json = Readings.Formations(golem.Actor);
+        var e = JsonDocument.Parse(json).RootElement;
+        var lines = new List<string>();
+        if (e.TryGetProperty("told", out var told) && told.ValueKind == JsonValueKind.Array)
+            foreach (var f in told.EnumerateArray())
+                lines.Add($"{Str(f, "called")} · {Str(f, "shape")} at {Num(f, "atX")},{Num(f, "atY")}, side {Num(f, "length")} m, {Num(f, "degrees")}°");
+        return Reply.Done(lines.Count == 0 ? "no formation told yet" : string.Join(Environment.NewLine, lines), json);
     }
 
     // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)

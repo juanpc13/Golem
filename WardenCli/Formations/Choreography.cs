@@ -75,6 +75,27 @@ public sealed class Choreography
         return scripts;
     }
 
+    /// <summary>THE SCRIPTS IN CONTEXT (propuesta 99): for every member, the formation told (<paramref name="formLine"/>, the same line for
+    /// all) and then, round by round, the NUMBER of the vertex it takes — <c>take square-1 --vertex 3</c> —; in rounds, the console's
+    /// <c>@sync</c> between them. The golem resolves where each vertex stands; no coordinate travels.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> TakeScripts(string formation, string formLine, Pace pace = Pace.OneErrand)
+    {
+        if (string.IsNullOrWhiteSpace(formation)) throw new ArgumentException("the formation needs its name");
+        if (string.IsNullOrWhiteSpace(formLine)) throw new ArgumentException("the formation needs its form line");
+        var scripts = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var member in Fleet.Members)
+        {
+            var lines = new List<string> { $"# {Describe()}, {(pace == Pace.OneErrand ? "one take after another" : "in rounds")} — {member.Name}'s part: the golem resolves its vertex", formLine };
+            for (int round = 0; round <= Steps; round++)
+            {
+                if (round > 0 && pace == Pace.Rounds) lines.Add(Sync);
+                lines.Add($"take {formation} --vertex {IndexAt(member.Name, round)}");
+            }
+            scripts[member.Name] = lines;
+        }
+        return scripts;
+    }
+
     public string Describe() =>
         $"{Figure.Name} at {Figure.Center}, by {Assignment.Name}, {Steps} step(s) {(Clockwise ? "clockwise" : "counter-clockwise")}, {Fleet.Count} golem(s)";
 }

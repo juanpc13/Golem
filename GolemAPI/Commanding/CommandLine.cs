@@ -41,6 +41,9 @@ public static class CommandLine
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
         new CommandHelp("choreograph", "choreograph square|pentagon --center x,y --side s [--by rank|distance] [--fleet a,b]", "the fleet takes a square (its sides square to the map, the first corner north-east) or a pentagon (its first vertex north; ajuste 85), said by its side, the bodies spread along its perimeter — four on a square take the corners, four on a pentagon the north vertex and three points of its sides; --by rank (the default): each golem the corner of its rank among the fleet's names, sorted, no word exchanged; --by distance: each golem sets out to the nearest corner it knows and a nearer peer's word may send it to the next (ajuste 73); it spreads by itself: command one golem, and every peer of the fleet is told and joins (ajuste 71; --with is refused here); the fleet is this golem and all its peers unless --fleet names it (ajuste 65: the square alone for now)", "choreograph square --center 5.5,5.5 --side 2.0"),
         new CommandHelp("rotate", "rotate clockwise|counterclockwise", "one step of the formation in place: every body takes the next corner in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused here)", "rotate clockwise"),
+        new CommandHelp("form", "form <name> square|pentagon|triangle --center x,y --side s [--angle degrees]", "the golem is told a formation by that name — its figure, centre, side and orientation (counter-clockwise, 0 as the golem's own choreography lays it) — and keeps it; told again, it is made again (moved, turned, resized); it answers the vertices it resolved (propuesta 99)", "form square-1 square --center 5.5,5.5 --side 2"),
+        new CommandHelp("take", "take <name> --vertex n", "the golem takes vertex n of that formation (0 the first: the square's north-east, the pentagon's north, before any turn; then counter-clockwise): it resolves where it stands on its own map and goes there, facing the centre; --with is refused (every golem has its own vertex)", "take square-1 --vertex 2"),
+        new CommandHelp("formations", "formations", "the formations the golem was told, with their figure, centre, side and orientation", "formations"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
@@ -142,6 +145,44 @@ public static class CommandLine
                 if (values.TryGetValue("fleet", out var fleet) && !Names.IsMatch(fleet)) throw new CommandSyntaxException($"choreograph: --fleet expects names like blue,red; found '{Head(fleet)}'");
                 return new Command(named, with, verb, centre, noOptions, rest[0], values);
             }
+            case "form":
+            {
+                // a formation told (propuesta 99): its name, its figure, then --center x,y, --side s and, if turned, --angle degrees
+                var values = new Dictionary<string, string>();
+                var rest = new List<string>();
+                for (int i = 0; i < args.Count; i++)
+                {
+                    string a = args[i].ToLowerInvariant();
+                    if (a is "--center" or "--side" or "--angle")
+                    {
+                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"form: {a} needs a value, like {a switch { "--center" => "--center 5.5,5.5", "--side" => "--side 2.0", _ => "--angle 45" }}");
+                        values[a[2..]] = args[++i];
+                        continue;
+                    }
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"form: '{Head(a)}' is no option; the options are --center x,y, --side s and --angle degrees");
+                    rest.Add(args[i]);
+                }
+                if (rest.Count != 2 || !Name.IsMatch(rest[0])) throw new CommandSyntaxException("form: expected the formation's name and its figure, like form square-1 square --center 5.5,5.5 --side 2");
+                string figure = rest[1].ToLowerInvariant();
+                if (figure is not ("square" or "pentagon" or "triangle")) throw new CommandSyntaxException($"form: the figure is square, pentagon or triangle; found '{Head(rest[1])}'");
+                if (!values.ContainsKey("center") || !values.ContainsKey("side")) throw new CommandSyntaxException($"form {rest[0]}: expected --center x,y and --side s");
+                var centre = Points(verb, new[] { values["center"] }, exactly: 1);
+                if (!double.TryParse(values["side"], NumberStyles.Float, CultureInfo.InvariantCulture, out double side) || side <= 0)
+                    throw new CommandSyntaxException($"form: --side expects metres greater than zero, like --side 2.0; found '{Head(values["side"])}'");
+                if (values.TryGetValue("angle", out var angle) && !double.TryParse(angle, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                    throw new CommandSyntaxException($"form: --angle expects degrees, like --angle 45; found '{Head(angle)}'");
+                values["figure"] = figure;
+                return new Command(named, with, verb, centre, noOptions, rest[0].ToLowerInvariant(), values);
+            }
+            case "take":
+            {
+                // a vertex taken (propuesta 99): the formation's name, then --vertex n
+                if (args.Count != 3 || !Name.IsMatch(args[0]) || args[1].ToLowerInvariant() != "--vertex")
+                    throw new CommandSyntaxException("take: expected the formation's name and --vertex n, like take square-1 --vertex 2");
+                if (!int.TryParse(args[2], NumberStyles.None, CultureInfo.InvariantCulture, out int vertex))
+                    throw new CommandSyntaxException($"take: --vertex expects a number from 0, like --vertex 2; found '{Head(args[2])}'");
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant(), new Dictionary<string, string> { ["vertex"] = vertex.ToString(CultureInfo.InvariantCulture) });
+            }
             case "rotate":
                 // one step of the formation in place, in that sense (ajuste 77): the sense is the whole of it
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("clockwise" or "counterclockwise")) throw new CommandSyntaxException("rotate: expected the sense, clockwise or counterclockwise, like rotate clockwise");
@@ -163,6 +204,7 @@ public static class CommandLine
             case "where":
             case "obstacles":
             case "scenarios":
+            case "formations":
                 if (args.Count > 0) throw new CommandSyntaxException($"{verb} takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");
             case "place":

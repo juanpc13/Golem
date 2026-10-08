@@ -1,5 +1,7 @@
+using System.Globalization;
 using GolemDomain.Geometry;
 using GolemDomain.Routes;
+using GolemDomain.Touches;
 
 namespace GolemDomain.Formations;
 
@@ -18,6 +20,7 @@ internal sealed class Choreographies
     private static readonly string[] Known = { "square", "pentagon", "triangle", "circle" };   // the pentagon since ajuste 85
     private readonly Golem golem;                   // the golem it was born with: it opens the route to a place (refused off the map or without room)
     private readonly List<Muster> musters = new();  // the convocations it heard of, joined or convened in (ajustes 73, 77)
+    private readonly List<Polygon> named = new();   // the formations the warden named for it, kept by name (propuesta 99)
 
     // born with its golem (like the strategies' switches, ajuste 63): objects that know each other, no delegate (ajuste 78)
     internal Choreographies(Golem golem)
@@ -45,6 +48,73 @@ internal sealed class Choreographies
 
     /// <summary>The formations the golem knows how to take, by name.</summary>
     internal IReadOnlyList<string> Names() => Known;
+
+    // ==================================================================
+    // THE FORMATIONS THE WARDEN NAMES (propuesta 99, 8-oct-2026; Juan: "darle contexto al golem pero nunca darle la coordenada exacta de su
+    // visit"): the warden says which formation — its name, its figure, its centre, its side, its orientation — and which VERTEX this golem
+    // takes; WHERE that vertex stands is the golem's to resolve, on its own map. Who takes which vertex is the warden's (no fleet, no rank,
+    // no word between golems here); the convocations above stay for the golems' own choreography.
+    // ==================================================================
+
+    /// <summary>The formation of that NAME, made — or MADE AGAIN, when the name is known: moving, turning or resizing a formation is saying
+    /// it again with its new figure — <c>formation = g.Choreography.Form(@name, @figure, center, side, turn);</c>. The figures that have
+    /// vertices by number: <c>square</c>, <c>pentagon</c>, <c>triangle</c>; the circle's places hang on how many bodies take it.</summary>
+    internal Polygon Form(string name, string figure, Position center, Units.Length side, Units.Angle turn)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.Form: 'name' was not given");
+        if (figure == null) throw new GolemDomainException("Choreographies.Form: 'figure' was not given");
+        if (center == null) throw new GolemDomainException("Choreographies.Form: 'center' was not given");
+        if (side == null) throw new GolemDomainException("Choreographies.Form: 'side' was not given");
+        if (turn == null) throw new GolemDomainException("Choreographies.Form: 'turn' was not given");
+        string called = name.Trim().ToLowerInvariant();
+        if (called == "") throw new GolemDomainException("a formation needs a name");
+        Polygon formation = figure.Trim().ToLowerInvariant() switch
+        {
+            "square" => new Square(center, side, turn),
+            "pentagon" => new Pentagon(center, side, turn),
+            "triangle" => new Triangle(center, side, turn),
+            "circle" => throw new GolemDomainException("a circle's places depend on how many bodies take it: form a square, a pentagon or a triangle"),
+            _ => throw new GolemDomainException($"the golem forms no figure named '{figure}': square, pentagon or triangle")
+        };
+        formation.Called = called;
+        int known = named.FindIndex(f => f.Called == called);
+        if (known >= 0) named[known] = formation; else named.Add(formation);
+        return formation;
+    }
+
+    /// <summary>The formation of that name, formed before — <c>formation = g.Choreography.Find(@name);</c>, the one place its name enters
+    /// after <see cref="Form"/>, like a route's id. Refused when the golem was told no formation by that name.</summary>
+    internal Polygon Find(string name)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.Find: 'name' was not given");
+        string called = name.Trim().ToLowerInvariant();
+        return named.FirstOrDefault(f => f.Called == called) ?? throw new GolemDomainException($"the golem was told no formation named '{called}': form it first");
+    }
+
+    /// <summary>Whether the golem was told a formation by that name — what a script asks before it finds it.</summary>
+    internal bool HasFormation(string name)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.HasFormation: 'name' was not given");
+        string called = name.Trim().ToLowerInvariant();
+        return named.Any(f => f.Called == called);
+    }
+
+    /// <summary>The formations the golem was told, in the order it was first told them.</summary>
+    internal IReadOnlyList<Polygon> Formations() => named.ToList();
+
+    /// <summary>THE VERTEX TAKEN (propuesta 99): the route from where the errand starts to that vertex of that formation —
+    /// <c>route = g.Choreography.Take(from, formation, vertex);</c> — the golem's own errand (<see cref="Golem.TakePlace"/>): refused when the
+    /// vertex is nowhere on the map or leaves no room for the body, and ending FACING THE CENTRE of the formation, as in the golem's own
+    /// choreography (ajuste 79). No berths: no round of words told it where the others stand; a body met on the way is the touches'.</summary>
+    internal Route Take(Position from, Formation formation, Position vertex)
+    {
+        if (from == null) throw new GolemDomainException("Choreographies.Take: 'from' was not given");
+        if (formation == null) throw new GolemDomainException("Choreographies.Take: 'formation' was not given");
+        if (vertex == null) throw new GolemDomainException("Choreographies.Take: 'vertex' was not given");
+        string where = string.Format(CultureInfo.InvariantCulture, "the vertex at ({0:0.##}, {1:0.##}) of {2}", vertex.X, vertex.Y,
+                                     formation.Called == "" ? "the " + formation.Name : formation.Called);
+        return golem.TakePlace(from, vertex, formation.Center, Array.Empty<Peer>(), where);
+    }
 
     /// <summary>The CONVOCATION of that call (ajuste 73; by rank too since ajuste 77): found by the call's identity, or opened — by the
     /// golem's own word or a peer's that came first — <c>muster = g.Choreography.Muster(@callId, formation, fleet);</c>.</summary>

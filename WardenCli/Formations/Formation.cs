@@ -136,6 +136,26 @@ public sealed class Formation : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unshot)));
     }
 
+    // ==================================================================
+    // THE CONTEXT, NEVER THE COORDINATE (propuesta 99, 8-oct-2026; Juan: "darle contexto al golem pero nunca darle la coordenada exacta de su
+    // visit"): a polygon is TOLD to every golem by its name — `form square-1 square --center x,y --side s --angle a` — and each golem is told
+    // the NUMBER of its vertex — `take square-1 --vertex 2` —; the golem resolves where it stands, on its own map. A circle's places hang on
+    // how many bodies take it, so a circle still goes as visits.
+    // ==================================================================
+
+    /// <summary>Whether the golems can be told this formation (a polygon) rather than sent to its points.</summary>
+    public bool CanForm => Figure is Polygon;
+
+    /// <summary>The name the golems know it by: the console's name without the space and the sign — "square #1" is <c>square-1</c>.</summary>
+    public string WireName => $"{Figure.Name}-{Number}";
+
+    /// <summary>The line that tells a golem this formation as it stands now — made, or made again after a move, a turn or a resize.</summary>
+    public string FormLine() =>
+        $"form {WireName} {Figure.Name} --center {Figure.Center} --side {Spot.Fmt(Figure.Measure)} --angle {Spot.Fmt(Figure.Angle)}";
+
+    /// <summary>The line that tells a member which vertex it takes: the number it holds now.</summary>
+    public string TakeLine(string member) => $"take {WireName} --vertex {IndexOf(member)}";
+
     /// <summary>Who holds what, vertex by vertex in the figure's order — "blue NE · green NW · red SW · yellow SE"; a free vertex says so.</summary>
     public string Holders
     {

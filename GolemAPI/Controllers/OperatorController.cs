@@ -133,6 +133,10 @@ public class OperatorController : Controller
     [HttpGet("scenarios")]
     public IActionResult Scenarios() => Content(Readings.Scenarios(golemEmbodiment.Actor), "application/json");
 
+    /// <summary>The formations the warden told this golem (propuesta 99).</summary>
+    [HttpGet("formations")]
+    public IActionResult Formations() => Content(Readings.Formations(golemEmbodiment.Actor), "application/json");
+
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
     {
