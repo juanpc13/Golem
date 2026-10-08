@@ -370,7 +370,7 @@ public partial class MainWindow : Window
     {
         var chosen = SelectedGolems.Where(g => !g.Running).ToList();
         if (chosen.Count == 0) { Log("no golem is checked (or they are all sending already)"); return; }
-        var batch = new Batch(chosen.Count);
+        var batch = new SyncBarrier(chosen.Count);
         foreach (var g in chosen) _ = RunQueueAsync(g, batch);
     }
 
@@ -386,41 +386,11 @@ public partial class MainWindow : Window
         if (runners.Remove(golem.Name, out var cts)) { cts.Cancel(); Log($"{golem.Name} › sending stopped; the rest of the queue stays on the tab"); }
     }
 
-    // THE BARRIER of a batch (propuesta 95): the queues sent together wait for each other at every @sync — a queue that reaches it waits
-    // until every other queue of the batch reached it too, or finished, or was stopped; then all go on together. The console's own
-    // directive: never sent to a golem.
-    private sealed class Batch
-    {
-        private int participants, arrived;
-        private TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Batch(int participants) { this.participants = participants; }
-
-        public Task ArriveAsync()
-        {
-            arrived++;
-            if (arrived >= participants) Open();
-            return gate.Task;
-        }
-
-        public void Leave()
-        {
-            participants--;
-            if (arrived >= participants && participants > 0) Open();
-        }
-
-        private void Open()
-        {
-            var opened = gate;
-            arrived = 0;
-            gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            opened.TrySetResult();
-        }
-    }
 
     // THE QUEUE RUNNER: the first line goes; a line that opens a route waits for the golem's pending routes to come back to zero — THE ACK,
     // said in the log with the time it took; a read or a lever goes on at once; @sync waits for the batch. Everything runs on the window's
     // thread, awaiting the wire, so the tab is edited live and never torn.
-    private async Task RunQueueAsync(Golem golem, Batch batch)
+    private async Task RunQueueAsync(Golem golem, SyncBarrier batch)
     {
         if (golem.Running) return;
         var cts = new CancellationTokenSource();
