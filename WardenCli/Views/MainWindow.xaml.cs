@@ -551,6 +551,7 @@ public partial class MainWindow : Window
         AutoSave();
         foreach (var g in golems.ToList()) Stop(g);
         golems.Clear();
+        formations.Clear();
         workspace = null;
         Title = "WardenCli — the operator's console";
         WorkspaceLabel.Text = "no workspace: the scripts live in this window until you save one";
@@ -568,16 +569,25 @@ public partial class MainWindow : Window
     {
         try
         {
-            var loaded = Workspace.Load(path);
+            var (loaded, saved, problems) = Workspace.Load(path);
             AutoSave();
             foreach (var g in golems.ToList()) Stop(g);
             golems.Clear();
+            formations.Clear();
             workspace = path;
             foreach (var g in loaded) Add(g);
             if (golems.Count > 0) GolemList.SelectedItem = golems[0];
+            // the formations it was left with, active again (7-oct-2026: they die with the window no more)
+            foreach (var f in saved)
+            {
+                f.PropertyChanged += (_, _) => Draw();
+                formations.Add(f);
+            }
+            if (formations.Count > 0) FormationList.SelectedItem = formations[^1];
             WorkspaceLabel.Text = $"workspace: {workspace}";
             Title = $"WardenCli — {System.IO.Path.GetFileNameWithoutExtension(path)}";
-            Log($"workspace opened: {path} — {loaded.Count} golem(s)");
+            Log($"workspace opened: {path} — {loaded.Count} golem(s), {formations.Count} formation(s)");
+            foreach (var p in problems) Log($"workspace: {p}");
             RefreshRecent();
         }
         catch (Exception ex) { Log($"the workspace could not be opened: {ex.Message}"); Workspace.Forget(path); RefreshRecent(); }
@@ -586,7 +596,7 @@ public partial class MainWindow : Window
     private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (workspace == null) { SaveWorkspaceAs_Click(sender, e); return; }
-        Workspace.Save(workspace, golems);
+        Workspace.Save(workspace, golems, formations);
         Log($"workspace saved: {workspace}");
         RefreshRecent();
     }
@@ -596,7 +606,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog { Title = "Save the workspace as", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}", DefaultExt = Workspace.Extension.TrimStart('.'), InitialDirectory = Workspace.RoutinesFolder(workspace), FileName = "fleet" };
         if (dialog.ShowDialog(this) != true) return;
         workspace = dialog.FileName;
-        Workspace.Save(workspace, golems);
+        Workspace.Save(workspace, golems, formations);
         WorkspaceLabel.Text = $"workspace: {workspace}";
         Title = $"WardenCli — {System.IO.Path.GetFileNameWithoutExtension(workspace)}";
         Log($"workspace saved: {workspace}");
@@ -606,7 +616,7 @@ public partial class MainWindow : Window
     private void AutoSave()
     {
         if (workspace == null) return;
-        try { Workspace.Save(workspace, golems); } catch (IOException ex) { Log($"the workspace could not be saved: {ex.Message}"); }
+        try { Workspace.Save(workspace, golems, formations); } catch (IOException ex) { Log($"the workspace could not be saved: {ex.Message}"); }
     }
 
     private void RefreshRecent()

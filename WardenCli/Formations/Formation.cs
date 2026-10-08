@@ -20,7 +20,9 @@ public sealed class Formation : INotifyPropertyChanged
 {
     private readonly Dictionary<string, int> held;
 
-    public Formation(int number, Figure figure, Fleet fleet, IReadOnlyDictionary<string, int> held)
+    /// <param name="turned">the steps it had turned, and <paramref name="unshot"/> whether its figure had changed since its last shot — what a
+    /// formation saved in a workspace is born again with (7-oct-2026); a formation laid out now starts at 0, with nothing to shoot</param>
+    public Formation(int number, Figure figure, Fleet fleet, IReadOnlyDictionary<string, int> held, int turned = 0, bool unshot = false)
     {
         if (number < 1) throw new ArgumentException("a formation is numbered from 1");
         Number = number;
@@ -37,6 +39,8 @@ public sealed class Formation : INotifyPropertyChanged
             if (other != null) throw new ArgumentException($"'{member.Name}' and '{other}' hold the same vertex ({Figure.Label(index, places)})");
             this.held[member.Name] = index;
         }
+        Turned = turned;
+        Unshot = unshot;
     }
 
     /// <summary>Its order of birth in the console's list: "square #2".</summary>
