@@ -693,7 +693,7 @@ public partial class MainWindow : Window
         {
             var fleet = new Fleet(golems.Where(g => dialog.Chosen.Contains(g.Name)).Select(g => new Member(g.Name, g.LastX is double x && g.LastY is double y ? new Spot(x, y) : null)));
             // no steps around at birth (8-oct-2026): every golem to its first vertex; the formation turns afterwards with ↻ ↺, a step per click
-            var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, Assignment.Named(dialog.Assignment), 0, clockwise: true);
+            var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, new ByRank(), 0, clockwise: true);   // the names sorted take the vertices in order: rank or distance is the golem's own choreography's (8-oct-2026)
             var pace = Pace.OneErrand;
             // the formation this leaves in force (propuesta 96), first: its name is what the golems are told (propuesta 99)
             var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);

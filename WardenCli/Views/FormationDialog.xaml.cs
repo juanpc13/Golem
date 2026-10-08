@@ -3,8 +3,9 @@ using System.Windows;
 
 namespace WardenCli.Views;
 
-/// <summary>The operator says which figure, where, how big, how its vertices are shared and which golems take part; the console puts each
-/// golem on its first vertex, on its tab (<see cref="Formations"/>). No steps and no sense here (8-oct-2026): the formation is turned
+/// <summary>The operator says which figure, where, how big and which golems take part; the console puts each golem on its first vertex — the
+/// names sorted take the vertices in order (8-oct-2026: no rank or distance here, the golem's own choreography's words) — on its tab
+/// (<see cref="Formations"/>). No steps and no sense here (8-oct-2026): the formation is turned
 /// afterwards with ↻ ↺, a step per click. Nothing is sent from here.</summary>
 public partial class FormationDialog : Window
 {
@@ -12,7 +13,6 @@ public partial class FormationDialog : Window
     public double CenterX { get; private set; }
     public double CenterY { get; private set; }
     public double Side { get; private set; }
-    public string Assignment { get; private set; } = "rank";
     public List<string> Chosen { get; private set; } = new();
 
     public FormationDialog(IReadOnlyList<string> golems, string point)
@@ -33,7 +33,6 @@ public partial class FormationDialog : Window
         if (GolemsBox.SelectedItems.Count == 0) { Problem.Text = "choose at least one golem"; return; }
         Figure = Figures.Children.OfType<System.Windows.Controls.RadioButton>().FirstOrDefault(r => r.IsChecked == true)?.Content as string ?? "square";
         CenterX = cx; CenterY = cy; Side = measure;
-        Assignment = ByRankBox.IsChecked == true ? "rank" : "distance";
         Chosen = GolemsBox.SelectedItems.Cast<string>().ToList();
         DialogResult = true;
     }
