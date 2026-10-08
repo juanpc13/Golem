@@ -61,7 +61,13 @@ public partial class MainWindow : Window
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
         DebuggerBody.SizeChanged += (_, _) => FitDebugger();
         ReadsBox.SizeChanged += (_, _) => FitDebugger();
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; } };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; }
+            else if (e.Key == Key.Escape && placing != null) { Disarm("cancelled"); e.Handled = true; }
+        };
+        // place armed: a click anywhere but the map (or the button itself, which disarms it) cancels it (Juan, 8-oct-2026)
+        PreviewMouseDown += (_, e) => { if (placing != null && !IsWithin(e.OriginalSource, Map) && !IsWithin(e.OriginalSource, PlaceButton)) Disarm("cancelled: a click elsewhere"); };
         readings.Start();
         Log("WardenCli ready — add the golems in operation, compose a script per tab, SEND.");
     }
@@ -191,7 +197,7 @@ public partial class MainWindow : Window
     private string Point => $"{XBox.Text.Trim()},{YBox.Text.Trim()}";
 
     // THE POINTS PICKED ON THE MAP (Juan, 6-oct-2026: "cada click en el mapa acumula una lista de coordenadas para el comando visit"): every
-    // click appends one, in order; visit and cover take them all, then/place/forget take the last; the boxes show the last one, and editing
+    // click appends one, in order; visit and cover take them all, then/place take the last (forget is the obstacles' tab's 'gone' since 8-oct-2026); the boxes show the last one, and editing
     // them edits that last point. The map draws them numbered and joined, the way the errand will go.
     private readonly List<(double X, double Y)> picked = new();
     private bool editingPicked;
@@ -823,6 +829,21 @@ public partial class MainWindow : Window
         await ActNowAsync(g, $"forget {o.Point}");
     }
 
+    // EVERYTHING IT LEARNED BY TOUCHING, FORGOTTEN (Juan, 8-oct-2026: "permitir remover los obstáculos del golem"): one forget at each obstacle's
+    // centre, in turn — the golem's own verb, so every peer is told too; asked first
+    private async void ForgetAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current is not { } g) return;
+        var all = g.Knowledge?.Obstacles?.ToList() ?? new List<Obstacle>();
+        if (all.Count == 0) { Log($"{g.Name} › nothing to forget: it learned nothing by touching"); return; }
+        var sure = MessageBox.Show(this, $"{g.Name} forgets its {all.Count} obstacle(s) — the things and the peers met — and tells its peers. Go on?", $"forget all of {g.Name}'s obstacles", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (sure != MessageBoxResult.Yes) return;
+        litObstacle = null;
+        foreach (var o in all) await ActNowAsync(g, $"forget {o.Point}");
+        int left = g.Knowledge?.Obstacles?.Count ?? 0;
+        Log(left == 0 ? $"{g.Name} › every obstacle forgotten" : $"{g.Name} › {left} obstacle(s) still there: two stood at one point, or one was learned meanwhile — forget all again");
+    }
+
     // THE BARRIER BETWEEN STEPS (8-oct-2026; the "rounds" the dialog had, moved to ↻ ↺): when any member of the formation already has lines
     // queued, a step or a shot is written after a @sync on EVERY member's tab — sent together, nobody starts the next step before the whole
     // fleet finished the one before; the first step on empty tabs needs none
@@ -899,8 +920,57 @@ public partial class MainWindow : Window
     // the box is born checked while the window is being built, before the map exists: draw only once loaded
     private void Others_Changed(object sender, RoutedEventArgs e) { if (IsLoaded) Draw(); }
 
+    // PLACE ON THE MAP (Juan, 8-oct-2026: "un botón arriba del mapa que cuando se dé clic espere por la posición de donde desea ser ubicado en el
+    // mapa el golem actual; si da clic a otra cosa se cancela"): the button arms it for the selected golem, the next click on the floor carries
+    // its body there at once — `place x,y`, the golem's own lever, never a line of the script — and anything else disarms it
+    private Golem? placing;
+
+    private void PlaceOnMap_Click(object sender, RoutedEventArgs e)
+    {
+        if (placing != null) { Disarm("cancelled"); return; }
+        if (Current is not { } g) { Log("select a golem: place carries the selected golem's body"); return; }
+        placing = g;
+        PlaceButton.Content = $"⌖ click where {g.Name} goes…";
+        PlaceButton.BorderBrush = (Brush)FindResource("Accent");
+        PlaceButton.Foreground = (Brush)FindResource("Accent");
+        Map.Cursor = Cursors.Cross;
+        Log($"{g.Name} › place: click the map where its body goes — a click anywhere else, or Esc, cancels");
+    }
+
+    private void Disarm(string? why)
+    {
+        if (placing is not { } g) return;
+        placing = null;
+        PlaceButton.Content = "⌖ place";
+        PlaceButton.ClearValue(Control.BorderBrushProperty);
+        PlaceButton.ClearValue(Control.ForegroundProperty);
+        Map.ClearValue(CursorProperty);
+        if (why != null) Log($"{g.Name} › place {why}");
+    }
+
+    private async Task PlaceAtAsync(Golem g, double x, double y) =>
+        await ActNowAsync(g, $"place {Fmt(x)},{Fmt(y)}");
+
+    // whether what was clicked lies inside that element
+    private static bool IsWithin(object source, DependencyObject ancestor)
+    {
+        for (var d = source as DependencyObject; d != null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (ReferenceEquals(d, ancestor)) return true;
+        return false;
+    }
+
     private void Map_Click(object sender, MouseButtonEventArgs e)
     {
+        if (placing is { } who)
+        {
+            // armed: this click is where the golem goes, never a point of the tool
+            e.Handled = true;
+            var (px, py) = FloorPoint(e.GetPosition(Map));
+            if (px < 0 || py < 0 || px > FloorSize || py > FloorSize) { Disarm("cancelled: off the floor"); return; }
+            Disarm(null);
+            _ = PlaceAtAsync(who, Math.Round(px, 1), Math.Round(py, 1));
+            return;
+        }
         if (OnGrip(e.GetPosition(Map)) is { } grabbed)
         {
             (dragging, grip) = grabbed;
@@ -1072,7 +1142,7 @@ public partial class MainWindow : Window
         // THE SELECTED GOLEM'S SCENARIO, as it told it: its zones, the open sides faint, the doors marked (Juan, 6-oct-2026)
         var plan = Current?.Plan;
         MapScenario.Text = plan?.Name ?? "no scenario yet";
-        MapNote.Text = Current == null ? "" : $"as {Current.Name} knows it · its obstacles in red";
+        MapNote.Text = Current == null ? "" : $"{Current.Name}'s view · obstacles in red";
         if (plan != null)
         {
             var wall = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99));

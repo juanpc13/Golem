@@ -346,12 +346,18 @@
                 <!-- the map's title: its scenario in a chip, what is drawn on it, and whether the other golems are shown too — the selected one always is
                      (Juan, 7-oct-2026: "agrégale un checkbox para mostrar la posición de los otros golems, pero la del golem seleccionado siempre mostrarla") -->
                 <DockPanel DockPanel.Dock="Top" x:Name="MapHeader" Margin="2,0,2,3">
-                    <CheckBox x:Name="OthersBox" DockPanel.Dock="Right" Content="other golems" IsChecked="True" FontSize="11" VerticalAlignment="Center" Checked="Others_Changed" Unchecked="Others_Changed" ToolTip="draw the other golems where they were last seen — the selected one is always drawn"/>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="MAP" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Border Style="{StaticResource Chip}" ToolTip="the scenario the selected golem is in, as it tells it"><TextBlock x:Name="MapScenario" Text="no scenario yet" FontSize="11"/></Border>
-                        <TextBlock x:Name="MapNote" Text="" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                    </StackPanel>
+                    <!-- PLACE ON THE MAP (Juan, 8-oct-2026: "esta otra opción de place puede ser como un botón arriba del mapa que cuando se dé clic espere
+                         por la posición de donde desea ser ubicado en el mapa el golem actual; si da clic a otra cosa se cancela"): armed, the next click on the
+                         floor carries the selected golem's body there at once; a click anywhere else, or Esc, disarms it -->
+                    <!-- one row, nothing over anything (Juan, 8-oct-2026: "ajusta la distribución que se vea mejor"): the tools at the right with room
+                         between them, the title and its chip at the left, the note filling what is left and cut with … (whole in its tooltip) -->
+                    <Button x:Name="PlaceButton" DockPanel.Dock="Right" Content="⌖ place" FontSize="11" Padding="8,1" Margin="10,0,0,0" VerticalAlignment="Center" Click="PlaceOnMap_Click"
+                            ToolTip="click, then click the map: the selected golem's body is carried there at once (place x,y) — a click anywhere else, or Esc, cancels"/>
+                    <CheckBox x:Name="OthersBox" DockPanel.Dock="Right" Content="other golems" IsChecked="True" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" Checked="Others_Changed" Unchecked="Others_Changed" ToolTip="draw the other golems where they were last seen — the selected one is always drawn"/>
+                    <TextBlock DockPanel.Dock="Left" Text="MAP" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Border DockPanel.Dock="Left" Style="{StaticResource Chip}" VerticalAlignment="Center" ToolTip="the scenario the selected golem is in, as it tells it"><TextBlock x:Name="MapScenario" Text="no scenario yet" FontSize="11"/></Border>
+                    <TextBlock x:Name="MapNote" Text="" Foreground="{StaticResource Dim}" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
                 </DockPanel>
                 <Grid x:Name="MapArea" DockPanel.Dock="Top">
                     <Canvas x:Name="Map" Background="{StaticResource Well}" MouseLeftButtonDown="Map_Click" MouseLeftButtonUp="Map_MouseUp" MouseMove="Map_MouseMove" MouseLeave="Map_MouseLeave" SizeChanged="Map_SizeChanged" ClipToBounds="True"/>
@@ -380,9 +386,7 @@
                                     <StackPanel DockPanel.Dock="Left" x:Name="Verbs" Orientation="Horizontal" VerticalAlignment="Center" ToolTip="the verb of the command built">
                                         <RadioButton Content="visit" IsChecked="True" Checked="Point_Changed" Margin="0,0,6,0"/>
                                         <RadioButton Content="cover" Checked="Point_Changed" Margin="0,0,6,0"/>
-                                        <RadioButton Content="then" Checked="Point_Changed" Margin="0,0,6,0"/>
-                                        <RadioButton Content="place" Checked="Point_Changed" Margin="0,0,6,0"/>
-                                        <RadioButton Content="forget" Checked="Point_Changed"/>
+                                        <RadioButton Content="then" Checked="Point_Changed"/>
                                     </StackPanel>
                                     <TextBlock x:Name="PointsHint" Text="click the map: every click adds a point to the visit, in order" Foreground="{StaticResource Dim}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
                                 </DockPanel>
@@ -405,8 +409,14 @@
                             <TextBlock><Run Text="obstacles"/><Run Text="{Binding SelectedItem.Knowledge.Obstacles.Count, ElementName=GolemList, Mode=OneWay, StringFormat=' ({0})'}"/></TextBlock>
                         </TabItem.Header>
                         <DockPanel Background="{StaticResource Well}">
-                            <TextBlock DockPanel.Dock="Top" Margin="6,4,6,2" Foreground="{StaticResource Dim}" FontSize="11" TextTrimming="CharacterEllipsis"
-                                       Text="what the selected golem learned by touching — 'gone' when it is no longer there: it forgets it and tells its peers"/>
+                            <!-- every obstacle may go (Juan, 8-oct-2026: "permitir remover los obstáculos del golem"): a thing, or a peer met — history the golem
+                                 keeps; 'forget all' forgets them one by one -->
+                            <DockPanel DockPanel.Dock="Top" Margin="6,4,6,2">
+                                <Button DockPanel.Dock="Right" Content="forget all" Click="ForgetAll_Click" Margin="6,0,0,0"
+                                        ToolTip="the golem forgets everything it learned by touching, one forget x,y at each centre — it asks first"/>
+                                <TextBlock Foreground="{StaticResource Dim}" FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                           Text="what the selected golem learned by touching — 'gone' when it is no longer there: it forgets it and tells its peers"/>
+                            </DockPanel>
                             <TextBlock DockPanel.Dock="Top" Margin="6,6" Foreground="{StaticResource Dim}" FontSize="12" Text="nothing touched yet">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -424,18 +434,13 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel Margin="4,2" Background="Transparent" MouseEnter="ObstacleRow_MouseEnter" MouseLeave="ObstacleRow_MouseLeave">
-                                            <Button x:Name="Gone" DockPanel.Dock="Right" Content="gone" Tag="{Binding}" Click="ForgetObstacle_Click" VerticalAlignment="Center"
-                                                    ToolTip="it is no longer there: the golem forgets it, marks and all, and tells its peers — forget x,y at its centre, at once"/>
+                                            <Button DockPanel.Dock="Right" Content="gone" Tag="{Binding}" Click="ForgetObstacle_Click" VerticalAlignment="Center"
+                                                    ToolTip="it is no longer there: the golem forgets it — a thing with all its marks, a peer met as history — and tells its peers; forget x,y at its centre, at once"/>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock TextTrimming="CharacterEllipsis"><Run Text="{Binding Title, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource Red}"/><Run Text="  "/><Run Text="{Binding Where, Mode=OneWay}" Foreground="{StaticResource Ink}" FontSize="11"/></TextBlock>
                                                 <TextBlock Text="{Binding Marks, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" FontFamily="Consolas"/>
                                             </StackPanel>
                                         </DockPanel>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsThing}" Value="False">
-                                                <Setter TargetName="Gone" Property="Visibility" Value="Collapsed"/>
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
