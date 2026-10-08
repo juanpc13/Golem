@@ -17,8 +17,10 @@ public static class Workspace
     private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true };
 
     private sealed record SavedGolem(string Name, string Host, int Port, string Script);
+    // a double ring (8-oct-2026) carries its inner radius, how many places its outer ring has and its inner ring's steps too
     private sealed record SavedFormation(int Number, string Figure, double CenterX, double CenterY, double Measure, double Angle,
-                                         List<string> Fleet, Dictionary<string, int> Held, int Turned, bool Shown, bool Unshot);
+                                         List<string> Fleet, Dictionary<string, int> Held, int Turned, bool Shown, bool Unshot,
+                                         double? Inner = null, int? OuterPlaces = null, int InnerTurned = 0);
     // version 2 carries the formations; a version 1 file has none and opens as it always did
     private sealed record File_(string Kind, int Version, List<SavedGolem> Golems, List<SavedFormation>? Formations = null);
     private sealed record Settings(List<string> Recent, string? Last, PaneSizes? Panes = null);
@@ -26,7 +28,8 @@ public static class Workspace
     public static void Save(string path, IEnumerable<Golem> golems, IEnumerable<Formation> formations)
     {
         var saved = formations.Select(f => new SavedFormation(f.Number, f.Figure.Name, f.Figure.Center.X, f.Figure.Center.Y, f.Figure.Measure, f.Figure.Angle,
-            f.Fleet.Names.ToList(), f.Fleet.Names.ToDictionary(n => n, f.IndexOf), f.Turned, f.Shown, f.Unshot)).ToList();
+            f.Fleet.Names.ToList(), f.Fleet.Names.ToDictionary(n => n, f.IndexOf), f.Turned, f.Shown, f.Unshot,
+            (f.Figure as DoubleRing)?.InnerRadius, (f.Figure as DoubleRing)?.OuterPlaces, f.InnerTurned)).ToList();
         var file = new File_("golem workspace", 2, golems.Select(g => new SavedGolem(g.Name, g.Host, g.Port, g.Script)).ToList(), saved);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         File.WriteAllText(path, JsonSerializer.Serialize(file, Pretty));
@@ -47,9 +50,12 @@ public static class Workspace
         {
             try
             {
-                var figure = Figure.Named(f.Figure, new Spot(f.CenterX, f.CenterY), f.Measure).Oriented(f.Angle);
+                var figure = f.Figure == "double ring"
+                    ? new DoubleRing(new Spot(f.CenterX, f.CenterY), f.Measure, f.Inner ?? throw new ArgumentException("its inner ring was not saved"),
+                                     f.OuterPlaces ?? throw new ArgumentException("its outer ring was not saved"), f.Fleet.Count - f.OuterPlaces.Value, f.Angle)
+                    : Figure.Named(f.Figure, new Spot(f.CenterX, f.CenterY), f.Measure).Oriented(f.Angle);
                 var fleet = new Fleet(f.Fleet.Select(n => new Member(n, null)));
-                formations.Add(new Formation(f.Number, figure, fleet, f.Held, f.Turned, f.Unshot) { Shown = f.Shown });
+                formations.Add(new Formation(f.Number, figure, fleet, f.Held, f.Turned, f.Unshot, f.InnerTurned) { Shown = f.Shown });
             }
             catch (Exception ex) when (ex is ArgumentException or NullReferenceException) { problems.Add($"{f.Figure} #{f.Number} left out: {ex.Message}"); }
         }

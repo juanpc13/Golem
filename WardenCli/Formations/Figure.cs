@@ -47,6 +47,15 @@ public abstract class Figure
     /// <summary>The bearing of a place from the centre, in degrees from due east, counter-clockwise, the orientation included.</summary>
     public abstract double Bearing(int index, int count);
 
+    /// <summary>The WAY a body takes from one place to the next in a step, in that sense: the next place alone on a polygon (its side is a
+    /// straight run); ALONG THE ARC on a circle (8-oct-2026: two on a ring are half a turn apart, and the chord would send both through the
+    /// centre at once) — points of the arc no more than 60° apart, the place last.</summary>
+    public virtual IReadOnlyList<Spot> Way(int from, int to, int count, Sense sense) => new[] { Places(count)[to] };
+
+    /// <summary>The ORBITS of the figure: the runs of places a step moves round, each as its first place and how many — one for every figure,
+    /// the whole of its places; two for a double ring, the outer ring then the inner one.</summary>
+    public virtual IReadOnlyList<(int Start, int Count)> Orbits(int count) => new[] { (0, Places(count).Count) };
+
     /// <summary>The same KIND of figure with this centre, measure and orientation — what a move, a resize and a turn are made of.</summary>
     public abstract Figure With(Spot center, double measure, double angle);
 
@@ -83,6 +92,17 @@ public abstract class Figure
     {
         var p = Toward(degrees, reach);
         return new Spot(Math.Round(p.X, 3), Math.Round(p.Y, 3));
+    }
+
+    /// <summary>The points of the arc of that radius from one bearing to another in that sense, no more than 60° apart, the last one the
+    /// arrival — what a step round a circle walks.</summary>
+    protected IReadOnlyList<Spot> Arc(double fromDegrees, double toDegrees, double radius, Sense sense)
+    {
+        double delta = ((toDegrees - fromDegrees) % 360 + 360) % 360;      // counter-clockwise, in (0, 360)
+        if (sense == Sense.Clockwise) delta -= 360;                        // clockwise, the other way round
+        if (Math.Abs(delta) < 1e-9 || Math.Abs(Math.Abs(delta) - 360) < 1e-9) return new[] { AtBearing(toDegrees, radius) };
+        int segments = (int)Math.Ceiling(Math.Abs(delta) / 60 - 1e-9);
+        return Enumerable.Range(1, segments).Select(k => AtBearing(fromDegrees + delta * k / segments, radius)).ToList();
     }
 
     protected Spot Toward(double degrees, double reach)
@@ -209,4 +229,62 @@ public sealed class Circle : Figure
         if (count < 1) throw new ArgumentException("a circle needs at least one body");
         return Enumerable.Range(0, count).Select(k => AtBearing(360.0 * k / count + Angle, Radius)).ToList();
     }
+
+    public override IReadOnlyList<Spot> Way(int from, int to, int count, Sense sense) =>
+        Arc(Bearing(from, count), Bearing(to, count), Radius, sense);
+}
+
+/// <summary>THE DOUBLE RING (8-oct-2026; Juan: "para poder crear los dos anillos necesitamos una formación que sea así, que pregunte por los
+/// diámetros de los dos anillos y que se pueda rotar el superior y el inferior… para el CLI"): two circles round one centre, said by their
+/// DIAMETERS, each with as many places as golems ride it — evenly spaced from due east (turned by its orientation), counter-clockwise like
+/// the circle. The places run the OUTER ring first, then the INNER one; each ring is an orbit of its own, so a step may turn one ring and not
+/// the other, or both, each in its own sense. The console's figure alone: the golem's module has no double ring, and a ring goes as visits.
+/// Its measure is the outer radius; resized, the inner ring keeps its proportion.</summary>
+public sealed class DoubleRing : Figure
+{
+    public DoubleRing(Spot center, double outerRadius, double innerRadius, int outerPlaces, int innerPlaces, double angle = 0) : base(center, angle)
+    {
+        if (innerRadius <= 0) throw new ArgumentException("a double ring needs an inner diameter above zero");
+        if (outerRadius <= innerRadius) throw new ArgumentException("the outer ring of a double ring is wider than the inner one");
+        if (outerPlaces < 1 || innerPlaces < 1) throw new ArgumentException("each ring of a double ring needs at least one golem");
+        OuterRadius = outerRadius;
+        InnerRadius = innerRadius;
+        OuterPlaces = outerPlaces;
+        InnerPlaces = innerPlaces;
+    }
+
+    public double OuterRadius { get; }
+    public double InnerRadius { get; }
+    public double OuterDiameter => 2 * OuterRadius;
+    public double InnerDiameter => 2 * InnerRadius;
+    /// <summary>How many places each ring has: as many as the golems that ride it.</summary>
+    public int OuterPlaces { get; }
+    public int InnerPlaces { get; }
+
+    public override string Name => "double ring";
+    public override double Measure => OuterRadius;
+    public override double Reach => OuterRadius;
+    public override double MeasureFor(double reach) => reach;
+    public override Figure With(Spot center, double measure, double angle) =>
+        new DoubleRing(center, measure, InnerRadius * measure / OuterRadius, OuterPlaces, InnerPlaces, angle);
+
+    /// <summary>Whether the place of that number is on the inner ring.</summary>
+    public bool IsInner(int index) => index >= OuterPlaces;
+
+    public override double Bearing(int index, int count)
+    {
+        if (index < 0 || index >= OuterPlaces + InnerPlaces) throw new ArgumentException($"a double ring of {OuterPlaces} and {InnerPlaces} has no place {index}");
+        return IsInner(index) ? 360.0 * (index - OuterPlaces) / InnerPlaces + Angle : 360.0 * index / OuterPlaces + Angle;
+    }
+
+    public override IReadOnlyList<Spot> Places(int count)
+    {
+        if (count > OuterPlaces + InnerPlaces) throw new ArgumentException($"a double ring of {OuterPlaces} and {InnerPlaces} has no place for {count} golems");
+        return Enumerable.Range(0, OuterPlaces + InnerPlaces).Select(i => AtBearing(Bearing(i, count), IsInner(i) ? InnerRadius : OuterRadius)).ToList();
+    }
+
+    public override IReadOnlyList<(int Start, int Count)> Orbits(int count) => new[] { (0, OuterPlaces), (OuterPlaces, InnerPlaces) };
+
+    public override IReadOnlyList<Spot> Way(int from, int to, int count, Sense sense) =>
+        Arc(Bearing(from, count), Bearing(to, count), IsInner(from) ? InnerRadius : OuterRadius, sense);
 }

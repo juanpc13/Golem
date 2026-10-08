@@ -177,7 +177,7 @@ public sealed class Displacer
 
     /// <summary>A formation told — made, or made again with its new figure when the name is known. Its print is the vertices the golem
     /// resolved, so the warden can compare them with its own. No route: nothing for the body to do.</summary>
-    public Answer Form(string name, string figure, (double X, double Y) center, double side, double angle, int? places = null)
+    public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, int? places = null)
     {
         try
         {
@@ -187,11 +187,11 @@ public sealed class Displacer
                 ? @"
                     {
                         center = Position(@cx, @cy);
-                        side = Meters(@sideLength);
+                        measure = Meters(@measureLength);
                         turn = Degrees(@angle);
-                        formation = g.Choreography.Form(@formationName, @figure, center, side, turn, @bodies);
+                        formation = g.Choreography.Form(@formationName, @figure, center, measure, turn, @bodies);
                         print formation.Called 'called', formation.Name 'shape', formation.Center.X 'atX', formation.Center.Y 'atY',
-                              formation.Side.InMeters 'length', formation.Turn.InDegrees 'degrees', formation.PlaceCount 'count';
+                              formation.Measure.InMeters 'length', formation.Turn.InDegrees 'degrees', formation.PlaceCount 'count';
                         foreach (places in formation.Places()) {
                             print places.X 'x', places.Y 'y';
                         }
@@ -200,11 +200,11 @@ public sealed class Displacer
                 : @"
                     {
                         center = Position(@cx, @cy);
-                        side = Meters(@sideLength);
+                        measure = Meters(@measureLength);
                         turn = Degrees(@angle);
-                        formation = g.Choreography.Form(@formationName, @figure, center, side, turn);
+                        formation = g.Choreography.Form(@formationName, @figure, center, measure, turn);
                         print formation.Called 'called', formation.Name 'shape', formation.Center.X 'atX', formation.Center.Y 'atY',
-                              formation.Side.InMeters 'length', formation.Turn.InDegrees 'degrees', formation.PlaceCount 'count';
+                              formation.Measure.InMeters 'length', formation.Turn.InDegrees 'degrees', formation.PlaceCount 'count';
                         foreach (places in formation.Places()) {
                             print places.X 'x', places.Y 'y';
                         }
@@ -215,7 +215,7 @@ public sealed class Displacer
                     p["figure", typeof(string)] = figure;
                     p["cx", typeof(double)] = Resolution.Metres(center.X);
                     p["cy", typeof(double)] = Resolution.Metres(center.Y);
-                    p["sideLength", typeof(double)] = Resolution.Metres(side);   // never @side: the script's own local is named so
+                    p["measureLength", typeof(double)] = Resolution.Metres(measure);   // a side, or a circle's radius; never @measure: the script's own local is named so
                     p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
                     if (places.HasValue) p["bodies", typeof(int)] = places.Value;   // never @places: the script's loop over the places is named so
                 })
@@ -227,16 +227,42 @@ public sealed class Displacer
     /// <summary>The place of that number of the formation of that name, TAKEN (a vertex, or a point of a side when it was laid out for more
     /// bodies than vertices — ajuste 101): the route from where the errand starts (`g.Destination`) to where the golem resolves that place stands, ending facing the centre; refused off the map, without room, or for a formation the
     /// golem was not told. The first order is pushed to the body by the reaction on the act (next-order-take).</summary>
-    public Answer Take(string name, int place)
+    public Answer Take(string name, int place, string? sense = null)
     {
         try
         {
+            // two fixed templates (ajuste 102): the place taken straight, or a STEP round the figure in that sense — along the arc on a circle
             var answer = Answer.Of(robot.Actor.Using(
                 @"
                     Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
                     Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name: form it first';
                 ",
-                @"
+                sense != null
+                ? @"
+                    {
+                        from = g.Destination;
+                        formation = g.Choreography.Find(@formationName);
+                        place = formation.PlaceNumbered(@index);
+                        route = g.Choreography.Take(from, formation, place, @sense);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                "
+                : @"
                     {
                         from = g.Destination;
                         formation = g.Choreography.Find(@formationName);
@@ -263,6 +289,7 @@ public sealed class Displacer
                 .WithParameters(p => {
                     p["formationName", typeof(string)] = name;   // never @name: the route's print has a label 'name'
                     p["index", typeof(int)] = place;
+                    if (sense != null) p["sense", typeof(string)] = sense;   // the member's name; the engine resolves it to the domain's Sense (ajuste 90)
                 })
                 .PerformCheckThenCommand());
             return answer.Ok ? answer : Answer.Refusal($"take {name} place {place}: " + answer.Refused);

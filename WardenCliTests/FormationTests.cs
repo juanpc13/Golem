@@ -118,7 +118,9 @@ public class FormationTests
 
         formation.Orient(45);
         Assert.AreEqual("form square-1 square --center 5.5,5.5 --side 2 --angle 45", formation.FormLine(), "a turn is told as the figure's orientation");
-        Assert.IsFalse(new Choreography(new Circle(new Spot(5.5, 5.5), 1.0), fleet, new ByRank(), 0, clockwise: true).Outcome(2).CanForm, "a circle goes as visits");
+        var circle = new Choreography(new Circle(new Spot(5.5, 5.5), 1.0), fleet, new ByRank(), 0, clockwise: true).Outcome(2);
+        Assert.IsTrue(circle.CanForm, "a circle is told too, for how many ride it (ajuste 102)");
+        Assert.AreEqual("form circle-2 circle --center 5.5,5.5 --radius 1 --angle 0 --places 4", circle.FormLine());
     }
 
     // MORE GOLEMS THAN VERTICES (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI"): the console lays them out by the golem's own
@@ -147,6 +149,43 @@ public class FormationTests
             "six on a square: the corners and the middles of the north and south sides, as the golem's module lays them");
         var square = new Choreography(new Square(new Spot(5.5, 5.5), 2.0), fleet, new ByRank(), 0, clockwise: true).Outcome(2);
         Assert.AreEqual("form square-2 square --center 5.5,5.5 --side 2 --angle 0", square.FormLine(), "no more golems than vertices: nothing more to say");
+    }
+
+    // THE DOUBLE RING (8-oct-2026; Juan: "una formación que pregunte por los diámetros de los dos anillos y que se pueda rotar el superior y el
+    // inferior… seleccionar cuáles serían los golems del anillo inferior y superior"): two rings round one centre, each turning on its own
+    [TestMethod]
+    public void ADoubleRing_HasTheGolemsOnTheirRings_AndEachRingTurnsAlone_AlongItsArc()
+    {
+        var rings = Formation.DoubleRing(1, new Spot(5.5, 5.5), 5.0, 2.0, new[] { "green", "blue" }, new[] { "yellow", "red" });
+        Assert.AreEqual("double ring #1", rings.Name);
+        Assert.IsTrue(rings.IsDoubleRing);
+        Assert.IsTrue(rings.CanForm, "told ring by ring, each a circle of the golem's (ajuste 102)");
+        Assert.AreEqual("outer: blue E · green W — inner: red E · yellow W", rings.Holders, "on each ring the names sorted from due east");
+        Assert.AreEqual(Ring.Inner, rings.RingOf("red"));
+        Assert.AreEqual("visit 8,5.5", rings.Shot()["blue"], "the outer ring, its diameter 5");
+        Assert.AreEqual("visit 4.5,5.5", rings.Shot()["yellow"], "the inner ring, its diameter 2");
+
+        // told by context (ajuste 102): each golem its own ring, a circle of the golem's, and the number of its place on it
+        Assert.AreEqual("form double-ring-1-outer circle --center 5.5,5.5 --radius 2.5 --angle 0 --places 2", rings.FormLine("green"));
+        Assert.AreEqual("form double-ring-1-inner circle --center 5.5,5.5 --radius 1 --angle 0 --places 2", rings.FormLine("red"));
+        Assert.AreEqual("take double-ring-1-inner --place 1", rings.TakeLine("yellow"), "yellow the second place of the inner ring");
+        var inner = rings.Rotate(Sense.Clockwise, 1, Ring.Inner);
+        CollectionAssert.AreEquivalent(new[] { "red", "yellow" }, inner.Keys.ToList(), "the inner ring alone: the outer golems get no line");
+        Assert.AreEqual("visit 6,4.634 5,4.634 4.5,5.5", inner["red"], "half a turn clockwise along the arc, never through the centre");
+        Assert.AreEqual("visit 5,6.366 6,6.366 6.5,5.5", inner["yellow"], "and the other one round the other half: they never meet");
+        var outer = rings.Rotate(Sense.Counterclockwise, 1, Ring.Outer);
+        Assert.AreEqual("visit 6.75,7.665 4.25,7.665 3,5.5", outer["blue"], "the outer ring the other way round");
+        Assert.AreEqual("outer: green E · blue W — inner: yellow E · red W", rings.Holders);
+        Assert.AreEqual("  outer 1 · inner -1", rings.TurnedText);
+        Assert.AreEqual("take double-ring-1-inner --place 1 --sense clockwise", rings.TakeLine("red", Sense.Clockwise), "a step round the ring: the sense, so the golem goes along the arc");
+        Assert.AreEqual("take double-ring-1-outer --place 0 --sense counterclockwise", rings.TakeLine("green", Sense.Counterclockwise));
+
+        StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => Formation.DoubleRing(2, new Spot(5.5, 5.5), 5.0, 2.0, new[] { "blue" }, new[] { "blue" })).Message, "a golem rides one ring");
+        StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => Formation.DoubleRing(2, new Spot(5.5, 5.5), 2.0, 5.0, new[] { "blue" }, new[] { "red" })).Message, "wider than the inner one");
+        var square = new Choreography(new Square(new Spot(5.5, 5.5), 2.0), new Fleet(new[] { new Member("blue", null) }), new ByRank(), 0, clockwise: true).Outcome(3);
+        StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => square.Rotate(Sense.Clockwise, 1, Ring.Inner)).Message, "has no rings");
+        rings.Resize(2.0);   // its measure is the outer radius: a diameter of 4
+        Assert.AreEqual(1.6, ((DoubleRing)rings.Figure).InnerDiameter, 1e-9, "resized, the inner ring keeps its proportion");
     }
 
     [TestMethod]

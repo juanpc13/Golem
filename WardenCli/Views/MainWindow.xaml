@@ -456,13 +456,25 @@
                                             <ToggleButton DockPanel.Dock="Left" Style="{StaticResource EyeToggle}" IsChecked="{Binding Shown}" ToolTip="show or hide this figure on the map"/>
                                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                                 <Button x:Name="ShotButton" Content="shot" Tag="{Binding}" Click="Shot_Click" Margin="2,2,8,2" ToolTip="write the formation as it stands on the tabs: every golem's visit to its vertex"/>
-                                                <Button Content="↻" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="everybody one step clockwise (down the figure's order): a visit on every member's tab"/>
-                                                <Button Content="↺" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="everybody one step counter-clockwise: a visit on every member's tab"/>
+                                                <StackPanel x:Name="WholeTurn" Orientation="Horizontal">
+                                                    <Button Content="↻" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="everybody one step clockwise (down the figure's order): a visit on every member's tab"/>
+                                                    <Button Content="↺" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="everybody one step counter-clockwise: a visit on every member's tab"/>
+                                                </StackPanel>
                                                 <Button Content="✕" Tag="{Binding}" Click="Dissolve_Click" ToolTip="dissolve: the formation leaves the list; the golems stay where they are"/>
                                             </StackPanel>
+                                            <!-- a double ring turns ring by ring (8-oct-2026; Juan: "que se pueda rotar el superior y el inferior"): a step of one ring
+                                                 and a step of the other, clicked one after the other, go in the same round -->
+                                            <StackPanel x:Name="RingTurns" DockPanel.Dock="Bottom" Orientation="Horizontal" Visibility="Collapsed" Margin="0,2,0,0">
+                                                <TextBlock Text="outer" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                                <Button Content="↻" Tag="{Binding}" Click="RotateOuterClockwise_Click" ToolTip="the outer ring one step clockwise, along its arc: a visit on its golems' tabs"/>
+                                                <Button Content="↺" Tag="{Binding}" Click="RotateOuterCounter_Click" ToolTip="the outer ring one step counter-clockwise, along its arc"/>
+                                                <TextBlock Text="inner" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="6,0,3,0"/>
+                                                <Button Content="↻" Tag="{Binding}" Click="RotateInnerClockwise_Click" ToolTip="the inner ring one step clockwise, along its arc: a visit on its golems' tabs"/>
+                                                <Button Content="↺" Tag="{Binding}" Click="RotateInnerCounter_Click" ToolTip="the inner ring one step counter-clockwise, along its arc"/>
+                                            </StackPanel>
                                             <StackPanel VerticalAlignment="Center">
-                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  at "/><Run Text="{Binding Figure.Center, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="  turned "/><Run Text="{Binding Turned, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run x:Name="Draft" Text="" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
-                                                <TextBlock Text="{Binding Holders, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  at "/><Run Text="{Binding Figure.Center, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding TurnedText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run x:Name="Draft" Text="" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
+                                                <TextBlock Text="{Binding Holders, Mode=OneWay}" ToolTip="{Binding Holders, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
                                         </DockPanel>
                                         <!-- changed on the map and not on the tabs yet: the shot lit, the line says so (Juan, 7-oct-2026: "un botón para agregar a los tabs… como un shot formation") -->
@@ -472,6 +484,10 @@
                                                 <Setter TargetName="ShotButton" Property="Foreground" Value="{StaticResource Accent}"/>
                                                 <Setter TargetName="ShotButton" Property="FontWeight" Value="Bold"/>
                                                 <Setter TargetName="Draft" Property="Text" Value="  · draft"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsDoubleRing}" Value="True">
+                                                <Setter TargetName="WholeTurn" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="RingTurns" Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>

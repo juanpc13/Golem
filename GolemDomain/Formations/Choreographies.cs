@@ -20,7 +20,7 @@ internal sealed class Choreographies
     private static readonly string[] Known = { "square", "pentagon", "triangle", "circle" };   // the pentagon since ajuste 85
     private readonly Golem golem;                   // the golem it was born with: it opens the route to a place (refused off the map or without room)
     private readonly List<Muster> musters = new();  // the convocations it heard of, joined or convened in (ajustes 73, 77)
-    private readonly List<Polygon> named = new();   // the formations the warden named for it, kept by name (propuesta 99)
+    private readonly List<Formation> named = new();   // the formations the warden named for it, kept by name (propuesta 99)
 
     // born with its golem (like the strategies' switches, ajuste 63): objects that know each other, no delegate (ajuste 78)
     internal Choreographies(Golem golem)
@@ -76,6 +76,12 @@ internal sealed class Choreographies
             "circle" => throw new GolemDomainException("a circle's places depend on how many bodies take it: form a square, a pentagon or a triangle"),
             _ => throw new GolemDomainException($"the golem forms no figure named '{figure}': square, pentagon or triangle")
         };
+        return Keep(formation, called);
+    }
+
+    // a formation told, kept by its name: made again when the name is known
+    private T Keep<T>(T formation, string called) where T : Formation
+    {
         formation.Called = called;
         int known = named.FindIndex(f => f.Called == called);
         if (known >= 0) named[known] = formation; else named.Add(formation);
@@ -86,18 +92,33 @@ internal sealed class Choreographies
     /// <see cref="Form(string, string, Position, Units.Length, Units.Angle)"/>, and its places are as many as the bodies when they are more
     /// than its vertices — the corners first, the rest on the sides (ajuste 100) —
     /// <c>formation = g.Choreography.Form(@formationName, @figure, center, side, turn, @bodies);</c>. The warden says how many golems it lays
-    /// out; who takes which place is still the warden's, by number.</summary>
-    internal Polygon Form(string name, string figure, Position center, Units.Length side, Units.Angle turn, int places)
+    /// out; who takes which place is still the warden's, by number.
+    /// A CIRCLE too (ajuste 102, 8-oct-2026; Juan, on the double ring sent as visits: "no con el contexto del doble anillo"): told for that
+    /// many bodies its places are known, so the warden names a ring — <c>circle</c>, its measure the radius — and each golem takes its place by
+    /// number; a double ring is told as two circles of one centre.</summary>
+    internal Formation Form(string name, string figure, Position center, Units.Length measure, Units.Angle turn, int places)
     {
         if (places < 1 || places > 100) throw new GolemDomainException($"a formation is laid out for 1 to 100 bodies; {places} were said");
-        var formation = Form(name, figure, center, side, turn);
+        if (figure != null && figure.Trim().ToLowerInvariant() == "circle")
+        {
+            if (name == null) throw new GolemDomainException("Choreographies.Form: 'name' was not given");
+            if (center == null) throw new GolemDomainException("Choreographies.Form: 'center' was not given");
+            if (measure == null) throw new GolemDomainException("Choreographies.Form: 'measure' was not given");
+            if (turn == null) throw new GolemDomainException("Choreographies.Form: 'turn' was not given");
+            string called = name.Trim().ToLowerInvariant();
+            if (called == "") throw new GolemDomainException("a formation needs a name");
+            var circle = Keep(new Circle(center, measure, turn), called);
+            circle.Bodies = places;
+            return circle;
+        }
+        var formation = Form(name, figure, center, measure, turn);
         formation.Bodies = places;
         return formation;
     }
 
     /// <summary>The formation of that name, formed before — <c>formation = g.Choreography.Find(@name);</c>, the one place its name enters
     /// after <see cref="Form"/>, like a route's id. Refused when the golem was told no formation by that name.</summary>
-    internal Polygon Find(string name)
+    internal Formation Find(string name)
     {
         if (name == null) throw new GolemDomainException("Choreographies.Find: 'name' was not given");
         string called = name.Trim().ToLowerInvariant();
@@ -113,7 +134,7 @@ internal sealed class Choreographies
     }
 
     /// <summary>The formations the golem was told, in the order it was first told them.</summary>
-    internal IReadOnlyList<Polygon> Formations() => named.ToList();
+    internal IReadOnlyList<Formation> Formations() => named.ToList();
 
     /// <summary>THE VERTEX TAKEN (propuesta 99): the route from where the errand starts to that vertex of that formation —
     /// <c>route = g.Choreography.Take(from, formation, vertex);</c> — the golem's own errand (<see cref="Golem.TakePlace"/>): refused when the
@@ -127,6 +148,20 @@ internal sealed class Choreographies
         string where = string.Format(CultureInfo.InvariantCulture, "the place at ({0:0.##}, {1:0.##}) of {2}", place.X, place.Y,
                                      formation.Called == "" ? "the " + formation.Name : formation.Called);
         return golem.TakePlace(from, place, formation.Center, Array.Empty<Peer>(), where);
+    }
+
+    /// <summary>A STEP TAKEN (ajuste 102, 8-oct-2026): the place of that formation reached ROUND THE FIGURE in that sense —
+    /// <c>route = g.Choreography.Take(from, formation, place, @sense);</c> — through the way the figure gives (<see cref="Formation.Way"/>:
+    /// along the arc on a circle, the place alone on a polygon), one route with every point of it a stop, ending facing the centre. The sense
+    /// is the closed set <see cref="Sense"/>; the warden says it with the number of the place.</summary>
+    internal Route Take(Position from, Formation formation, Position place, Sense sense)
+    {
+        if (from == null) throw new GolemDomainException("Choreographies.Take: 'from' was not given");
+        if (formation == null) throw new GolemDomainException("Choreographies.Take: 'formation' was not given");
+        if (place == null) throw new GolemDomainException("Choreographies.Take: 'place' was not given");
+        string where = string.Format(CultureInfo.InvariantCulture, "the place at ({0:0.##}, {1:0.##}) of {2}", place.X, place.Y,
+                                     formation.Called == "" ? "the " + formation.Name : formation.Called);
+        return golem.TakePlace(from, formation.Way(from, place, sense), formation.Center, where);
     }
 
     /// <summary>The CONVOCATION of that call (ajuste 73; by rank too since ajuste 77): found by the call's identity, or opened — by the

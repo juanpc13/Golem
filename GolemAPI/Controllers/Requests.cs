@@ -99,18 +99,33 @@ public sealed record FormationRequest(string Figure, PointRequest Center, double
 /// <summary>A FORMATION TOLD (propuesta 99) — <c>{"name": "square-1", "figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
 /// "angle": 0}</c>: the golem keeps it by its name, made again when the name is known; <c>"places": 6</c> lays it out for that many golems
 /// (ajuste 101: the corners first, the rest on the sides).</summary>
-public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side, double? Angle = null, int? Places = null)
+public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side, double? Angle = null, int? Places = null, double? Radius = null)
 {
-    public const string Shape = "{\"name\": \"square-1\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0}";
-    public static readonly string[] Figures = { "square", "pentagon", "triangle" };   // the circle's places hang on how many bodies take it
+    public const string Shape = "{\"name\": \"square-1\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0} — a circle: \"radius\": 1.5, \"places\": 4";
+    public static readonly string[] Figures = { "square", "pentagon", "triangle", "circle" };   // a circle with how many it is for (ajuste 102)
+
+    private bool IsCircle => Figure?.Trim().ToLowerInvariant() == "circle";
+
+    /// <summary>What says its size: the side of a polygon, the radius of a circle.</summary>
+    public double? Measure => IsCircle ? Radius : Side;
 
     public IEnumerable<string> Problems()
     {
         if (string.IsNullOrWhiteSpace(Name) || !System.Text.RegularExpressions.Regex.IsMatch(Name.Trim(), @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "the formation needs a name like square-1: " + Shape;
-        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square, pentagon or triangle: " + Shape;
+        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square, pentagon, triangle or circle: " + Shape;
         if (Center == null) yield return "give the centre: " + Shape;
         else foreach (var p in Center.Problems()) yield return "centre: " + p;
-        if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
+        if (IsCircle)
+        {
+            if (!Radius.HasValue || !double.IsFinite(Radius.Value) || Radius.Value <= 0) yield return "a circle's radius must be a number of metres greater than zero";
+            if (!Places.HasValue) yield return "a circle's places hang on how many golems ride it: give \"places\"";
+            if (Side.HasValue) yield return "a circle is said by its radius, not a side";
+        }
+        else
+        {
+            if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
+            if (Radius.HasValue) yield return "a polygon is said by its side, not a radius";
+        }
         if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
         if (Places.HasValue && (Places.Value < 1 || Places.Value > 100)) yield return "the places are how many golems it is laid out for, 1 to 100";
     }
@@ -118,8 +133,13 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
 
 /// <summary>A PLACE TAKEN (propuesta 99; ajuste 101) — <c>{"name": "square-1", "place": 2}</c>, or <c>"vertex": 2</c>, which says the same:
 /// the golem resolves where that place of that formation stands and goes there.</summary>
-public sealed record TakeRequest(string Name, int? Vertex, int? Place = null)
+public sealed record TakeRequest(string Name, int? Vertex, int? Place = null, string? Sense = null)
 {
+    public static readonly string[] Senses = { "clockwise", "counterclockwise" };
+
+    /// <summary>The sense of a step round the figure as the domain's member name (ajuste 102: <c>Clockwise</c>), or null for a place taken straight.</summary>
+    public string? SenseName => string.IsNullOrWhiteSpace(Sense) ? null : Sense.Trim().ToLowerInvariant() == "clockwise" ? "Clockwise" : "Counterclockwise";
+
     public const string Shape = "{\"name\": \"square-1\", \"place\": 2}";
 
     /// <summary>The number of the place, whichever word said it.</summary>
@@ -130,6 +150,7 @@ public sealed record TakeRequest(string Name, int? Vertex, int? Place = null)
         if (string.IsNullOrWhiteSpace(Name)) yield return "which formation? its name: " + Shape;
         if (Place.HasValue && Vertex.HasValue) yield return "say the place once — place or vertex, not both: " + Shape;
         else if (!Number.HasValue || Number.Value < 0) yield return "the place is a number from 0: " + Shape;
+        if (!string.IsNullOrWhiteSpace(Sense) && !Senses.Contains(Sense.Trim().ToLowerInvariant())) yield return "the sense of a step is clockwise or counterclockwise";
     }
 }
 

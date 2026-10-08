@@ -691,12 +691,34 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true) return;
         try
         {
+            int number = formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1;
+            if (dialog.Figure == "double ring")
+            {
+                // THE DOUBLE RING (8-oct-2026): each golem the visit to its place on its ring — the formation's shot as it is born
+                var rings = Formation.DoubleRing(number, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side, dialog.InnerDiameter, dialog.Chosen, dialog.InnerChosen);
+                rings.Shot();
+                foreach (var name in rings.Fleet.Names)
+                {
+                    // the context, never the coordinate (ajuste 102): each golem told its own ring, then the number of its place on it
+                    var g = golems.First(x => x.Name == name);
+                    g.Enqueue($"# {rings.Name} {Shape(rings.Figure)} — {name} on the {rings.RingOf(name).ToString().ToLowerInvariant()} ring, {rings.Figure.Label(rings.IndexOf(name), rings.Places.Count)}");
+                    g.Enqueue(rings.FormLine(name));
+                    g.Enqueue(rings.TakeLine(name));
+                }
+                rings.PropertyChanged += (_, _) => Draw();
+                formations.Add(rings);
+                FormationList.SelectedItem = rings;
+                FormationsTab.IsSelected = true;
+                Log($"laid out: {rings.Name} {Shape(rings.Figure)} — its ring and a take on {rings.Fleet.Count} tab(s); turn each ring with its ↻ ↺ — read them, then SEND to selected");
+                Log($"active: {rings.Describe()}");
+                return;
+            }
             var fleet = new Fleet(golems.Where(g => dialog.Chosen.Contains(g.Name)).Select(g => new Member(g.Name, g.LastX is double x && g.LastY is double y ? new Spot(x, y) : null)));
             // no steps around at birth (8-oct-2026): every golem to its first vertex; the formation turns afterwards with ↻ ↺, a step per click
             var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, new ByRank(), 0, clockwise: true);   // the names sorted take the vertices in order: rank or distance is the golem's own choreography's (8-oct-2026)
             var pace = Pace.OneErrand;
             // the formation this leaves in force (propuesta 96), first: its name is what the golems are told (propuesta 99)
-            var formation = choreography.Outcome(formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1);
+            var formation = choreography.Outcome(number);
             // a polygon is TOLD to the golems — form, then the number of each one's vertex — and each resolves where it stands; a circle goes as visits
             var scripts = formation.CanForm ? choreography.TakeScripts(formation.WireName, formation.FormLine(), pace) : choreography.Scripts(pace);
             foreach (var (name, lines) in scripts)
@@ -718,8 +740,13 @@ public partial class MainWindow : Window
     // golem gets; the console puts it on each member's tab and keeps the vertices held for the next rotation. Nothing goes until SEND.
     private void RotateClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise);
     private void RotateCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise);
+    // a double ring, ring by ring (8-oct-2026): a ring's step puts a line on its own golems' tabs alone
+    private void RotateOuterClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Outer);
+    private void RotateOuterCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Outer);
+    private void RotateInnerClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Inner);
+    private void RotateInnerCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Inner);
 
-    private void Rotate(object sender, Sense sense)
+    private void Rotate(object sender, Sense sense, Ring? ring = null)
     {
         if ((sender as Button)?.Tag is not Formation formation) return;
         // ONE STEP PER CLICK (Juan, 7-oct-2026: "quítala, deja siempre un paso por clic"): two steps are two clicks, two visits on each tab
@@ -727,22 +754,23 @@ public partial class MainWindow : Window
         {
             bool tellAgain = formation.Unshot;   // the figure changed since the golems were told it: told again before the step
             bool barrier = Queued(formation);    // steps queued after others: each one waits for the whole fleet (8-oct-2026)
-            var lines = formation.Rotate(sense);
+            var lines = formation.Rotate(sense, 1, ring);
+            string what = ring.HasValue ? $"{formation.Name}, its {ring.Value.ToString().ToLowerInvariant()} ring," : formation.Name;
             int missing = 0;
             foreach (var (name, line) in lines)
             {
                 var g = golems.FirstOrDefault(x => x.Name == name);
                 if (g == null) { missing++; continue; }
                 if (barrier) g.Enqueue(Choreography.Sync);
-                g.Enqueue($"# {formation.Name} rotates one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} — {name} to {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
+                g.Enqueue($"# {what} rotates one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} — {name} to {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
                 if (formation.CanForm)
                 {
-                    if (tellAgain) g.Enqueue(formation.FormLine());
-                    g.Enqueue(formation.TakeLine(name));   // the context, never the coordinate (propuesta 99)
+                    if (tellAgain) g.Enqueue(formation.FormLine(name));
+                    g.Enqueue(formation.TakeLine(name, sense));   // the context, never the coordinate (propuesta 99); round a ring, the sense (ajuste 102)
                 }
                 else g.Enqueue(line);
             }
-            Log($"{formation.Name} › one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}{(barrier ? $", after a {Choreography.Sync}" : "")}: a {(formation.CanForm ? "take" : "visit")} on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
+            Log($"{what} › one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}{(barrier ? $", after a {Choreography.Sync}" : "")}: a {(formation.CanForm ? "take" : "visit")} on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")} — now {formation.Holders}; SEND to selected when ready");
         }
         catch (ArgumentException ex) { Log(ex.Message); }
     }
@@ -753,9 +781,11 @@ public partial class MainWindow : Window
     {
         var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (words.Length < 2 || reply.Json is not { } json) return;
-        var formation = formations.FirstOrDefault(f => f.WireName == words[1].ToLowerInvariant());
+        string told = words[1].ToLowerInvariant();
+        var formation = formations.FirstOrDefault(f => f.WireName == told || f.IsDoubleRing && (f.RingWireName(Ring.Outer) == told || f.RingWireName(Ring.Inner) == told));
         if (formation == null || (JsonWalk.Find(json, "places") ?? JsonWalk.Find(json, "vertices")) is not { ValueKind: JsonValueKind.Array } vertices) return;
-        var mine = formation.Places;
+        // a ring of a double ring is set against that ring's own places (ajuste 102)
+        var mine = !formation.IsDoubleRing ? formation.Places : formation.RingPlaces(told == formation.RingWireName(Ring.Outer) ? Ring.Outer : Ring.Inner);
         int i = 0, apart = 0;
         foreach (var v in vertices.EnumerateArray())
         {
@@ -763,12 +793,12 @@ public partial class MainWindow : Window
             if (i >= mine.Count || Math.Abs(mine[i].X - x) > 0.01 || Math.Abs(mine[i].Y - y) > 0.01)
             {
                 apart++;
-                Log($"{golem.Name} › ⚠ {formation.WireName} vertex {i}: the golem resolved it at {Spot.Fmt(x)},{Spot.Fmt(y)}, the console draws it at {(i < mine.Count ? mine[i].ToString() : "nothing")}");
+                Log($"{golem.Name} › ⚠ {told} place {i}: the golem resolved it at {Spot.Fmt(x)},{Spot.Fmt(y)}, the console draws it at {(i < mine.Count ? mine[i].ToString() : "nothing")}");
             }
             i++;
         }
-        if (apart == 0 && i == mine.Count) Log($"{golem.Name} › {formation.WireName}: the golem's {i} vertices agree with the console's");
-        else if (i != mine.Count) Log($"{golem.Name} › ⚠ {formation.WireName}: the golem resolved {i} vertices, the console draws {mine.Count}");
+        if (apart == 0 && i == mine.Count) Log($"{golem.Name} › {told}: the golem's {i} places agree with the console's");
+        else if (i != mine.Count) Log($"{golem.Name} › ⚠ {told}: the golem resolved {i} places, the console draws {mine.Count}");
     }
 
     // THE OBSTACLES' TAB (8-oct-2026): a row under the cursor lit on the map; 'gone' forgets it at once — the golem's own lever, like the
@@ -940,8 +970,9 @@ public partial class MainWindow : Window
     }
 
     // what the figure became, in the operator's words: its centre, its measure, its orientation
-    private static string Shape(Figure figure) =>
-        $"at {figure.Center}, {(figure is Circle ? "radius" : "side")} {Spot.Fmt(figure.Measure)} m, {Spot.Fmt(figure.Angle)}°";
+    private static string Shape(Figure figure) => figure is DoubleRing rings
+        ? $"at {figure.Center}, diameters {Spot.Fmt(rings.OuterDiameter)} and {Spot.Fmt(rings.InnerDiameter)} m, {Spot.Fmt(figure.Angle)}°"
+        : $"at {figure.Center}, {(figure is Circle ? "radius" : "side")} {Spot.Fmt(figure.Measure)} m, {Spot.Fmt(figure.Angle)}°";
 
     // the formation let go: reshaped if its figure changed — every golem the visit to its own vertex on its tab
     private void Map_MouseUp(object sender, MouseButtonEventArgs e)
@@ -990,7 +1021,7 @@ public partial class MainWindow : Window
             g.Enqueue($"# {formation.Name} shot: {Shape(formation.Figure)} — {name} at {formation.Figure.Label(formation.IndexOf(name), formation.Places.Count)}");
             if (formation.CanForm)
             {
-                g.Enqueue(formation.FormLine());   // the context, never the coordinate (propuesta 99)
+                g.Enqueue(formation.FormLine(name));   // the context, never the coordinate (propuesta 99)
                 g.Enqueue(formation.TakeLine(name));
             }
             else g.Enqueue(line);
@@ -1203,6 +1234,16 @@ public partial class MainWindow : Window
             double r = circle.Radius * scale;
             var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
             Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); layer.Children.Add(ring);
+        }
+        else if (figure is DoubleRing rings)
+        {
+            // the two rings: the outer one filled faintly, the inner one drawn over it
+            foreach (var (radius, filled) in new[] { (rings.OuterRadius, true), (rings.InnerRadius, false) })
+            {
+                double r = radius * scale;
+                var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = filled ? fill : Brushes.Transparent };
+                Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); layer.Children.Add(ring);
+            }
         }
         else if (vertices.Count >= 3)
         {

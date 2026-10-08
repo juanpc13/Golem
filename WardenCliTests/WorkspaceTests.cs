@@ -50,6 +50,34 @@ public class WorkspaceTests
     }
 
     [TestMethod]
+    public void AWorkspace_KeepsADoubleRing_ItsTwoRingsAndTheirTurns()
+    {
+        string settings = Path.Combine(Path.GetTempPath(), $"wardencli-test-{Guid.NewGuid():N}.json");
+        string path = Path.Combine(Path.GetTempPath(), $"wardencli-test-{Guid.NewGuid():N}.golemws");
+        Environment.SetEnvironmentVariable("WARDENCLI_SETTINGS", settings);
+        try
+        {
+            var rings = Formation.DoubleRing(4, new Spot(5.5, 5.5), 5.0, 2.0, new[] { "blue", "green", "red" }, new[] { "yellow" });
+            rings.Rotate(Sense.Counterclockwise, 1, Ring.Outer);
+            Workspace.Save(path, Array.Empty<Golem>(), new[] { rings });
+            var (_, formations, problems) = Workspace.Load(path);
+            Assert.AreEqual(0, problems.Count, string.Join("; ", problems));
+            var again = formations.Single();
+            Assert.IsTrue(again.IsDoubleRing);
+            Assert.AreEqual(rings.Holders, again.Holders, "three on the outer ring, one on the inner, where they stood");
+            Assert.AreEqual(2.0, ((DoubleRing)again.Figure).InnerDiameter, 1e-9);
+            Assert.AreEqual("  outer 1 · inner 0", again.TurnedText);
+            CollectionAssert.AreEqual(rings.Places.ToList(), again.Places.ToList());
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(settings);
+            Environment.SetEnvironmentVariable("WARDENCLI_SETTINGS", null);
+        }
+    }
+
+    [TestMethod]
     public void AWorkspaceFromBefore_OpensWithNoFormations()
     {
         string settings = Path.Combine(Path.GetTempPath(), $"wardencli-test-{Guid.NewGuid():N}.json");

@@ -146,13 +146,14 @@ public sealed class Commander
     private Reply Form(Command command)
     {
         var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
-                                      double.Parse(command.Values["side"], CultureInfo.InvariantCulture),
+                                      command.Values.TryGetValue("side", out var s) ? double.Parse(s, CultureInfo.InvariantCulture) : null,
                                       command.Values.TryGetValue("angle", out var a) ? double.Parse(a, CultureInfo.InvariantCulture) : 0.0,
-                                      command.Values.TryGetValue("places", out var n) ? int.Parse(n, CultureInfo.InvariantCulture) : null);
+                                      command.Values.TryGetValue("places", out var n) ? int.Parse(n, CultureInfo.InvariantCulture) : null,
+                                      command.Values.TryGetValue("radius", out var r) ? double.Parse(r, CultureInfo.InvariantCulture) : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        var answer = displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure, (request.Center.X.Value, request.Center.Y.Value), request.Side.Value, request.Angle ?? 0.0, request.Places);
+        var answer = displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure, (request.Center.X.Value, request.Center.Y.Value), request.Measure!.Value, request.Angle ?? 0.0, request.Places);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var places = new List<string>();
         try
@@ -169,11 +170,12 @@ public sealed class Commander
     // a place taken (propuesta 99; ajuste 101): the same validation as POST /take; the route's first order, as any errand's
     private Reply Take(Command command)
     {
-        var request = new TakeRequest(command.Text, null, int.Parse(command.Values["place"], CultureInfo.InvariantCulture));
+        var request = new TakeRequest(command.Text, null, int.Parse(command.Values["place"], CultureInfo.InvariantCulture),
+                                      command.Values.TryGetValue("sense", out var sense) ? sense : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value));
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value, request.SenseName));
     }
 
     private Reply Formations()

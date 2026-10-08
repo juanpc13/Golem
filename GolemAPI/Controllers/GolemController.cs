@@ -90,7 +90,7 @@ public class GolemController : Controller
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         return Answered(displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure.Trim().ToLowerInvariant(),
-                                       (request.Center.X.Value, request.Center.Y.Value), request.Side.Value, request.Angle ?? 0.0, request.Places));
+                                       (request.Center.X.Value, request.Center.Y.Value), request.Measure!.Value, request.Angle ?? 0.0, request.Places));
     }
 
     /// <summary>A PLACE TAKEN (propuesta 99; ajuste 101): the golem resolves where that place of that formation stands and goes there, facing the centre.</summary>
@@ -101,7 +101,7 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value));
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value, request.SenseName));
     }
 
     /// <summary>One STEP of the formation in place (ajuste 77): every body takes the next corner in that sense once everybody stands on

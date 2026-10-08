@@ -17,10 +17,53 @@ internal abstract class Formation
 {
     internal Position Center { get; }
 
-    protected Formation(Position center)
+    /// <summary>Its ORIENTATION (propuesta 99, 8-oct-2026): how far it is turned counter-clockwise from the way it is laid out — added to every
+    /// place's bearing, the order of the places unchanged. Zero for the figures of the golem's own choreography; a circle has one too since
+    /// ajuste 102.</summary>
+    internal Units.Angle Turn { get; }
+
+    protected Formation(Position center) : this(center, new Units.Degrees(0.0)) { }
+
+    protected Formation(Position center, Units.Angle turn)
     {
         if (center == null) throw new GolemDomainException("Formation.Formation: 'center' was not given");
+        if (turn == null) throw new GolemDomainException("Formation.Formation: 'turn' was not given");
         Center = center;
+        Turn = turn;
+    }
+
+    /// <summary>What says its size: a polygon's side, a circle's radius (ajuste 102) — what the formations read prints.</summary>
+    internal abstract Units.Length Measure { get; }
+
+    /// <summary>How many bodies the warden laid it out for (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI") — 0 when it was not
+    /// said: then a polygon's places are its vertices. A circle told by the warden is always told for how many (ajuste 102).</summary>
+    internal int Bodies { get; set; }
+
+    /// <summary>Its places AS TOLD — a polygon's vertices, or, laid out for more bodies than vertices, the corners and the bodies left over on
+    /// the sides (ajuste 100); a circle's places for the bodies it was told — in the figure's fixed order.</summary>
+    internal IReadOnlyList<Position> Places() => Places(Math.Max(Bodies, 1));
+
+    /// <summary>How many places it has as told.</summary>
+    internal int PlaceCount => Places().Count;
+
+    /// <summary>The place of that NUMBER among its places as told (ajuste 101): what a golem told "your place is 5" resolves by itself. Out of
+    /// range refused.</summary>
+    internal Position PlaceNumbered(int index)
+    {
+        var places = Places();
+        if (index < 0 || index >= places.Count) throw new GolemDomainException($"{(Called == "" ? "the " + Name : Called)} has places 0 to {places.Count - 1}: there is no place {index}");
+        return places[index];
+    }
+
+    /// <summary>THE WAY OF A STEP (ajuste 102, 8-oct-2026; Juan, on the double ring sent as visits: "no con el contexto del doble anillo para
+    /// decirle cuál es su posición del vértice que le pertenece"): the stops a body takes from where it stands to a place of the figure when it
+    /// moves round it in that sense — the place alone on a polygon (a step runs along a side), along the ARC on a circle (<see cref="Circle"/>):
+    /// two bodies on a ring are half a turn apart, and the chord would send both through the centre at once.</summary>
+    internal virtual IReadOnlyList<Position> Way(Position from, Position place, Sense sense)
+    {
+        if (from == null) throw new GolemDomainException("Formation.Way: 'from' was not given");
+        if (place == null) throw new GolemDomainException("Formation.Way: 'place' was not given");
+        return new[] { place };
     }
 
     /// <summary>What the journal and the panel call this figure.</summary>
@@ -62,7 +105,10 @@ internal sealed class Circle : Formation
 {
     internal Units.Length Radius { get; }
 
-    internal Circle(Position center, Units.Length radius) : base(center)
+    internal Circle(Position center, Units.Length radius) : this(center, radius, new Units.Degrees(0.0)) { }
+
+    /// <summary>A circle turned (ajuste 102): its first place that far counter-clockwise from due east.</summary>
+    internal Circle(Position center, Units.Length radius, Units.Angle turn) : base(center, turn)
     {
         if (radius == null) throw new GolemDomainException("Circle.Circle: 'radius' was not given");
         if (radius.InMeters <= 0) throw new GolemDomainException("a circle needs a radius greater than zero");
@@ -70,6 +116,27 @@ internal sealed class Circle : Formation
     }
 
     internal override string Name => "circle";
+
+    internal override Units.Length Measure => Radius;
+
+    /// <summary>The way of a step round the circle (ajuste 102): ALONG THE ARC from where the body stands — its bearing from the centre — to
+    /// the place, in that sense, through points of the circle no more than 60° apart, the place last; a body already there goes straight.</summary>
+    internal override IReadOnlyList<Position> Way(Position from, Position place, Sense sense)
+    {
+        if (from == null) throw new GolemDomainException("Circle.Way: 'from' was not given");
+        if (place == null) throw new GolemDomainException("Circle.Way: 'place' was not given");
+        double start = AngleUtility.ToDegrees(AngleUtility.Angle(Center.AsCoordinate(), from.AsCoordinate()));
+        double end = AngleUtility.ToDegrees(AngleUtility.Angle(Center.AsCoordinate(), place.AsCoordinate()));
+        double delta = ((end - start) % 360 + 360) % 360;                 // counter-clockwise, in [0, 360)
+        if (delta < 1e-6 || 360 - delta < 1e-6) return new[] { place };
+        if (sense == Sense.Clockwise) delta -= 360;                       // clockwise, the other way round
+        int segments = (int)Math.Ceiling(Math.Abs(delta) / 60 - 1e-9);
+        var way = new List<Position>();
+        for (int k = 1; k < segments; k++)
+            way.Add(Center.Along(AngleUtility.ToRadians(start + delta * k / segments), Radius.InMeters));
+        way.Add(place);
+        return way;
+    }
 
     /// <summary>A step around the circle: its places run counter-clockwise, so clockwise is one place DOWN the order (ajuste 84).</summary>
     internal override Move Rotate(Sense sense) => OnePlace(sense);
@@ -80,7 +147,7 @@ internal sealed class Circle : Formation
         var places = new List<Position>();
         for (int k = 0; k < count; k++)
         {
-            places.Add(Center.Along(AngleUtility.ToRadians(360.0 * k / count), Radius.InMeters));
+            places.Add(Center.Along(AngleUtility.ToRadians(360.0 * k / count + Turn.InDegrees), Radius.InMeters));
         }
         return places;
     }
@@ -97,20 +164,16 @@ internal abstract class Polygon : Formation
 {
     internal Units.Length Side { get; }
 
-    /// <summary>Its ORIENTATION (propuesta 99, 8-oct-2026): how far it is turned counter-clockwise from the way it is laid out — added to every
-    /// vertex's bearing, the order of the vertices unchanged. Zero for the figures of the golem's own choreography.</summary>
-    internal Units.Angle Turn { get; }
-
     protected Polygon(Position center, Units.Length side) : this(center, side, new Units.Degrees(0.0)) { }
 
-    protected Polygon(Position center, Units.Length side, Units.Angle turn) : base(center)
+    protected Polygon(Position center, Units.Length side, Units.Angle turn) : base(center, turn)
     {
         if (side == null) throw new GolemDomainException($"{GetType().Name}.{GetType().Name}: 'side' was not given");
-        if (turn == null) throw new GolemDomainException($"{GetType().Name}.{GetType().Name}: 'turn' was not given");
         if (side.InMeters <= 0) throw new GolemDomainException($"a {Name} needs a side greater than zero");
         Side = side;
-        Turn = turn;
     }
+
+    internal override Units.Length Measure => Side;
 
     /// <summary>The radius of the circle through the vertices, in metres: the side over twice the sine of half the angle each side
     /// spans from the centre — the side over √2 for a square, over √3 for a triangle.</summary>
@@ -133,26 +196,6 @@ internal abstract class Polygon : Formation
             vertices.Add(Center.Along(AngleUtility.ToRadians(degrees + Turn.InDegrees), Circumradius));
         }
         return vertices;
-    }
-
-    /// <summary>How many bodies the warden laid it out for (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI") — 0 when it was not
-    /// said: then its places are its vertices. Told by <see cref="Choreographies.Form(string, string, Position, Units.Length, Units.Angle, int)"/>.</summary>
-    internal int Bodies { get; set; }
-
-    /// <summary>Its places AS TOLD — the vertices, or, laid out for more bodies than vertices, the corners and the bodies left over on the
-    /// sides (ajuste 100), in the way round the perimeter.</summary>
-    internal IReadOnlyList<Position> Places() => Places(Math.Max(Bodies, 1));
-
-    /// <summary>How many places it has as told: its vertices, or as many as the bodies it was laid out for when they are more.</summary>
-    internal int PlaceCount => Places().Count;
-
-    /// <summary>The place of that NUMBER among its places as told (ajuste 101): what a golem told "your place is 5" resolves by itself — a
-    /// vertex when the number is one, a point of a side when the formation was laid out for more bodies than vertices. Out of range refused.</summary>
-    internal Position PlaceNumbered(int index)
-    {
-        var places = Places();
-        if (index < 0 || index >= places.Count) throw new GolemDomainException($"{(Called == "" ? "the " + Name : Called)} has places 0 to {places.Count - 1}: there is no place {index}");
-        return places[index];
     }
 
     /// <summary>The vertex of that number (propuesta 99): 0 the first — the square's north-east, the pentagon's and the triangle's north, before
