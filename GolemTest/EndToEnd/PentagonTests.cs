@@ -23,7 +23,7 @@ public class PentagonTests
         var g = new Golem(body, "blue");
         g.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var center = new Position(5.5, 5.5);
-        var pentagon = (Pentagon)g.Choreography.Formation("pentagon", center, new Meters(2.0));
+        var pentagon = (Pentagon)g.Choreography.Figure("pentagon", center, new Meters(2.0));
         Assert.AreEqual("pentagon", pentagon.Name);
         Assert.AreEqual(2.0 / (2 * Math.Sin(Math.PI / 5)), pentagon.Circumradius, 1e-9, "the side over twice the sine of 36°: 1.70 m");
 
@@ -49,7 +49,7 @@ public class PentagonTests
 
         // the fleet of four takes it by rank, every route ending facing the centre; a step moves everybody one vertex — and the hole with them
         var fleet = new Fleet("blue,green,red,yellow");
-        var call = g.Choreography.Muster("red-1", pentagon, fleet);
+        var call = g.Choreography.Form("red-1", pentagon, fleet, "rank");
         var route = call.Join(new Pose(5.5, 9.0, -1.5708), fleet.Member(g));
         StringAssert.Contains(route.AsPlan(), "floor@5.5,7.2 > face@5.5,7.2", "blue, first by rank: the north vertex, then facing the centre: " + route.AsPlan());
         Assert.AreEqual(0, call.PlaceIndex);

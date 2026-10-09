@@ -10,118 +10,160 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace GolemTest;
 
-// THE FORMATIONS THE WARDEN NAMES (propuesta 99, 8-oct-2026; Juan: "darle contexto al golem pero nunca darle la coordenada exacta de su
-// visit"): the golem is told a formation — its name, figure, centre, side and orientation — and which VERTEX it takes; where that vertex
-// stands, it resolves by itself, on its own map, and it arrives facing the centre.
+// THE FORMATIONS ARE THE GOLEM'S (propuesta 104, 8-oct-2026; Juan: "las formaciones le pertenecerán al golem… a los otros golems
+// involucrados se les proporcionará la misma formación… el CLI sólo servirá como interfaz"): the module keeps every formation by NAME — a
+// figure with its fleet, its policy and the place every member holds — made, made again, found, listed and dissolved; who holds what is
+// the golem's to resolve, never the warden's.
 [TestClass]
 public class ChoreographiesTests
 {
     [TestMethod]
-    public void AFormationTold_IsKeptByItsName_AndItsVertexByNumber_StandsWhereTheFigureSays()
+    public void AFormationTold_IsKeptByItsName_WithItsFleet_AndEveryPlaceHeldByRank()
     {
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red,green,yellow");
 
-        var square = blue.Choreography.Form("Square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0));
-        Assert.AreEqual("square-1", square.Called, "the name the warden gave it, lower case");
-        Assert.AreSame(square, blue.Choreography.Find("square-1"), "found again by its name");
-        Assert.IsTrue(blue.Choreography.HasFormation("SQUARE-1"));
-        Assert.AreEqual(6.5, square.Vertex(0).X, 1e-9); Assert.AreEqual(6.5, square.Vertex(0).Y, 1e-9);   // vertex 0: the north-east corner
-        Assert.AreEqual(4.5, square.Vertex(2).X, 1e-9); Assert.AreEqual(4.5, square.Vertex(2).Y, 1e-9);   // vertex 2: the south-west one
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => square.Vertex(4)).Message, "a square has vertices 0 to 3: there is no vertex 4");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Find("pentagon-7")).Message, "the golem was told no formation named 'pentagon-7': form it first");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("c", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0))).Message, "a circle's places depend on how many bodies take it");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("h", "hexagon", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0))).Message, "square, pentagon or triangle");
-    }
-
-    [TestMethod]
-    public void AFormationTurned_KeepsTheOrderOfItsVertices_AndToldAgain_IsMadeAgain()
-    {
-        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var blue = new Golem(body, "blue");
-        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-
-        var turned = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(45.0));
-        Assert.AreEqual(5.5, turned.Vertex(0).X, 1e-9, "the north-east corner, turned 45°, stands due north");
-        Assert.AreEqual(5.5 + Math.Sqrt(2), turned.Vertex(0).Y, 1e-9);
-        Assert.AreEqual(5.5 - Math.Sqrt(2), turned.Vertex(1).X, 1e-9, "the next one, due west: the order unchanged");
-
-        var moved = blue.Choreography.Form("square-1", "square", new Position(3.0, 3.0), new Meters(2.0), new Degrees(0.0));
-        Assert.AreSame(moved, blue.Choreography.Find("square-1"), "told again by the same name: made again, the old one gone");
+        var square = blue.Choreography.Form("Square-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank", "call-7");
+        Assert.AreEqual("square-2", square.Name, "the name the warden gave it, lower case");
+        Assert.AreEqual("call-7", square.Stamp, "the once of its call, the host's");
+        Assert.AreEqual("square", square.Figure.Name);
+        Assert.AreEqual("rank", square.Policy);
+        Assert.AreSame(fleet, square.Fleet);
+        Assert.AreSame(square, blue.Choreography.Find("square-2"), "found again by its name");
+        Assert.IsTrue(blue.Choreography.HasFormation("SQUARE-2"));
+        Assert.IsFalse(blue.Choreography.Knows("square-2"), "told, not taken: this golem has no place in it yet");
         Assert.AreEqual(1, blue.Choreography.Formations().Count);
-        Assert.AreEqual(4.0, moved.Vertex(0).X, 1e-9); Assert.AreEqual(4.0, moved.Vertex(0).Y, 1e-9);
-        Assert.AreEqual(5.5 + Math.Sqrt(2), turned.Vertex(0).Y, 1e-9, "a route already given keeps the formation it was given by");
+
+        // by rank every place is known from birth: the names sorted take the corners counter-clockwise from the north-east
+        var holders = square.Holders();
+        CollectionAssert.AreEqual(new[] { "blue", "green", "red", "yellow" }, holders.Select(h => h.Name).ToList());
+        CollectionAssert.AreEqual(new[] { 0, 1, 2, 3 }, holders.Select(h => h.Index).ToList());
+        Assert.AreEqual(6.5, holders[0].X, 1e-9); Assert.AreEqual(6.5, holders[0].Y, 1e-9);   // blue: the north-east corner
+        Assert.AreEqual(4.5, holders[2].X, 1e-9); Assert.AreEqual(4.5, holders[2].Y, 1e-9);   // red: the south-west one
+        Assert.IsTrue(holders.All(h => h.Orbit == 0), "a square has one orbit");
+
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Find("pentagon-7")).Message, "the golem was told no formation named 'pentagon-7': form it first");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("h", "hexagon", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank")).Message, "knows no figure named 'hexagon'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("s", "square", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "luck")).Message, "by 'rank' or by 'distance'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("d", "double ring", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank")).Message, "two rings of golems: FormRings");
     }
 
     [TestMethod]
-    public void TheVertexTaken_IsAnErrandOfTheGolem_EndingFacingTheCentre_AndRefusedOffTheMap()
+    public void ToldAgain_ItIsMadeAgain_TheOldOneDissolved_AndARouteAlreadyGivenIsLetGo()
     {
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red");
 
-        var square = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0));
-        var route = blue.Choreography.Take(new Pose(5.5, 2.0, 1.5708), square, square.Vertex(3));
-        StringAssert.Contains(route.AsPlan(), "floor@6.5,4.5", "vertex 3, the south-east corner: the golem resolved where it stands");
-        StringAssert.Contains(route.AsPlan(), "face@6.5,4.5", "and arrives facing the centre, as in its own choreography");
+        var turned = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(45.0), fleet, "rank");
+        var corner = turned.Holders()[0];
+        Assert.AreEqual(5.5, corner.X, 1e-9, "the north-east corner, turned 45°, stands due north");
+        Assert.AreEqual(5.5 + Math.Sqrt(2), corner.Y, 1e-9);
+        var route = turned.Join(new Pose(5.5, 9.0, -1.5708), fleet.Member(blue));
+        StringAssert.Contains(route.AsPlan(), "floor@5.5,6.91", "blue's route to the turned corner: " + route.AsPlan());
 
-        var far = blue.Choreography.Form("far", "square", new Position(10.5, 10.5), new Meters(2.0), new Degrees(0.0));
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Take(new Pose(5.5, 2.0, 1.5708), far, far.Vertex(0))).Message,
-            "the place at (11.5, 11.5) of far is nowhere on the map");
+        var moved = blue.Choreography.Form("square-1", "square", new Position(3.0, 3.0), new Meters(2.0), new Degrees(0.0), fleet, "rank");
+        Assert.AreSame(moved, blue.Choreography.Find("square-1"), "told again by the same name: made again");
+        Assert.IsTrue(turned.Dissolved, "the old one dissolved");
+        Assert.AreEqual(1, blue.Choreography.Formations().Count, "one formation by that name in the list");
+        Assert.AreEqual(4.0, moved.Holders()[0].X, 1e-9); Assert.AreEqual(4.0, moved.Holders()[0].Y, 1e-9);
+        Assert.AreEqual("abandoned", route.Status, "the route to the old figure was let go with it");
+        StringAssert.Contains(route.Why, "square-1 was dissolved");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => turned.Convene(new Pose(5.5, 9.0, -1.5708), fleet.Member(blue))).Message, "was dissolved");
     }
 
-    // MORE GOLEMS THAN VERTICES, BY THE WARDEN (ajuste 101, 8-oct-2026; Juan: "hagamos lo mismo en el CLI"): the formation told for how many
-    // golems it lays out — the corners first, the rest on the sides (ajuste 100) — and each golem told the NUMBER of its place
     [TestMethod]
-    public void AFormationToldForMoreGolemsThanVertices_HasTheCornersAndPointsOfItsSides_TakenByNumber()
-    {
-        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var blue = new Golem(body, "blue");
-        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-
-        var square = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), 6);
-        Assert.AreEqual(6, square.PlaceCount, "laid out for six golems: six places");
-        Assert.AreEqual(5.5, square.PlaceNumbered(1).X, 1e-9, "place 1: the middle of the north side");
-        Assert.AreEqual(6.5, square.PlaceNumbered(1).Y, 1e-9);
-        Assert.AreEqual(4.5, square.PlaceNumbered(2).X, 1e-9, "place 2: the north-west corner");
-        Assert.AreEqual(6.5, square.PlaceNumbered(2).Y, 1e-9);
-        Assert.AreEqual(4.5, square.Vertex(2).X, 1e-9, "the vertices keep their own numbers");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => square.PlaceNumbered(6)).Message, "square-1 has places 0 to 5: there is no place 6");
-        var route = blue.Choreography.Take(new Pose(5.5, 2.0, 1.5708), square, square.PlaceNumbered(4));
-        StringAssert.Contains(route.AsPlan(), "face@5.5,4.5", "place 4, the middle of the south side, faced at the end");
-
-        var few = blue.Choreography.Form("square-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), 2);
-        Assert.AreEqual(4, few.PlaceCount, "fewer golems than vertices: the vertices, the rest free");
-        var plain = blue.Choreography.Form("square-3", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0));
-        Assert.AreEqual(4, plain.PlaceCount, "told for nobody in particular: its vertices");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("x", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), 0)).Message,
-            "a formation is laid out for 1 to 100 bodies");
-    }
-
-    // A RING TOLD (ajuste 102, 8-oct-2026; Juan, on the double ring sent as visits: "no con el contexto del doble anillo para decirle cuál es su
-    // posición"): a circle told for how many golems ride it, its place taken by number
-    [TestMethod]
-    public void ARingTold_HasItsPlacesByNumber_AndItsPlaceIsTakenStraight()
+    public void ADoubleRing_IsToldWithItsTwoRingsOfGolems_AndEachRingTurnsAlone_OrBoth()
     {
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var red = new Golem(body, "red");
         red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,cyan,green", "orange,red,yellow");
+        Assert.IsTrue(fleet.IsDivided);
+        Assert.AreEqual(3, fleet.Division);
+        CollectionAssert.AreEqual(new[] { "blue", "cyan", "green", "orange", "red", "yellow" }, fleet.Names.ToList(), "the outer ring's names sorted, then the inner ring's");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Fleet("blue,red", "red,yellow")).Message, "a golem rides one ring: red on both");
 
-        var ring = red.Choreography.Form("double-ring-1-inner", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), 2);
-        Assert.AreEqual(2, ring.PlaceCount, "a ring of two");
-        Assert.AreEqual(6.5, ring.PlaceNumbered(0).X, 1e-9, "place 0 due east");
-        Assert.AreEqual(4.5, ring.PlaceNumbered(1).X, 1e-9, "place 1 due west");
-        Assert.AreEqual(1.0, ring.Measure.InMeters, 1e-9, "a circle's measure is its radius");
+        var rings = red.Choreography.FormRings("double-ring-1", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), fleet, "rank");
+        Assert.AreEqual("double ring", rings.Figure.Name);
+        Assert.AreEqual(6, rings.PlaceCount);
+        var holders = rings.Holders();
+        Assert.AreEqual(0, holders.Single(h => h.Name == "blue").Orbit, "blue on the outer ring");
+        Assert.AreEqual(1, holders.Single(h => h.Name == "red").Orbit, "red on the inner one");
+        Assert.AreEqual(8.5, holders.Single(h => h.Name == "blue").X, 1e-9, "the outer ring's first place due east, radius 3");
+        Assert.AreEqual(6.7, holders.Single(h => h.Name == "orange").X, 1e-9, "the inner ring's first place due east, radius 1.2");
+        Assert.AreEqual(4, holders.Single(h => h.Name == "red").Index, "red: the second place of the inner ring");
 
-        // a step of a rotation is the place of the one ahead, taken STRAIGHT (ajuste 103; Juan: "la idea es que no sigan el arco… será un tramo
-        // recto hacia la posición del otro"): no point between
-        var plan = red.Choreography.Take(new Pose(6.5, 5.5, 3.1416), ring, ring.PlaceNumbered(1)).AsPlan();
-        Assert.AreEqual("floor@4.5,5.5 > face@4.5,5.5", plan.Split('\n').First(l => l.Contains("floor@")).Trim().Replace("way: ", ""), "one straight run to the place, then facing the centre: " + plan);
+        // red takes its place; everybody placed; a step of the INNER ring alone moves the inner golems and leaves the outer ones standing
+        var route = rings.Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
+        StringAssert.Contains(route.AsPlan(), "floor@4.9,6.54", "red's place: 120° round the inner ring — " + route.AsPlan());
+        WalkToTheEnd(route);   // on its place: the berths of the others have moved on (ajuste 80)
+        rings.Placed(rings.Me); foreach (var name in new[] { "blue", "cyan", "green", "orange", "yellow" }) rings.Heard(fleet.Member(name));
+        var inner = rings.Figure.Rotate(Sense.Clockwise, Ring.Inner);
+        Assert.AreEqual(1, inner.Orbit);
+        Assert.IsTrue(inner.Moves(1)); Assert.IsFalse(inner.Moves(0));
+        rings.Queue(inner, "s1");
+        var step = rings.Step();
+        Assert.AreNotSame(route, step, "red moves: the inner ring turned");
+        Assert.AreEqual(3, rings.PlaceIndex, "clockwise is down the order: from the second place of the inner ring to its first");
+        Assert.AreEqual(0, rings.Holders().Single(h => h.Name == "blue").Index, "blue did not move");
+        Assert.AreEqual(3, rings.PlacedCount, "the outer ring is still in place; the inner one walks");
 
-        var turned = red.Choreography.Form("double-ring-1-outer", "circle", new Position(5.5, 5.5), new Meters(2.5), new Degrees(90.0), 2);
-        Assert.AreEqual(8.0, turned.PlaceNumbered(0).Y, 1e-9, "a ring turned 90°: its first place due north");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.Form("c", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0))).Message,
-            "a circle's places depend on how many bodies take it");
+        // the outer ring alone: red stays, its route in place stands
+        WalkToTheEnd(step);
+        rings.Placed(rings.Me); rings.Heard(fleet.Member("orange")); rings.Heard(fleet.Member("yellow"));
+        rings.Queue(rings.Figure.Rotate(Sense.Counterclockwise, Ring.Outer), "s2");
+        var same = rings.Step();
+        Assert.AreSame(step, same, "red does not move on the outer ring's step");
+        Assert.AreEqual(1, rings.Holders().Single(h => h.Name == "blue").Index, "blue went counter-clockwise, one place up the order");
+        Assert.AreEqual(3, rings.PlacedCount, "now the inner ring is the one still in place");
+
+        // both rings at once; a figure of one orbit refuses a ring
+        rings.Placed(rings.Me); foreach (var name in new[] { "blue", "cyan", "green", "orange", "yellow" }) rings.Heard(fleet.Member(name));
+        rings.Queue(rings.Figure.Rotate(Sense.Clockwise, Ring.Whole), "s3");
+        var both = rings.Step();
+        Assert.AreNotSame(same, both);
+        Assert.AreEqual(0, rings.Holders().Single(h => h.Name == "blue").Index, "everybody one place down the order");
+        Assert.AreEqual(5, rings.PlaceIndex);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Square(new Position(5.5, 5.5), new Meters(2.0)).Rotate(Sense.Clockwise, Ring.Inner)).Message, "has no rings: it turns whole");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), new Fleet("blue,red"), "rank")).Message, "needs its fleet in two rings");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.Form("r", "circle", new Position(5.5, 5.5), new Meters(3.0), new Degrees(0.0), fleet, "rank")).Message, "a fleet in two rings takes a double ring");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(1.0), new Meters(1.2), new Degrees(0.0), fleet, "rank")).Message, "wider than the inner one");
+    }
+
+    [TestMethod]
+    public void Dissolved_TheFormationLeavesTheList_ItsRouteIsLetGo_AndNothingMoreIsQueued()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red");
+        var square = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank");
+        var ring = blue.Choreography.Form("ring-1", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance");
+        Assert.AreEqual(2, blue.Choreography.Formations().Count);
+        Assert.AreEqual(0, ring.Holders().Count, "by distance nobody holds a place until it speaks");
+
+        var route = square.Join(new Pose(2.5, 2.5, 0.0), fleet.Member(blue));
+        Assert.IsTrue(blue.Choreography.Knows("square-1"));
+        Assert.AreSame(square, blue.Choreography.Current);
+        blue.Choreography.Dissolve(square);
+        Assert.IsTrue(square.Dissolved);
+        Assert.AreEqual("abandoned", route.Status);
+        Assert.IsFalse(blue.Choreography.HasFormation("square-1"));
+        Assert.IsFalse(blue.Choreography.Knows("square-1"));
+        CollectionAssert.AreEqual(new[] { "ring-1" }, blue.Choreography.Formations().Select(f => f.Name).ToList());
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => square.Queue(square.Figure.Rotate(Sense.Clockwise), "s1")).Message, "was dissolved");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Current).Message, "stands in no formation");
+        blue.Choreography.Dissolve(square);   // twice: nothing more happens
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Dissolve(null)).Message, "'formation' was not given");
+    }
+
+    // The body's walk: the leg the route asks, done as asked — reported the way the robot does (ajuste 68).
+    private static void WalkToTheEnd(GolemDomain.Routes.Route route)
+    {
+        for (int i = 0; i < 50 && route.IsPending(); i++) route.Arrive(route.NextLeg);
     }
 }

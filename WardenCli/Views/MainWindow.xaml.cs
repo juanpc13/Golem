@@ -24,11 +24,14 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<Golem> golems = new();
     // THE ACTIVE FORMATIONS (propuesta 96): every one laid out by the console, with the vertex each golem holds, rotated from here
-    private readonly ObservableCollection<Formation> formations = new();
+    // THE FORMATIONS ARE THE GOLEM'S (propuesta 104): the list shows the selected golem's `formations` read; the console keeps only its
+    // own way of looking at them — the eyes closed, by name, and the one selected
+    private readonly HashSet<string> hiddenFormations = new(StringComparer.Ordinal);
+    private string? selectedFormation;
     // a formation being RESHAPED on the map (propuestas 97, 98): grabbed by one of the grips of the selected one — its centre moves it, the
     // square on its first vertex resizes it, the knob beyond that vertex turns it — and the figure it would become while the mouse is held
     private enum Grip { Move, Size, Turn }
-    private Formation? dragging;
+    private FormationView? dragging;
     private Grip grip;
     private Figure? ghost;
     private readonly Dictionary<string, CancellationTokenSource> runners = new();
@@ -43,19 +46,20 @@ public partial class MainWindow : Window
     // the floor the map draws: the selected golem's scenario as it told it (GET /map), the arena's 11 × 11 m until one is known
     private double FloorSize => Current?.Plan?.Extent ?? 11.0;
 
+    /// <summary>The console's own directive on a tab (propuesta 95): never sent — the queues of one SEND wait for each other there.</summary>
+    public const string Sync = "@sync";
+
     // the verbs whose command leaves a route in the golem: the queue waits for it to end before the next line goes
-    private static readonly HashSet<string> Movers = new(StringComparer.Ordinal) { "visit", "cover", "then", "resume", "choreograph", "rotate", "take" };
+    private static readonly HashSet<string> Movers = new(StringComparer.Ordinal) { "visit", "cover", "then", "resume", "rotate", "take" };
 
     public MainWindow()
     {
         InitializeComponent();
         GolemList.ItemsSource = golems;
-        FormationList.ItemsSource = formations;
-        FormationList.SelectionChanged += (_, _) => Draw();
-        formations.CollectionChanged += (_, _) =>
+        FormationList.SelectionChanged += (_, _) =>
         {
+            if (FormationList.SelectedItem is FormationView f) selectedFormation = f.Name;
             Draw();
-            NoFormation.Text = formations.Count == 0 ? "none yet — Console › Formation lays one out here" : "select one: on the map its centre moves it, the square resizes it, the knob turns it — 'shot' puts it on the tabs";
         };
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
@@ -80,7 +84,21 @@ public partial class MainWindow : Window
         reading = true;
         try { await GolemClient.RefreshReadingsAsync(g); }
         finally { reading = false; }
+        SyncFormations(g);
     }
+
+    // the selected golem's formations, as the console looks at them: the eyes closed by name stay closed, the one selected stays selected
+    private void SyncFormations(Golem g)
+    {
+        var views = g.Knowledge.Formations;
+        foreach (var v in views) v.Shown = !hiddenFormations.Contains(v.Name);
+        if (selectedFormation != null && views.FirstOrDefault(v => v.Name == selectedFormation) is { } keep && FormationList.SelectedItem != keep) FormationList.SelectedItem = keep;
+        NoFormation.Text = views.Count == 0 ? $"{g.Name} is in no formation — Console › Formation forms one" : "the golem's own: select one — its centre moves it, the square resizes it, the knob turns it; ↻ ↺ step it, ✕ dissolves it";
+        Draw();
+    }
+
+    // the selected golem's formations, as it tells them
+    private IReadOnlyList<FormationView> Views() => Current?.Knowledge.Formations ?? Array.Empty<FormationView>();
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -403,7 +421,7 @@ public partial class MainWindow : Window
             {
                 string? line = golem.Dequeue();
                 if (line == null) { Log($"{golem.Name} › queue done ({done} command(s))"); break; }
-                if (line == Choreography.Sync)
+                if (line == Sync)
                 {
                     golem.Status = "waiting for the others…";
                     await batch.ArriveAsync().WaitAsync(cts.Token);
@@ -433,7 +451,6 @@ public partial class MainWindow : Window
                 {
                     done++;
                     Log($"{golem.Name} › ✓ {line} — {OneLine(reply.Text)} ({done} of {total})");
-                    if (verb == "form") CompareVertices(golem, line, reply);
                 }
                 await GolemClient.RefreshReadingsAsync(golem, cts.Token);
             }
@@ -523,7 +540,6 @@ public partial class MainWindow : Window
         AutoSave();
         foreach (var g in golems.ToList()) Stop(g);
         golems.Clear();
-        formations.Clear();
         workspace = null;
         Title = "WardenCli — the operator's console";
         WorkspaceLabel.Text = "no workspace: the scripts live in this window until you save one";
@@ -541,25 +557,16 @@ public partial class MainWindow : Window
     {
         try
         {
-            var (loaded, saved, problems) = Workspace.Load(path);
+            var loaded = Workspace.Load(path);
             AutoSave();
             foreach (var g in golems.ToList()) Stop(g);
             golems.Clear();
-            formations.Clear();
             workspace = path;
             foreach (var g in loaded) Add(g);
             if (golems.Count > 0) GolemList.SelectedItem = golems[0];
-            // the formations it was left with, active again (7-oct-2026: they die with the window no more)
-            foreach (var f in saved)
-            {
-                f.PropertyChanged += (_, _) => Draw();
-                formations.Add(f);
-            }
-            if (formations.Count > 0) FormationList.SelectedItem = formations[^1];
             WorkspaceLabel.Text = $"workspace: {workspace}";
             Title = $"WardenCli — {System.IO.Path.GetFileNameWithoutExtension(path)}";
-            Log($"workspace opened: {path} — {loaded.Count} golem(s), {formations.Count} formation(s)");
-            foreach (var p in problems) Log($"workspace: {p}");
+            Log($"workspace opened: {path} — {loaded.Count} golem(s); the formations are the golems' own, read from each (propuesta 104)");
             RefreshRecent();
         }
         catch (Exception ex) { Log($"the workspace could not be opened: {ex.Message}"); Workspace.Forget(path); RefreshRecent(); }
@@ -568,7 +575,7 @@ public partial class MainWindow : Window
     private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (workspace == null) { SaveWorkspaceAs_Click(sender, e); return; }
-        Workspace.Save(workspace, golems, formations);
+        Workspace.Save(workspace, golems);
         Log($"workspace saved: {workspace}");
         RefreshRecent();
     }
@@ -578,7 +585,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog { Title = "Save the workspace as", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}", DefaultExt = Workspace.Extension.TrimStart('.'), InitialDirectory = Workspace.RoutinesFolder(workspace), FileName = "fleet" };
         if (dialog.ShowDialog(this) != true) return;
         workspace = dialog.FileName;
-        Workspace.Save(workspace, golems, formations);
+        Workspace.Save(workspace, golems);
         WorkspaceLabel.Text = $"workspace: {workspace}";
         Title = $"WardenCli — {System.IO.Path.GetFileNameWithoutExtension(workspace)}";
         Log($"workspace saved: {workspace}");
@@ -588,7 +595,7 @@ public partial class MainWindow : Window
     private void AutoSave()
     {
         if (workspace == null) return;
-        try { Workspace.Save(workspace, golems, formations); } catch (IOException ex) { Log($"the workspace could not be saved: {ex.Message}"); }
+        try { Workspace.Save(workspace, golems); } catch (IOException ex) { Log($"the workspace could not be saved: {ex.Message}"); }
     }
 
     private void RefreshRecent()
@@ -657,104 +664,49 @@ public partial class MainWindow : Window
 
     private void Formation_Click(object sender, RoutedEventArgs e)
     {
-        if (golems.Count == 0) { Log("add the golems first: a formation is laid out for the golems in operation"); return; }
-        var dialog = new FormationDialog(golems.Select(g => g.Name).ToList(), Point) { Owner = this };
+        if (Current is not { } g) { Log("select a golem: the formation is formed in it, and it tells its fleet"); return; }
+        var dialog = new FormationDialog(golems.Select(x => x.Name).ToList(), Point) { Owner = this };
         if (dialog.ShowDialog() != true) return;
-        try
-        {
-            int number = formations.Count == 0 ? 1 : formations.Max(f => f.Number) + 1;
-            if (dialog.Figure == "double ring")
-            {
-                // THE DOUBLE RING (8-oct-2026): each golem the visit to its place on its ring — the formation's shot as it is born
-                var rings = Formation.DoubleRing(number, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side, dialog.InnerDiameter, dialog.Chosen, dialog.InnerChosen);
-                rings.Shot();
-                foreach (var name in rings.Fleet.Names)
-                {
-                    // the context, never the coordinate (ajuste 102): each golem told its own ring, then the number of its place on it
-                    var g = golems.First(x => x.Name == name);
-                    g.Enqueue(rings.FormLine(name));
-                    g.Enqueue(rings.TakeLine(name));
-                }
-                rings.PropertyChanged += (_, _) => Draw();
-                formations.Add(rings);
-                FormationList.SelectedItem = rings;
-                FormationsTab.IsSelected = true;
-                Log($"laid out: {rings.Name} {Shape(rings.Figure)} — its ring and a take on {rings.Fleet.Count} tab(s); turn each ring with its ↻ ↺ — read them, then SEND to selected");
-                Log($"active: {rings.Describe()}");
-                return;
-            }
-            var fleet = new Fleet(golems.Where(g => dialog.Chosen.Contains(g.Name)).Select(g => new Member(g.Name, g.LastX is double x && g.LastY is double y ? new Spot(x, y) : null)));
-            // no steps around at birth (8-oct-2026): every golem to its first vertex; the formation turns afterwards with ↻ ↺, a step per click
-            var choreography = new Choreography(Figure.Named(dialog.Figure, new Spot(dialog.CenterX, dialog.CenterY), dialog.Side), fleet, new ByRank(), 0, clockwise: true);   // the names sorted take the vertices in order: rank or distance is the golem's own choreography's (8-oct-2026)
-            var pace = Pace.OneErrand;
-            // the formation this leaves in force (propuesta 96), first: its name is what the golems are told (propuesta 99)
-            var formation = choreography.Outcome(number);
-            // a polygon is TOLD to the golems — form, then the number of each one's vertex — and each resolves where it stands; a circle goes as visits
-            var scripts = formation.CanForm ? choreography.TakeScripts(formation.WireName, formation.FormLine(), pace) : choreography.Scripts(pace);
-            foreach (var (name, lines) in scripts)
-            {
-                var g = golems.First(x => x.Name == name);
-                foreach (var line in lines) g.Enqueue(line);
-            }
-            Log($"laid out: {choreography.Describe()} — {scripts.Values.Sum(q => q.Count(l => l.StartsWith("visit") || l.StartsWith("take")))} {(formation.CanForm ? "take(s)" : "visit(s)")} on {scripts.Count} tab(s); turn it with ↻ ↺ — read them, then SEND to selected");
-            formation.PropertyChanged += (_, _) => Draw();
-            formations.Add(formation);
-            FormationList.SelectedItem = formation;
-            FormationsTab.IsSelected = true;
-            Log($"active: {formation.Describe()}");
-        }
-        catch (ArgumentException ex) { Log(ex.Message); }
+        // THE FORMATION IS THE GOLEM'S (propuesta 104; Juan: "el CLI sólo servirá como interfaz"): two lines on the selected golem's tab — the
+        // form, which the golem spreads to its fleet, and the take, which moves the whole fleet by the formation's policy; the name is the
+        // figure's with the next number the golem does not know yet
+        string shape = dialog.Figure == "double ring" ? "double-ring" : dialog.Figure;
+        var known = Views().Select(v => v.Name).ToHashSet(StringComparer.Ordinal);
+        int n = 1;
+        while (known.Contains($"{shape}-{n}")) n++;
+        string name = $"{shape}-{n}";
+        string centre = $"{Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}";
+        string size = dialog.Figure == "double ring" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)}"
+                    : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
+        string fleet = $"--fleet {string.Join(",", dialog.Chosen)}" + (dialog.Figure == "double ring" ? $" --inner-fleet {string.Join(",", dialog.InnerChosen)}" : "");
+        g.Enqueue($"form {name} {shape} --center {centre} {size} --angle 0 {fleet} --by {dialog.Policy}");
+        g.Enqueue($"take {name}");
+        FormationsTab.IsSelected = true;
+        Log($"{g.Name} › form {name} and take {name} on its tab — the golem tells its fleet; SEND to selected when ready");
     }
 
-    // A ROTATION OF AN ACTIVE FORMATION (propuesta 96): the formation moves every member the steps asked in the sense and writes the visit each
-    // golem gets; the console puts it on each member's tab and keeps the vertices held for the next rotation. Nothing goes until SEND.
-    private void RotateClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise);
-    private void RotateCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise);
-    // a double ring, ring by ring (8-oct-2026): a ring's step puts a line on its own golems' tabs alone
+    // A STEP OF A FORMATION (propuesta 104; ajuste 77): asked of the selected golem at once — `rotate <name> <sense> [--ring …]` — and the
+    // golem spreads it: every copy queues the same step, which opens when everybody stands on its place. The whole figure, or one ring.
+    private void RotateClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Whole);
+    private void RotateCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Whole);
     private void RotateOuterClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Outer);
     private void RotateOuterCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Outer);
     private void RotateInnerClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Inner);
     private void RotateInnerCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Inner);
 
-    private void Rotate(object sender, Sense sense, Ring? ring = null)
+    private async void Rotate(object sender, Sense sense, Ring ring)
     {
-        if ((sender as Button)?.Tag is not Formation formation) return;
-        // ONE STEP PER CLICK (Juan, 7-oct-2026: "quítala, deja siempre un paso por clic"): two steps are two clicks, two visits on each tab
-        try
-        {
-            // A DRAFT (Juan, 8-oct-2026: "es hasta que uno le da clic a shot que debería escribir en el tab de los involucrados"): the step is
-            // the formation's at once — the map shows everybody where it goes — and the tabs get it with the shot
-            formation.Rotate(sense, 1, ring);
-            string what = ring.HasValue ? $"{formation.Name}, its {ring.Value.ToString().ToLowerInvariant()} ring," : formation.Name;
-            Log($"{what} › one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")} drafted — now {formation.Holders}; {formation.Drafted.Count} step(s) wait for 'shot'");
-        }
-        catch (ArgumentException ex) { Log(ex.Message); }
+        if ((sender as Button)?.Tag is not FormationView formation || Current is not { } g) return;
+        string line = $"rotate {formation.Name} {(sense == Sense.Clockwise ? "clockwise" : "counterclockwise")}{(ring == Ring.Whole ? "" : $" --ring {ring.ToString().ToLowerInvariant()}")}";
+        await ActNowAsync(g, line);
     }
 
-    // THE GOLEM'S ANSWER TO A FORM (propuesta 99): the vertices it resolved, set against the ones the console draws — they share the figure's
-    // fixed order and the same geometry, so a difference means the golem was told another formation, or the two figures disagree
-    private void CompareVertices(Golem golem, string line, Reply reply)
+    // the eye: the console's own way of looking, remembered by name across the reads
+    private void Eye_Toggled(object sender, RoutedEventArgs e)
     {
-        var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length < 2 || reply.Json is not { } json) return;
-        string told = words[1].ToLowerInvariant();
-        var formation = formations.FirstOrDefault(f => f.WireName == told || f.IsDoubleRing && (f.RingWireName(Ring.Outer) == told || f.RingWireName(Ring.Inner) == told));
-        if (formation == null || (JsonWalk.Find(json, "places") ?? JsonWalk.Find(json, "vertices")) is not { ValueKind: JsonValueKind.Array } vertices) return;
-        // a ring of a double ring is set against that ring's own places (ajuste 102)
-        var mine = !formation.IsDoubleRing ? formation.Places : formation.RingPlaces(told == formation.RingWireName(Ring.Outer) ? Ring.Outer : Ring.Inner);
-        int i = 0, apart = 0;
-        foreach (var v in vertices.EnumerateArray())
-        {
-            double x = JsonWalk.Number(v, "x") ?? double.NaN, y = JsonWalk.Number(v, "y") ?? double.NaN;
-            if (i >= mine.Count || Math.Abs(mine[i].X - x) > 0.01 || Math.Abs(mine[i].Y - y) > 0.01)
-            {
-                apart++;
-                Log($"{golem.Name} › ⚠ {told} place {i}: the golem resolved it at {Spot.Fmt(x)},{Spot.Fmt(y)}, the console draws it at {(i < mine.Count ? mine[i].ToString() : "nothing")}");
-            }
-            i++;
-        }
-        if (apart == 0 && i == mine.Count) Log($"{golem.Name} › {told}: the golem's {i} places agree with the console's");
-        else if (i != mine.Count) Log($"{golem.Name} › ⚠ {told}: the golem resolved {i} places, the console draws {mine.Count}");
+        if ((sender as FrameworkElement)?.DataContext is not FormationView f) return;
+        if (f.Shown) hiddenFormations.Remove(f.Name); else hiddenFormations.Add(f.Name);
+        Draw();
     }
 
     // THE OBSTACLES' TAB (8-oct-2026): a row under the cursor lit on the map; 'gone' forgets it at once — the golem's own lever, like the
@@ -794,11 +746,10 @@ public partial class MainWindow : Window
         Log(left == 0 ? $"{g.Name} › every obstacle forgotten" : $"{g.Name} › {left} obstacle(s) still there: two stood at one point, or one was learned meanwhile — forget all again");
     }
 
-    private void Dissolve_Click(object sender, RoutedEventArgs e)
+    private async void Dissolve_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not Formation formation) return;
-        formations.Remove(formation);
-        Log($"{formation.Name} dissolved — the golems stay where they are");
+        if ((sender as Button)?.Tag is not FormationView formation || Current is not { } g) return;
+        await ActNowAsync(g, $"dissolve {formation.Name}");   // the golem lets it go and tells its fleet
     }
 
     // ==================================================================
@@ -917,7 +868,7 @@ public partial class MainWindow : Window
         if (OnGrip(e.GetPosition(Map)) is { } grabbed)
         {
             (dragging, grip) = grabbed;
-            ghost = dragging.Figure;
+            ghost = dragging.AsFigure();
             Map.CaptureMouse();
             e.Handled = true;
             Draw();
@@ -941,10 +892,10 @@ public partial class MainWindow : Window
 
     // THE GRIPS of the selected formation, projected (propuestas 97, 98): the ring at its centre moves it, the square on its first vertex
     // resizes it, the knob beyond that vertex turns it; null when the point is on none of them
-    private (Formation Formation, Grip Grip)? OnGrip(Point p)
+    private (FormationView Formation, Grip Grip)? OnGrip(Point p)
     {
-        if (FormationList.SelectedItem is not Formation f || !f.Shown) return null;
-        var (centre, size, knob) = Grips(f.Figure, f.Fleet.Count);
+        if (FormationList.SelectedItem is not FormationView f || !f.Shown || f.AsFigure() is not { } figure) return null;
+        var (centre, size, knob) = Grips(figure, f.CrewCount);
         bool near(Point q, double r) => Math.Abs(p.X - q.X) <= r && Math.Abs(p.Y - q.Y) <= r;
         if (near(size, 8)) return (f, Grip.Size);
         if (near(knob, 9)) return (f, Grip.Turn);
@@ -964,10 +915,10 @@ public partial class MainWindow : Window
 
     // the figure the grip held would make of it with the cursor here: a centre to a tenth of a metre inside the floor, a measure to a tenth
     // of a metre (at least a tenth), an orientation to five degrees
-    private Figure Reshaped(Formation f, Grip held, Point p)
+    private Figure? Reshaped(FormationView f, Grip held, Point p)
     {
         var (x, y) = FloorPoint(p);
-        var figure = f.Figure;
+        if ((ghost ?? f.AsFigure()) is not { } figure) return null;
         switch (held)
         {
             case Grip.Move:
@@ -977,7 +928,7 @@ public partial class MainWindow : Window
                 return figure.Sized(Math.Max(0.1, Math.Round(figure.MeasureFor(reach), 1)));
             default:
                 double cursor = Math.Atan2(y - figure.Center.Y, x - figure.Center.X) * 180 / Math.PI;
-                double laidOut = figure.Bearing(0, f.Fleet.Count) - figure.Angle;
+                double laidOut = figure.Bearing(0, f.CrewCount) - figure.Angle;
                 return figure.Oriented(Math.Round((cursor - laidOut) / 5) * 5);
         }
     }
@@ -996,91 +947,18 @@ public partial class MainWindow : Window
         var held = grip;
         dragging = null;
         ghost = null;
-        if (next != null && Shape(next) != Shape(formation.Figure)) Reshape(formation, held, next);
+        if (next != null && formation.AsFigure() is { } was && Shape(next) != Shape(was)) Reshape(formation, held, next);
         Draw();
     }
 
-    // the grip let go: the formation takes the figure — a DRAFT, nothing on the tabs until its shot (Juan, 7-oct-2026: "cuando suelto el clic
-    // termina de poner el comando visit… quizás quisiera un botón para agregar a los tabs")
-    private void Reshape(Formation formation, Grip held, Figure next)
+    // the grip let go: the formation is TOLD AGAIN with its new figure (propuesta 104: saying it again is making it again) — the `form` line to
+    // the selected golem at once, the same name, fleet and policy; the golem spreads it, and the fleet takes it again with `take`
+    private async void Reshape(FormationView formation, Grip held, Figure next)
     {
-        try
-        {
-            string before = Shape(formation.Figure);
-            switch (held)
-            {
-                case Grip.Move: formation.Move(next.Center); break;
-                case Grip.Size: formation.Resize(next.Measure); break;
-                default: formation.Orient(next.Angle); break;
-            }
-            string what = held switch { Grip.Move => "moved", Grip.Size => "resized", _ => "turned" };
-            Log($"{formation.Name} › {what} from {before} to {Shape(formation.Figure)} — {formation.Holders}; 'shot' puts it on the tabs");
-        }
-        catch (ArgumentException ex) { Log(ex.Message); }
-    }
-
-    // THE BARRIER (8-oct-2026, taken up again: "retoma lo del giro en sync que tenías"): when any member of the formation already has lines
-    // queued, the shot starts with a @sync on EVERY member's tab — sent together, nobody starts before the whole formation finished what came
-    // before; on empty tabs it needs none
-    private bool Queued(Formation formation) =>
-        formation.Fleet.Names.Any(n => golems.FirstOrDefault(g => g.Name == n) is { } g
-            && g.Script.Replace("\r\n", "\n").Split('\n').Any(l => l.Trim() != "" && !l.TrimStart().StartsWith('#')));
-
-    // THE SHOT: the formation as it stands goes to the tabs — every golem's visit to the vertex it holds, with a note; nothing is sent
-    private void Shot_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as Button)?.Tag is not Formation formation) return;
-        bool barrier = Queued(formation);
-        var rounds = formation.Rounds();
-        bool reshaped = formation.Reshaped;
-        var lines = formation.Shot();
-        if (rounds.Count > 0) { ShootRounds(formation, rounds, reshaped, barrier); return; }
-        int missing = 0;
-        foreach (var (name, line) in lines)
-        {
-            var g = golems.FirstOrDefault(x => x.Name == name);
-            if (g == null) { missing++; continue; }
-            if (barrier) g.Enqueue(Choreography.Sync);
-            if (formation.CanForm)
-            {
-                g.Enqueue(formation.FormLine(name));   // the context, never the coordinate (propuesta 99)
-                g.Enqueue(formation.TakeLine(name));
-            }
-            else g.Enqueue(line);
-        }
-        Log($"{formation.Name} › shot: {Shape(formation.Figure)} — a visit on {lines.Count - missing} tab(s){(missing > 0 ? $" ({missing} golem(s) no longer here)" : "")}; SEND to selected when ready");
-    }
-
-    // THE STEPS DRAFTED, WRITTEN ROUND BY ROUND (8-oct-2026; Juan: "que giraran al mismo tiempo"; "retoma lo del giro en sync que tenías"): the
-    // figure told again first when it changed, then every round — a @sync on EVERY member's tab before it (before the first only when something
-    // is queued), so all of them set out together and the rings turn at once, the one that does not move in a round just waiting at its
-    // barrier — and, for each golem a step of the round moves, a note and its take (or its visit for a figure the golems are not told)
-    private void ShootRounds(Formation formation, IReadOnlyList<IReadOnlyList<DraftStep>> rounds, bool reshaped, bool queued)
-    {
-        var missing = new HashSet<string>(StringComparer.Ordinal);
-        if (reshaped && formation.CanForm)
-            foreach (var name in formation.Fleet.Names)
-            {
-                if (golems.FirstOrDefault(x => x.Name == name) is not { } g) { missing.Add(name); continue; }
-                g.Enqueue(formation.FormLine(name));
-            }
-        int written = 0;
-        for (int r = 0; r < rounds.Count; r++)
-        {
-            foreach (var name in formation.Fleet.Names)
-            {
-                if (golems.FirstOrDefault(x => x.Name == name) is not { } g) { missing.Add(name); continue; }
-                if (queued || r > 0) g.Enqueue(Choreography.Sync);
-                foreach (var step in rounds[r])
-                {
-                    if (!step.To.TryGetValue(name, out int place)) continue;
-                    g.Enqueue(formation.CanForm ? formation.TakeLine(name, place) : step.Visits[name]);   // the context, never the coordinate; straight to the place (ajuste 103)
-                    written++;
-                }
-            }
-        }
-        int steps = rounds.Sum(r => r.Count);
-        Log($"{formation.Name} › shot: {steps} step(s) in {rounds.Count} round(s) — a @sync before each, the steps of one round set out together; {written} take(s) on the tabs{(missing.Count > 0 ? $" ({string.Join(", ", missing)} no longer here)" : "")}; SEND to selected when ready");
+        if (Current is not { } g) return;
+        string what = held switch { Grip.Move => "moved", Grip.Size => "resized", _ => "turned" };
+        Log($"{formation.Name} › {what} to {Shape(next)} — told again to {g.Name}, which tells its fleet; `take {formation.Name}` moves them");
+        await ActNowAsync(g, formation.FormLine(next));
     }
 
     // the coordinates under the cursor, shown while it moves over the floor and gone when it leaves (Juan, 6-oct-2026); while a formation is
@@ -1090,7 +968,7 @@ public partial class MainWindow : Window
         var p = e.GetPosition(Map);
         if (dragging != null)
         {
-            ghost = Reshaped(dragging, grip, p);
+            ghost = Reshaped(dragging, grip, p) ?? ghost;
             Draw();
         }
         var over = dragging != null ? grip : OnGrip(p)?.Grip;
@@ -1214,24 +1092,25 @@ public partial class MainWindow : Window
                 Canvas.SetLeft(halo, pl.X - rl); Canvas.SetTop(halo, pl.Y - rl); Map.Children.Add(halo);
             }
         }
-        // THE ACTIVE FORMATIONS PROJECTED (propuesta 96; Juan, 7-oct-2026: "que se vea la forma de la figura encima del mapa para proyectar la
+        // THE GOLEM'S FORMATIONS PROJECTED (propuesta 96, read from the golem since propuesta 104; Juan, 7-oct-2026: "que se vea la forma de la figura encima del mapa para proyectar la
         // formación seleccionada… un botón como un ojo"): every formation whose eye is open shows its figure; the one selected in the list is drawn
         // strongest and carries the HANDLE at its centre that moves it (propuesta 97); while it is held, where it stands fades and the figure is
         // drawn where the cursor would put it, every vertex with its holder
-        var chosen = FormationList.SelectedItem as Formation;
-        foreach (var f in formations.Where(f => f.Shown).OrderBy(f => f == chosen))
+        var chosen = FormationList.SelectedItem as FormationView;
+        foreach (var f in Views().Where(f => f.Shown).OrderBy(f => f == chosen))
         {
+            if (f.AsFigure() is not { } figure) continue;
             bool strong = f == chosen;
             if (f == dragging && ghost != null)
             {
-                DrawFigure(f, f.Figure, scale, strong: false, faint: true);
+                DrawFigure(f, figure, scale, strong: false, faint: true);
                 DrawFigure(f, ghost, scale, strong: true, faint: false);
-                DrawGrips(ghost, f.Fleet.Count);
+                DrawGrips(ghost, f.CrewCount);
             }
             else
             {
-                DrawFigure(f, f.Figure, scale, strong, faint: false);
-                if (strong) DrawGrips(f.Figure, f.Fleet.Count);
+                DrawFigure(f, figure, scale, strong, faint: false);
+                if (strong) DrawGrips(figure, f.CrewCount);
             }
         }
         // the points picked: the way the errand will go, numbered, joined by a dashed line
@@ -1273,7 +1152,7 @@ public partial class MainWindow : Window
 
     // one formation's figure on the map — the polygon through its vertices or the circle of its radius, filled faintly in purple, its centre
     // crossed, every vertex a diamond ringed in its holder's colour with the compass point and the holder's name ("free" when nobody holds it)
-    private void DrawFigure(Formation f, Figure figure, double scale, bool strong, bool faint)
+    private void DrawFigure(FormationView f, Figure figure, double scale, bool strong, bool faint)
     {
         var purple = ((SolidColorBrush)FindResource("Purple")).Color;
         var layer = new Canvas { Opacity = faint ? 0.3 : 1, IsHitTestVisible = false };
@@ -1281,7 +1160,7 @@ public partial class MainWindow : Window
         var line = new SolidColorBrush(purple) { Opacity = strong ? 1 : 0.7 };
         var fill = new SolidColorBrush(Color.FromArgb(strong ? (byte)0x30 : (byte)0x14, purple.R, purple.G, purple.B));
         var dash = strong ? null : new DoubleCollection { 3, 3 };
-        var vertices = figure.Places(f.Fleet.Count);
+        var vertices = figure.Places(f.CrewCount);
         var centre = Pixel(figure.Center.X, figure.Center.Y);
         if (figure is Circle circle)
         {

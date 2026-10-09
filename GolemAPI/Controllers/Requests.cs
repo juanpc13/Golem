@@ -71,93 +71,101 @@ public sealed record ScenarioRequest(string Scenario)
     }
 }
 
-/// <summary>The fleet called to a SQUARE (propuesta 59; ajuste 65) — <c>{"figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
-/// "by": "rank", "fleet": ["blue", "red"]}</c>: said by its side; the places taken by rank or by distance (ajuste 73); the fleet may be
-/// left out (this golem and every peer it can reach). The timed turn (effect, for) is gone: a step is <see cref="RotateRequest"/> (ajuste 77).</summary>
-public sealed record FormationRequest(string Figure, PointRequest Center, double? Side, List<string> Fleet, string By = null, double? Radius = null,
-                                      string Effect = null, double? For = null)
+/// <summary>A FORMATION TOLD (propuesta 104) — <c>{"name": "square-2", "figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
+/// "angle": 0, "fleet": ["blue", "red"], "by": "rank"}</c>: the golem keeps it by its name, with its fleet and its policy, and every golem
+/// of the fleet is told; made again when the name is known. A circle: <c>"radius"</c>. A double ring: <c>"figure": "double-ring",
+/// "radius"</c> the outer ring's, <c>"innerRadius"</c>, <c>"fleet"</c> the outer ring's golems, <c>"innerFleet"</c> the inner ring's. The fleet
+/// may be left out (this golem and every peer it can reach); the policy too (rank).</summary>
+public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side = null, double? Radius = null, double? InnerRadius = null,
+                                 double? Angle = null, List<string> Fleet = null, List<string> InnerFleet = null, string By = null)
 {
-    public const string Shape = "{\"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"by\": \"rank\", \"fleet\": [\"blue\", \"red\"]}";
-    public static readonly string[] Figures = { "square", "pentagon" };   // the circle and the triangle set aside for now (ajuste 65); the pentagon since ajuste 85
+    public const string Shape = "{\"name\": \"square-2\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0, \"fleet\": [\"blue\", \"red\"], \"by\": \"rank\"} — a circle: \"radius\"; a double ring: \"figure\": \"double-ring\", \"radius\", \"innerRadius\", \"fleet\" (outer), \"innerFleet\"";
+    public static readonly string[] Figures = { "square", "pentagon", "triangle", "circle", "double-ring" };
+
+    public string Kind => (Figure ?? "").Trim().ToLowerInvariant().Replace("double ring", "double-ring");
+    public bool IsCircle => Kind == "circle";
+    public bool IsRings => Kind == "double-ring";
+
+    /// <summary>What says its size: the side of a polygon, the radius of a circle, the outer radius of a double ring.</summary>
+    public double? Measure => IsCircle || IsRings ? Radius : Side;
 
     /// <summary>How the places are shared: by rank, the default, or by distance.</summary>
     public string Policy => string.IsNullOrWhiteSpace(By) ? "rank" : By.Trim().ToLowerInvariant();
 
     public IEnumerable<string> Problems()
     {
-        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square or pentagon for now (the circle and the triangle are set aside): " + Shape;
+        if (string.IsNullOrWhiteSpace(Name) || !System.Text.RegularExpressions.Regex.IsMatch(Name.Trim(), @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "the formation needs a name like square-2: " + Shape;
+        if (!Figures.Contains(Kind)) yield return "the figure is square, pentagon, triangle, circle or double-ring: " + Shape;
         if (Center == null) yield return "give the centre: " + Shape;
         else foreach (var p in Center.Problems()) yield return "centre: " + p;
-        if (Radius.HasValue) yield return "a polygon is said by its side, \"side\": 2.0 — not by a radius";
-        if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
-        if (Policy is not ("rank" or "distance")) yield return "the policy is \"rank\" or \"distance\"";
-        if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
-        if (!string.IsNullOrWhiteSpace(Effect) || For.HasValue) yield return "the timed turn is gone (ajuste 77): take the square, then POST /rotate " + RotateRequest.Shape + ", one step a time";
-    }
-}
-
-/// <summary>A FORMATION TOLD (propuesta 99) — <c>{"name": "square-1", "figure": "square", "center": {"x": 5.5, "y": 5.5}, "side": 2.0,
-/// "angle": 0}</c>: the golem keeps it by its name, made again when the name is known; <c>"places": 6</c> lays it out for that many golems
-/// (ajuste 101: the corners first, the rest on the sides).</summary>
-public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side, double? Angle = null, int? Places = null, double? Radius = null)
-{
-    public const string Shape = "{\"name\": \"square-1\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0} — a circle: \"radius\": 1.5, \"places\": 4";
-    public static readonly string[] Figures = { "square", "pentagon", "triangle", "circle" };   // a circle with how many it is for (ajuste 102)
-
-    private bool IsCircle => Figure?.Trim().ToLowerInvariant() == "circle";
-
-    /// <summary>What says its size: the side of a polygon, the radius of a circle.</summary>
-    public double? Measure => IsCircle ? Radius : Side;
-
-    public IEnumerable<string> Problems()
-    {
-        if (string.IsNullOrWhiteSpace(Name) || !System.Text.RegularExpressions.Regex.IsMatch(Name.Trim(), @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "the formation needs a name like square-1: " + Shape;
-        if (string.IsNullOrWhiteSpace(Figure) || !Figures.Contains(Figure.Trim().ToLowerInvariant())) yield return "the figure is square, pentagon, triangle or circle: " + Shape;
-        if (Center == null) yield return "give the centre: " + Shape;
-        else foreach (var p in Center.Problems()) yield return "centre: " + p;
-        if (IsCircle)
+        if (IsCircle || IsRings)
         {
-            if (!Radius.HasValue || !double.IsFinite(Radius.Value) || Radius.Value <= 0) yield return "a circle's radius must be a number of metres greater than zero";
-            if (!Places.HasValue) yield return "a circle's places hang on how many golems ride it: give \"places\"";
-            if (Side.HasValue) yield return "a circle is said by its radius, not a side";
+            if (!Radius.HasValue || !double.IsFinite(Radius.Value) || Radius.Value <= 0) yield return $"a {Kind.Replace('-', ' ')}'s radius must be a number of metres greater than zero";
+            if (Side.HasValue) yield return $"a {Kind.Replace('-', ' ')} is said by its radius, not a side";
         }
         else
         {
             if (!Side.HasValue || !double.IsFinite(Side.Value) || Side.Value <= 0) yield return "the side must be a number of metres greater than zero";
             if (Radius.HasValue) yield return "a polygon is said by its side, not a radius";
         }
+        if (IsRings)
+        {
+            if (!InnerRadius.HasValue || !double.IsFinite(InnerRadius.Value) || InnerRadius.Value <= 0) yield return "a double ring needs its inner radius, metres greater than zero";
+            else if (Radius.HasValue && InnerRadius.Value >= Radius.Value) yield return "the inner radius of a double ring is smaller than the outer one";
+            if (InnerFleet == null || InnerFleet.Count == 0) yield return "a double ring needs the inner ring's golems: \"innerFleet\"";
+            if (Fleet == null || Fleet.Count == 0) yield return "a double ring needs the outer ring's golems: \"fleet\"";
+        }
+        else
+        {
+            if (InnerRadius.HasValue) yield return "only a double ring has an inner radius";
+            if (InnerFleet != null && InnerFleet.Count > 0) yield return "only a double ring has an inner fleet";
+        }
         if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
-        if (Places.HasValue && (Places.Value < 1 || Places.Value > 100)) yield return "the places are how many golems it is laid out for, 1 to 100";
+        if (Policy is not ("rank" or "distance")) yield return "the policy is \"rank\" or \"distance\"";
+        if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
+        if (InnerFleet != null && InnerFleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the inner fleet must be a name";
     }
 }
 
-/// <summary>A PLACE TAKEN (propuesta 99; ajuste 101) — <c>{"name": "square-1", "place": 2}</c>, or <c>"vertex": 2</c>, which says the same:
-/// the golem resolves where that place of that formation stands and goes there.</summary>
-public sealed record TakeRequest(string Name, int? Vertex, int? Place = null)
+/// <summary>A FORMATION TAKEN (propuesta 104) — <c>{"name": "square-2"}</c>: this golem says where it stands and the fleet's round of words
+/// opens the routes, each to its place by the formation's policy. No place on the request: the golem resolves it.</summary>
+public sealed record TakeRequest(string Name)
 {
-    public const string Shape = "{\"name\": \"square-1\", \"place\": 2}";
-
-    /// <summary>The number of the place, whichever word said it.</summary>
-    public int? Number => Place ?? Vertex;
+    public const string Shape = "{\"name\": \"square-2\"}";
 
     public IEnumerable<string> Problems()
     {
         if (string.IsNullOrWhiteSpace(Name)) yield return "which formation? its name: " + Shape;
-        if (Place.HasValue && Vertex.HasValue) yield return "say the place once — place or vertex, not both: " + Shape;
-        else if (!Number.HasValue || Number.Value < 0) yield return "the place is a number from 0: " + Shape;
     }
 }
 
-/// <summary>One STEP of the formation in place (ajuste 77) — <c>{"sense": "clockwise"}</c> or <c>"counterclockwise"</c>: every body takes
-/// the next corner in that sense once everybody stands on its own; steps queue.</summary>
-public sealed record RotateRequest(string Sense)
+/// <summary>One STEP of a formation (ajuste 77; propuesta 104) — <c>{"name": "square-2", "sense": "clockwise"}</c>, and for a double ring
+/// <c>"ring": "outer"</c> or <c>"inner"</c> (left out, the whole figure): every body of it takes the next place in that sense once everybody
+/// stands on its own; steps queue.</summary>
+public sealed record RotateRequest(string Name, string Sense, string Ring = null)
 {
-    public const string Shape = "{\"sense\": \"clockwise\"}";
+    public const string Shape = "{\"name\": \"square-2\", \"sense\": \"clockwise\", \"ring\": \"inner\"}";
     public static readonly string[] Senses = { "clockwise", "counterclockwise" };
+    public static readonly string[] Rings = { "whole", "outer", "inner" };
+
+    public string Orbit => string.IsNullOrWhiteSpace(Ring) ? "whole" : Ring.Trim().ToLowerInvariant();
 
     public IEnumerable<string> Problems()
     {
+        if (string.IsNullOrWhiteSpace(Name)) yield return "which formation? its name: " + Shape;
         if (string.IsNullOrWhiteSpace(Sense) || !Senses.Contains(Sense.Trim().ToLowerInvariant())) yield return "the sense is \"clockwise\" or \"counterclockwise\": " + Shape;
+        if (!Rings.Contains(Orbit)) yield return "the ring is \"outer\", \"inner\" or left out: " + Shape;
+    }
+}
+
+/// <summary>A FORMATION DISSOLVED (propuesta 104) — <c>{"name": "square-2"}</c>: it leaves every golem of the fleet.</summary>
+public sealed record DissolveRequest(string Name)
+{
+    public const string Shape = "{\"name\": \"square-2\"}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Name)) yield return "which formation? its name: " + Shape;
     }
 }
 

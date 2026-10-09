@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text.Json;
-using WardenCli.Formations;
 
 namespace WardenCli;
 
@@ -17,49 +16,26 @@ public static class Workspace
     private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true };
 
     private sealed record SavedGolem(string Name, string Host, int Port, string Script);
-    // a double ring (8-oct-2026) carries its inner radius, how many places its outer ring has and its inner ring's steps too
-    private sealed record SavedFormation(int Number, string Figure, double CenterX, double CenterY, double Measure, double Angle,
-                                         List<string> Fleet, Dictionary<string, int> Held, int Turned, bool Shown, bool Unshot,
-                                         double? Inner = null, int? OuterPlaces = null, int InnerTurned = 0);
-    // version 2 carries the formations; a version 1 file has none and opens as it always did
-    private sealed record File_(string Kind, int Version, List<SavedGolem> Golems, List<SavedFormation>? Formations = null);
+    // version 2 carried the console's formations; since propuesta 104 (8-oct-2026) the formations are the golems' own, read from them, and a
+    // file's Formations are ignored
+    private sealed record File_(string Kind, int Version, List<SavedGolem> Golems);
     private sealed record Settings(List<string> Recent, string? Last, PaneSizes? Panes = null);
 
-    public static void Save(string path, IEnumerable<Golem> golems, IEnumerable<Formation> formations)
+    public static void Save(string path, IEnumerable<Golem> golems)
     {
-        var saved = formations.Select(f => new SavedFormation(f.Number, f.Figure.Name, f.Figure.Center.X, f.Figure.Center.Y, f.Figure.Measure, f.Figure.Angle,
-            f.Fleet.Names.ToList(), f.Fleet.Names.ToDictionary(n => n, f.IndexOf), f.Turned, f.Shown, f.Unshot,
-            (f.Figure as DoubleRing)?.InnerRadius, (f.Figure as DoubleRing)?.OuterPlaces, f.InnerTurned)).ToList();
-        var file = new File_("golem workspace", 2, golems.Select(g => new SavedGolem(g.Name, g.Host, g.Port, g.Script)).ToList(), saved);
+        var file = new File_("golem workspace", 3, golems.Select(g => new SavedGolem(g.Name, g.Host, g.Port, g.Script)).ToList());
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         File.WriteAllText(path, JsonSerializer.Serialize(file, Pretty));
         Remember(path);
     }
 
-    /// <summary>The golems and the formations a workspace file holds; a formation that cannot be born again (a figure unknown, two members on
-    /// one vertex) is left out and said in <c>Problems</c>, the rest opens.</summary>
-    public static (List<Golem> Golems, List<Formation> Formations, List<string> Problems) Load(string path)
+    /// <summary>The golems a workspace file holds, with the script each was left with.</summary>
+    public static List<Golem> Load(string path)
     {
         var file = JsonSerializer.Deserialize<File_>(File.ReadAllText(path)) ?? throw new InvalidDataException("the workspace file could not be read");
         if (file.Kind != "golem workspace") throw new InvalidDataException("this is not a golem workspace file");
         Remember(path);
-        var golems = file.Golems.Select(s => new Golem { Name = s.Name, Host = s.Host, Port = s.Port, Script = s.Script ?? "" }).ToList();
-        var formations = new List<Formation>();
-        var problems = new List<string>();
-        foreach (var f in file.Formations ?? new List<SavedFormation>())
-        {
-            try
-            {
-                var figure = f.Figure == "double ring"
-                    ? new DoubleRing(new Spot(f.CenterX, f.CenterY), f.Measure, f.Inner ?? throw new ArgumentException("its inner ring was not saved"),
-                                     f.OuterPlaces ?? throw new ArgumentException("its outer ring was not saved"), f.Fleet.Count - f.OuterPlaces.Value, f.Angle)
-                    : Figure.Named(f.Figure, new Spot(f.CenterX, f.CenterY), f.Measure).Oriented(f.Angle);
-                var fleet = new Fleet(f.Fleet.Select(n => new Member(n, null)));
-                formations.Add(new Formation(f.Number, figure, fleet, f.Held, f.Turned, f.Unshot, f.InnerTurned) { Shown = f.Shown });
-            }
-            catch (Exception ex) when (ex is ArgumentException or NullReferenceException) { problems.Add($"{f.Figure} #{f.Number} left out: {ex.Message}"); }
-        }
-        return (golems, formations, problems);
+        return file.Golems.Select(s => new Golem { Name = s.Name, Host = s.Host, Port = s.Port, Script = s.Script ?? "" }).ToList();
     }
 
     /// <summary>Where the routines of a workspace are looked for: next to its file; the documents folder when there is none.</summary>

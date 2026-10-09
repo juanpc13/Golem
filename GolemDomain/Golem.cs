@@ -130,7 +130,7 @@ internal sealed class Golem
 
     /// <summary>The golem's choreographies module, its own from birth (ajuste 69; Juan: "el módulo asociado a coreografías…
     /// g.coreografia.formacion('cuadrado')"): the formations it knows how to take, made by name, and the route to its place — <c>formation =
-    /// g.Choreography.Formation(@figure, center, side); route = muster.Join(from, me);</c> (ajustes 69, 70).</summary>
+    /// g.Choreography.Form(@formationName, @figure, center, measure, turn, fleet, @by); formation.Convene(from, me);</c> (ajustes 69, 70; propuesta 104).</summary>
     internal Choreographies Choreography => choreography;
 
     /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here

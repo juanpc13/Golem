@@ -75,36 +75,68 @@ public sealed class GolemSpeech
             // THE CALL (ajustes 73, 80, both policies): a golem that convened tells every peer where it stood — its act's expose, the position read from
             // the domain (expose takes any primitive expression). The peer that had not convened convenes itself and tells in turn; each
             // golem convenes once, so the word spreads with no loop. The once is per call, teller and peer.
-            string stood = string.Join("\n", peers.Select(p => $@"
-                tell StoodFor with @figure, @cx, @cy, @sideLength, @names, @callId, @by, @who, @stoodX, @stoodY
+            // THE FORMATION TOLD (propuesta 104): the operator's form exposes the formation — its name, figure, centre, measure, orientation, fleet,
+            // policy and the stamp of the call — and every peer is told; the peer's own form (its uptake) carries no expose, so it spreads nothing
+            // further. The once is per stamp and peer: a formation told again under the same name is a new call.
+            string formed = string.Join("\n", peers.Select(p => $@"
+                tell FormedAs with @call, @shape, @atX, @atY, @length, @degrees, @crew, @policy, @nonce
                     to {p}
-                    once 'stood-' + @callId + '-' + @who + '-{p}';"));
+                    once 'formed-' + @nonce + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-formed")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Formed").One()
+                    .OnMatch("[_:Choreographies].Form(_, _, _, _, _, _, _, _) expose $call call, $shape shape, $atX atX, $atY atY, $length length, $degrees degrees, $crew crew, $policy policy, $nonce nonce;")
+                .Causation.Continue(formed);
+            string formedRings = string.Join("\n", peers.Select(p => $@"
+                tell FormedRingsAs with @call, @atX, @atY, @outerLength, @innerLength, @degrees, @crew, @innerCrew, @policy, @nonce
+                    to {p}
+                    once 'formed-' + @nonce + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-formed-rings")
+                .Cue().Company().WithSharedHydration()
+                .Seek("FormedRings").One()
+                    .OnMatch("[_:Choreographies].FormRings(_, _, _, _, _, _, _, _) expose $call call, $atX atX, $atY atY, $outerLength outerLength, $innerLength innerLength, $degrees degrees, $crew crew, $innerCrew innerCrew, $policy policy, $nonce nonce;")
+                .Causation.Continue(formedRings);
+            // THE TAKE (ajustes 73, 80, 81; propuesta 104): the golem said where it stands into the named formation — every peer is told the name,
+            // the stamp, who and where, and convenes in its own copy
+            string stood = string.Join("\n", peers.Select(p => $@"
+                tell StoodFor with @call, @nonce, @who, @stoodX, @stoodY
+                    to {p}
+                    once 'stood-' + @nonce + '-' + @who + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-stood")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Stood").One()
-                    .OnMatch("[_:Muster].Convene(_, _) expose $figure shape, $cx atX, $cy atY, $sideLength length, $names crew, $callId call, $by policy, $who who, $stoodX stoodX, $stoodY stoodY;")   // the act on the convocation (ajuste 81)
+                    .OnMatch("[_:Formation].Convene(_, _) expose $call call, $nonce nonce, $who who, $stoodX stoodX, $stoodY stoodY;")   // the act on the formation (ajuste 81)
                 .Causation.Continue(stood);
             // THE FORMATION IN PLACE (ajuste 77): a golem that reached its place says so to every peer — the arrival's act exposes who and
-            // which call (the peer's own Placed, written by its uptake, carries no expose: one hop) — and a step asked of one golem is told
+            // which formation (the peer's own Placed, written by its uptake, carries no expose: one hop) — and a step asked of one golem is told
             // to every peer, who queues the same step; the once is per step and peer.
             string placed = string.Join("\n", peers.Select(p => $@"
                 tell PlacedAt with @call, @who
                     to {p}
-                    once 'placed-' + @call + '-' + @round + '-' + @who + '-{p}';"));
+                    once 'placed-' + @nonce + '-' + @round + '-' + @who + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-placed")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Placed").One()
-                    .OnMatch("[_:Muster].Placed(_) expose $who who, $call call, $round round;")   // the round in the once: a word per round, not one per call
+                    .OnMatch("[_:Formation].Placed(_) expose $who who, $call call, $nonce nonce, $round round;")   // the round in the once: a word per round, not one per call
                 .Causation.Continue(placed);
             string rotate = string.Join("\n", peers.Select(p => $@"
-                tell RotateTo with @sense, @stepId, @call
+                tell RotateTo with @call, @sense, @ring, @stepId
                     to {p}
                     once 'rotate-' + @stepId + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-rotate")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Rotate").One()
-                    .OnMatch("[_:Muster].Queue(_, _) expose $sense turning, $stepId step, $call call;")   // the figure's move queued in the convocation (ajuste 84)
+                    .OnMatch("[_:Formation].Queue(_, _) expose $call call, $sense turning, $ring orbit, $stepId step;")   // the figure's move queued in the formation (ajuste 84)
                 .Causation.Continue(rotate);
+            string dissolved = string.Join("\n", peers.Select(p => $@"
+                tell Dissolved with @call
+                    to {p}
+                    once 'dissolved-' + @nonce + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-dissolved")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Dissolved").One()
+                    .OnMatch("[_:Choreographies].Dissolve(_) expose $call call, $nonce nonce;")
+                .Causation.Continue(dissolved);
         }
 
         if (tellDoneTo == null) return;
@@ -140,13 +172,20 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
-            .Told("StoodFor").With<string>("figure").With<double>("cx").With<double>("cy").With<double>("sideLength").With<string>("names")
-                .With<string>("callId").With<string>("by").With<string>("teller").With<double>("px").With<double>("py")
+            .Told("FormedAs").With<string>("call").With<string>("shape").With<double>("cx").With<double>("cy").With<double>("measureLength")
+                .With<double>("angle").With<string>("names").With<string>("by").With<string>("nonce")
+                .Command(GolemEmbodiment.UptakeFormedAs)
+            .Told("FormedRingsAs").With<string>("call").With<double>("cx").With<double>("cy").With<double>("outerRadius").With<double>("innerRadius")
+                .With<double>("angle").With<string>("names").With<string>("innerNames").With<string>("by").With<string>("nonce")
+                .Command(GolemEmbodiment.UptakeFormedRingsAs)
+            .Told("StoodFor").With<string>("call").With<string>("nonce").With<string>("teller").With<double>("px").With<double>("py")
                 .Command(GolemEmbodiment.UptakeStoodFor)
             .Told("PlacedAt").With<string>("call").With<string>("who")
                 .Command(GolemEmbodiment.UptakePlacedAt)
-            .Told("RotateTo").With<string>("sense").With<string>("stepId").With<string>("call")
+            .Told("RotateTo").With<string>("call").With<string>("sense").With<string>("ring").With<string>("stepId")
                 .Command(GolemEmbodiment.UptakeRotateTo)
+            .Told("Dissolved").With<string>("call")
+                .Command(GolemEmbodiment.UptakeDissolved)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
         Console.WriteLine($"[golem {golem}] listening for tells on topic 'tell-{golem}'");

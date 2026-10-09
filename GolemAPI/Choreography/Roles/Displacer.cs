@@ -81,27 +81,109 @@ public sealed class Displacer
         return ThenEach(robot.Newest(), points.Skip(1), answer);
     }
 
-    // THE FORMATIONS (propuesta 59; ajuste 65: the square alone on the command line for now, said by its side, the places taken BY RANK —
-    // the fleet's names sorted, each golem the corner of its own, no word exchanged; ajuste 69: the formation made by the golem's own
-    // choreographies module, by its name — `formation = g.Choreography.Formation(@figure, center, side);` — so ONE template per effect
-    // serves every shape). The side enters as @sideLength, never @side: a local named like a parameter would resolve to the parameter.
-    // The call SPREADS BY TELL (ajuste 71): the act ends with an expose of what the peers need — the labels never a parameter's name —
-    // and GolemSpeech's echo-called tells each peer it was called; the peers' own Join (UptakeCalledTo) carries no expose, so it spreads
-    // nothing further.
-    private const string JoinCheck = @"
-                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
+    // ==================================================================
+    // THE FORMATIONS ARE THE GOLEM'S (propuesta 104, 8-oct-2026; Juan: "las formaciones le pertenecerán al golem y además a los otros golems
+    // involucrados se les proporcionará la misma formación… el CLI sólo servirá como interfaz para administrar esas formaciones"): FORM tells
+    // the golem a formation — its name, figure, centre, measure, orientation, FLEET and POLICY — and the golem keeps it by its name; the act
+    // exposes it and echo-formed tells every peer, whose uptake forms the same if it is in the fleet (one hop: the uptake exposes nothing).
+    // TAKE: this golem says where it stands (Convene) and the round of words opens the routes — by rank or by distance (ajuste 80); the
+    // warden never says who goes where (Juan: "lo que teníamos malo era --place 0… los que resuelven todo es el dominio del golem"). ROTATE
+    // queues a step of the named formation — of one ring of a double ring, or whole. DISSOLVE lets it go, in every copy. Every value enters
+    // as a parameter named unlike every print label (@formationName, never @name; @measureLength, never @measure: a local named like a
+    // parameter resolves to it); the STAMP is the once of the call, minted here and kept by every copy, so the tells about a formation
+    // told again under the same name are new words.
+    // ==================================================================
+
+    private const string FormCheck = @"
                     Check(g.Current.Map.IsOnMap(Position(@cx, @cy))) Error 'the centre is nowhere on the map';
                 ";
+
+    private const string FormFormation = @"
+                    {
+                        center = Position(@cx, @cy);
+                        measure = Meters(@measureLength);
+                        turn = Degrees(@angle);
+                        fleet = Fleet(@names);
+                        formation = g.Choreography.Form(@formationName, @figure, center, measure, turn, fleet, @by, @stamp);
+                        print formation.Name 'called', formation.Figure.Name 'shape', formation.Figure.Center.X 'atX', formation.Figure.Center.Y 'atY',
+                              formation.Figure.Measure.InMeters 'length', formation.Figure.Turn.InDegrees 'degrees', formation.Policy 'policy',
+                              fleet.Count 'crew', formation.PlaceCount 'count';
+                        foreach (holders in formation.Holders()) {
+                            print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
+                        }
+                        expose @formationName call, @figure shape, @cx atX, @cy atY, @measureLength length, @angle degrees, @names crew, @by policy, @stamp nonce;
+                    }
+                ";
+
+    private const string FormDoubleRing = @"
+                    {
+                        center = Position(@cx, @cy);
+                        outer = Meters(@outerRadius);
+                        inner = Meters(@innerRadius);
+                        turn = Degrees(@angle);
+                        fleet = Fleet(@names, @innerNames);
+                        formation = g.Choreography.FormRings(@formationName, center, outer, inner, turn, fleet, @by, @stamp);
+                        print formation.Name 'called', formation.Figure.Name 'shape', formation.Figure.Center.X 'atX', formation.Figure.Center.Y 'atY',
+                              formation.Figure.Measure.InMeters 'length', formation.Figure.Turn.InDegrees 'degrees', formation.Policy 'policy',
+                              fleet.Count 'crew', formation.PlaceCount 'count';
+                        foreach (holders in formation.Holders()) {
+                            print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
+                        }
+                        expose @formationName call, @cx atX, @cy atY, @outerRadius outerLength, @innerRadius innerLength, @angle degrees, @names crew, @innerNames innerCrew, @by policy, @stamp nonce;
+                    }
+                ";
+
+    private const string TakeCheck = @"
+                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
+                    Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name: form it first';
+                ";
+
+    // THE TAKE: this golem's word into the formation (Convene, ajuste 81); the route opens with the word that completes the round — this one
+    // when the fleet is just itself, else the last heard (UptakeStoodFor). The act exposes what the peers need: the name, the stamp, who and
+    // where it stood (labels never a parameter's name).
+    private const string TakeFormation = @"
+                    {
+                        formation = g.Choreography.Find(@formationName);
+                        fleet = formation.Fleet;
+                        me = fleet.Member(g);
+                        from = g.Destination;
+                        formation.Convene(from, me);
+                        if (formation.IsComplete) {
+                            route = formation.Route;
+                            if (g.Strategy.OnTheWay.IsActive) {
+                                route = g.Dash(route);
+                            }
+                            if (route.IsPending()) {
+                                print route.Id 'route', route.Order 'action';
+                                if (route.IsWalkable) {
+                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                                }
+                            } else {
+                                print route.Id 'route', route.Status 'ended';
+                                if (route.EndedShort) {
+                                    print route.Why 'why';
+                                }
+                            }
+                        } else {
+                            print formation.StoodCount 'stood', fleet.Count 'of';
+                        }
+                        expose @formationName call, formation.Stamp nonce, me.Name who, from.X stoodX, from.Y stoodY;
+                    }
+                ";
+
     // THE STEP (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj y antihorario… se pueden
-    // encolar"): a step is queued on the formation in place — nothing moves here unless everybody already stands on its place, then the
-    // step opens at once. The act exposes what the peers need to queue the same step (echo-rotate); the labels never a parameter's name.
+    // encolar"): a step is queued on the named formation — nothing moves here unless everybody already stands on its place, then the step
+    // opens at once. The move is the FIGURE's (ajuste 84), of one ring or whole (propuesta 104). The act exposes what the peers need to queue
+    // the same step (echo-rotate); the labels never a parameter's name.
     private const string RotateFormation = @"
                     {
-                        muster = g.Choreography.Current;
-                        move = muster.Formation.Rotate(@sense);
-                        muster.Queue(move, @stepId);
-                        if (muster.CanStep) {
-                            route = muster.Step();
+                        formation = g.Choreography.Find(@formationName);
+                        move = formation.Figure.Rotate(@sense, @ring);
+                        formation.Queue(move, @stepId);
+                        if (formation.CanStep) {
+                            route = formation.Step();
                             if (g.Strategy.OnTheWay.IsActive) {
                                 route = g.Dash(route);
                             }
@@ -119,211 +201,129 @@ public sealed class Displacer
                                 }
                             }
                         } else {
-                            print muster.Queued 'queued';
+                            print formation.Queued 'queued';
                         }
-                        expose @sense turning, @stepId step, muster.Call call;
+                        expose @formationName call, @sense turning, @ring orbit, @stepId step;
                     }
                 ";
 
-    // THE CALL (ajustes 71, 73, 80): one template for both policies. This golem says where it stands (Convene); its route opens only when
-    // the whole fleet said so — with this very word when it is the last, else with the last word heard (UptakeStoodFor). The act exposes
-    // what the peers need to convene in the same convocation: the formation, the fleet, the call, the POLICY and where this golem stood
-    // (labels never a parameter's name; one expose per script).
-    private const string CallFormation = @"
+    private const string DissolveFormation = @"
                     {
-                        from = g.Destination;
-                        center = Position(@cx, @cy);
-                        side = Meters(@sideLength);
-                        formation = g.Choreography.Formation(@figure, center, side);
-                        fleet = Fleet(@names);
-                        me = fleet.Member(g);
-                        muster = g.Choreography.Muster(@callId, formation, fleet, @by);
-                        muster.Convene(from, me);
-                        if (muster.IsComplete) {
-                            route = muster.Route;
-                            if (g.Strategy.OnTheWay.IsActive) {
-                                route = g.Dash(route);
-                            }
-                            if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
-                                if (route.IsWalkable) {
-                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                                }
-                            } else {
-                                print route.Id 'route', route.Status 'ended';
-                                if (route.EndedShort) {
-                                    print route.Why 'why';
-                                }
-                            }
-                        } else {
-                            print muster.StoodCount 'stood', fleet.Count 'of';
-                        }
-                        expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @by policy, me.Name who, from.X stoodX, from.Y stoodY;
+                        formation = g.Choreography.Find(@formationName);
+                        g.Choreography.Dissolve(formation);
+                        print formation.Name 'called', formation.Dissolved 'gone';
+                        expose formation.Name call, formation.Stamp nonce;
                     }
                 ";
 
-    /// <summary>The fleet is CALLED to a formation (propuesta 59; ajustes 65, 71, 73, 80): the formation by its name, at a centre with a side,
-    /// the fleet's names (this golem among them) and the policy that shares the places — <c>rank</c> or <c>distance</c>. This golem says
-    /// where it stands; every peer is told and says where it stands; the routes open when everybody spoke — this golem's with its own word
-    /// when the fleet is just itself, else with the last word heard. The order is pushed by the reaction on the act that opens it.</summary>
-    // ==================================================================
-    // THE FORMATIONS THE WARDEN NAMES (propuesta 99, 8-oct-2026; Juan: "darle contexto al golem pero nunca darle la coordenada exacta de su
-    // visit"): FORM tells the golem a formation — its name, figure, centre, side and orientation — and the golem keeps it by its name; TAKE
-    // tells it which VERTEX of it to take, by number: where that vertex stands the golem resolves on its own map, and the route ends facing
-    // the centre. Who takes which vertex is the warden's (WardenCli); no fleet, no rank, no word between golems.
-    // ==================================================================
-
-    /// <summary>A formation told — made, or made again with its new figure when the name is known. Its print is the vertices the golem
-    /// resolved, so the warden can compare them with its own. No route: nothing for the body to do.</summary>
-    public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, int? places = null)
+    /// <summary>A FORMATION TOLD (propuesta 104): its name, figure, centre, measure (a polygon's side, a circle's radius), orientation, the
+    /// fleet's names and the policy — made, or made again when the name is known. Its print is the places as this golem resolved them and who
+    /// holds each by rank, so the warden draws what the golem knows. The fleet is told (echo-formed). No route: nothing for the body to do.</summary>
+    public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, IReadOnlyList<string> fleet, string policy)
     {
+        if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
+        string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // the once of the call, frozen as a parameter
         try
         {
-            // two fixed templates (ajuste 101): the formation as its vertices, or laid out for that many bodies — never assembled; the count enters
-            // as @bodies, never @places: a local named like a parameter resolves to it, and the loop below is named places
-            return Answer.Of(robot.Actor.Using(places.HasValue
-                ? @"
-                    {
-                        center = Position(@cx, @cy);
-                        measure = Meters(@measureLength);
-                        turn = Degrees(@angle);
-                        formation = g.Choreography.Form(@formationName, @figure, center, measure, turn, @bodies);
-                        print formation.Called 'called', formation.Name 'shape', formation.Center.X 'atX', formation.Center.Y 'atY',
-                              formation.Measure.InMeters 'length', formation.Turn.InDegrees 'degrees', formation.PlaceCount 'count';
-                        foreach (places in formation.Places()) {
-                            print places.X 'x', places.Y 'y';
-                        }
-                    }
-                "
-                : @"
-                    {
-                        center = Position(@cx, @cy);
-                        measure = Meters(@measureLength);
-                        turn = Degrees(@angle);
-                        formation = g.Choreography.Form(@formationName, @figure, center, measure, turn);
-                        print formation.Called 'called', formation.Name 'shape', formation.Center.X 'atX', formation.Center.Y 'atY',
-                              formation.Measure.InMeters 'length', formation.Turn.InDegrees 'degrees', formation.PlaceCount 'count';
-                        foreach (places in formation.Places()) {
-                            print places.X 'x', places.Y 'y';
-                        }
-                    }
-                ")
+            return Answer.Of(robot.Actor.Using(FormCheck, FormFormation)
                 .WithParameters(p => {
                     p["formationName", typeof(string)] = name;   // never @name: the route's print has a label 'name'
                     p["figure", typeof(string)] = figure;
                     p["cx", typeof(double)] = Resolution.Metres(center.X);
                     p["cy", typeof(double)] = Resolution.Metres(center.Y);
-                    p["measureLength", typeof(double)] = Resolution.Metres(measure);   // a side, or a circle's radius; never @measure: the script's own local is named so
+                    p["measureLength", typeof(double)] = Resolution.Metres(measure);   // never @measure: the script's own local is named so
                     p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
-                    if (places.HasValue) p["bodies", typeof(int)] = places.Value;   // never @places: the script's loop over the places is named so
+                    p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable holds the object built from it
+                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
+                    p["stamp", typeof(string)] = stamp;
                 })
-                .PerformCommand());
+                .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
     }
 
-    /// <summary>The place of that number of the formation of that name, TAKEN (a vertex, or a point of a side when it was laid out for more
-    /// bodies than vertices — ajuste 101): the route from where the errand starts (`g.Destination`) to where the golem resolves that place stands, ending facing the centre; refused off the map, without room, or for a formation the
-    /// golem was not told. The first order is pushed to the body by the reaction on the act (next-order-take).</summary>
-    public Answer Take(string name, int place)
+    /// <summary>A DOUBLE RING TOLD (propuesta 104): the outer ring's radius and golems, the inner ring's radius and golems.</summary>
+    public Answer FormRings(string name, (double X, double Y) center, double outerRadius, double innerRadius, double angle, IReadOnlyList<string> outer, IReadOnlyList<string> inner, string policy)
+    {
+        if (outer == null || outer.Count == 0) return Answer.Refusal("the outer ring needs at least one golem");
+        if (inner == null || inner.Count == 0) return Answer.Refusal("the inner ring needs at least one golem");
+        string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        try
+        {
+            return Answer.Of(robot.Actor.Using(FormCheck, FormDoubleRing)
+                .WithParameters(p => {
+                    p["formationName", typeof(string)] = name;
+                    p["cx", typeof(double)] = Resolution.Metres(center.X);
+                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
+                    p["outerRadius", typeof(double)] = Resolution.Metres(outerRadius);   // never @outer / @inner: the script's locals are named so
+                    p["innerRadius", typeof(double)] = Resolution.Metres(innerRadius);
+                    p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
+                    p["names", typeof(string)] = string.Join(",", outer);
+                    p["innerNames", typeof(string)] = string.Join(",", inner);
+                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
+                    p["stamp", typeof(string)] = stamp;
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>THE FORMATION TAKEN (propuesta 104): this golem says where it stands; every peer of the fleet is told and says where it
+    /// stands; the routes open when everybody spoke — by rank each to the place of its rank, by distance to the nearest left (the first law).
+    /// Refused for a formation the golem was not told, or one it is not in. The order is pushed by the reaction on the act that opens it.</summary>
+    public Answer Take(string name)
+    {
+        try
+        {
+            var answer = Answer.Of(robot.Actor.Using(TakeCheck, TakeFormation)
+                .WithParameters(p => { p["formationName", typeof(string)] = name; })
+                .PerformCheckThenCommand());
+            return answer.Ok ? answer : Answer.Refusal($"take {name}: " + answer.Refused);
+        }
+        catch (Exception ex) { return Answer.Refusal($"take {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>A STEP of the named formation (ajuste 77; propuesta 104): every body of the ring — <c>whole</c>, <c>outer</c> or <c>inner</c> —
+    /// takes the next place in that sense, <c>clockwise</c> or <c>counterclockwise</c>, once everybody stands on its place; steps queue. The
+    /// step's id, minted here, is the once of the tell that spreads it. The sense and the ring travel as the MEMBER'S NAME of the domain's
+    /// closed sets (ajuste 90): declared <c>typeof(string)</c> because the script exposes them (the engine refuses to expose an Enum).</summary>
+    public Answer Rotate(string name, string sense, string ring)
+    {
+        if (string.IsNullOrWhiteSpace(sense)) return Answer.Refusal("a step needs its sense: clockwise or counterclockwise");
+        string turning = sense.Trim().ToLowerInvariant() switch { "clockwise" => "Clockwise", "counterclockwise" => "Counterclockwise", _ => null };
+        if (turning == null) return Answer.Refusal($"a step turns clockwise or counterclockwise, not '{sense}'");
+        string orbit = (ring ?? "whole").Trim().ToLowerInvariant() switch { "whole" => "Whole", "outer" => "Outer", "inner" => "Inner", _ => null };
+        if (orbit == null) return Answer.Refusal($"a step turns the whole figure, its outer ring or its inner ring, not '{ring}'");
+        string stepId = $"{robot.Name}-step-{DateTime.UtcNow.Ticks}";   // ticks, not milliseconds: two steps asked in one millisecond are two steps
+        try
+        {
+            var answer = Answer.Of(robot.Actor.Using(TakeCheck, RotateFormation)
+                .WithParameters(p => {
+                    p["formationName", typeof(string)] = name;
+                    p["sense", typeof(string)] = turning;
+                    p["ring", typeof(string)] = orbit;
+                    p["stepId", typeof(string)] = stepId;
+                })
+                .PerformCheckThenCommand());
+            return answer.Ok ? answer : Answer.Refusal($"rotate {name} {sense}: " + answer.Refused);
+        }
+        catch (Exception ex) { return Answer.Refusal($"rotate {name} {sense}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>A FORMATION DISSOLVED (propuesta 104): it leaves this golem's list — a route of it still pending let go — and every peer is told.</summary>
+    public Answer Dissolve(string name)
     {
         try
         {
             var answer = Answer.Of(robot.Actor.Using(
                 @"
-                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
-                    Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name: form it first';
-                ",
-                @"
-                    {
-                        from = g.Destination;
-                        formation = g.Choreography.Find(@formationName);
-                        place = formation.PlaceNumbered(@index);
-                        route = g.Choreography.Take(from, formation, place);
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
-                            }
-                        } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
-                        }
-                    }
-                ")
-                .WithParameters(p => {
-                    p["formationName", typeof(string)] = name;   // never @name: the route's print has a label 'name'
-                    p["index", typeof(int)] = place;
-                })
+                    Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name';
+                ", DissolveFormation)
+                .WithParameters(p => { p["formationName", typeof(string)] = name; })
                 .PerformCheckThenCommand());
-            return answer.Ok ? answer : Answer.Refusal($"take {name} place {place}: " + answer.Refused);
+            return answer.Ok ? answer : Answer.Refusal($"dissolve {name}: " + answer.Refused);
         }
-        catch (Exception ex) { return Answer.Refusal($"take {name} place {place}: " + GolemEmbodiment.Reason(ex)); }
-    }
-
-    public Answer Call(string figure, (double X, double Y) center, double side, IReadOnlyList<string> fleet, string policy)
-    {
-        if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
-        if (string.IsNullOrWhiteSpace(policy)) return Answer.Refusal("a call shares the places by rank or by distance");
-        string callId = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // one call, frozen as a parameter: the convocation's identity, the once of every tell
-        try
-        {
-            return Answer.Of(robot.Actor.Using(JoinCheck, CallFormation)
-                .WithParameters(p => {
-                    p["cx", typeof(double)] = Resolution.Metres(center.X);
-                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
-                    p["sideLength", typeof(double)] = Resolution.Metres(side);
-                    p["figure", typeof(string)] = figure;   // the formation's name: the module makes it (ajuste 69)
-                    p["callId", typeof(string)] = callId;
-                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
-                    p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable `fleet` holds the object built from it
-                })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"{figure} at ({center.X:0.##}, {center.Y:0.##}), side {side:0.##}, by {policy}: " + GolemEmbodiment.Reason(ex)); }   // no place, no way, or the domain refused inside
-    }
-
-    /// <summary>A STEP of the formation in place (ajuste 77): every body takes the next place in that sense — <c>clockwise</c> or
-    /// <c>counterclockwise</c> — once everybody stands on its place; steps queue. The step's id, minted here, is the once of the tell that
-    /// spreads it. Refused when the fleet stands in no formation. The sense travels as the MEMBER'S NAME of the domain's closed set
-    /// <c>Sense</c> (ajuste 90; the parameters guide: the caller never names the domain's enum type, the engine resolves the name at the
-    /// verb, the journal keeps it): <c>clockwise</c> on the line is <c>Clockwise</c> in the journal and in the tell to the peers. Declared
-    /// <c>typeof(string)</c>, not <c>typeof(Enum)</c>: this script EXPOSES the sense for the tell that spreads the step, and the engine
-    /// (2.0.1-beta.10017) refuses to expose an Enum symbol ("'Expose turning' emits a value of type 'Enum'", lab 5-oct-2026); the name as
-    /// text coerces to the enum at the verb all the same.</summary>
-    public Answer Rotate(string sense)
-    {
-        if (string.IsNullOrWhiteSpace(sense)) return Answer.Refusal("a step needs its sense: clockwise or counterclockwise");
-        string member = sense.Trim().ToLowerInvariant() switch
-        {
-            "clockwise" => "Clockwise",
-            "counterclockwise" => "Counterclockwise",
-            _ => null,
-        };
-        if (member == null) return Answer.Refusal($"a step turns clockwise or counterclockwise, not '{sense}'");
-        string stepId = $"{robot.Name}-step-{DateTime.UtcNow.Ticks}";   // ticks, not milliseconds: two steps asked in one millisecond are two steps
-        try
-        {
-            return Answer.Of(robot.Actor.Using(
-                @"
-                    Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
-                ", RotateFormation)
-                .WithParameters(p => {
-                    p["sense", typeof(string)] = member;
-                    p["stepId", typeof(string)] = stepId;
-                })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"rotate {sense}: " + GolemEmbodiment.Reason(ex)); }
+        catch (Exception ex) { return Answer.Refusal($"dissolve {name}: " + GolemEmbodiment.Reason(ex)); }
     }
 
     /// <summary>Send the golem through several points and let it choose the order that makes the way shortest: the same
@@ -606,8 +606,8 @@ public sealed class Displacer
                     {
                         me = Pose(@px, @py, @ptheta);
                         route = g.Underway();
-                        muster = g.Choreography.MusterOf(route);
-                        route = muster.Halted(me);
+                        formation = g.Choreography.FormationOf(route);
+                        route = formation.Halted(me);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -638,15 +638,15 @@ public sealed class Displacer
         return answer;
     }
 
-    // THE GOLEM STANDS ON ITS PLACE (ajuste 77): the route to its place in the formation in place completed — the convocation records its
+    // THE GOLEM STANDS ON ITS PLACE (ajuste 77): the route to its place in the formation in place completed — the formation records its
     // word and, when with it everybody is placed and a step is queued, opens the next step; the act exposes who and which call, so
-    // echo-placed tells every peer. No parameter: the formation in place is the domain's to know (`g.Choreography.Current`), and the Check
+    // echo-placed tells every peer (the stamp in the once). No parameter: the formation in place is the domain's to know (`g.Choreography.Current`), and the Check
     // refuses when the golem does not stand on its place, or stands in no formation — nothing is written then.
     private const string PlacedScript = @"
                     {
-                        muster = g.Choreography.Current;
-                        me = muster.Me;
-                        route = muster.Placed(me);
+                        formation = g.Choreography.Current;
+                        me = formation.Me;
+                        route = formation.Placed(me);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -663,7 +663,7 @@ public sealed class Displacer
                                 print route.Why 'why';
                             }
                         }
-                        expose me.Name who, muster.Call call, muster.Round round;
+                        expose me.Name who, formation.Name call, formation.Stamp nonce, formation.Round round;
                     }
                 ";
 

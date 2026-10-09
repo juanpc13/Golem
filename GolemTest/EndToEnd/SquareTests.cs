@@ -69,7 +69,7 @@ public class SquareTests
         // member here: a golem takes one place per call)
         GolemDomain.Routes.Route AsMember(string name)
         {
-            var taken = g.Choreography.Muster("call-" + name, square, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
+            var taken = g.Choreography.Form("call-" + name, square, fleet, "rank").Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
             taken.Abandon("this golem plays the next member now");   // its route ended: the berths of the others move on (ajuste 80)
             return taken;
         }
@@ -93,15 +93,15 @@ public class SquareTests
         var center = new Position(5.5, 5.5);
         var side = new Meters(2.0);
 
-        var formation = g.Choreography.Formation("square", center, side);
+        var formation = g.Choreography.Figure("square", center, side);
         Assert.IsInstanceOfType(formation, typeof(Square), "square: a square");
         Assert.AreEqual(2.0, ((Square)formation).Side.InMeters, 1e-9, "said by its side");
-        Assert.IsInstanceOfType(g.Choreography.Formation("Circle", center, new Meters(1.0)), typeof(Circle), "any case; a circle by its radius");
-        Assert.IsInstanceOfType(g.Choreography.Formation("triangle", center, side), typeof(Triangle));
-        Assert.IsInstanceOfType(g.Choreography.Formation("pentagon", center, side), typeof(Pentagon), "the pentagon (ajuste 85)");
-        CollectionAssert.AreEqual(new[] { "square", "pentagon", "triangle", "circle" }, g.Choreography.Names().ToList());
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("hexagon", center, side)).Message, "knows no formation named 'hexagon'");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Formation("square", null, side)).Message, "'center' was not given");
+        Assert.IsInstanceOfType(g.Choreography.Figure("Circle", center, new Meters(1.0)), typeof(Circle), "any case; a circle by its radius");
+        Assert.IsInstanceOfType(g.Choreography.Figure("triangle", center, side), typeof(Triangle));
+        Assert.IsInstanceOfType(g.Choreography.Figure("pentagon", center, side), typeof(Pentagon), "the pentagon (ajuste 85)");
+        CollectionAssert.AreEqual(new[] { "square", "pentagon", "triangle", "circle", "double ring" }, g.Choreography.Names().ToList());
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Figure("hexagon", center, side)).Message, "knows no figure named 'hexagon'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Figure("square", null, side)).Message, "'center' was not given");
 
         var fleet = new Fleet("blue,red,green,yellow");
         var red = new Golem(body, "Red");                                          // born with its name (ajuste 72)
@@ -113,7 +113,7 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => fleet.Member(g)).Message, "a golem without a name is in no fleet");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, " ")).Message, "a golem's name must be a name");
         Assert.AreEqual(2, fleet.Member(red).Rank, "its member, by the name it was born with: blue, green, red, yellow");
-        var route = red.Choreography.Muster("red-1", formation, fleet).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
+        var route = red.Choreography.Form("red-1", formation, fleet, "rank").Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
         StringAssert.Contains(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }
 }

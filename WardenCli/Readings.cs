@@ -7,10 +7,11 @@ namespace WardenCli;
 /// asks every few seconds and shows what came back; it decides nothing.</summary>
 public sealed record Readings(string Zone, string Scenario, string Navigation, bool Held, int? Pending, int? Routes,
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
-                              int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios)
+                              int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios,
+                              IReadOnlyList<FormationView> Formations)
 {
     /// <summary>Before anything was asked.</summary>
-    public static readonly Readings Nothing = new("", "", "", false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>());
+    public static readonly Readings Nothing = new("", "", "", false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>(), Array.Empty<FormationView>());
 
     /// <summary>The names the `scenarios` read lists under `known`.</summary>
     public static IReadOnlyList<string> ParseScenarios(JsonElement json)

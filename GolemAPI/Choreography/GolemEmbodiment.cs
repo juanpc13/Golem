@@ -124,85 +124,107 @@ public sealed class GolemEmbodiment
             g.LearnForget(at);
         }
         ";
-    // A peer was called to a formation and told me I was called too (ajustes 71, 72): if I am in its fleet — the golem knows who it is —
-    // I join: my own Join, from where I will stand, by my rank. The script ends with its print, like every script that changes what the
-    // body must do; what pushes the order to my body at once is the next-order-join reaction on the Join (a uptake's print returns to
-    // nobody). No expose: my join spreads nothing.
-    // A peer convened by distance and told me where it stood (ajuste 73): if I am in the fleet — already convened, its word may take my
-    // place and interrupt my route; not yet, I keep its word and convene myself, once, and my act tells everybody where I stand. The
-    // peer's position enters as @px @py: x and y are the print's labels.
-    public const string UptakeStoodFor = @"
+    // A FORMATION TOLD TO THE FLEET (propuesta 104): a peer formed it and its act told me — if I am in its fleet, I form the same, by the same
+    // name, with the same stamp (the once of the call), so every copy is one. No expose: my forming spreads nothing further (one hop).
+    public const string UptakeFormedAs = @"
         {
             fleet = Fleet(@names);
             if (fleet.Has(g)) {
                 center = Position(@cx, @cy);
-                side = Meters(@sideLength);
-                formation = g.Choreography.Formation(@figure, center, side);
-                muster = g.Choreography.Muster(@callId, formation, fleet, @by);
-                peer = fleet.Member(@teller);
-                at = Position(@px, @py);
-                me = fleet.Member(g);
-                if (muster.Knows(me)) {
-                    muster.Stood(peer, at);
-                    if (muster.IsComplete) {
-                        route = muster.Route;
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                measure = Meters(@measureLength);
+                turn = Degrees(@angle);
+                formation = g.Choreography.Form(@call, @shape, center, measure, turn, fleet, @by, @nonce);
+                print formation.Name 'called', fleet.Count 'members';
+            }
+        }
+        ";
+    public const string UptakeFormedRingsAs = @"
+        {
+            fleet = Fleet(@names, @innerNames);
+            if (fleet.Has(g)) {
+                center = Position(@cx, @cy);
+                outer = Meters(@outerRadius);
+                inner = Meters(@innerRadius);
+                turn = Degrees(@angle);
+                formation = g.Choreography.FormRings(@call, center, outer, inner, turn, fleet, @by, @nonce);
+                print formation.Name 'called', fleet.Count 'members';
+            }
+        }
+        ";
+    // A PEER TOOK THE FORMATION and told me where it stood (ajustes 73, 80; propuesta 104): if I was told that formation and I am in its fleet —
+    // already convened, its word may complete my round or take my place and interrupt my route; not yet, I keep its word and convene myself,
+    // once, and my act tells everybody where I stand. The peer's position enters as @px @py: x and y are the print's labels.
+    public const string UptakeStoodFor = @"
+        {
+            if (g.Choreography.HasFormation(@call)) {
+                formation = g.Choreography.Find(@call);
+                fleet = formation.Fleet;
+                if (fleet.Has(g)) {
+                    peer = fleet.Member(@teller);
+                    at = Position(@px, @py);
+                    me = fleet.Member(g);
+                    if (formation.Knows(me)) {
+                        formation.Stood(peer, at);
+                        if (formation.IsComplete) {
+                            route = formation.Route;
+                            if (g.Strategy.OnTheWay.IsActive) {
+                                route = g.Dash(route);
+                            }
+                            if (route.IsPending()) {
+                                print route.Id 'route', route.Order 'action';
+                                if (route.IsWalkable) {
+                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                                }
+                            } else {
+                                print route.Id 'route', route.Status 'ended';
+                                if (route.EndedShort) {
+                                    print route.Why 'why';
+                                }
                             }
                         } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
+                            print formation.StoodCount 'stood', fleet.Count 'of';
                         }
                     } else {
-                        print muster.StoodCount 'stood', fleet.Count 'of';
-                    }
-                } else {
-                    muster.Stood(peer, at);
-                    from = g.Destination;
-                    muster.Convene(from, me);
-                    if (muster.IsComplete) {
-                        route = muster.Route;
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                        formation.Stood(peer, at);
+                        from = g.Destination;
+                        formation.Convene(from, me);
+                        if (formation.IsComplete) {
+                            route = formation.Route;
+                            if (g.Strategy.OnTheWay.IsActive) {
+                                route = g.Dash(route);
+                            }
+                            if (route.IsPending()) {
+                                print route.Id 'route', route.Order 'action';
+                                if (route.IsWalkable) {
+                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                                }
+                            } else {
+                                print route.Id 'route', route.Status 'ended';
+                                if (route.EndedShort) {
+                                    print route.Why 'why';
+                                }
                             }
                         } else {
-                            print route.Id 'route', route.Status 'ended';
-                            if (route.EndedShort) {
-                                print route.Why 'why';
-                            }
+                            print formation.StoodCount 'stood', fleet.Count 'of';
                         }
-                    } else {
-                        print muster.StoodCount 'stood', fleet.Count 'of';
+                        expose @call call, formation.Stamp nonce, me.Name who, from.X stoodX, from.Y stoodY;
                     }
-                    expose @figure shape, @cx atX, @cy atY, @sideLength length, @names crew, @callId call, @by policy, me.Name who, from.X stoodX, from.Y stoodY;
                 }
             }
         }
         ";
-    // A PEER STANDS ON ITS PLACE (ajuste 77): its word, recorded in the convocation of that call — if this golem has its place in it;
-    // when with it everybody is placed and a step is queued, the next step opens and its route is printed (next-order-placed pushes).
+    // A PEER STANDS ON ITS PLACE (ajuste 77): its word, recorded in the formation of that name — if this golem has its place in it; when with
+    // it everybody is placed and a step is queued, the next step opens and its route is printed (next-order-heard pushes).
     public const string UptakePlacedAt = @"
         {
             if (g.Choreography.Knows(@call)) {
-                muster = g.Choreography.Muster(@call);
-                peer = muster.Fleet.Member(@who);
-                route = muster.Heard(peer);
+                formation = g.Choreography.Find(@call);
+                peer = formation.Fleet.Member(@who);
+                route = formation.Heard(peer);
                 if (g.Strategy.OnTheWay.IsActive) {
                     route = g.Dash(route);
                 }
@@ -222,16 +244,16 @@ public sealed class GolemEmbodiment
             }
         }
         ";
-    // A STEP was asked of the fleet (ajuste 77): the same step is queued here, in the same order it was queued there (the wire keeps a
-    // topic's order); it opens at once when everybody already stands on its place (next-order-step pushes).
+    // A STEP was asked of the fleet (ajuste 77; propuesta 104: of one ring or whole): the same step is queued here, in the same order it was
+    // queued there (the wire keeps a topic's order); it opens at once when everybody already stands on its place (next-order-step pushes).
     public const string UptakeRotateTo = @"
         {
             if (g.Choreography.Knows(@call)) {
-                muster = g.Choreography.Muster(@call);
-                move = muster.Formation.Rotate(@sense);
-                muster.Queue(move, @stepId);
-                if (muster.CanStep) {
-                    route = muster.Step();
+                formation = g.Choreography.Find(@call);
+                move = formation.Figure.Rotate(@sense, @ring);
+                formation.Queue(move, @stepId);
+                if (formation.CanStep) {
+                    route = formation.Step();
                     if (g.Strategy.OnTheWay.IsActive) {
                         route = g.Dash(route);
                     }
@@ -249,8 +271,18 @@ public sealed class GolemEmbodiment
                         }
                     }
                 } else {
-                    print muster.Queued 'queued';
+                    print formation.Queued 'queued';
                 }
+            }
+        }
+        ";
+    // A FORMATION DISSOLVED by a peer's warden (propuesta 104): mine goes too, a route of it pending let go (next-order-dissolve pushes the stop).
+    public const string UptakeDissolved = @"
+        {
+            if (g.Choreography.HasFormation(@call)) {
+                formation = g.Choreography.Find(@call);
+                g.Choreography.Dissolve(formation);
+                print formation.Name 'called';
             }
         }
         ";

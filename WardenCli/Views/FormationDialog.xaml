@@ -1,7 +1,7 @@
 <Window x:Class="WardenCli.Views.FormationDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Formation — a figure laid out as queues" SizeToContent="Height" Width="620" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Title="Formation — told to the selected golem and its fleet" SizeToContent="Height" Width="620" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13">
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
@@ -9,6 +9,7 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -24,7 +25,7 @@
             <RadioButton Content="triangle" Margin="0,0,10,0" Checked="Figure_Checked"/>
             <RadioButton Content="circle" Margin="0,0,10,0" Checked="Figure_Checked"/>
             <RadioButton Content="double ring" Checked="Figure_Checked"
-                         ToolTip="two rings round one centre, said by their diameters, each with the golems you put on it; each ring turns on its own"/>
+                         ToolTip="two rings round one centre, said by their radii, each with the golems you put on it; each ring turns on its own"/>
         </StackPanel>
 
         <TextBlock Grid.Row="1" Text="center x,y" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
@@ -34,16 +35,20 @@
         <TextBox x:Name="MeasureBox" Grid.Row="2" Grid.Column="1" Text="2.0"/>
 
         <!-- THE DOUBLE RING (8-oct-2026; Juan: "que pregunte por los diámetros de los dos anillos… y seleccionar cuáles serían los golems del anillo
-             inferior y superior"): the inner diameter, and a second list for the golems of the inner ring -->
-        <TextBlock x:Name="InnerLabel" Grid.Row="3" Text="inner diameter" VerticalAlignment="Center" Foreground="{StaticResource Dim}" Visibility="Collapsed"/>
-        <TextBox x:Name="InnerBox" Grid.Row="3" Grid.Column="1" Text="2.0" Visibility="Collapsed"/>
+             inferior y superior"): the inner radius, and a second list for the golems of the inner ring -->
+        <TextBlock x:Name="InnerLabel" Grid.Row="3" Text="inner radius" VerticalAlignment="Center" Foreground="{StaticResource Dim}" Visibility="Collapsed"/>
+        <TextBox x:Name="InnerBox" Grid.Row="3" Grid.Column="1" Text="1.0" Visibility="Collapsed"/>
 
-        <!-- no steps, no sense, no pace (Juan, 8-oct-2026: "¿por qué tendríamos que especificar lo de clockwise a la hora de crear la formación?"):
-             laying out puts every golem on its first vertex; the formation is turned afterwards, a step per click of ↻ ↺. And no "places shared by"
-             (Juan: "me parece que es de la coreografía propia del golem, no tanto de la coreografía del CLI"): rank or distance is the language of the
-             golem's own choreography; the console gives the vertices in the names' order, always -->
-        <TextBlock x:Name="GolemsLabel" Grid.Row="4" Text="golems — names sorted take the vertices in order" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,6,8,0"/>
-        <Grid Grid.Row="4" Grid.Column="1" Margin="2,6">
+        <!-- THE POLICY is the formation's (propuesta 104: the formation is the golem's, and the golems share its places by rank — the names
+             sorted — or by distance — who stands nearest, over their words) -->
+        <TextBlock Grid.Row="4" Text="places shared by" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="2,4">
+            <RadioButton x:Name="ByRankBox" Content="rank (names sorted)" IsChecked="True" Margin="0,0,12,0"/>
+            <RadioButton Content="distance (who stands nearest)" ToolTip="the golems say where they stand and share the places by the first law: the nearest pairs first"/>
+        </StackPanel>
+
+        <TextBlock x:Name="GolemsLabel" Grid.Row="5" Text="golems of the fleet" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,6,8,0"/>
+        <Grid Grid.Row="5" Grid.Column="1" Margin="2,6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition x:Name="InnerColumn" Width="0"/>
@@ -58,9 +63,9 @@
             </DockPanel>
         </Grid>
 
-        <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+        <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
             <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="300"/>
-            <Button Content="append to the tabs" Click="Ok_Click" Style="{StaticResource GoGreen}"/>
+            <Button Content="form in the selected golem" Click="Ok_Click" Style="{StaticResource GoGreen}" ToolTip="the form and take lines go on the selected golem's tab; the golem tells its fleet"/>
             <Button Content="cancel" IsCancel="True"/>
         </StackPanel>
     </Grid>

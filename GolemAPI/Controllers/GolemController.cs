@@ -65,23 +65,8 @@ public class GolemController : Controller
         return Answered(displacer.Cover(request.Stops.Select(s => (s.X.Value, s.Y.Value)).ToList()));
     }
 
-    // The fleet takes a square, this golem its corner by rank (propuesta 59; ajuste 65) — {"figure": "square", "center": {"x": 5.5,
-    // "y": 5.5}, "side": 2.0, "by": "rank", "fleet": ["blue", "red"]}; left out, the fleet is this golem and every peer it can reach.
-    // It moves THIS golem alone: the line's --with is what carries the call to the peers.
-    [HttpPost("choreograph")]
-    public IActionResult Choreograph([FromBody] FormationRequest request)
-    {
-        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + FormationRequest.Shape);
-        var problems = request.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
-                                                    : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
-        var center = (request.Center.X.Value, request.Center.Y.Value);
-        return Answered(displacer.Call(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, fleet, request.Policy));
-    }
-
-    /// <summary>A FORMATION TOLD (propuesta 99): the golem keeps it by its name and answers the vertices it resolved.</summary>
+    /// <summary>A FORMATION TOLD (propuesta 104): the golem keeps it by its name, with its fleet and its policy, and tells every golem of the
+    /// fleet; it answers the places it resolved and who holds each by rank. Left out, the fleet is this golem and every peer it can reach.</summary>
     [HttpPost("form")]
     public IActionResult Form([FromBody] FormRequest request)
     {
@@ -89,11 +74,18 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure.Trim().ToLowerInvariant(),
-                                       (request.Center.X.Value, request.Center.Y.Value), request.Measure!.Value, request.Angle ?? 0.0, request.Places));
+        var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
+                                                    : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
+        var center = (request.Center.X.Value, request.Center.Y.Value);
+        string name = request.Name.Trim().ToLowerInvariant();
+        if (request.IsRings)
+            return Answered(displacer.FormRings(name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0,
+                                                fleet, request.InnerFleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList(), request.Policy));
+        return Answered(displacer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy));
     }
 
-    /// <summary>A PLACE TAKEN (propuesta 99; ajuste 101): the golem resolves where that place of that formation stands and goes there, facing the centre.</summary>
+    /// <summary>A FORMATION TAKEN (propuesta 104): this golem says where it stands; the fleet's words open the routes, each to its place by
+    /// the policy. It spreads by itself: command one golem.</summary>
     [HttpPost("take")]
     public IActionResult Take([FromBody] TakeRequest request)
     {
@@ -101,11 +93,11 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value));
+        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant()));
     }
 
-    /// <summary>One STEP of the formation in place (ajuste 77): every body takes the next corner in that sense once everybody stands on
-    /// its own; steps queue. It spreads by itself: command one golem.</summary>
+    /// <summary>One STEP of a formation (ajuste 77; propuesta 104): every body of the ring — or of the whole figure — takes the next place
+    /// in that sense once everybody stands on its own; steps queue. It spreads by itself: command one golem.</summary>
     [HttpPost("rotate")]
     public IActionResult Rotate([FromBody] RotateRequest request)
     {
@@ -113,7 +105,18 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Rotate(request.Sense.Trim().ToLowerInvariant()));
+        return Answered(displacer.Rotate(request.Name.Trim().ToLowerInvariant(), request.Sense.Trim().ToLowerInvariant(), request.Orbit));
+    }
+
+    /// <summary>A FORMATION DISSOLVED (propuesta 104): it leaves every golem of the fleet.</summary>
+    [HttpPost("dissolve")]
+    public IActionResult Dissolve([FromBody] DissolveRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + DissolveRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Dissolve(request.Name.Trim().ToLowerInvariant()));
     }
 
     // The operator holds the golem where its body stands, or lets it go on.

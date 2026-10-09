@@ -80,13 +80,22 @@ public static class Readings
         .PerformQuery();
 
     /// <summary>The scenarios the golem knows — each with what was learned in it — and the one it is in (ajuste 60).</summary>
-    /// <summary>The formations the warden told the golem (propuesta 99): each one's name, figure, centre, side and orientation.</summary>
+    /// <summary>THE FORMATIONS THE GOLEM IS IN (propuesta 104: the warden's GET): each one's name, figure, centre, measure, orientation, policy,
+    /// fleet, places, how many stand on theirs, the steps queued, the round, this golem's place — and WHO HOLDS WHAT, as this copy knows it.</summary>
     public static string Formations(ActorV2 actor) =>
         actor.Using(@"
             {
                 print g.Choreography.Formations().Count 'count';
                 foreach (told in g.Choreography.Formations()) {
-                    print told.Called 'called', told.Name 'shape', told.Center.X 'atX', told.Center.Y 'atY', told.Measure.InMeters 'length', told.Turn.InDegrees 'degrees', told.PlaceCount 'places';
+                    print told.Name 'called', told.Figure.Name 'shape', told.Figure.Center.X 'atX', told.Figure.Center.Y 'atY',
+                          told.Figure.Measure.InMeters 'length', told.Figure.Turn.InDegrees 'degrees', told.Policy 'policy',
+                          told.Fleet.Roster 'crew', told.Fleet.Division 'division', told.PlaceCount 'places', told.PlacedCount 'placed', told.Queued 'queued', told.Round 'round', told.PlaceIndex 'mine';
+                    foreach (holders in told.Holders()) {
+                        print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
+                    }
+                    foreach (spots in told.Figure.Places(told.Fleet.Count)) {
+                        print spots.X 'x', spots.Y 'y';
+                    }
                 }
             }
         ")

@@ -156,11 +156,12 @@ public class CommandConsoleTests
         StringAssert.Contains(mixed.Text, "green › refused: this is red: no golem named 'green' among its peers");
     }
 
-    // THE CALL SPREADS BY TELL (propuesta 59; ajustes 65, 71): the operator commands ONE golem — red — and red's act is told to every peer;
-    // blue hears it and joins by itself, its own Join to its own corner by rank. The fleet is red and all its peers (blue, green, red,
-    // yellow sorted): blue first (north-east), red third (south-west); with --fleet blue,red, two of four corners: blue north-east, red north-west (ajuste 86). A choreography's --with is refused.
+    // THE FORMATION SPREADS BY TELL (propuesta 104; ajustes 71, 80): the operator commands ONE golem — red — `form` tells red the formation
+    // and red's act is told to every peer of the fleet, who forms the same; `take` on red says where red stands, every peer convenes by
+    // itself, and the routes open when everybody spoke. The fleet is what --fleet says (left out: red and all its peers): blue first
+    // (north-east), red second (north-west) of the two names; two on a square take two neighbouring corners (ajuste 86). --with is refused.
     [TestMethod]
-    public async Task AChoreography_CommandedToOneGolem_SpreadsByTell_AndEveryPeerJoinsItsOwnCorner()
+    public async Task AFormation_ToldToOneGolem_SpreadsByTell_AndTheTakeOpensEveryRoute()
     {
         await using var world = new MockWorld();
         await world.PlaceGolemAsync("red");
@@ -168,24 +169,39 @@ public class CommandConsoleTests
         var red = new Commander(world.HostOf("red").Embodiment);
         var blue = new Commander(world.HostOf("blue").Embodiment);
 
-        var call = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,red,green,yellow");   // the names: red's corner is the third's
-        Assert.IsTrue(call.Ok, call.Text);
-        StringAssert.Contains(call.Text, "called", "one golem commanded: it said where it stands, and waits for the fleet's words (ajuste 80) — " + call.Text);
+        var formed = await red.ExecuteAsync("form sq-1 square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,red,green,yellow");
+        Assert.IsTrue(formed.Ok, formed.Text);
+        StringAssert.Contains(formed.Text, "formed sq-1 for 4 by rank", formed.Text);
+        StringAssert.Contains(formed.Text, "red 4.5,4.5", "red, third of the four names: the south-west corner — " + formed.Text);
+        StringAssert.Contains(await UntilFormations(blue, "sq-1"), "sq-1", "blue was told the same formation by red's act");
+        var taken = await red.ExecuteAsync("take sq-1");
+        Assert.IsTrue(taken.Ok, taken.Text);
+        StringAssert.Contains(taken.Text, "taken", "red said where it stands and waits for the fleet's words (ajuste 80) — " + taken.Text);
         await Task.Delay(1500);
-        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "no route yet", "green and yellow are not in this world: the round never completes, nobody sets out — the fleet waits (ajuste 80)");
+        StringAssert.Contains((await red.ExecuteAsync("route")).Text, "no route yet", "green and yellow are not in this world: the round never completes, nobody sets out");
+
         await red.ExecuteAsync("reset");
-        call = await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,red");
-        Assert.IsTrue(call.Ok, call.Text);
-        StringAssert.Contains(await Until(red, "center@4.5,6.5"), "center@4.5,6.5", "with blue's word the round is complete: red, second of the two names, sets out to the north-west corner (two on a square take two neighbouring corners, the other two free — ajuste 86)");
+        Assert.IsTrue((await red.ExecuteAsync("form sq-2 square --center 5.5,5.5 --side 2.0 --fleet blue,red")).Ok);
+        await UntilFormations(blue, "sq-2");
+        taken = await red.ExecuteAsync("take sq-2");
+        Assert.IsTrue(taken.Ok, taken.Text);
+        StringAssert.Contains(await Until(red, "center@4.5,6.5"), "center@4.5,6.5", "with blue's word the round is complete: red, second of the two names, sets out to the north-west corner");
         string blueWay = await Until(blue, "center@6.5,6.5");
-        StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard the call, said where it stands and set out by itself: first of the two, the north-east corner — " + blueWay);
+        StringAssert.Contains(blueWay, "center@6.5,6.5", "blue heard red, said where it stands and set out by itself: first of the two, the north-east corner — " + blueWay);
+        var listed = await red.ExecuteAsync("formations");
+        StringAssert.Contains(listed.Text, "sq-2 · square at 5.5,5.5, side 2 m", listed.Text);
+        StringAssert.Contains(listed.Text, "blue@6.5,6.5", "who holds what, in the read — " + listed.Text);
+        StringAssert.Contains(listed.Json, "\"holders\"", listed.Json);
 
-        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --with blue")).Kind, "a choreography spreads by itself");
-        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph circle --center 5.5,5.5 --radius 1.0")).Kind, "the square alone for now");
-        Assert.AreEqual("refused", (await red.ExecuteAsync("choreograph square --center 0.75,5.5 --side 2.0")).Kind, "a square the corridor cannot hold: red's corner falls in the wall");
-
-        Assert.AreEqual("syntax", (await red.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --effect rotate-clockwise --for 10s")).Kind, "the timed turn is gone (ajuste 77)");
-        Assert.AreEqual("syntax", (await red.ExecuteAsync("rotate clockwise --with blue")).Kind, "a step spreads by itself too");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("form sq-3 square --center 5.5,5.5 --side 2.0 --with blue")).Kind, "a formation spreads by itself");
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("take sq-2 --with blue")).Kind);
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("rotate sq-2 clockwise --with blue")).Kind, "a step spreads by itself too");
+        Assert.IsTrue((await red.ExecuteAsync("form wall square --center 0.75,5.5 --side 2.0 --fleet blue,red")).Ok, "a figure is told whatever the map says of its places");
+        Assert.AreEqual("refused", (await red.ExecuteAsync("take wall")).Kind, "but taking it is refused: red's corner falls in the wall");
+        Assert.AreEqual("refused", (await red.ExecuteAsync("take nothing")).Kind, "a formation never told");
+        var dissolved = await red.ExecuteAsync("dissolve sq-2");
+        Assert.IsTrue(dissolved.Ok, dissolved.Text);
+        StringAssert.DoesNotMatch((await red.ExecuteAsync("formations")).Text, new System.Text.RegularExpressions.Regex("sq-2"), "sq-2 gone from the list");
     }
 
     // THE STEP (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj… se pueden encolar"): four
@@ -207,8 +223,10 @@ public class CommandConsoleTests
         var fleet = names.ToDictionary(n => n, n => new Commander(world.HostOf(n).Embodiment));
         var blue = fleet["blue"];
 
-        Assert.AreEqual("refused", (await blue.ExecuteAsync("rotate clockwise")).Kind, "no formation in place yet");
-        Assert.IsTrue((await blue.ExecuteAsync("choreograph square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,green,purple,yellow")).Ok);
+        Assert.AreEqual("refused", (await blue.ExecuteAsync("rotate sq clockwise")).Kind, "no formation told yet");
+        Assert.IsTrue((await blue.ExecuteAsync("form sq square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,green,purple,yellow")).Ok);
+        foreach (var g in fleet.Values) await UntilFormations(g, "sq");
+        Assert.IsTrue((await blue.ExecuteAsync("take sq")).Ok);
         foreach (var g in fleet.Values) await Until(g, "route 1 completed");
         StringAssert.Contains((await blue.ExecuteAsync("where")).Text, "(6.5, 6.5)", "blue, first of the names: the north-east corner");
         StringAssert.Contains((await fleet["green"].ExecuteAsync("where")).Text, "(4.5, 6.5)", "green, second: north-west");
@@ -218,11 +236,11 @@ public class CommandConsoleTests
         // the words cross the wire: every copy hears the four (the in-memory wire may deliver a word on its retry, seconds later)
         for (int i = 0; i < 150 && names.Any(n => world.Read(n, "print g.Choreography.Current.PlacedCount 'v';").GetInt32() < 4); i++) await Task.Delay(200);
         CollectionAssert.AreEqual(new[] { 4, 4, 4, 4 }, names.Select(n => world.Read(n, "print g.Choreography.Current.PlacedCount 'v';").GetInt32()).ToList(), "every copy heard that all four stand on their places");
-        var step = await blue.ExecuteAsync("rotate clockwise");
+        var step = await blue.ExecuteAsync("rotate sq clockwise");
         Assert.IsTrue(step.Ok, step.Text);
         StringAssert.StartsWith(step.Text, "route 2 · ", "everybody already stands: the step opens at once — " + step.Text);
         StringAssert.Contains(step.Text, "(6.5, 4.5)", "one step clockwise: blue heads from the north-east corner to the south-east one — " + step.Text);
-        var again = await blue.ExecuteAsync("rotate clockwise");
+        var again = await blue.ExecuteAsync("rotate sq clockwise");
         Assert.IsTrue(again.Ok, again.Text);
         StringAssert.Contains(again.Text, "queued", "the second step waits for everybody — " + again.Text);
         // the step spreads: every peer queues the same two steps and opens the first — green from north-west to north-east, purple from
@@ -237,31 +255,32 @@ public class CommandConsoleTests
 
     // PLACE (ajuste 87, a lab lever; Juan: "el botón que los ponga en la posición"): the body carried onto a mark — the pending routes let go, the
     // body re-anchored, the golem awake there; with names, every golem of the fleet onto its own mark, each peer's line carried to it.
-    // THE FORMATIONS THE WARDEN NAMES (propuesta 99; ajuste 101): told for four golems, a triangle has its three corners and the middle of its
-    // first side; the golem resolves them on its own map and takes the one of the number it is told — no coordinate on the line
+    // THE PLACES ARE THE GOLEM'S TO RESOLVE (propuesta 104): told a triangle for four, the golem knows the corners and the middle of a side and
+    // who holds each by rank; told a ring for itself alone, it takes its place at once — no number on any line
     [TestMethod]
-    public async Task AFormationToldForMoreGolemsThanVertices_IsResolvedByTheGolem_AndItsPlaceTakenByNumber()
+    public async Task AFormationTold_IsResolvedByTheGolem_WhoHoldsWhat_AndAFleetOfOneTakesItAtOnce()
     {
         await using var world = new MockWorld();
         await world.PlaceGolemAsync("red");                                         // on its mark in the living room, (2.5, 2.5)
         var console = new Commander(world.HostOf("red").Embodiment);
 
-        var formed = await console.ExecuteAsync("form tri-1 triangle --center 2,2 --side 1 --places 4");
+        var formed = await console.ExecuteAsync("form tri-1 triangle --center 2,2 --side 1 --fleet blue,green,red,yellow");
         Assert.IsTrue(formed.Ok, formed.Text);
-        StringAssert.StartsWith(formed.Text, "formed tri-1 — places 0: 2,2.58  1: 1.75,2.14  2: 1.5,1.71  3: 2.5,1.71", "the apex, the middle of the first side, the other corners: " + formed.Text);
-        StringAssert.Contains((await console.ExecuteAsync("formations")).Json, "\"places\":4", "the formations read says for how many it was told");
-        var taken = await console.ExecuteAsync("take tri-1 --place 1");
-        Assert.IsTrue(taken.Ok, taken.Text);
-        StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@1.75,2.14", "the middle of a side, taken by its number, faced at the end");
-        Assert.AreEqual("refused", (await console.ExecuteAsync("take tri-1 --vertex 4")).Kind, "four places: 0 to 3");
+        StringAssert.Contains(formed.Text, "green 1.75,2.14", "green, second of the names: the middle of the first side — the places run the way round the perimeter, a corner, its side's points, the next corner (ajuste 100) — " + formed.Text);
+        StringAssert.Contains(formed.Text, "red 1.5,1.71", "red, third: the second corner — " + formed.Text);
+        StringAssert.Contains(formed.Text, "yellow 2.5,1.71", "yellow, fourth: the third corner — " + formed.Text);
+        var listed = await console.ExecuteAsync("formations");
+        StringAssert.Contains(listed.Json, "\"places\":4", listed.Json);
+        StringAssert.Contains(listed.Json, "\"mine\":2", "red's own place, by rank — " + listed.Json);
 
-        // a ring told (ajuste 102): a circle for two, and its place taken straight (ajuste 103)
-        var ring = await console.ExecuteAsync("form ring-1 circle --center 2.5,2.5 --radius 0.7 --places 2");
+        var ring = await console.ExecuteAsync("form ring-1 circle --center 2.5,2.5 --radius 0.7 --fleet red");
         Assert.IsTrue(ring.Ok, ring.Text);
-        StringAssert.StartsWith(ring.Text, "formed ring-1 — places 0: 3.2,2.5  1: 1.8,2.5", ring.Text);
-        var step = await console.ExecuteAsync("take ring-1 --place 1");
-        Assert.IsTrue(step.Ok, step.Text);
-        StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@1.8,2.5", "straight to its west place, facing the centre");
+        StringAssert.Contains(ring.Text, "red 3.2,2.5", ring.Text);
+        var taken = await console.ExecuteAsync("take ring-1");
+        Assert.IsTrue(taken.Ok, taken.Text);
+        StringAssert.StartsWith(taken.Text, "route 1 · ", "a fleet of one: its own word completes the round, the route opens at once — " + taken.Text);
+        StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@3.2,2.5", "straight to its place, facing the centre");
+        Assert.AreEqual("refused", (await console.ExecuteAsync("take ring-1")).Kind, "taken once: a golem convenes once");
     }
 
     [TestMethod]
@@ -295,7 +314,7 @@ public class CommandConsoleTests
     // (2.5, 2.0), so blue — far away in the north hall — gets the nearest corner left, the north-west one (1.5, 2.0); the other two stay
     // free (ajuste 86). By rank it would be the other way round (blue first of the names, the north-east corner).
     [TestMethod]
-    public async Task AChoreographyByDistance_EachGolemTakesTheNearestPlace_TheWordSpreadsAndDecides()
+    public async Task AFormationByDistance_EachGolemTakesTheNearestPlace_TheWordSpreadsAndDecides()
     {
         await using var world = new MockWorld();
         await world.PlaceGolemAsync("red");
@@ -303,14 +322,29 @@ public class CommandConsoleTests
         var red = new Commander(world.HostOf("red").Embodiment);
         var blue = new Commander(world.HostOf("blue").Embodiment);
 
-        var call = await red.ExecuteAsync("choreograph square --center 2.0,1.5 --side 1.0 --by distance --fleet blue,red");
+        Assert.IsTrue((await red.ExecuteAsync("form near square --center 2.0,1.5 --side 1.0 --by distance --fleet blue,red")).Ok);
+        await UntilFormations(blue, "near");
+        var call = await red.ExecuteAsync("take near");
         Assert.IsTrue(call.Ok, call.Text);
-        StringAssert.Contains(call.Text, "called", "red said where it stands; the routes open when blue speaks (ajuste 80) — " + call.Text);
+        StringAssert.Contains(call.Text, "taken", "red said where it stands; the routes open when blue speaks (ajuste 80) — " + call.Text);
         StringAssert.Contains(await Until(red, "living@2.5,2"), "living@2.5,2", "red, nearest to the north-east corner, sets out to it once the round is complete");
         string blueWay = await Until(blue, "living@1.5,2");
         StringAssert.Contains(blueWay, "living@1.5,2", "blue heard red, convened by itself and took the north-west corner, the nearest left — " + blueWay);
         StringAssert.Contains((await red.ExecuteAsync("route")).Text, "living@2.5,2", "blue's word took nothing from red");
         StringAssert.Contains((await red.ExecuteAsync("state")).Text, "of 1 route(s)", "red's route was never interrupted: still its one route");
+    }
+
+    // A golem's formations, read until the one named is among them (a tell is delivered, not instant).
+    private static async Task<string> UntilFormations(Commander golem, string name)
+    {
+        string text = "";
+        for (int i = 0; i < 100; i++)
+        {
+            text = (await golem.ExecuteAsync("formations")).Text;
+            if (text.Contains(name)) return text;
+            await Task.Delay(200);
+        }
+        return text;
     }
 
     // The newest route of a golem, read until it says what a tell should have made it do (a tell is delivered, not instant).

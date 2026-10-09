@@ -64,12 +64,12 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-find",   "[_:Golem].Find($id)"),        // a route in hand by its handle: Then
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
-            ("next-order-take",   "[_:Choreographies].Take(_, _, _)"),     // a vertex of a formation the warden named, taken (propuesta 99)
-            ("next-order-convene", "[_:Muster].Convene(_, _)"),              // the golem says where it stands: the round complete, its route opens (ajustes 73, 80, 81)
-            ("next-order-stood",   "[_:Muster].Stood(_, _)"),               // …and a peer's word may interrupt its route
-            ("next-order-placed",  "[_:Muster].Placed(_)"),                 // this golem stands on its place: the next step may open (ajuste 77)
-            ("next-order-heard",   "[_:Muster].Heard(_)"),                  // a peer's word that it stands on its place: the same
-            ("next-order-step",    "[_:Muster].Step()"),                    // …or opens at once when everybody already stands
+            ("next-order-convene", "[_:Formation].Convene(_, _)"),           // the golem says where it stands in a formation: the round complete, its route opens (ajustes 73, 80, 81; propuesta 104)
+            ("next-order-stood",   "[_:Formation].Stood(_, _)"),            // …and a peer's word may interrupt its route
+            ("next-order-placed",  "[_:Formation].Placed(_)"),              // this golem stands on its place: the next step may open (ajuste 77)
+            ("next-order-heard",   "[_:Formation].Heard(_)"),               // a peer's word that it stands on its place: the same
+            ("next-order-step",    "[_:Formation].Step()"),                 // …or opens at once when everybody already stands
+            ("next-order-dissolve", "[_:Choreographies].Dissolve(_)"),      // a formation dissolved: a route of it let go, the body stops (propuesta 104)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),
             ("next-order-resume", "[_:Golem].Resume(_)"),   // a zero-argument pattern on the golem did not fire (17-sep lab): the pose rides along, and it is true

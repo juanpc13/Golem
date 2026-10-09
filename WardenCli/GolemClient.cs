@@ -126,6 +126,10 @@ public static class GolemClient
                 Marks = (int)(JsonWalk.Number(o, "marks") ?? 0),
                 Obstacles = Obstacle.Parse(o),
             };
+        // THE FORMATIONS THE GOLEM IS IN (propuesta 104): the console's formations tab is this read of the selected golem
+        var formations = await SendAsync(golem, "formations", ct);
+        if (formations.Ok && formations.Json is { } fj)
+            k = k with { Formations = FormationView.Parse(fj) };
         golem.Knowledge = k;
         return true;
     }

@@ -1,9 +1,12 @@
 namespace GolemDomain.Formations;
 
 /// <summary>
-/// The fleet a formation is called for: the golems' NAMES, sorted, so every golem alone computes the same RANK for each — its place
-/// among the names (paso 1 of propuesta 59: deterministic, no negotiation; paso 2 will assign the places by where everybody stands).
-/// A name enters here, where the object is created, and in <see cref="Member"/>, where one is found: <c>Fleet('blue,red').Member('red')</c>.
+/// The fleet a formation is for: the golems' NAMES, sorted, so every golem alone computes the same RANK for each — its place
+/// among the names (paso 1 of propuesta 59: deterministic, no negotiation; by distance, paso 2, the places are shared by where everybody
+/// stands). A name enters here, where the object is created, and in <see cref="Member"/>, where one is found: <c>Fleet('blue,red').Member('red')</c>.
+/// A fleet DIVIDED IN TWO (propuesta 104: the double ring) — <c>Fleet('blue,cyan,green', 'orange,red,yellow')</c> — keeps the outer ring's
+/// names sorted first and the inner ring's sorted after them, so the ranks put every golem on its ring; <see cref="Division"/> says where the
+/// inner ring begins (0 for a fleet of one ring).
 /// </summary>
 internal sealed class Fleet
 {
@@ -11,13 +14,37 @@ internal sealed class Fleet
 
     internal Fleet(string names)
     {
-        if (string.IsNullOrWhiteSpace(names)) throw new GolemDomainException("a fleet needs at least one golem's name");
-        this.names = names.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
-        if (this.names.Count == 0) throw new GolemDomainException("a fleet needs at least one golem's name");
+        this.names = Sorted(names, "a fleet needs at least one golem's name");
+        Division = 0;
+    }
+
+    /// <summary>A fleet in TWO RINGS: the outer ring's golems, then the inner ring's; a golem in both is refused.</summary>
+    internal Fleet(string outer, string inner)
+    {
+        var first = Sorted(outer, "the outer ring needs at least one golem's name");
+        var second = Sorted(inner, "the inner ring needs at least one golem's name");
+        var both = first.Intersect(second, StringComparer.Ordinal).ToList();
+        if (both.Count > 0) throw new GolemDomainException($"a golem rides one ring: {string.Join(", ", both)} on both");
+        names = first.Concat(second).ToList();
+        Division = first.Count;
+    }
+
+    private static IReadOnlyList<string> Sorted(string names, string empty)
+    {
+        if (string.IsNullOrWhiteSpace(names)) throw new GolemDomainException(empty);
+        var sorted = names.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
+        if (sorted.Count == 0) throw new GolemDomainException(empty);
+        return sorted;
     }
 
     internal int Count => names.Count;
     internal IReadOnlyList<string> Names => names;
+    /// <summary>The names as one comma list, in rank order — what the formations read prints, so the warden composes the fleet again.</summary>
+    internal string Roster => string.Join(",", names);
+    /// <summary>How many ride the outer ring — the rank the inner ring begins at; 0 when the fleet is not divided.</summary>
+    internal int Division { get; }
+    /// <summary>Whether the fleet is divided in two rings.</summary>
+    internal bool IsDivided => Division > 0;
 
     /// <summary>Whether that golem is in the fleet — asked before its member is found (ajuste 72; Juan: "si el golem existe dentro de
     /// la fleet ejecutar el if"): <c>if (fleet.Has(g)) { me = fleet.Member(g); … }</c>. A golem without a name is in no fleet.</summary>

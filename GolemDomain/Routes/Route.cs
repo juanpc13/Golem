@@ -598,7 +598,10 @@ internal sealed class Route
         }
         else
             foreach (var left in way.Legs().Skip(nextLeg))
+            {
+                if (left.IsFacing) continue;   // the facing leg is Take's to append again (ajuste 79): copied, the way would end at 'face' and be refused (lab 8-oct-2026: a graze on a route to a place)
                 legs.Add(new Leg(left.At, left.Name, left.Approach, left.Exit));   // its heading is given again, from the retreat point
+            }
         int patience = grazesOnLeg;
         Take(new Trajectory(legs), me);
         if (!replan) grazesOnLeg = patience;   // the same leg, tried again: the patience spent on it stays spent

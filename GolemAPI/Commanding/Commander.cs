@@ -43,13 +43,10 @@ public sealed class Commander
         // `golem blue …` on red's console: the line is another golem's — a console commands its own golem; the peers ride along with --with
         if (command.Golem != "" && !IsMe(command.Golem))
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
-        // a choreography spreads by itself, by tell (ajuste 71): this golem is called, its peers are told — never a line carried to them
-        if (command.Verb is "choreograph" or "rotate" && command.With.Count > 0)
-            return Reply.Syntax($"{command.Verb}: a choreography spreads by itself — command one golem; --with carries single orders (visit, reset, enter, optimize)");
+        // a formation spreads by itself, by tell (ajustes 71, 104): this golem is told, its peers are told — never a line carried to them
+        if (command.Verb is "form" or "take" or "rotate" or "dissolve" && command.With.Count > 0)
+            return Reply.Syntax($"{command.Verb}: a formation spreads by itself — command one golem; --with carries single orders (visit, reset, use, optimize)");
         // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
-        // take: every golem has a vertex of its own (propuesta 99) — never the same line carried to the peers
-        if (command.Verb == "take" && command.With.Count > 0)
-            return Reply.Syntax("take gives this golem its own vertex — every golem has its own: write the line on each golem's console, not --with");
         if (command.Verb == "place" && command.With.Count > 0)
             return Reply.Syntax("place carries each golem to its own mark — write the names on the line, place blue@6,6.2 red@7,6.3, not --with");
         if (command.With.Count == 0) return await MineAsync(command, line);
@@ -93,10 +90,10 @@ public sealed class Commander
         Reply reply = command.Verb switch
         {
             "visit" or "cover" => Errand(command),
-            "choreograph" => Choreograph(command),
-            "rotate" => Motors(out var m, out var noMotors) ? Stepped(m.Rotate(command.Text), command.Text) : noMotors,
             "form" => Form(command),
             "take" => Take(command),
+            "rotate" => Rotate(command),
+            "dissolve" => Motors(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
             "formations" => Formations(),
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
@@ -121,60 +118,58 @@ public sealed class Commander
 
     // ---- the operator's verbs: the same validation as the endpoint, the same role ----
 
-    // the fleet of a formation: told outright (--fleet), or this golem and the peers named with --with (all: every peer on the wire)
-    private IReadOnlyList<string> FleetOf(Command command, IReadOnlyList<string> peers)
+    // the fleet of a formation: told outright (--fleet), or this golem and every peer it can reach (ajuste 71)
+    private IReadOnlyList<string> FleetOf(Command command, string key = "fleet")
     {
-        if (command.Values.TryGetValue("fleet", out var told)) return told.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList();
-        return new[] { golem.Name.ToLowerInvariant() }.Concat(peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
+        if (command.Values.TryGetValue(key, out var told)) return told.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList();
+        return new[] { golem.Name.ToLowerInvariant() }.Concat(golem.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
     }
 
-    // the fleet takes a square (propuesta 59; ajuste 65): this golem's part — its corner, by the policy asked (rank, the only one built)
-    private Reply Choreograph(Command command)
+    // a formation told (propuesta 104): the same validation as POST /form; the answer says the places the golem resolved and who holds each
+    private Reply Form(Command command)
     {
-        var peers = golem.Peers.ToList();   // the fleet, unless told outright: this golem and every peer it can reach (ajuste 71)
-        var request = new FormationRequest(command.Text, new PointRequest(command.Points[0].X, command.Points[0].Y),
-                                           double.Parse(command.Values["side"], CultureInfo.InvariantCulture), FleetOf(command, peers).ToList(),
-                                           command.Values.TryGetValue("by", out var by) ? by : null);
+        double? Metres(string key) => command.Values.TryGetValue(key, out var v) ? double.Parse(v, CultureInfo.InvariantCulture) : null;
+        var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
+                                      Metres("side"), Metres("radius"), Metres("inner-radius"), Metres("angle") ?? 0.0,
+                                      FleetOf(command).ToList(), command.Values.ContainsKey("inner-fleet") ? FleetOf(command, "inner-fleet").ToList() : null,
+                                      command.Values.TryGetValue("by", out var by) ? by : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
-        return Called(displacer.Call(request.Figure.Trim().ToLowerInvariant(), center, request.Side.Value, request.Fleet, request.Policy));
-    }
-
-    // a formation told (propuesta 99): the same validation as POST /form; the answer says the vertices the golem resolved
-    private Reply Form(Command command)
-    {
-        var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
-                                      command.Values.TryGetValue("side", out var s) ? double.Parse(s, CultureInfo.InvariantCulture) : null,
-                                      command.Values.TryGetValue("angle", out var a) ? double.Parse(a, CultureInfo.InvariantCulture) : 0.0,
-                                      command.Values.TryGetValue("places", out var n) ? int.Parse(n, CultureInfo.InvariantCulture) : null,
-                                      command.Values.TryGetValue("radius", out var r) ? double.Parse(r, CultureInfo.InvariantCulture) : null);
-        var problems = request.Problems().ToList();
-        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        var answer = displacer.Form(request.Name.Trim().ToLowerInvariant(), request.Figure, (request.Center.X.Value, request.Center.Y.Value), request.Measure!.Value, request.Angle ?? 0.0, request.Places);
+        var answer = request.IsRings
+            ? displacer.FormRings(request.Name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0, request.Fleet, request.InnerFleet, request.Policy)
+            : displacer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
-        var places = new List<string>();
+        var holders = new List<string>();
         try
         {
             var printed = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
-            if (printed.TryGetProperty("places", out var v) && v.ValueKind == JsonValueKind.Array)
-                for (int i = 0; i < v.GetArrayLength(); i++)
-                    places.Add($"{i}: {Num(v[i], "x")},{Num(v[i], "y")}");
+            if (printed.TryGetProperty("holders", out var v) && v.ValueKind == JsonValueKind.Array)
+                foreach (var h in v.EnumerateArray()) holders.Add($"{Str(h, "who")} {Num(h, "x")},{Num(h, "y")}");
         }
         catch (JsonException) { }
-        return Reply.Done($"formed {request.Name.Trim().ToLowerInvariant()} — places {string.Join("  ", places)}", answer.Print ?? "");
+        return Reply.Done($"formed {request.Name} for {request.Fleet.Count + (request.InnerFleet?.Count ?? 0)} by {request.Policy} — every golem of the fleet is told" + (holders.Count > 0 ? $"; places: {string.Join(" · ", holders)}" : ""), answer.Print ?? "");
     }
 
-    // a place taken (propuesta 99; ajuste 101): the same validation as POST /take; the route's first order, as any errand's
+    // the formation taken (propuesta 104): the same validation as POST /take; the route opens when the whole fleet said where it stands
     private Reply Take(Command command)
     {
-        var request = new TakeRequest(command.Text, null, int.Parse(command.Values["place"], CultureInfo.InvariantCulture));
+        var request = new TakeRequest(command.Text);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant(), request.Number!.Value));
+        return Called(displacer.Take(request.Name));
+    }
+
+    // a step of a formation (ajuste 77; propuesta 104): opened at once when everybody already stands — the order, as any — or queued, said so
+    private Reply Rotate(Command command)
+    {
+        var request = new RotateRequest(command.Text, command.Values["sense"], command.Values.TryGetValue("ring", out var ring) ? ring : null);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Stepped(displacer.Rotate(request.Name, request.Sense, request.Orbit), $"{request.Name} {request.Sense}{(request.Orbit == "whole" ? "" : " · " + request.Orbit + " ring")}");
     }
 
     private Reply Formations()
@@ -184,8 +179,13 @@ public sealed class Commander
         var lines = new List<string>();
         if (e.TryGetProperty("told", out var told) && told.ValueKind == JsonValueKind.Array)
             foreach (var f in told.EnumerateArray())
-                lines.Add($"{Str(f, "called")} · {Str(f, "shape")} at {Num(f, "atX")},{Num(f, "atY")}, side {Num(f, "length")} m, {Num(f, "degrees")}°");
-        return Reply.Done(lines.Count == 0 ? "no formation told yet" : string.Join(Environment.NewLine, lines), json);
+            {
+                var who = new List<string>();
+                if (f.TryGetProperty("holders", out var hs) && hs.ValueKind == JsonValueKind.Array)
+                    foreach (var h in hs.EnumerateArray()) who.Add($"{Str(h, "who")}@{Num(h, "x")},{Num(h, "y")}");
+                lines.Add($"{Str(f, "called")} · {Str(f, "shape")} at {Num(f, "atX")},{Num(f, "atY")}, {(Str(f, "shape") == "square" || Str(f, "shape") == "pentagon" || Str(f, "shape") == "triangle" ? "side" : "radius")} {Num(f, "length")} m, {Num(f, "degrees")}° · by {Str(f, "policy")} · {Str(f, "crew")}, {Int(f, "placed")} placed, {Int(f, "queued")} step(s) queued, round {Int(f, "round")}" + (who.Count > 0 ? $" · {string.Join(" · ", who)}" : " · nobody placed yet"));
+            }
+        return Reply.Done(lines.Count == 0 ? "in no formation" : string.Join(Environment.NewLine, lines), json);
     }
 
     // the two errands: visit in this order, cover in the order the golem finds shortest — both by the strategy the golem adopted (ajuste 61)
@@ -321,9 +321,9 @@ public sealed class Commander
     // an act of the mind (no route to print): done in a few words, or refused in the domain's
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
 
-    // a call made (ajuste 80): the route opens when the whole fleet said where it stands — at once for a fleet of one, else said so
+    // a formation taken (ajuste 80; propuesta 104): the route opens when the whole fleet said where it stands — at once for a fleet of one, else said so
     private Reply Called(Answer answer) =>
-        answer.Ok && answer.Order == null ? Reply.Done("called — the routes open when everybody said where it stands", answer.Print ?? "") : Answered(answer);
+        answer.Ok && answer.Order == null ? Reply.Done("taken — the routes open when everybody said where it stands", answer.Print ?? "") : Answered(answer);
 
     // a step asked (ajuste 77): opened at once when everybody already stands on its place — the order, as any — or queued, said so
     private Reply Stepped(Answer answer, string sense) =>
