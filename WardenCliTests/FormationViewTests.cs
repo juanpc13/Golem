@@ -46,6 +46,26 @@ public class FormationViewTests
                         rings.FormLine(figure.Oriented(45)), "turned on the map: told again with its two rings of golems");
     }
 
+    // THE DRAFT (9-oct-2026; Juan: "hasta estar seguros de los nuevos ajustes se envían al golem seleccionado"): a figure reshaped on the map is
+    // kept on the view and told only when shot — the line is the same `form` again, with the drafted figure
+    [TestMethod]
+    public void AFigureReshaped_IsADraft_UntilShot_AndTheShotIsTheFormLineWithIt()
+    {
+        var view = new FormationView("square-2", "square", 5.5, 5.5, 2.0, 0.0, "rank", "blue,green,red,yellow", 0, 4, 0, 0, 0, -1, Array.Empty<HolderView>(), Array.Empty<(double, double)>());
+        Assert.IsFalse(view.HasDraft);
+        Assert.AreEqual("", view.DraftText);
+        Assert.IsInstanceOfType(view.Projected, typeof(Square), "nothing drafted: the figure as the golem told it");
+        var moved = view.AsFigure()!.At(new Spot(3, 3)).Sized(1.5);
+        view.Draft = moved;
+        Assert.IsTrue(view.HasDraft);
+        StringAssert.Contains(view.DraftText, "draft — shot writes it");
+        Assert.AreSame(moved, view.Projected, "the map projects the draft");
+        Assert.AreEqual(new Spot(5.5, 5.5), view.AsFigure()!.Center, "the golem's own figure is untouched until the shot");
+        Assert.AreEqual("form square-2 square --center 3,3 --side 1.5 --angle 0 --fleet blue,green,red,yellow --by rank", view.FormLine(view.Draft!), "the shot");
+        view.Draft = null;
+        Assert.IsFalse(view.HasDraft, "dropped");
+    }
+
     [TestMethod]
     public void TheFiguresTheConsoleDraws_HaveTheGolemsPlaces()
     {

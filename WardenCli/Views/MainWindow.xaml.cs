@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     // THE FORMATIONS ARE THE GOLEM'S (propuesta 104): the list shows the selected golem's `formations` read; the console keeps only its
     // own way of looking at them — the eyes closed, by name, and the one selected
     private readonly HashSet<string> hiddenFormations = new(StringComparer.Ordinal);
+    // the figures reshaped on the map and not told yet (the drafts, 9-oct-2026), by formation name: they survive the reads, which make the views again
+    private readonly Dictionary<string, Figure> drafts = new(StringComparer.Ordinal);
     private string? selectedFormation;
     // a formation being RESHAPED on the map (propuestas 97, 98): grabbed by one of the grips of the selected one — its centre moves it, the
     // square on its first vertex resizes it, the knob beyond that vertex turns it — and the figure it would become while the mouse is held
@@ -38,7 +40,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? journalFollow;
     private string? workspace;
 
-    // THE READS, asked of the selected golem every few seconds and shown beside the map (Juan, 7-oct-2026): where, state, route, obstacles
+    // THE READS, shown beside the map (Juan, 7-oct-2026): where, state, route, obstacles, formations — asked ON DEMAND with *refresh*, or every
+    // 3 s while *auto* is on (Juan, 9-oct-2026: "no lo hagas cada 3 segundos el refresh"); the queue asks them by itself when a line ends
     private readonly DispatcherTimer readings = new() { Interval = TimeSpan.FromSeconds(3) };
     private bool reading;
     private int quietTicks;
@@ -72,8 +75,14 @@ public partial class MainWindow : Window
         };
         // place armed: a click anywhere but the map (or the button itself, which disarms it) cancels it (Juan, 8-oct-2026)
         PreviewMouseDown += (_, e) => { if (placing != null && !IsWithin(e.OriginalSource, Map) && !IsWithin(e.OriginalSource, PlaceButton)) Disarm("cancelled: a click elsewhere"); };
-        readings.Start();
         Log("WardenCli ready — add the golems in operation, compose a script per tab, SEND.");
+    }
+
+    private async void RefreshReads_Click(object sender, RoutedEventArgs e) => await RefreshCurrentAsync();
+
+    private void Auto_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (AutoBox.IsChecked == true) readings.Start(); else readings.Stop();
     }
 
     // the selected golem's reads, refreshed in turn; one that does not answer is asked again every fifth tick
@@ -91,9 +100,14 @@ public partial class MainWindow : Window
     private void SyncFormations(Golem g)
     {
         var views = g.Knowledge.Formations;
-        foreach (var v in views) v.Shown = !hiddenFormations.Contains(v.Name);
+        foreach (var gone in drafts.Keys.Where(k => views.All(v => v.Name != k)).ToList()) drafts.Remove(gone);   // a formation dissolved takes its draft with it
+        foreach (var v in views)
+        {
+            v.Shown = !hiddenFormations.Contains(v.Name);
+            v.Draft = drafts.TryGetValue(v.Name, out var d) ? d : null;
+        }
         if (selectedFormation != null && views.FirstOrDefault(v => v.Name == selectedFormation) is { } keep && FormationList.SelectedItem != keep) FormationList.SelectedItem = keep;
-        NoFormation.Text = views.Count == 0 ? $"{g.Name} is in no formation — Console › Formation forms one" : "the golem's own: select one — its centre moves it, the square resizes it, the knob turns it; ↻ ↺ step it, ✕ dissolves it";
+        NoFormation.Text = views.Count == 0 ? $"{g.Name} is in no formation — Console › Formation forms one" : "the golem's own: select one — its centre moves it, the square resizes it, the knob turns it (a draft until shot writes form + take on the tab); ↻ ↺ write a step on the tab, ✕ dissolves it now";
         Draw();
     }
 
@@ -130,7 +144,8 @@ public partial class MainWindow : Window
             LogRow.ActualHeight,
             mapHeight,
             DebuggerPanel.Visibility == Visibility.Visible,
-            OthersBox.IsChecked == true));
+            OthersBox.IsChecked == true,
+            AutoBox.IsChecked == true));
     }
 
     private void RestorePanes()
@@ -147,6 +162,7 @@ public partial class MainWindow : Window
         mapHeight = p.MapHeight is > 0 ? p.MapHeight : null;
         if (!p.DebuggerShown) SetDebugger(false);
         if (p.ShowOthers is bool others) OthersBox.IsChecked = others;
+        if (p.AutoRefresh is bool auto) AutoBox.IsChecked = auto;
         FitDebugger();
     }
 
@@ -685,8 +701,11 @@ public partial class MainWindow : Window
         Log($"{g.Name} › form {name} and take {name} on its tab — the golem tells its fleet; SEND to selected when ready");
     }
 
-    // A STEP OF A FORMATION (propuesta 104; ajuste 77): asked of the selected golem at once — `rotate <name> <sense> [--ring …]` — and the
-    // golem spreads it: every copy queues the same step, which opens when everybody stands on its place. The whole figure, or one ring.
+    // A STEP OF A FORMATION (propuesta 104; ajuste 77): the line `rotate <name> <sense> [--ring …]` WRITTEN on the selected golem's tab, sent
+    // with SEND (9-oct-2026; Juan: "el botón de rotar deja preparado el comando para enviar al golem; luego de haberlo enviado el CLI le hace
+    // get de la formación para ver cómo están distribuidos — no es el CLI quien dicta eso, lo dicta el objeto de la formación del golem"): the
+    // console shows nothing of its own — the holders are the golem's `formations` read, asked again every 3 s and once the step's routes end;
+    // the golem spreads the step and every copy queues it, which opens when everybody stands on its place. The whole figure, or one ring.
     private void RotateClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Whole);
     private void RotateCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Whole);
     private void RotateOuterClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Outer);
@@ -694,11 +713,12 @@ public partial class MainWindow : Window
     private void RotateInnerClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Inner);
     private void RotateInnerCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Inner);
 
-    private async void Rotate(object sender, Sense sense, Ring ring)
+    private void Rotate(object sender, Sense sense, Ring ring)
     {
         if ((sender as Button)?.Tag is not FormationView formation || Current is not { } g) return;
         string line = $"rotate {formation.Name} {(sense == Sense.Clockwise ? "clockwise" : "counterclockwise")}{(ring == Ring.Whole ? "" : $" --ring {ring.ToString().ToLowerInvariant()}")}";
-        await ActNowAsync(g, line);
+        g.Enqueue(line);
+        Log($"{g.Name} › {line} on its tab — SEND to selected when ready; the golem tells its fleet, and its formation says who holds what");
     }
 
     // the eye: the console's own way of looking, remembered by name across the reads
@@ -894,7 +914,7 @@ public partial class MainWindow : Window
     // resizes it, the knob beyond that vertex turns it; null when the point is on none of them
     private (FormationView Formation, Grip Grip)? OnGrip(Point p)
     {
-        if (FormationList.SelectedItem is not FormationView f || !f.Shown || f.AsFigure() is not { } figure) return null;
+        if (FormationList.SelectedItem is not FormationView f || !f.Shown || f.Projected is not { } figure) return null;
         var (centre, size, knob) = Grips(figure, f.CrewCount);
         bool near(Point q, double r) => Math.Abs(p.X - q.X) <= r && Math.Abs(p.Y - q.Y) <= r;
         if (near(size, 8)) return (f, Grip.Size);
@@ -918,7 +938,7 @@ public partial class MainWindow : Window
     private Figure? Reshaped(FormationView f, Grip held, Point p)
     {
         var (x, y) = FloorPoint(p);
-        if ((ghost ?? f.AsFigure()) is not { } figure) return null;
+        if ((ghost ?? f.Projected) is not { } figure) return null;
         switch (held)
         {
             case Grip.Move:
@@ -947,18 +967,50 @@ public partial class MainWindow : Window
         var held = grip;
         dragging = null;
         ghost = null;
-        if (next != null && formation.AsFigure() is { } was && Shape(next) != Shape(was)) Reshape(formation, held, next);
+        if (next != null && formation.Projected is { } was && Shape(next) != Shape(was)) Reshape(formation, held, next);
         Draw();
     }
 
-    // the grip let go: the formation is TOLD AGAIN with its new figure (propuesta 104: saying it again is making it again) — the `form` line to
-    // the selected golem at once, the same name, fleet and policy; the golem spreads it, and the fleet takes it again with `take`
-    private async void Reshape(FormationView formation, Grip held, Figure next)
+    // the grip let go: the new figure is a DRAFT (9-oct-2026; Juan: "hasta estar seguros de los nuevos ajustes se envían al golem seleccionado") —
+    // drawn over the golem's, kept by name; *shot* tells the formation AGAIN with it (propuesta 104: saying it again is making it again) to the
+    // selected golem, which tells its fleet; ↶ drops it. A draft dropped or shot back to the golem's own figure is no draft.
+    private void Reshape(FormationView formation, Grip held, Figure next)
     {
-        if (Current is not { } g) return;
         string what = held switch { Grip.Move => "moved", Grip.Size => "resized", _ => "turned" };
-        Log($"{formation.Name} › {what} to {Shape(next)} — told again to {g.Name}, which tells its fleet; `take {formation.Name}` moves them");
-        await ActNowAsync(g, formation.FormLine(next));
+        if (formation.AsFigure() is { } told && Shape(next) == Shape(told))
+        {
+            drafts.Remove(formation.Name);
+            formation.Draft = null;
+            Log($"{formation.Name} › back to {Shape(told)}, as the golem has it — no draft");
+            return;
+        }
+        drafts[formation.Name] = next;
+        formation.Draft = next;
+        Log($"{formation.Name} › {what} to {Shape(next)} — a draft: shot tells it to {Current?.Name ?? "the golem"}, which tells its fleet; `take {formation.Name}` moves them");
+    }
+
+    // the draft SHOT (9-oct-2026; Juan: "una vez hecho el shot, ¿no deberían salir el script para lograr ese ajuste en el golem, para poder
+    // enviárselo?"): the SCRIPT of the adjustment on the selected golem's tab, like the Formation dialog's — the `form` line with the drafted
+    // figure (the same name, fleet and policy; the golem tells its fleet) and the `take` that moves the fleet to it — and nothing goes until SEND
+    private void Shot_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not FormationView formation || formation.Draft is not { } next || Current is not { } g) return;
+        drafts.Remove(formation.Name);
+        formation.Draft = null;
+        g.Enqueue(formation.FormLine(next));
+        g.Enqueue($"take {formation.Name}");
+        Log($"{g.Name} › shot: form {formation.Name} {Shape(next)} and take {formation.Name} on its tab — the golem tells its fleet; SEND to selected when ready");
+        Draw();
+    }
+
+    // the draft dropped: the map shows the formation as the golem has it
+    private void Discard_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not FormationView formation) return;
+        drafts.Remove(formation.Name);
+        formation.Draft = null;
+        Log($"{formation.Name} › draft dropped");
+        Draw();
     }
 
     // the coordinates under the cursor, shown while it moves over the floor and gone when it leaves (Juan, 6-oct-2026); while a formation is
@@ -1106,6 +1158,13 @@ public partial class MainWindow : Window
                 DrawFigure(f, figure, scale, strong: false, faint: true);
                 DrawFigure(f, ghost, scale, strong: true, faint: false);
                 DrawGrips(ghost, f.CrewCount);
+            }
+            else if (f.Draft is { } draft)
+            {
+                // a draft (9-oct-2026): the golem's own figure fades, the drafted one is drawn in its place until shot or dropped
+                DrawFigure(f, figure, scale, strong: false, faint: true);
+                DrawFigure(f, draft, scale, strong, faint: false);
+                if (strong) DrawGrips(draft, f.CrewCount);
             }
             else
             {

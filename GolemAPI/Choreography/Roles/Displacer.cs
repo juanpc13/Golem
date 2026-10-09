@@ -646,6 +646,7 @@ public sealed class Displacer
                     {
                         formation = g.Choreography.Current;
                         me = formation.Me;
+                        roundPlaced = formation.Round;
                         route = formation.Placed(me);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
@@ -663,9 +664,12 @@ public sealed class Displacer
                                 print route.Why 'why';
                             }
                         }
-                        expose me.Name who, formation.Name call, formation.Stamp nonce, formation.Round round;
+                        expose me.Name who, formation.Name call, formation.Stamp nonce, roundPlaced round;
                     }
                 ";
+    // `roundPlaced`, read BEFORE the word (lab 9-oct-2026): the once of the tell is the round the word is ABOUT — when this golem is the last
+    // of the round and a step waits, Placed opens the step and Round is already the next one, so the key of "last in round 2" was the key of
+    // "placed in round 3" and the engine kept the second tell back: the fleet waited for a word that never came, and only this golem stepped
 
     private Answer Placed()
     {

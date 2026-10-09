@@ -113,4 +113,4 @@ public static class Workspace
 /// wide), and whether the debugger was shown.</summary>
 // …and whether the map shows the other golems (8-oct-2026; Juan: "guarda el checkbox de other golems… o tal vez al cerrar"): a way of looking,
 // the machine's like the sizes, not the workspace's; absent, they are shown
-public sealed record PaneSizes(double GolemsWidth, double ConsoleShare, double DebuggerShare, double LogHeight, double? MapHeight, bool DebuggerShown, bool? ShowOthers = null);
+public sealed record PaneSizes(double GolemsWidth, double ConsoleShare, double DebuggerShare, double LogHeight, double? MapHeight, bool DebuggerShown, bool? ShowOthers = null, bool? AutoRefresh = null);

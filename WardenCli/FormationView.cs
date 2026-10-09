@@ -56,6 +56,26 @@ public sealed class FormationView : INotifyPropertyChanged
         set { if (shown == value) return; shown = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Shown))); }
     }
 
+    private Figure? draft;
+    /// <summary>THE DRAFT (9-oct-2026; Juan: "quisiera algo como el botón shot… mientras del lado del CLI lo podemos modificar y, hasta estar
+    /// seguros de los nuevos ajustes, se envían al golem seleccionado y éste se encarga de actualizar a todos los involucrados"): the figure the
+    /// operator moved, turned or resized on the map, NOT told yet — the map draws it over the golem's, *shot* tells it (`FormLine(Draft)`),
+    /// ↶ drops it. Kept by the console by name across the reads.</summary>
+    public Figure? Draft
+    {
+        get => draft;
+        set
+        {
+            if (ReferenceEquals(draft, value)) return;
+            draft = value;
+            foreach (var n in new[] { nameof(Draft), nameof(HasDraft), nameof(DraftText) }) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+        }
+    }
+    public bool HasDraft => draft != null;
+    public string DraftText => draft == null ? "" : "  · draft — shot writes it";
+    /// <summary>What the console projects and grips: the draft while there is one, else the figure as the golem told it.</summary>
+    public Figure? Projected => draft ?? AsFigure();
+
     public bool IsDoubleRing => Shape == "double ring";
     public IReadOnlyList<string> CrewNames => Crew.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(n => n.Trim()).ToList();
     public int CrewCount => CrewNames.Count;

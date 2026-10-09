@@ -253,7 +253,11 @@
                                 </DataTemplate>
                             </ContentControl.ContentTemplate>
                         </ContentControl>
-                        <TextBlock Text="what it knows, asked every 3 s" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        <TextBlock Text="what it knows" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        <!-- the reads on demand (Juan, 9-oct-2026: "no lo hagas cada 3 segundos; agrega un botón para refrescar y otro para hacerlo cada 3 segundos"):
+                             refresh asks where, state, route, obstacles and formations once; auto asks them every 3 s while it is on -->
+                        <Button Content="refresh" Click="RefreshReads_Click" Margin="8,0,0,0" Padding="6,1" FontSize="11" ToolTip="ask the selected golem its reads now: where, state, route, obstacles, formations"/>
+                        <CheckBox x:Name="AutoBox" Content="auto" Checked="Auto_Toggled" Unchecked="Auto_Toggled" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center" ToolTip="ask them again every 3 s while on"/>
                     </StackPanel>
                 </DockPanel>
                 <!-- the reads, as information -->
@@ -363,6 +367,62 @@
                 <!-- THE DEBUGGER'S FOOT, under the map (Juan, 7-oct-2026: "agrega mejor este tab como parte baja del mapa, ahí veremos las formaciones"):
                      two tabs of one height, so switching never moves the map; right under the map, the height left is theirs — the tool that builds a command from a point, and the active formations -->
                 <TabControl x:Name="DebuggerFoot" MinHeight="176" Margin="0" Style="{StaticResource DarkTabs}">
+                    <!-- THE GOLEM'S FORMATIONS (propuesta 104; Juan: "la pestaña de formaciones será una consulta GET del golem para ver a cuáles él está
+                         metido"): what the selected golem's `formations` read says — its figure, who holds which place, how many stand on theirs — with
+                         its eye (the figure PROJECTED on the map, propuesta 96), its steps (↻ ↺ write rotate on the tab) and its dissolution; FIRST of the foot's tabs, its count in the header (Juan, 9-oct-2026) -->
+                    <TabItem x:Name="FormationsTab">
+                        <TabItem.Header>
+                            <TextBlock><Run Text="formations"/><Run Text="{Binding SelectedItem.Knowledge.Formations.Count, ElementName=GolemList, Mode=OneWay, StringFormat=' ({0})'}"/></TextBlock>
+                        </TabItem.Header>
+                        <DockPanel Background="{StaticResource Well}">
+                            <DockPanel DockPanel.Dock="Top" Margin="6,4,6,2">
+                                <TextBlock x:Name="NoFormation" Text="select a golem: its formations are read from it" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            </DockPanel>
+                            <ListBox x:Name="FormationList" ItemsSource="{Binding SelectedItem.Knowledge.Formations, ElementName=GolemList}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="4,2">
+                                            <ToggleButton DockPanel.Dock="Left" Style="{StaticResource EyeToggle}" IsChecked="{Binding Shown}" Checked="Eye_Toggled" Unchecked="Eye_Toggled" ToolTip="show or hide this figure on the map"/>
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <!-- the draft (9-oct-2026): a figure moved, turned or resized on the map is told only when SHOT - form … again to the selected golem, which tells its fleet; the arrow drops it -->
+                                                <StackPanel x:Name="DraftButtons" Orientation="Horizontal" Visibility="Collapsed">
+                                                    <Button Content="shot" Tag="{Binding}" Click="Shot_Click" Background="{StaticResource Accent}" Foreground="{StaticResource Panel}" FontWeight="Bold" ToolTip="write the adjustment on the selected golem's tab: form … again with the figure drafted on the map, and take …; nothing goes until SEND — the golem then tells its fleet"/>
+                                                    <Button Content="↶" Tag="{Binding}" Click="Discard_Click" ToolTip="drop the draft: the map shows the formation as the golem has it"/>
+                                                </StackPanel>
+                                                <StackPanel x:Name="WholeTurn" Orientation="Horizontal">
+                                                    <Button Content="↻" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="write rotate … clockwise on the selected golem's tab; sent, every body takes one place down the figure's order once all stand on theirs — the golem tells its fleet, and who holds what is read back from it"/>
+                                                    <Button Content="↺" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="write rotate … counterclockwise on the selected golem's tab"/>
+                                                </StackPanel>
+                                                <Button Content="✕" Tag="{Binding}" Click="Dissolve_Click" ToolTip="dissolve …, asked of the golem now: the formation leaves every golem of its fleet; the bodies stay where they are"/>
+                                            </StackPanel>
+                                            <!-- a double ring turns ring by ring (8-oct-2026; Juan: "que se pueda rotar el superior y el inferior"): rotate with the ring named, outer or inner -->
+                                            <StackPanel x:Name="RingTurns" DockPanel.Dock="Bottom" Orientation="Horizontal" Visibility="Collapsed" Margin="0,2,0,0">
+                                                <TextBlock Text="outer" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                                <Button Content="↻" Tag="{Binding}" Click="RotateOuterClockwise_Click" ToolTip="write rotate … clockwise --ring outer on the tab"/>
+                                                <Button Content="↺" Tag="{Binding}" Click="RotateOuterCounter_Click" ToolTip="write rotate … counterclockwise --ring outer on the tab"/>
+                                                <TextBlock Text="inner" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="6,0,3,0"/>
+                                                <Button Content="↻" Tag="{Binding}" Click="RotateInnerClockwise_Click" ToolTip="write rotate … clockwise --ring inner on the tab"/>
+                                                <Button Content="↺" Tag="{Binding}" Click="RotateInnerCounter_Click" ToolTip="write rotate … counterclockwise --ring inner on the tab"/>
+                                            </StackPanel>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  "/><Run Text="{Binding Shape, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text=" at "/><Run Text="{Binding CenterText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding RoundText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding DraftText, Mode=OneWay}" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
+                                                <TextBlock Text="{Binding HoldersText, Mode=OneWay}" ToolTip="{Binding HoldersText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DockPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsDoubleRing}" Value="True">
+                                                <Setter TargetName="WholeTurn" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="RingTurns" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding HasDraft}" Value="True">
+                                                <Setter TargetName="DraftButtons" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </TabItem>
                     <TabItem Header="point → command">
                         <!-- the tool: a point and a verb build one command; the points clicked on the map accumulate for visit and cover -->
                         <Border Background="{StaticResource Well}" Padding="6,4">
@@ -434,51 +494,6 @@
                                                 <TextBlock Text="{Binding Marks, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" FontFamily="Consolas"/>
                                             </StackPanel>
                                         </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </DockPanel>
-                    </TabItem>
-                    <!-- THE GOLEM'S FORMATIONS (propuesta 104; Juan: "la pestaña de formaciones será una consulta GET del golem para ver a cuáles él está
-                         metido"): what the selected golem's `formations` read says — its figure, who holds which place, how many stand on theirs — with
-                         its eye (the figure PROJECTED on the map, propuesta 96), its steps (↻ ↺, asked of the golem at once) and its dissolution -->
-                    <TabItem x:Name="FormationsTab" Header="formations">
-                        <DockPanel Background="{StaticResource Well}">
-                            <DockPanel DockPanel.Dock="Top" Margin="6,4,6,2">
-                                <TextBlock x:Name="NoFormation" Text="select a golem: its formations are read from it" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            </DockPanel>
-                            <ListBox x:Name="FormationList" ItemsSource="{Binding SelectedItem.Knowledge.Formations, ElementName=GolemList}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel Margin="4,2">
-                                            <ToggleButton DockPanel.Dock="Left" Style="{StaticResource EyeToggle}" IsChecked="{Binding Shown}" Checked="Eye_Toggled" Unchecked="Eye_Toggled" ToolTip="show or hide this figure on the map"/>
-                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <StackPanel x:Name="WholeTurn" Orientation="Horizontal">
-                                                    <Button Content="↻" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="rotate … clockwise, asked of the golem now: every body one place down the figure's order once all stand on theirs; the golem tells its fleet"/>
-                                                    <Button Content="↺" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="rotate … counterclockwise, asked of the golem now"/>
-                                                </StackPanel>
-                                                <Button Content="✕" Tag="{Binding}" Click="Dissolve_Click" ToolTip="dissolve …, asked of the golem now: the formation leaves every golem of its fleet; the bodies stay where they are"/>
-                                            </StackPanel>
-                                            <!-- a double ring turns ring by ring (8-oct-2026; Juan: "que se pueda rotar el superior y el inferior"): rotate with the ring named, outer or inner -->
-                                            <StackPanel x:Name="RingTurns" DockPanel.Dock="Bottom" Orientation="Horizontal" Visibility="Collapsed" Margin="0,2,0,0">
-                                                <TextBlock Text="outer" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,3,0"/>
-                                                <Button Content="↻" Tag="{Binding}" Click="RotateOuterClockwise_Click" ToolTip="rotate … clockwise --ring outer, asked of the golem now"/>
-                                                <Button Content="↺" Tag="{Binding}" Click="RotateOuterCounter_Click" ToolTip="rotate … counterclockwise --ring outer"/>
-                                                <TextBlock Text="inner" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="6,0,3,0"/>
-                                                <Button Content="↻" Tag="{Binding}" Click="RotateInnerClockwise_Click" ToolTip="rotate … clockwise --ring inner, asked of the golem now"/>
-                                                <Button Content="↺" Tag="{Binding}" Click="RotateInnerCounter_Click" ToolTip="rotate … counterclockwise --ring inner"/>
-                                            </StackPanel>
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  "/><Run Text="{Binding Shape, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text=" at "/><Run Text="{Binding CenterText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding RoundText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/></TextBlock>
-                                                <TextBlock Text="{Binding HoldersText, Mode=OneWay}" ToolTip="{Binding HoldersText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
-                                            </StackPanel>
-                                        </DockPanel>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsDoubleRing}" Value="True">
-                                                <Setter TargetName="WholeTurn" Property="Visibility" Value="Collapsed"/>
-                                                <Setter TargetName="RingTurns" Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
