@@ -235,6 +235,24 @@ public class FormationTests
         // two more steps queue while they walk; the first of them opens only when both arrived again
         call.Queue(call.Figure.Rotate(Sense.Counterclockwise), "step-2");
         Assert.AreEqual(2, call.Queue(call.Figure.Rotate(Sense.Counterclockwise), "step-3"));
+        // THE START TOGETHER (propuesta 106; Juan: "que todos se sincronicen en posición de salida y avancen a la vez"): the step's route turns the
+        // body to face its next place and then WAITS; blue says it is lined up, and with red's word both set out at once
+        Assert.IsFalse(second.Waiting, "not lined up yet: the turn is asked first");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.Aligned(call.Me)).Message, "is not waiting for the fleet's start");
+        second.Arrive(second.NextLeg);
+        Assert.IsTrue(second.Waiting, "the turn done, the route waits for the fleet's start");
+        Assert.AreEqual("stop", second.Order);
+        Assert.IsFalse(second.IsWalkable);
+        Assert.IsTrue(call.AwaitsMyWord);
+        Assert.AreSame(second, call.Aligned(call.Me));
+        Assert.IsFalse(call.AwaitsMyWord);
+        Assert.AreEqual(1, call.AlignedCount);
+        Assert.IsTrue(second.Waiting, "red is not lined up yet");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => call.HeardAligned(call.Me)).Message, "its own word is Aligned");
+        Assert.AreSame(second, call.HeardAligned(fleet.Member("red")));
+        Assert.IsFalse(second.Waiting, "everybody lined up: the fleet starts");
+        Assert.AreEqual("advance", second.Order);
+        Assert.AreEqual(2, call.AlignedCount, "the words of this round stay until the formation leaves it: a route opened again in the round starts at once");
         WalkToTheEnd(second);
         Assert.AreSame(second, call.Placed(call.Me), "blue stands, red does not yet: the step waits");
         var third = call.Heard(fleet.Member("red"));
@@ -342,7 +360,51 @@ public class FormationTests
     // The body's walk: the leg the route asks, done as asked — reported the way the robot does (ajuste 68).
     private static void WalkToTheEnd(GolemDomain.Routes.Route route)
     {
-        for (int i = 0; i < 50 && route.IsPending(); i++) route.Arrive(route.NextLeg);
+        for (int i = 0; i < 50 && route.IsPending(); i++)
+        {
+            if (route.Waiting) route.Go();   // the fleet's start, given here by hand: the words that give it are FormationTests' business (propuesta 106)
+            route.Arrive(route.NextLeg);
+        }
+    }
+
+    // A PEER'S LINE-UP HEARD EARLY (propuesta 106): its word may come before this copy opened the step (its last placed word still on the way);
+    // it is kept, and this golem's own line-up then starts the fleet at once. And a touch while waiting sets the route out by itself.
+    [TestMethod]
+    public void AWordOfLineUpHeardBeforeTheStep_IsKept_AndATouchWhileWaiting_SetsTheRouteOut()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red");
+        var call = blue.Choreography.Form("sq", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "rank");
+        var first = call.Join(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
+        WalkToTheEnd(first);
+        call.Placed(call.Me);
+        call.Queue(call.Figure.Rotate(Sense.Clockwise), "step-1");
+        Assert.AreSame(first, call.HeardAligned(fleet.Member("red"), 1), "red is lined up for round 1, a step blue has not opened yet: the word is kept in its round, nothing moves");
+        Assert.AreEqual(0, call.AlignedCount, "nothing said of round 0");
+        var step = call.Heard(fleet.Member("red"));   // red's placed word arrives after its line-up: the step opens
+        Assert.AreNotSame(first, step);
+        Assert.AreEqual(1, call.Round);
+        Assert.AreEqual(1, call.AlignedCount, "red's early word, in this round");
+        step.Arrive(step.NextLeg);
+        Assert.IsTrue(step.Waiting);
+        call.Aligned(call.Me);
+        Assert.IsFalse(step.Waiting, "red's early word counted: blue's own line-up starts the fleet");
+        Assert.AreEqual("advance", step.Order);
+
+        // a second step; waiting on it, a touch from behind: the correction goes first, the start is not waited for again
+        WalkToTheEnd(step);
+        call.Placed(call.Me);
+        call.Queue(call.Figure.Rotate(Sense.Clockwise), "step-2");
+        var next = call.Heard(fleet.Member("red"));
+        next.Arrive(next.NextLeg);
+        Assert.IsTrue(next.Waiting);
+        var standing = next.Standing;
+        blue.Bump(standing, Math.PI);   // pressed on its back while standing lined up
+        Assert.IsFalse(next.Waiting, "touched: the route clears away from the touch by itself");
+        Assert.AreEqual("advance", next.Order, "touched from behind: the clearance ahead (ajuste 75)");
+        Assert.IsTrue(next.NextLeg.IsCorrection);
     }
 
     [TestMethod]

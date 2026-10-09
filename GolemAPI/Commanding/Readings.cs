@@ -52,7 +52,7 @@ public static class Readings
                     route = g.Newest();
                     print route.Id 'route', route.Status 'status', route.AsPlan() 'plan', route.LegsAhead.Count 'ahead', route.StopsLeft 'stopsLeft';
                     if (route.IsPending()) {
-                        print route.Order 'action', route.Paused 'paused';
+                        print route.Order 'action', route.Waiting 'waiting', route.Paused 'paused';
                         if (route.IsWalkable) {
                             print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading';
@@ -89,7 +89,7 @@ public static class Readings
                 foreach (told in g.Choreography.Formations()) {
                     print told.Name 'called', told.Figure.Name 'shape', told.Figure.Center.X 'atX', told.Figure.Center.Y 'atY',
                           told.Figure.Measure.InMeters 'length', told.Figure.Turn.InDegrees 'degrees', told.Policy 'policy',
-                          told.Fleet.Roster 'crew', told.Fleet.Division 'division', told.PlaceCount 'places', told.PlacedCount 'placed', told.Queued 'queued', told.Round 'round', told.PlaceIndex 'mine';
+                          told.Fleet.Roster 'crew', told.Fleet.Division 'division', told.PlaceCount 'places', told.PlacedCount 'placed', told.AlignedCount 'aligned', told.Queued 'queued', told.Round 'round', told.PlaceIndex 'mine';
                     foreach (holders in told.Holders()) {
                         print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
                     }

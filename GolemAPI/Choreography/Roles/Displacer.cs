@@ -56,7 +56,7 @@ public sealed class Displacer
                             route = g.Dash(route);
                         }
                         if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                             if (route.IsWalkable) {
                                 print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -154,7 +154,7 @@ public sealed class Displacer
                                 route = g.Dash(route);
                             }
                             if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
+                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                                 if (route.IsWalkable) {
                                     print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                           route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -188,7 +188,7 @@ public sealed class Displacer
                                 route = g.Dash(route);
                             }
                             if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
+                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                                 if (route.IsWalkable) {
                                     print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                           route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -348,7 +348,7 @@ public sealed class Displacer
                             route = g.Dash(route);
                         }
                         if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                             if (route.IsWalkable) {
                                 print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -405,7 +405,7 @@ public sealed class Displacer
                                 route = g.Dash(route);
                             }
                             if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
+                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                                 if (route.IsWalkable) {
                                     print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                           route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -452,7 +452,7 @@ public sealed class Displacer
                     me = Pose(@px, @py, @ptheta);
                     route = g.Pause(me);
                     if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action', g.HeldAt.X 'heldX', g.HeldAt.Y 'heldY';
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting', g.HeldAt.X 'heldX', g.HeldAt.Y 'heldY';
                     } else {
                         print route.Id 'route', route.Status 'ended';
                         if (route.EndedShort) {
@@ -485,7 +485,7 @@ public sealed class Displacer
                     me = Pose(@px, @py, @ptheta);
                     route = g.Resume(me);
                     if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action';
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                         if (route.IsWalkable) {
                             print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -544,7 +544,7 @@ public sealed class Displacer
                             route = g.Dash(route);
                         }
                         if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                             if (route.IsWalkable) {
                                 print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -575,6 +575,13 @@ public sealed class Displacer
             // act, so the arrival keeps its one expose (a script carries one expose: a second one unbinds the first's parameters, lab 1-oct)
             var placed = Placed();
             if (placed.Ok) { robot.Report(placed, $"route {was.Route}: on its place in the formation — the fleet is told"); return placed; }
+        }
+        if (answer.Ok && answer.Order is { Action: "stop", Waiting: true })
+        {
+            // the turn lined the body up for a step of its formation and the route waits for the fleet's start (propuesta 106): the golem says it is
+            // lined up — its own act, told to every peer; with the last mover's word every copy lets its route go
+            var aligned = Aligned();
+            if (aligned.Ok) { robot.Report(aligned, $"route {was.Route}: lined up for the step — the fleet is told"); return aligned; }
         }
         if (!answer.Ok || !stop) return answer;
         robot.ReportLocalization(was.Route);
@@ -612,7 +619,7 @@ public sealed class Displacer
                             route = g.Dash(route);
                         }
                         if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                             if (route.IsWalkable) {
                                 print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -652,7 +659,7 @@ public sealed class Displacer
                             route = g.Dash(route);
                         }
                         if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action';
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                             if (route.IsWalkable) {
                                 print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -670,6 +677,45 @@ public sealed class Displacer
     // `roundPlaced`, read BEFORE the word (lab 9-oct-2026): the once of the tell is the round the word is ABOUT — when this golem is the last
     // of the round and a step waits, Placed opens the step and Round is already the next one, so the key of "last in round 2" was the key of
     // "placed in round 3" and the engine kept the second tell back: the fleet waited for a word that never came, and only this golem stepped
+
+    // THE LINE-UP (propuesta 106): this golem's body turned to face its next place in a step and stands; `Aligned(me)` records it, and with the
+    // last mover's word the route goes on (the print turns from stop to advance). The expose carries what the tell needs; `roundPlaced`, read
+    // before the act, like the placed word's.
+    private const string AlignedScript = @"
+                    {
+                        formation = g.Choreography.Current;
+                        me = formation.Me;
+                        roundPlaced = formation.Round;
+                        route = formation.Aligned(me);
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                        expose me.Name who, formation.Name call, formation.Stamp nonce, roundPlaced round;
+                    }
+                ";
+
+    private Answer Aligned()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Current.AwaitsMyWord) Error 'the golem is not waiting, lined up, for the fleet to start';
+                ", AlignedScript)
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
 
     private Answer Placed()
     {
@@ -706,7 +752,7 @@ public sealed class Displacer
                 route = g.Underway();
                 route.Fail(@reason);
                 if (route.IsPending()) {
-                    print route.Id 'route', route.Order 'action';
+                    print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                     if (route.IsWalkable) {
                         print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                               route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',

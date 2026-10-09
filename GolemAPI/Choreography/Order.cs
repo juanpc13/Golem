@@ -27,7 +27,10 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
     /// <summary>The golem is held by the operator (`g.Held`, printed as `held`): its `stop` is the hold, taken up again by `continue`. A
     /// `stop` that is no hold is a route YIELDING its place (propuesta 74): the body stops and says where it stood.</summary>
     public bool Held { get; init; }
-    public bool IsHalt => Action == "stop" && !Held;
+    /// <summary>The route WAITS FOR THE FLEET'S START (propuesta 106, printed as `waiting`): its `stop` asks nothing — the body stands, lined up,
+    /// until the formation lets the route go and the print turns to advance.</summary>
+    public bool Waiting { get; init; }
+    public bool IsHalt => Action == "stop" && !Held && !Waiting;
 
     /// <summary>Why the route ended short of its last stop, in the domain's words (`route.Why`, printed only when `route.EndedShort`):
     /// empty otherwise. For the log and the panel; it never travels to the body.</summary>
@@ -61,7 +64,7 @@ public sealed record Order(int Route, string Action, double Amount, string Kind,
             string a = action.GetString() ?? "";
             bool isHeld = B("held");
             if (isHeld) a = "stop";
-            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft")) { Held = isHeld };
+            return new Order(route.GetInt32(), a, D("amount"), S("kind"), S("name"), D("x"), D("y"), D("heading"), B("following"), (int)D("stopsLeft")) { Held = isHeld, Waiting = B("waiting") };
         }
         catch (JsonException) { return null; }
     }

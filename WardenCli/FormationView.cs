@@ -19,10 +19,10 @@ public sealed record HolderView(string Name, int Index, double X, double Y, int 
 public sealed class FormationView : INotifyPropertyChanged
 {
     public FormationView(string name, string shape, double centerX, double centerY, double measure, double degrees, string policy, string crew, int division,
-                         int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots)
+                         int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots, int aligned = 0)
     {
         Name = name; Shape = shape; CenterX = centerX; CenterY = centerY; Measure = measure; Degrees = degrees; Policy = policy; Crew = crew; Division = division;
-        Places = places; Placed = placed; Queued = queued; Round = round; Mine = mine; Holders = holders; Spots = spots;
+        Places = places; Placed = placed; Queued = queued; Round = round; Mine = mine; Holders = holders; Spots = spots; Aligned = aligned;
     }
 
     public string Name { get; }
@@ -42,6 +42,8 @@ public sealed class FormationView : INotifyPropertyChanged
     public int Placed { get; }
     public int Queued { get; }
     public int Round { get; }
+    /// <summary>How many members said they are lined up for the step underway (propuesta 106): the fleet starts when every mover is.</summary>
+    public int Aligned { get; }
     /// <summary>The selected golem's own place in it, −1 before it took it.</summary>
     public int Mine { get; }
     public IReadOnlyList<HolderView> Holders { get; }
@@ -84,7 +86,7 @@ public sealed class FormationView : INotifyPropertyChanged
     // ---- the list's words ----
     private static string N(double v) => Math.Round(v, 3).ToString("0.###", CultureInfo.InvariantCulture);
     public string CenterText => $"{N(CenterX)},{N(CenterY)}";
-    public string RoundText => $"  by {Policy} · round {Round} · {Placed}/{CrewCount} placed{(Queued > 0 ? $" · {Queued} step(s) queued" : "")}";
+    public string RoundText => $"  by {Policy} · round {Round} · {Placed}/{CrewCount} placed{(Aligned > 0 ? $" · {Aligned} lined up" : "")}{(Queued > 0 ? $" · {Queued} step(s) queued" : "")}";
     public string HoldersText
     {
         get
@@ -148,7 +150,7 @@ public sealed class FormationView : INotifyPropertyChanged
             if (f.TryGetProperty("spots", out var ss) && ss.ValueKind == JsonValueKind.Array)
                 foreach (var sp in ss.EnumerateArray()) spots.Add((Num(sp, "x"), Num(sp, "y")));
             list.Add(new FormationView(Str(f, "called"), Str(f, "shape"), Num(f, "atX"), Num(f, "atY"), Num(f, "length"), Num(f, "degrees"), Str(f, "policy"), Str(f, "crew"),
-                                       (int)Num(f, "division"), (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots));
+                                       (int)Num(f, "division"), (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned")));
         }
         return list;
     }

@@ -69,6 +69,8 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-placed",  "[_:Formation].Placed(_)"),              // this golem stands on its place: the next step may open (ajuste 77)
             ("next-order-heard",   "[_:Formation].Heard(_)"),               // a peer's word that it stands on its place: the same
             ("next-order-step",    "[_:Formation].Step()"),                 // …or opens at once when everybody already stands
+            ("next-order-aligned", "[_:Formation].Aligned(_)"),             // this golem is lined up for the step: with the last word the fleet starts (propuesta 106)
+            ("next-order-heard-aligned", "[_:Formation].HeardAligned(_, _)"), // a peer's word that it is lined up, with its round: the same (lab 9-oct: with one argument it never fired — the clock released the body up to 2 s late)
             ("next-order-dissolve", "[_:Choreographies].Dissolve(_)"),      // a formation dissolved: a route of it let go, the body stops (propuesta 104)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),
@@ -83,7 +85,7 @@ public sealed class RobotMechanics : IOutputSink
                         print g.HasPendingMission() 'pending', g.Held 'held';
                         if (g.HasPendingMission()) {
                             route = g.Underway();
-                            print route.Id 'route', route.Order 'action';
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                             if (route.IsWalkable) {
                                 print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                       route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -134,9 +136,9 @@ public sealed class RobotMechanics : IOutputSink
                 Halt(order);                                // a route yields its place: the body stops and says where it stood (propuesta 74)
                 break;
             case "stop":
-                if (Carrying == null) break;                // already standing: the clock asked again while held
+                if (Carrying == null) break;                // already standing: the clock asked again while held, or the route waits for the fleet's start
                 Stop();
-                golemEmbodiment.Note($"route {order.Route}: paused by the operator — the body stands until resumed");
+                golemEmbodiment.Note(order.Waiting ? $"route {order.Route}: lined up — the body stands until the fleet starts" : $"route {order.Route}: paused by the operator — the body stands until resumed");
                 break;
             default:
                 golemEmbodiment.Note($"an action I do not know: '{order.Action}'");

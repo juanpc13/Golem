@@ -119,6 +119,16 @@ public sealed class GolemSpeech
                 .Seek("Placed").One()
                     .OnMatch("[_:Formation].Placed(_) expose $who who, $call call, $nonce nonce, $round round;")   // the round in the once: a word per round, not one per call
                 .Causation.Continue(placed);
+            // THE START TOGETHER (propuesta 106): a golem lined up for the step says so to every peer; the once is per round and peer
+            string aligned = string.Join("\n", peers.Select(p => $@"
+                tell AlignedAt with @call, @who, @round
+                    to {p}
+                    once 'aligned-' + @nonce + '-' + @round + '-' + @who + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-aligned")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Aligned").One()
+                    .OnMatch("[_:Formation].Aligned(_) expose $who who, $call call, $nonce nonce, $round round;")
+                .Causation.Continue(aligned);
             string rotate = string.Join("\n", peers.Select(p => $@"
                 tell RotateTo with @call, @sense, @ring, @stepId
                     to {p}
@@ -182,6 +192,8 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeStoodFor)
             .Told("PlacedAt").With<string>("call").With<string>("who")
                 .Command(GolemEmbodiment.UptakePlacedAt)
+            .Told("AlignedAt").With<string>("call").With<string>("who").With<int>("round")
+                .Command(GolemEmbodiment.UptakeAlignedAt)
             .Told("RotateTo").With<string>("call").With<string>("sense").With<string>("ring").With<string>("stepId")
                 .Command(GolemEmbodiment.UptakeRotateTo)
             .Told("Dissolved").With<string>("call")

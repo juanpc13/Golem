@@ -112,6 +112,17 @@ public class ChoreographiesTests
         Assert.AreEqual(0, rings.Holders().Single(h => h.Name == "blue").Index, "blue did not move");
         Assert.AreEqual(3, rings.PlacedCount, "the outer ring is still in place; the inner one walks");
 
+        // the inner ring STARTS TOGETHER (propuesta 106): red turns to face its next place and waits for orange and yellow to be lined up too
+        step.Arrive(step.NextLeg);
+        Assert.IsTrue(step.Waiting, "the turn done, the route waits for the fleet's start");
+        Assert.AreEqual("stop", step.Order);
+        rings.Aligned(rings.Me);
+        rings.HeardAligned(fleet.Member("orange"));
+        Assert.IsTrue(step.Waiting, "yellow is not lined up yet");
+        Assert.AreSame(step, rings.HeardAligned(fleet.Member("blue")), "a word of the outer ring, which does not move, changes nothing");
+        rings.HeardAligned(fleet.Member("yellow"));
+        Assert.IsFalse(step.Waiting, "the three movers lined up: the inner ring sets out at once");
+        Assert.AreEqual("advance", step.Order);
         // the outer ring alone: red stays, its route in place stands
         WalkToTheEnd(step);
         rings.Placed(rings.Me); rings.Heard(fleet.Member("orange")); rings.Heard(fleet.Member("yellow"));
@@ -164,6 +175,10 @@ public class ChoreographiesTests
     // The body's walk: the leg the route asks, done as asked — reported the way the robot does (ajuste 68).
     private static void WalkToTheEnd(GolemDomain.Routes.Route route)
     {
-        for (int i = 0; i < 50 && route.IsPending(); i++) route.Arrive(route.NextLeg);
+        for (int i = 0; i < 50 && route.IsPending(); i++)
+        {
+            if (route.Waiting) route.Go();   // the fleet's start, given here by hand: the words that give it are FormationTests' business (propuesta 106)
+            route.Arrive(route.NextLeg);
+        }
     }
 }

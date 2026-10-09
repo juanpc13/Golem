@@ -54,6 +54,11 @@ internal sealed class Route
     /// 1-oct-2026): it asks the body to stop and say where it stood, and the convocation opens the route that replaces it from there
     /// (<c>muster.Halted(me)</c>). Still pending; nothing more is walked on it.</summary>
     internal bool Yielding { get; private set; }
+    /// <summary>Whether the route WAITS FOR THE FLEET'S START (propuesta 106, 9-oct-2026; Juan: "cyan tiene que girar más que azul… que todos se
+    /// sincronicen en posición de salida y avancen a la vez"): a step of a formation starts together — once the body turned to face its next place
+    /// the route asks nothing more (<see cref="Order"/> is stop, the body stands) until the formation lets it go (<see cref="Go"/>), when every
+    /// mover said it is lined up. Still pending; the way untouched.</summary>
+    internal bool Waiting { get; private set; }
 
     private RouteStatus status = RouteStatus.Pending;
     private Trajectory way = new(Array.Empty<Leg>());   // the plan: passages to cross, points to pass, stops to reach, in order
@@ -62,6 +67,8 @@ internal sealed class Route
     private Position faces;                              // where the body faces once it reached its last stop (a formation's centre, ajuste 79); null: nowhere in particular
     private int nextLeg;                                 // the first leg not yet known to be walked
     private bool turned;                                 // the body already turned to face the next leg's point
+    private bool startsTogether;                         // a step of a formation (propuesta 106): the first turn done, the route waits for the fleet's start
+    private bool started;                                // …and the fleet's start was given (or the route set out by itself: a touch, a waking)
     private int turnsOnLeg;                              // turns asked on the leg ahead: a body that cannot line up is not asked forever
     private bool linedUp;                                // the body reached the next leg's approach: a door lined up, to be crossed to its exit
     private int reached;                                 // stops reached so far
@@ -173,7 +180,7 @@ internal sealed class Route
     {
         if (onTheWay == null) throw new GolemDomainException("Route.Dash: 'onTheWay' was not given");
         if (!onTheWay.IsOnTheWay) throw new GolemDomainException($"route {Id} is improved with the golem's on-the-way strategy, not '{onTheWay.Name}'");
-        if (!IsPending() || Yielding || Navigation.IsOnTheWay) return this;   // a route that yields is replaced, not improved
+        if (!IsPending() || Yielding || Waiting || Navigation.IsOnTheWay) return this;   // a route that yields is replaced, not improved; one that waits for the fleet keeps its line-up
         if (reached == stops.Count) return this;                              // on its place, only the facing left: nothing to plan
         Navigation = onTheWay;   // the golem's own strategy, the same object — nothing is built here
         Plan(standing ?? origin);
@@ -187,6 +194,7 @@ internal sealed class Route
     {
         if (me == null) throw new GolemDomainException("Route.Awake: 'me' was not given");
         MustBePending();
+        Waiting = false; started = true;   // awake, the route sets out by itself: the fleet's start it waited for is gone with the boot
         PlanAgainFrom(me);
         return this;
     }
@@ -281,10 +289,10 @@ internal sealed class Route
         get
         {
             if (!IsPending()) return Status;
-            if (Paused || Yielding) return "stop";
+            if (Paused || Yielding || Waiting) return "stop";
             if (!IsRouted || nextLeg >= way.Count) throw new GolemDomainException($"route {Id} is pending with no way ahead: a route is born with its way and decides it again by itself");
             if (NextLeg.IsReverse) return "back";   // the retreat; a clearance ahead (away) is an advance like any leg
-            if (!turned && Math.Abs(TurnAhead) > TurnTolerance) return TurnAhead > 0 ? "turnLeft" : "turnRight";
+            if (!turned && (Math.Abs(TurnAhead) > TurnTolerance || (startsTogether && !started && !NextLeg.IsFacing))) return TurnAhead >= 0 ? "turnLeft" : "turnRight";   // a route that starts together always asks its line-up turn, however small: the body's word on it is the fleet's cue (propuesta 106)
             return "advance";
         }
     }
@@ -329,7 +337,7 @@ internal sealed class Route
     // The turn, signed, from where the body faces to where it must face (positive: to the left, counter-clockwise).
     private double TurnAhead => standing == null ? 0.0 : Normalize(Target.Heading - standing.Heading);
     /// <summary>Whether the body may act on the next leg now — back, turn or advance: a leg ahead, not held.</summary>
-    internal bool IsWalkable => IsPending() && IsRouted && nextLeg < way.Count && !Paused && !Yielding;
+    internal bool IsWalkable => IsPending() && IsRouted && nextLeg < way.Count && !Paused && !Yielding && !Waiting;
     internal int LegsLeft => way.Count - nextLeg;
     /// <summary>The legs not yet known to be walked: the plan ahead, from the first one on.</summary>
     internal IReadOnlyList<Leg> LegsAhead => way.Legs().Skip(nextLeg).ToList();
@@ -406,6 +414,27 @@ internal sealed class Route
         turnsOnLeg++;
         turned = turnsOnLeg >= TurnsAtMost || Math.Abs(TurnAhead) <= 2 * TurnTolerance;
         if (turned && NextLeg.IsFacing) Faced();   // the facing leg asks no advance: facing the centre, the route is complete
+        else if (turned && startsTogether && !started) Waiting = true;   // lined up for the step: the body stands until the fleet's start (propuesta 106)
+        return this;
+    }
+
+    /// <summary>The route STARTS TOGETHER with the fleet (propuesta 106): said by the formation on the route to a place — the take's and every
+    /// step's — before any act: the body turns to face its next place (a turn is asked even when it already faces it, so every route has its
+    /// line-up word) and then stands, waiting (<see cref="Waiting"/>), until <see cref="Go"/>.</summary>
+    internal Route StartTogether()
+    {
+        MustBePending();
+        startsTogether = true;
+        return this;
+    }
+
+    /// <summary>THE FLEET'S START (propuesta 106): every mover is lined up — the route goes on with the advance it was holding.</summary>
+    internal Route Go()
+    {
+        MustBePending();
+        if (!Waiting) throw new GolemDomainException($"route {Id} is not waiting for the fleet's start");
+        Waiting = false;
+        started = true;
         return this;
     }
 
@@ -589,6 +618,7 @@ internal sealed class Route
     private void Correct(Pose me, Position touch, bool replan)
     {
         if (reached == stops.Count) { End(RouteStatus.Completed, ""); return; }   // touched while turning to face the centre, on its place: done (ajuste 79)
+        Waiting = false; started = true;   // touched while waiting for the fleet's start: the correction goes first, the start is not waited for again
         var back = RetreatFrom(me, touch);
         var legs = new List<Leg> { new(back, TouchedFromBehind(me, touch) ? Leg.Clearance : Leg.Retreat) };
         if (replan)

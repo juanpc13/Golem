@@ -171,7 +171,7 @@ public sealed class GolemEmbodiment
                                 route = g.Dash(route);
                             }
                             if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
+                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                                 if (route.IsWalkable) {
                                     print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                           route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -196,7 +196,7 @@ public sealed class GolemEmbodiment
                                 route = g.Dash(route);
                             }
                             if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action';
+                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                                 if (route.IsWalkable) {
                                     print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                           route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -229,7 +229,32 @@ public sealed class GolemEmbodiment
                     route = g.Dash(route);
                 }
                 if (route.IsPending()) {
-                    print route.Id 'route', route.Order 'action';
+                    print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                    if (route.IsWalkable) {
+                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
+                } else {
+                    print route.Id 'route', route.Status 'ended';
+                    if (route.EndedShort) {
+                        print route.Why 'why';
+                    }
+                }
+            }
+        }
+        ";
+    // A PEER IS LINED UP for a round (propuesta 106; the tell carries the round): its word is recorded in that round; with the last mover's word
+    // this copy lets its own route go and the print turns from stop to advance (next-order-heard-aligned pushes it). The word may come before
+    // this copy reached that round: it is kept there.
+    public const string UptakeAlignedAt = @"
+        {
+            if (g.Choreography.Knows(@call)) {
+                formation = g.Choreography.Find(@call);
+                peer = formation.Fleet.Member(@who);
+                route = formation.HeardAligned(peer, @round);
+                if (route.IsPending()) {
+                    print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                     if (route.IsWalkable) {
                         print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                               route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -258,7 +283,7 @@ public sealed class GolemEmbodiment
                         route = g.Dash(route);
                     }
                     if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action';
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                         if (route.IsWalkable) {
                             print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -309,7 +334,7 @@ public sealed class GolemEmbodiment
                     print g.HasPendingMission() 'pending', g.Held 'held';
                     if (g.HasPendingMission()) {
                         route = g.Underway();
-                        print route.Id 'route', route.Order 'action';
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                         if (route.IsWalkable) {
                             print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -339,7 +364,7 @@ public sealed class GolemEmbodiment
                 print g.HasPendingMission() 'pending', g.Held 'held';
                 if (g.HasPendingMission()) {
                     route = g.Underway();
-                    print route.Id 'route', route.Order 'action';
+                    print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                     if (route.IsWalkable) {
                         print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                               route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
@@ -637,7 +662,7 @@ public sealed class GolemEmbodiment
                     print g.HasPendingMission() 'pending', g.Held 'held';
                     if (g.HasPendingMission()) {
                         route = g.Underway();
-                        print route.Id 'route', route.Order 'action';
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
                         if (route.IsWalkable) {
                             print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
                                   route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',

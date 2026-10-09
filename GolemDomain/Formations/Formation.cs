@@ -47,6 +47,8 @@ internal sealed class Formation
     private readonly Dictionary<string, Position> stood = new();         // where each member said it stood, by name
     private readonly Dictionary<string, int> indices = new(StringComparer.Ordinal);   // THE PLACE EVERY MEMBER HOLDS: by rank from birth, by distance once it spoke; shifted by every step
     private readonly HashSet<string> placed = new(StringComparer.Ordinal);   // who said it stands on its place, this round
+    private readonly Dictionary<int, HashSet<string>> aligned = new();      // who said it is lined up, BY ROUND (propuesta 106): a word may come before this copy reached that round
+    private HashSet<string> movers = new(StringComparer.Ordinal);            // the members the round underway moves: whose line-up the start waits for (the take: everybody)
     private readonly Queue<(Move Move, string Id)> steps = new();        // the moves queued, in the order they were asked (ajuste 84: the figure's)
     private readonly HashSet<string> stepIds = new(StringComparer.Ordinal);
     private Member me;                                                   // this golem, once it joined or convened
@@ -98,6 +100,12 @@ internal sealed class Formation
     internal int PlaceIndex => golem.Name != null && indices.TryGetValue(golem.Name, out int i) ? i : -1;
     /// <summary>How many members said they stand on their place, this round.</summary>
     internal int PlacedCount => placed.Count;
+    /// <summary>How many members said they are lined up for the round underway (propuesta 106).</summary>
+    internal int AlignedCount => AlignedIn(Round).Count;
+    private HashSet<string> AlignedIn(int round) => aligned.TryGetValue(round, out var set) ? set : aligned[round] = new HashSet<string>(StringComparer.Ordinal);
+    /// <summary>This golem's route waits for the fleet's start and its own word is not recorded yet — what the arrival asks before writing
+    /// <see cref="Aligned"/> (<c>Check(g.Choreography.Current.AwaitsMyWord)</c>).</summary>
+    internal bool AwaitsMyWord => route != null && route.Waiting && me != null && !AlignedIn(Round).Contains(me.Name);
     /// <summary>Which ROUND the fleet is in: 0 while taking the formation, one more per step opened — the word "placed" of a round is
     /// not the word of the last (the once of the tell that spreads it carries the round, ajuste 79).</summary>
     internal int Round { get; private set; }
@@ -184,6 +192,8 @@ internal sealed class Formation
     {
         place = Figure.Places(Fleet.Count)[indices[me.Name]];
         route = golem.TakePlace(convenedFrom, place, Figure.Center, Berths(), Where(place));
+        movers = Fleet.Names.ToHashSet(StringComparer.Ordinal);   // the take moves everybody: the fleet sets out together once every body faces its place (propuesta 106)
+        route.StartTogether();
         return route;
     }
 
@@ -226,13 +236,15 @@ internal sealed class Formation
         if (now.DistanceTo(place) < 1e-6) return route;
         place = now;
         yieldedTo = peer.Name;
-        if (route.IsPending())
+        if (route.IsPending() && !route.Waiting)
         {
             if (!route.Yielding) route.Yield();   // the body is carrying an order of it: it stops first and says where it stood
             return route;
         }
-        placed.Remove(me.Name);                   // it leaves the place it had reached
+        if (route.IsPending()) route.Abandon($"{yieldedTo} took this place by distance: {me.Name} goes to ({Fmt(place.X)}, {Fmt(place.Y)})");   // waiting, lined up, the body stands: nothing to halt (propuesta 106)
+        else placed.Remove(me.Name);              // it leaves the place it had reached
         route = golem.TakePlace(route.Standing, place, Figure.Center, Berths(), Where(place));
+        route.StartTogether();                    // the same round: the others' line-up words stay counted, so it sets out as soon as its own body is lined up
         yieldedTo = null;
         return route;
     }
@@ -246,6 +258,7 @@ internal sealed class Formation
         if (route == null || !route.Yielding || !route.IsPending()) throw new GolemDomainException($"no route of {Name} yields its place: nothing to halt");
         route.Abandon($"{yieldedTo} took this place by distance: {this.me.Name} goes to ({Fmt(place.X)}, {Fmt(place.Y)})");
         route = golem.TakePlace(me, place, Figure.Center, Berths(), Where(place));
+        route.StartTogether();                    // the same round: it sets out as soon as its own body is lined up (propuesta 106)
         yieldedTo = null;
         return route;
     }
@@ -269,6 +282,43 @@ internal sealed class Formation
         if (peer == null) throw new GolemDomainException("Formation.Heard: 'peer' was not given");
         if (me != null && peer.Name == me.Name) throw new GolemDomainException($"'{peer.Name}' is this golem: its own word is Placed");
         return Record(peer);
+    }
+
+    /// <summary>THIS GOLEM IS LINED UP for the round underway (propuesta 106, 9-oct-2026; Juan: "que todos se sincronicen en posición de salida y
+    /// avancen a la vez"; then: "cuando tienen que moverse todos a un nuevo centro… todos deberían moverse juntos si ya están en el ángulo
+    /// correcto"): its body turned to face its place and stands — <c>route = formation.Aligned(me)</c>, written by the arrival of that turn —
+    /// on the take and on every step. Told to every peer by the reaction on this act (<c>AlignedAt</c>, with the round); a peer's word is
+    /// <see cref="HeardAligned(Member, int)"/>. When every mover of the round is lined up, this copy lets its route go (<see cref="Route.Go"/>):
+    /// the print turns from stop to advance, and the fleet sets out within the tells' latency of each other.</summary>
+    internal Route Aligned(Member member)
+    {
+        if (member == null) throw new GolemDomainException("Formation.Aligned: 'member' was not given");
+        if (me == null || member.Name != me.Name) throw new GolemDomainException($"'{member.Name}' is not this golem: a peer's word is HeardAligned");
+        if (route == null || !route.Waiting) throw new GolemDomainException($"'{Name}': this golem's route is not waiting for the fleet's start");
+        return RecordAligned(member, Round);
+    }
+
+    /// <summary>A PEER'S WORD — it is lined up for that round (by tell, <c>AlignedAt</c>, which carries the round): <c>route =
+    /// formation.HeardAligned(peer, @round)</c>. Kept in its round even before this copy reached it (the words travel faster than the last
+    /// placed one, at times); the start is given the same way. The words of a round stay until the formation leaves it, so a route opened
+    /// again in the same round (by distance, a corrected word) starts as soon as its own body is lined up.</summary>
+    internal Route HeardAligned(Member peer, int round)
+    {
+        if (peer == null) throw new GolemDomainException("Formation.HeardAligned: 'peer' was not given");
+        if (me != null && peer.Name == me.Name) throw new GolemDomainException($"'{peer.Name}' is this golem: its own word is Aligned");
+        if (round < 0) throw new GolemDomainException($"Formation.HeardAligned: a round is never negative ({round})");
+        return RecordAligned(peer, round);
+    }
+
+    /// <summary>A peer's word for the round underway (the tests' shorthand).</summary>
+    internal Route HeardAligned(Member peer) => HeardAligned(peer, Round);
+
+    private Route RecordAligned(Member member, int round)
+    {
+        if (!Fleet.Names.Contains(member.Name)) throw new GolemDomainException($"'{member.Name}' is not a member of the fleet of {Name}");
+        AlignedIn(round).Add(member.Name);
+        if (route != null && route.Waiting && round == Round && movers.All(AlignedIn(Round).Contains)) route.Go();   // THE FLEET'S START: everybody who moves is lined up
+        return route;
     }
 
     private Route Record(Member member)
@@ -314,11 +364,14 @@ internal sealed class Formation
         }
         placed.Clear();
         foreach (var name in staying) placed.Add(name);      // a ring the move leaves alone is still in place
+        movers = indices.Keys.Where(name => !staying.Contains(name)).ToHashSet(StringComparer.Ordinal);   // whose line-up the start waits for (propuesta 106)
+        aligned.Remove(Round);                                // the words of the round left behind
         Round++;
         if (staying.Contains(me.Name)) return route;          // this golem does not move on this step: its route in place stands
         int next = indices[me.Name];
         place = places[next];
         route = golem.TakePlace(route.Standing, place, Figure.Center, Array.Empty<Peer>(), $"place {next + 1} of {places.Count} of the {Figure.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come
+        route.StartTogether();                                // the body turns to face its next place, then stands until every mover is lined up (propuesta 106)
         return route;
     }
 
