@@ -107,7 +107,7 @@ public partial class MainWindow : Window
             v.Draft = drafts.TryGetValue(v.Name, out var d) ? d : null;
         }
         if (selectedFormation != null && views.FirstOrDefault(v => v.Name == selectedFormation) is { } keep && FormationList.SelectedItem != keep) FormationList.SelectedItem = keep;
-        NoFormation.Text = views.Count == 0 ? $"{g.Name} is in no formation — Console › Formation forms one" : "the golem's own: select one — its centre moves it, the square resizes it, the knob turns it (a draft until shot writes form + take on the tab); ↻ ↺ write a step on the tab, ✕ dissolves it now";
+        NoFormation.Text = views.Count == 0 ? $"{g.Name} is in no formation — Console › Formation forms one" : "the golem's own: select one — its centre moves it, the square resizes it, the square resizes and turns it at once, the knob turns it (a draft until shot writes form + take on the tab); ↻ ↺ write a step on the tab, ✕ dissolves it now";
         Draw();
     }
 
@@ -934,22 +934,23 @@ public partial class MainWindow : Window
     }
 
     // the figure the grip held would make of it with the cursor here: a centre to a tenth of a metre inside the floor, a measure to a tenth
-    // of a metre (at least a tenth), an orientation to five degrees
+    // of a metre (at least a tenth), an orientation to five degrees. The square on the first vertex does BOTH at once (9-oct-2026; Juan: "no se
+    // puede en simultáneo el giro y resize"): the vertex follows the cursor, so the side is its distance to the centre and the angle its
+    // bearing; the knob turns alone
     private Figure? Reshaped(FormationView f, Grip held, Point p)
     {
         var (x, y) = FloorPoint(p);
         if ((ghost ?? f.Projected) is not { } figure) return null;
+        double Turned() { double cursor = Math.Atan2(y - figure.Center.Y, x - figure.Center.X) * 180 / Math.PI; double laidOut = figure.Bearing(0, f.CrewCount) - figure.Angle; return Math.Round((cursor - laidOut) / 5) * 5; }
         switch (held)
         {
             case Grip.Move:
                 return figure.At(new Spot(Math.Round(Math.Clamp(x, 0, FloorSize), 1), Math.Round(Math.Clamp(y, 0, FloorSize), 1)));
             case Grip.Size:
                 double reach = new Spot(x, y).DistanceTo(figure.Center);
-                return figure.Sized(Math.Max(0.1, Math.Round(figure.MeasureFor(reach), 1)));
+                return figure.Sized(Math.Max(0.1, Math.Round(figure.MeasureFor(reach), 1))).Oriented(Turned());
             default:
-                double cursor = Math.Atan2(y - figure.Center.Y, x - figure.Center.X) * 180 / Math.PI;
-                double laidOut = figure.Bearing(0, f.CrewCount) - figure.Angle;
-                return figure.Oriented(Math.Round((cursor - laidOut) / 5) * 5);
+                return figure.Oriented(Turned());
         }
     }
 
@@ -976,7 +977,7 @@ public partial class MainWindow : Window
     // selected golem, which tells its fleet; ↶ drops it. A draft dropped or shot back to the golem's own figure is no draft.
     private void Reshape(FormationView formation, Grip held, Figure next)
     {
-        string what = held switch { Grip.Move => "moved", Grip.Size => "resized", _ => "turned" };
+        string what = held switch { Grip.Move => "moved", Grip.Size => "resized and turned", _ => "turned" };
         if (formation.AsFigure() is { } told && Shape(next) == Shape(told))
         {
             drafts.Remove(formation.Name);
@@ -1028,7 +1029,7 @@ public partial class MainWindow : Window
         var (x, y) = FloorPoint(p);
         if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) { Hover.Visibility = Visibility.Collapsed; return; }
         HoverText.Text = dragging != null && ghost != null && grip != Grip.Move
-            ? (grip == Grip.Size ? $"{(ghost is Circle ? "radius" : "side")} {Spot.Fmt(ghost.Measure)} m" : $"{Spot.Fmt(ghost.Angle)}°")
+            ? (grip == Grip.Size ? $"{(ghost is Circle ? "radius" : "side")} {Spot.Fmt(ghost.Measure)} m · {Spot.Fmt(ghost.Angle)}°" : $"{Spot.Fmt(ghost.Angle)}°")
             : $"x {x.ToString("0.0", CultureInfo.InvariantCulture)}  y {y.ToString("0.0", CultureInfo.InvariantCulture)}";
         Hover.Visibility = Visibility.Visible;
         double left = p.X + 14, top = p.Y + 14;
