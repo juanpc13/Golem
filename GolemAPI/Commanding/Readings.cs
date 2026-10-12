@@ -101,6 +101,20 @@ public static class Readings
         ")
         .PerformQuery();
 
+    /// <summary>THE PLAY THE GOLEM IS IN (propuesta 108): its title, this golem's part, the state, pacman's heading and wish, the runs made.</summary>
+    public static string Play(ActorV2 actor) =>
+        actor.Using(@"
+            {
+                print g.Dynamics.Knows 'playing';
+                if (g.Dynamics.Knows) {
+                    play = g.Dynamics.Current;
+                    print play.Name 'play', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Cast.Pacman 'pacman', play.Cast.Roster 'ghosts',
+                          play.Heading 'heading', play.HasWish 'wishing', play.Wish 'wish', play.Runs 'runs';
+                }
+            }
+        ")
+        .PerformQuery();
+
     public static string Scenarios(ActorV2 actor) =>
         actor.Using(@"
             {

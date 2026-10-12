@@ -96,6 +96,17 @@ public sealed class GolemSpeech
                 .Seek("FormedRings").One()
                     .OnMatch("[_:Choreographies].FormRings(_, _, _, _, _, _, _, _) expose $call call, $atX atX, $atY atY, $outerLength outerLength, $innerLength innerLength, $degrees degrees, $crew crew, $innerCrew innerCrew, $policy policy, $nonce nonce;")
                 .Causation.Continue(formedRings);
+            // A PLAY STAGED (propuesta 108, fase 2): the golem it was told stages it and every peer is told the title, the cast and the stamp;
+            // a peer in the cast stages the same copy (UptakeStagedAs, no expose: one hop)
+            string staged = string.Join("\n", peers.Select(p => $@"
+                tell StagedAs with @title, @star, @crew, @nonce
+                    to {p}
+                    once 'staged-' + @nonce + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-staged")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Staged").One()
+                    .OnMatch("[_:Dynamics].Stage(_, _, _) expose $title title, $star star, $crew crew, $nonce nonce;")
+                .Causation.Continue(staged);
             // THE TAKE (ajustes 73, 80, 81; propuesta 104): the golem said where it stands into the named formation — every peer is told the name,
             // the stamp, who and where, and convenes in its own copy
             string stood = string.Join("\n", peers.Select(p => $@"
@@ -182,6 +193,8 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
+            .Told("StagedAs").With<string>("title").With<string>("star").With<string>("crew").With<string>("nonce")
+                .Command(GolemEmbodiment.UptakeStagedAs)
             .Told("FormedAs").With<string>("call").With<string>("shape").With<double>("cx").With<double>("cy").With<double>("measureLength")
                 .With<double>("angle").With<string>("names").With<string>("by").With<string>("nonce")
                 .Command(GolemEmbodiment.UptakeFormedAs)

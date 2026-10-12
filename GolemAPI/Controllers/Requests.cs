@@ -49,6 +49,30 @@ public sealed record PointRequest(double? X, double? Y)
 }
 
 /// <summary>The strategy the golem optimizes its routes by (ajuste 61; `optimize`, ajuste 82) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
+/// <summary>A play staged (propuesta 108): its title, pacman and the ghosts — <c>{"name": "pacman", "pacman": "blue", "ghosts": ["red", "green"]}</c>.</summary>
+public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts)
+{
+    public const string Shape = "{\"name\": \"pacman\", \"pacman\": \"blue\", \"ghosts\": [\"red\", \"green\"]}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Name) || Name.Trim().ToLowerInvariant() != "pacman") yield return "the only play known is pacman: " + Shape;
+        if (string.IsNullOrWhiteSpace(Pacman)) yield return "the play needs a pacman: " + Shape;
+    }
+}
+
+/// <summary>The keyboard's wish (propuesta 108): <c>{"direction": "north"}</c>.</summary>
+public sealed record HeadRequest(string Direction)
+{
+    public const string Shape = "{\"direction\": \"north\"}";
+    public static readonly string[] Directions = { "north", "south", "east", "west" };
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Direction) || !Directions.Contains(Direction.Trim().ToLowerInvariant())) yield return "the direction is north, south, east or west: " + Shape;
+    }
+}
+
 /// <summary>The body's pace (propuesta 111): the cruise in m/s and, optionally, the turn rate in rad/s — <c>{"speed": 3.0, "turn": 2.5}</c>.</summary>
 public sealed record PaceRequest(double Speed, double? Turn)
 {

@@ -37,7 +37,7 @@ public sealed class Golem : INotifyPropertyChanged
     public Readings Knowledge
     {
         get => knowledge;
-        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); Raise(nameof(PaceOptions)); Raise(nameof(PacePrompt)); }
+        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); Raise(nameof(PaceOptions)); Raise(nameof(PacePrompt)); Raise(nameof(PlayText)); Raise(nameof(PlayCast)); Raise(nameof(IsPacman)); }
     }
 
     /// <summary>The scenarios it knows, for the environment's drop-down that enters one at once; the one it is in says so.</summary>
@@ -49,6 +49,11 @@ public sealed class Golem : INotifyPropertyChanged
     /// <summary>What the environment's drop-downs show while closed: what is in force (the arrow says it can change).</summary>
     public string ScenarioPrompt => Knowledge.Scenario == "" ? "a scenario…" : Knowledge.Scenario;
     public string NavigationPrompt => Knowledge.Navigation == "" ? "a way…" : Knowledge.Navigation;
+
+    /// <summary>The play it is in (propuesta 108), for the play tab; with pacman selected the arrow keys say `head …`.</summary>
+    public string PlayText => Knowledge.Pending == null ? "not asked yet" : Knowledge.Play == null ? "in no play — play pacman --pacman … --ghosts … on a tab stages one" : Knowledge.Play.Text;
+    public string PlayCast => Knowledge.Play?.CastText ?? "";
+    public bool IsPacman => Knowledge.Play?.IsPacman == true;
 
     /// <summary>The paces the environment offers (propuesta 111): the presets, the one the golem has now marked.</summary>
     public IReadOnlyList<PaceChoice> PaceOptions => PaceChoice.Presets.Select(p => new PaceChoice(p.Name, p.Speed, p.Turn, HasPace(p.Speed, p.Turn))).ToList();

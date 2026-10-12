@@ -8,7 +8,7 @@ namespace WardenCli;
 public sealed record Readings(string Zone, string Scenario, string Navigation, double? Speed, double? Turn, bool Held, int? Pending, int? Routes,
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
                               int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios,
-                              IReadOnlyList<FormationView> Formations)
+                              IReadOnlyList<FormationView> Formations, PlayView? Play = null)
 {
     /// <summary>Before anything was asked.</summary>
     public static readonly Readings Nothing = new("", "", "", null, null, false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>(), Array.Empty<FormationView>());
@@ -30,6 +30,24 @@ public sealed record Choice(string Name, bool Current)
 {
     public string Label => Current ? $"{Name} · current" : Name;
     public override string ToString() => Label;
+}
+
+/// <summary>THE PLAY the golem is in (propuesta 108, fase 2): its title, this golem's part, the state, pacman's heading and wish, the runs — the
+/// `play` read, shown in the play tab; with pacman selected the arrow keys say `head …`.</summary>
+public sealed record PlayView(string Name, string Part, string State, string Heading, string Wish, int Runs, string Pacman, string Ghosts)
+{
+    public bool IsPacman => Part.Equals("pacman", StringComparison.OrdinalIgnoreCase);
+    public string Text => $"{Name} · {Part.ToLowerInvariant()} · {State.ToLowerInvariant()} · heading {Heading.ToLowerInvariant()}{(Wish == "" ? "" : $", wishing {Wish.ToLowerInvariant()}")} · {Runs} run(s)";
+    public string CastText => $"pacman {Pacman} · ghosts {Ghosts}";
+
+    public static PlayView? Parse(JsonElement json)
+    {
+        if (JsonWalk.Find(json, "playing") is not { ValueKind: JsonValueKind.True }) return null;
+        bool wishing = JsonWalk.Find(json, "wishing") is { ValueKind: JsonValueKind.True };
+        return new PlayView(JsonWalk.String(json, "play") ?? "", JsonWalk.String(json, "part") ?? "", JsonWalk.String(json, "state") ?? "",
+                            JsonWalk.String(json, "heading") ?? "", wishing ? JsonWalk.String(json, "wish") ?? "" : "", (int)(JsonWalk.Number(json, "runs") ?? 0),
+                            JsonWalk.String(json, "pacman") ?? "", JsonWalk.String(json, "ghosts") ?? "");
+    }
 }
 
 /// <summary>A PACE the environment offers (propuesta 111, 12-oct-2026; Juan: "en el panel del environment para subirle la velocidad"): a cruise

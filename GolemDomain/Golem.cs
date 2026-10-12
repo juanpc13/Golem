@@ -1,5 +1,6 @@
 using System.Globalization;
 using GolemDomain.Formations;
+using GolemDomain.Plays;
 using GolemDomain.Geometry;
 using GolemDomain.Scenarios;
 using GolemDomain.Layouts;
@@ -28,6 +29,7 @@ internal sealed class Golem
     private Scenario current;                             // the one it is in: what every way, distance and touch is decided on
     private readonly Strategies strategies = new();      // its strategies of navigation, born with it (ajuste 63): g.Strategy.DoorByDoor (active at birth), g.Strategy.OnTheWay
     private readonly Choreographies choreography;         // its choreographies, born with it (ajustes 69, 70): the formation by name, and the route to its place
+    private readonly Dynamics dynamics;                   // its dynamics, born with it (propuesta 108): the play it is in, pacman's runs
     // the map and the collisions the golem reads are the CURRENT scenario's (ajuste 60): a route born in one keeps its own
     private MapLayout layout => Current.Map;
     private Collisions collisions => Current.Collisions;
@@ -46,6 +48,7 @@ internal sealed class Golem
         if (body == null) throw new GolemDomainException("a golem needs a body to drive");
         this.body = body;
         choreography = new Choreographies(this);   // the module is born with its golem and asks it for the route to a place (ajustes 70, 78)
+        dynamics = new Dynamics(this);             // the same for the plays (propuesta 108): it asks the golem for the route of a run
     }
 
     /// <summary>The golem born with its body AND ITS NAME (ajuste 72, 30-sep-2026; Juan: "que g sepa quién es él, el dominio debería
@@ -132,6 +135,8 @@ internal sealed class Golem
     /// g.coreografia.formacion('cuadrado')"): the formations it knows how to take, made by name, and the route to its place — <c>formation =
     /// g.Choreography.Form(@formationName, @figure, center, measure, turn, fleet, @by); formation.Convene(from, me);</c> (ajustes 69, 70; propuesta 104).</summary>
     internal Choreographies Choreography => choreography;
+    /// <summary>Its dynamics (propuesta 108): <c>g.Dynamics.Stage(…)</c>, <c>g.Dynamics.Run(from, play)</c>.</summary>
+    internal Dynamics Dynamics => dynamics;
 
     /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here
     /// on it crosses the doors on the way — by the golem's own on-the-way strategy, the same object — and its way is decided again from
@@ -221,6 +226,16 @@ internal sealed class Golem
         if (berths == null) throw new GolemDomainException("Golem.TakePlace: 'berths' was not given");
         CheckPlace(place, where);
         return Entrust(from, place, following: false, choosesOrder: false, facing: facing, berths: berths);   // facing the centre (79), around the peers (80)
+    }
+
+    /// <summary>A RUN of a play (propuesta 108): the route to the decision cell the play decided — the cell must be on the map with room for
+    /// the body — square down the corridor, no facing, no berths; the module asks it, never the journal.</summary>
+    internal Route RunTo(Position from, Position stop, string where)
+    {
+        if (from == null) throw new GolemDomainException("Golem.RunTo: 'from' was not given");
+        if (stop == null) throw new GolemDomainException("Golem.RunTo: 'stop' was not given");
+        CheckPlace(stop, where);
+        return Entrust(from, stop, following: false, choosesOrder: false);
     }
 
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>

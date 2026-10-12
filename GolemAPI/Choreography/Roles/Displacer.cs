@@ -575,6 +575,9 @@ public sealed class Displacer
             // act, so the arrival keeps its one expose (a script carries one expose: a second one unbinds the first's parameters, lab 1-oct)
             var placed = Placed();
             if (placed.Ok) { robot.Report(placed, $"route {was.Route}: on its place in the formation — the fleet is told"); return placed; }
+            // …or the run of a play (propuesta 108): pacman stands at a decision cell and the rule opens its next run
+            var ran = Ran();
+            if (ran.Ok) { robot.Report(ran, $"route {was.Route}: at a decision cell — the next run opens"); return ran; }
         }
         if (answer.Ok && answer.Order is { Action: "stop", Waiting: true })
         {
@@ -703,6 +706,119 @@ public sealed class Displacer
                         expose me.Name who, formation.Name call, formation.Stamp nonce, roundPlaced round;
                     }
                 ";
+
+    // ==================================================================
+    // THE PLAY (propuesta 108, fase 2, 12-oct-2026): pacman at the keyboard. The play is STAGED on one golem and spreads by tell (echo-staged);
+    // `head` is the keyboard's wish; `release` opens pacman's first run, and every run that reaches its decision cell opens the next by the
+    // domain's rule (RanScript, fired by the arrival like PlacedScript). Fixed templates, parameters only, never named like a print label.
+    // ==================================================================
+
+    private const string StagePlay = @"
+                    {
+                        cast = Cast(@starName, @crewNames);
+                        play = g.Dynamics.Stage(@playName, cast, @stamp);
+                        print play.Name 'play', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', cast.Pacman 'pacman', cast.Roster 'ghosts';
+                        expose @playName title, @starName star, @crewNames crew, @stamp nonce;
+                    }
+                ";
+
+    private const string HeadPlay = @"
+                    {
+                        play = g.Dynamics.Current;
+                        play.Head(@direction);
+                        print play.Name 'play', play.State 'state', play.Heading 'heading', play.HasWish 'wishing', play.Wish 'wish', play.Runs 'runs';
+                    }
+                ";
+
+    private const string RunPlay = @"
+                    {
+                        play = g.Dynamics.Current;
+                        from = g.Destination;
+                        route = g.Dynamics.Run(from, play);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        print play.Heading 'heading', play.Runs 'runs';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ";
+
+    /// <summary>A PLAY STAGED on this golem: pacman by name, the ghosts by name; the cast is told (echo-staged) and every member stages the same.</summary>
+    public Answer Play(string name, string pacman, IReadOnlyList<string> ghosts)
+    {
+        if (string.IsNullOrWhiteSpace(pacman)) return Answer.Refusal("a play needs a pacman: --pacman blue");
+        if (ghosts == null || ghosts.Count == 0) return Answer.Refusal("a play needs at least one ghost: --ghosts red,green");
+        string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // the once of the call, frozen as a parameter
+        try
+        {
+            return Answer.Of(robot.Actor.Using(StagePlay)
+                .WithParameters(p => {
+                    p["playName", typeof(string)] = name.Trim().ToLowerInvariant();   // never @name, @play: the print's labels and the script's local
+                    p["starName", typeof(string)] = pacman.Trim().ToLowerInvariant();
+                    p["crewNames", typeof(string)] = string.Join(",", ghosts.Select(n => n.Trim().ToLowerInvariant()));
+                    p["stamp", typeof(string)] = stamp;
+                })
+                .PerformCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"play {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The keyboard's wish: the direction pacman takes at its next decision cell (north, south, east, west).</summary>
+    public Answer Head(string direction)
+    {
+        string member = (direction ?? "").Trim().ToLowerInvariant() switch { "north" => "North", "south" => "South", "east" => "East", "west" => "West", _ => null };
+        if (member == null) return Answer.Refusal($"a direction is north, south, east or west, not '{direction}'");
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.Knows) Error 'no play is staged: play pacman --pacman … --ghosts … first';
+                ", HeadPlay)
+                .WithParameters(p => { p["direction", typeof(string)] = member; })   // the member's name: the engine resolves the enum at the verb (ajuste 90)
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"head {direction}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>PACMAN RELEASED: its first run, from where it stands, to the next decision cell by the rule.</summary>
+    public Answer Release()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.Knows) Error 'no play is staged: play pacman --pacman … --ghosts … first';
+                ", RunPlay)
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal("release: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    // the run reached its decision cell: the next run opens by the rule — refused (nothing written) when this golem is not pacman running there
+    private Answer Ran()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.Reached) Error 'the golem is not pacman standing at a decision cell of its run';
+                ", RunPlay)
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
 
     private Answer Aligned()
     {

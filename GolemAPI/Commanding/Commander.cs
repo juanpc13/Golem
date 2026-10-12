@@ -44,7 +44,7 @@ public sealed class Commander
         if (command.Golem != "" && !IsMe(command.Golem))
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
         // a formation spreads by itself, by tell (ajustes 71, 104): this golem is told, its peers are told — never a line carried to them
-        if (command.Verb is "form" or "take" or "rotate" or "dissolve" && command.With.Count > 0)
+        if (command.Verb is "form" or "take" or "rotate" or "dissolve" or "play" && command.With.Count > 0)
             return Reply.Syntax($"{command.Verb}: a formation spreads by itself — command one golem; --with carries single orders (visit, reset, use, optimize)");
         // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
         if (command.Verb == "place" && command.With.Count > 0)
@@ -95,6 +95,9 @@ public sealed class Commander
             "rotate" => Rotate(command),
             "dissolve" => Motors(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
             "formations" => Formations(),
+            "play" => command.Text == "" ? PlayRead() : Play(command),
+            "head" => Motors(out var h, out var hr) ? Answered(h.Head(command.Text), $"heading {command.Text} at the next decision cell") : hr,
+            "release" => Motors(out var rl, out var rr) ? Answered(rl.Release()) : rr,
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
@@ -330,6 +333,29 @@ public sealed class Commander
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var e = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
         return Reply.Done($"pacing at {Num(e, "speed")} m/s, turning {Num(e, "turn")} rad/s — every order from here on", answer.Print ?? "");
+    }
+
+    // a play staged (propuesta 108): pacman by name, the ghosts by name — left out, every peer but pacman
+    private Reply Play(Command command)
+    {
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        string pacman = command.Values.TryGetValue("pacman", out var star) ? star.Trim().ToLowerInvariant() : golem.Name.ToLowerInvariant();
+        var ghosts = command.Values.TryGetValue("ghosts", out var crew)
+            ? crew.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList()
+            : new[] { golem.Name.ToLowerInvariant() }.Concat(golem.Peers.Select(x => x.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();
+        var answer = displacer.Play(command.Text, pacman, ghosts);
+        if (!answer.Ok) return Reply.Refused(answer.Refused);
+        var e = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
+        return Reply.Done($"staged {Str(e, "play")} — {golem.Name} plays {Str(e, "part").ToLowerInvariant()}; pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}; every golem of the cast is told", answer.Print ?? "");
+    }
+
+    private Reply PlayRead()
+    {
+        string json = Readings.Play(golem.Actor);
+        var e = JsonDocument.Parse(json).RootElement;
+        if (!Bool(e, "playing")) return Reply.Done("in no play", json);
+        string wish = Bool(e, "wishing") ? $", wishing {Str(e, "wish").ToLowerInvariant()}" : "";
+        return Reply.Done($"{Str(e, "play")} · {Str(e, "part").ToLowerInvariant()} · {Str(e, "state").ToLowerInvariant()} · heading {Str(e, "heading").ToLowerInvariant()}{wish} · {Num(e, "runs")} run(s) · pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}", json);
     }
 
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);

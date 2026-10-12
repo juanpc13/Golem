@@ -96,6 +96,43 @@ public class GolemController : Controller
         return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant()));
     }
 
+    /// <summary>A PLAY STAGED (propuesta 108, fase 2): pacman by name, the ghosts by name (left out, every peer but pacman); it spreads by itself to the cast.</summary>
+    [HttpPost("play")]
+    public IActionResult Play([FromBody] PlayRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PlayRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        string pacman = request.Pacman.Trim().ToLowerInvariant();
+        var ghosts = request.Ghosts is { Count: > 0 } ? request.Ghosts.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
+                                                      : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();
+        return Answered(displacer.Play(request.Name.Trim().ToLowerInvariant(), pacman, ghosts));
+    }
+
+    /// <summary>The keyboard's wish (propuesta 108): the direction pacman takes at its next decision cell.</summary>
+    [HttpPost("head")]
+    public IActionResult Head([FromBody] HeadRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + HeadRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Head(request.Direction.Trim().ToLowerInvariant()));
+    }
+
+    /// <summary>Pacman released (propuesta 108): its first run.</summary>
+    [HttpPost("release")]
+    public IActionResult Release()
+    {
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Release());
+    }
+
+    /// <summary>The play this golem is in (propuesta 108).</summary>
+    [HttpGet("play")]
+    public IActionResult PlayRead() => Content(Readings.Play(golemEmbodiment.Actor), "application/json");
+
     /// <summary>One STEP of a formation (ajuste 77; propuesta 104): every body of the ring — or of the whole figure — takes the next place
     /// in that sense once everybody stands on its own; steps queue. It spreads by itself: command one golem.</summary>
     [HttpPost("rotate")]

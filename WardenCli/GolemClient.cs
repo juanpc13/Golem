@@ -132,6 +132,10 @@ public static class GolemClient
         var formations = await SendAsync(golem, "formations", ct);
         if (formations.Ok && formations.Json is { } fj)
             k = k with { Formations = FormationView.Parse(fj) };
+        // THE PLAY (propuesta 108): the play tab is this read of the selected golem
+        var play = await SendAsync(golem, "play", ct);
+        if (play.Ok && play.Json is { } pj)
+            k = k with { Play = PlayView.Parse(pj) };
         golem.Knowledge = k;
         return true;
     }

@@ -44,6 +44,9 @@ public static class CommandLine
         new CommandHelp("rotate", "rotate <name> clockwise|counterclockwise [--ring outer|inner]", "one step of that formation: every body — of one ring of a double ring, or of the whole figure — takes the next place in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused)", "rotate square-2 clockwise"),
         new CommandHelp("dissolve", "dissolve <name>", "the formation leaves every golem of its fleet; a route of it still pending is let go", "dissolve square-2"),
         new CommandHelp("formations", "formations", "the formations this golem is in: each one's figure, centre, size, orientation, policy, fleet and who holds which place", "formations"),
+        new CommandHelp("play", "play pacman --pacman <golem> --ghosts a,b | play", "the play of pacman staged on this golem (propuesta 108): who plays pacman and who the ghosts (left out, this golem and every peer but pacman); it spreads by itself to the cast, never --with; alone, play says the play this golem is in — its part, state, heading, wish, runs", "play pacman --pacman blue --ghosts red,green,yellow"),
+        new CommandHelp("head", "head north|south|east|west", "the keyboard's wish: the direction pacman takes at its next decision cell (an intersection, or where straight on is closed); closed there, kept for the next; without one, straight on, else right, else left, else back", "head north"),
+        new CommandHelp("release", "release", "pacman set out: its first run, from where it stands to the next decision cell; every run that reaches one opens the next by the rule", "release"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
@@ -177,6 +180,33 @@ public static class CommandLine
             case "dissolve":
                 if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("dissolve: expected the formation's name, like dissolve square-2");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+            case "play":
+            {
+                // the play of pacman (propuesta 108): alone, the read; else its title and --pacman <golem>, --ghosts a,b
+                if (args.Count == 0) return new Command(named, with, verb, none, noOptions, "");
+                var values = new Dictionary<string, string>();
+                var rest = new List<string>();
+                for (int i = 0; i < args.Count; i++)
+                {
+                    string a = args[i].ToLowerInvariant();
+                    if (a is "--pacman" or "--ghosts")
+                    {
+                        if (i + 1 >= args.Count || !(a == "--pacman" ? Name : Names).IsMatch(args[i + 1])) throw new CommandSyntaxException($"play: {a} needs {(a == "--pacman" ? "a golem's name" : "names, like --ghosts red,green")}");
+                        values[a[2..]] = args[++i].ToLowerInvariant();
+                        continue;
+                    }
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"play: '{Head(a)}' is no option; the options are --pacman <golem> and --ghosts a,b");
+                    rest.Add(args[i]);
+                }
+                if (rest.Count != 1 || rest[0].ToLowerInvariant() != "pacman") throw new CommandSyntaxException("play: expected the play's title, pacman, like play pacman --pacman blue --ghosts red,green");
+                return new Command(named, with, verb, none, noOptions, "pacman", values);
+            }
+            case "head":
+                if (args.Count != 1 || args[0].ToLowerInvariant() is not ("north" or "south" or "east" or "west")) throw new CommandSyntaxException("head: expected a direction, north, south, east or west");
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+            case "release":
+                if (args.Count > 0) throw new CommandSyntaxException($"release takes nothing more; found '{Head(string.Join(' ', args))}'");
+                return new Command(named, with, verb, none, noOptions, "");
             case "optimize":
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("on-the-way" or "door-by-door")) throw new CommandSyntaxException("optimize: expected the strategy, on-the-way or door-by-door");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());

@@ -170,6 +170,17 @@ public sealed class GolemEmbodiment
             }
         }
         ";
+    // A PLAY TOLD TO THE CAST (propuesta 108, fase 2): a peer staged it and its act told me — if I am in the cast, I stage the same copy, by
+    // the same title and stamp. No expose: one hop.
+    public const string UptakeStagedAs = @"
+        {
+            cast = Cast(@star, @crew);
+            if (cast.Has(g)) {
+                play = g.Dynamics.Stage(@title, cast, @nonce);
+                print play.Name 'play', g.Dynamics.Me 'part';
+            }
+        }
+        ";
     public const string UptakeFormedRingsAs = @"
         {
             fleet = Fleet(@names, @innerNames);

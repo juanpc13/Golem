@@ -72,6 +72,13 @@ public partial class MainWindow : Window
         {
             if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; }
             else if (e.Key == Key.Escape && placing != null) { Disarm("cancelled"); e.Handled = true; }
+            // THE ARROW KEYS (propuesta 108, fase 2): with pacman selected, and no text box taking the keys, they say head … at once
+            else if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right && Current is { IsPacman: true } && Keyboard.FocusedElement is not TextBox)
+            {
+                string direction = e.Key switch { Key.Up => "north", Key.Down => "south", Key.Left => "west", _ => "east" };
+                e.Handled = true;
+                _ = ActNowAsync(Current, $"head {direction}");
+            }
         };
         // place armed: a click anywhere but the map (or the button itself, which disarms it) cancels it (Juan, 8-oct-2026)
         PreviewMouseDown += (_, e) => { if (placing != null && !IsWithin(e.OriginalSource, Map) && !IsWithin(e.OriginalSource, PlaceButton)) Disarm("cancelled: a click elsewhere"); };
@@ -336,6 +343,19 @@ public partial class MainWindow : Window
             if (!same) told++;
         }
         Log($"{g.Name} › environment applied to all: {scenario} · {navigation} · {g.PacePrompt} — {told} golem(s) changed, {golems.Count - 1 - told} already had it");
+    }
+
+    // THE PLAY'S BUTTONS (propuesta 108): the keyboard's wish and the release, said at once to the selected golem
+    private async void Head_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current == null || (sender as Button)?.Tag is not string direction) return;
+        await ActNowAsync(Current, $"head {direction}");
+    }
+
+    private async void Release_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current == null) return;
+        await ActNowAsync(Current, "release");
     }
 
     private async void ResetNow_Click(object sender, RoutedEventArgs e)
