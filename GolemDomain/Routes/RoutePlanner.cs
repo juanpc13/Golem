@@ -40,6 +40,14 @@ internal sealed class RoutePlanner
 
     internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, Navigation navigation) : this(layout, collisions, radius, new DistanceCost(), navigation) { }
 
+    /// <summary>A planner for a route with COMPANY (propuesta 107): the bodies that route plans around — a formation's other members, where
+    /// each said it stands and where it goes — which nobody touched, so they are the route's, never the collisions'.</summary>
+    internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, Navigation navigation, IReadOnlyList<Peer> company) : this(layout, collisions, radius, new DistanceCost(), navigation)
+    {
+        if (company == null) throw new GolemDomainException("RoutePlanner: 'company' was not given");
+        this.company = company;
+    }
+
     internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost) : this(layout, collisions, radius, cost, new DoorByDoor()) { }
 
     internal RoutePlanner(MapLayout layout, Collisions collisions, double radius, EdgeCost cost, Navigation navigation)
@@ -56,8 +64,9 @@ internal sealed class RoutePlanner
         this.navigation = navigation;
     }
 
+    private IReadOnlyList<Peer> company = Array.Empty<Peer>();             // the route's company (propuesta 107): bodies to plan around that nobody touched
     private IReadOnlyList<Thing> things = Array.Empty<Thing>();            // the things the marks outline, for one road
-    private IReadOnlyList<Peer> peers = Array.Empty<Peer>();               // the peers still standing in the way (22-sep-2026)
+    private IReadOnlyList<Peer> peers = Array.Empty<Peer>();               // the peers still standing in the way (22-sep-2026), then the company
     private IReadOnlyList<Rectangle> figures = Array.Empty<Rectangle>();   // the things' figures grown by the body, then the peers': where its centre may not go
 
     // A point is clear when the walls leave room AND no figure of a thing holds it.
@@ -176,7 +185,7 @@ internal sealed class RoutePlanner
         // corner to the next stays clear — only where the body fits (the figure of a thing, not a ring per mark:
         // the second way around a crate already takes the crate's real width; Juan, 14-sep-2026)
         things = collisions.Things();
-        peers = collisions.PeersInTheWay();
+        peers = collisions.PeersInTheWay().Concat(company).ToList();   // the bodies met by touching and still in the way, and the route's own company (propuesta 107)
         figures = things.Select(t => t.Extent(Collisions.MarkMargin).Inflated(radius)).Concat(peers.Select(p => Collisions.PeerFigure(p, radius))).ToList();
         foreach (var figure in figures)
             foreach (var corner in figure.Inflated(0.08).Corners())

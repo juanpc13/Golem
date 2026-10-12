@@ -50,7 +50,8 @@ public class FormationTests
         StringAssert.Contains(redRoute.AsPlan(), "floor@6.5,6.5", "and red the north-east one");
         Assert.AreEqual(0.0, blueCall.PlaceOf(fleet.Member(red)).DistanceTo(redCall.PlaceOf(fleet.Member(red))), 1e-9, "the two copies, the same table");
         Assert.AreEqual(0.0, blueCall.PlaceOf(fleet.Member(blue)).DistanceTo(redCall.PlaceOf(fleet.Member(blue))), 1e-9);
-        Assert.AreEqual(2, blue.Current.Collisions.PeersInTheWay().Count, "red, where it stood and where it goes, is a body in blue's way while blue's route lasts (ajuste 80)");
+        Assert.AreEqual(2, blueFirst.Company.Count, "red, where it stood and where it goes, is the COMPANY blue's route plans around while it lasts (ajuste 80; propuesta 107)");
+        Assert.AreEqual(0, blue.Current.Collisions.PeersInTheWay().Count, "nobody touched red: no peer met, nothing among the obstacles (propuesta 107)");
 
         // a CORRECTED word — red says it stands by the south-west corner after all — while blue's body carries an order of its route
         var blueYields = blueCall.Stood(fleet.Member(red), new Position(4.4, 4.4));
@@ -157,13 +158,15 @@ public class FormationTests
         var route = call.Join(new Pose(6.5, 2.5, 1.5708), fleet.Member(blue));
         var berths = call.Berths();
         Assert.AreEqual(2, berths.Count, "yellow where it stands and where it goes: " + string.Join(", ", berths.Select(b => b.Who + "@" + b.Center.X + "," + b.Center.Y)));
-        Assert.AreEqual(2, collisions.PeersInTheWay().Count, "both in blue's way while its route lasts");
+        Assert.AreEqual(2, route.Company.Count, "both the route's company while it lasts (propuesta 107)");
+        Assert.AreEqual(0, collisions.PeersInTheWay().Count, "and no peer met: nobody touched yellow");
+        Assert.AreEqual(0, collisions.Present().Count, "the obstacles read shows nothing of the fleet's words");
         Assert.IsTrue(route.LegsAhead.Count > 2, "not the straight run up the column through yellow: the way bends around it — " + route.AsPlan());
         Assert.IsTrue(route.LegsAhead.All(l => Math.Max(Math.Abs(l.At.X - 6.5), Math.Abs(l.At.Y - 4.5)) > 0.6), "no leg ends inside yellow's berth — " + route.AsPlan());
         StringAssert.Contains(route.AsPlan(), "floor@6.5,6.5", "and it still ends on blue's own corner");
         WalkToTheEnd(route);
         Assert.AreEqual("completed", route.Status);
-        Assert.AreEqual(0, collisions.PeersInTheWay().Count, "the route ended: the peers have moved on, as bodies do");
+        Assert.AreEqual(2, route.Company.Count, "the route ended: its company goes with it — the next route is told its own");
 
         // a peer standing on MY place is no berth (by rank a golem may stand on another's corner): the route still opens
         var other = new Golem(body, "yellow");

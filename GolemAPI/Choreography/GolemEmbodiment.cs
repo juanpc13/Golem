@@ -249,26 +249,33 @@ public sealed class GolemEmbodiment
     // this copy reached that round: it is kept there.
     public const string UptakeAlignedAt = @"
         {
-            if (g.Choreography.Knows(@call)) {
+            if (g.Choreography.HasFormation(@call)) {
                 formation = g.Choreography.Find(@call);
                 peer = formation.Fleet.Member(@who);
                 route = formation.HeardAligned(peer, @round);
-                if (route.IsPending()) {
-                    print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                    if (route.IsWalkable) {
-                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                if (formation.HasRoute) {
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
                     }
                 } else {
-                    print route.Id 'route', route.Status 'ended';
-                    if (route.EndedShort) {
-                        print route.Why 'why';
-                    }
+                    print formation.AlignedCount 'aligned';
                 }
             }
         }
         ";
+    // `HasFormation`, not `Knows` (lab 9-oct-2026, 14:48: cyan's copy dropped a line-up word that came 160 ms before its own route opened — the
+    // word of a member whose turn was next to nothing — and waited forever with 5 of 6): the formation exists before the route, and the word is
+    // kept in its round even then
     // A STEP was asked of the fleet (ajuste 77; propuesta 104: of one ring or whole): the same step is queued here, in the same order it was
     // queued there (the wire keeps a topic's order); it opens at once when everybody already stands on its place (next-order-step pushes).
     public const string UptakeRotateTo = @"

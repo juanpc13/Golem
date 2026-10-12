@@ -31,9 +31,9 @@ public static class Readings
     /// <summary>The obstacles the golem hypothesizes: one row per obstacle — its zone the map's answer (ajuste 54) — and, under it, one per vertex.</summary>
     public static string Obstacles(ActorV2 actor) =>
         actor.Using(@"
-            print g.Current.Collisions.All().Count 'total', g.Current.Collisions.Things().Count 'things',
-                  g.Current.Collisions.EncounterCount 'met', g.Current.Collisions.MarkCount 'marks';
-            foreach (obstacles in g.Current.Collisions.All()) {
+            print g.Current.Collisions.Present().Count 'total', g.Current.Collisions.Things().Count 'things',
+                  g.Current.Collisions.PeersInTheWay().Count 'met', g.Current.Collisions.MarkCount 'marks';
+            foreach (obstacles in g.Current.Collisions.Present()) {
                 print obstacles.Kind 'kind', g.Current.Map.ZoneNameOf(obstacles.Center) 'zone', obstacles.Shape 'shape', obstacles.Size 'size',
                       obstacles.Who 'who', obstacles.Center.X 'cx', obstacles.Center.Y 'cy';
                 foreach (vertices in obstacles.Vertices()) {

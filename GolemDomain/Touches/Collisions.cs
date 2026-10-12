@@ -118,6 +118,10 @@ internal sealed class Collisions
     /// <summary>The things alone: the obstacles the roads avoid. A peer is not one of them — bodies move on.</summary>
     internal IReadOnlyList<Thing> Things() => All().OfType<Thing>().ToList();
 
+    /// <summary>What stands there NOW, as the golem hypothesizes it (propuesta 107): the things, and the peers met by touching that are still
+    /// in the way. A peer that moved on is history — the journal keeps it, the obstacles read does not show it.</summary>
+    internal IReadOnlyList<Obstacle> Present() => All().Where(o => o is not Peer p || p.InTheWay).ToList();
+
     /// <summary>The obstacles whose centre stands in a zone.</summary>
     internal IReadOnlyList<Obstacle> In(Zone zone)
     {

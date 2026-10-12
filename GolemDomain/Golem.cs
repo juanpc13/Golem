@@ -309,7 +309,7 @@ internal sealed class Golem
         if (route == null) throw new GolemDomainException("Golem.Road: 'route' was not given");
         if (from == null) throw new GolemDomainException("Golem.Road: 'from' was not given");
         var ahead = route.StopsAhead.ToList();
-        var planner = new RoutePlanner(layout, collisions, Radius(), route.Navigation);   // the route's own mode of taking the doors
+        var planner = new RoutePlanner(layout, collisions, Radius(), route.Navigation, route.Company);   // the route's own mode of taking the doors, and its company
         var stops = route.ChoosesOrder ? planner.BestOrder(from, ahead) : ahead;
         return planner.Road(from, stops);
     }
@@ -574,17 +574,20 @@ internal sealed class Golem
     private Route Entrust(Position from, Position stop, bool following, bool choosesOrder, Position facing = null, IReadOnlyList<Peer> berths = null)
     {
         if (!HasPendingMission()) collisions.PeersMovedOn();   // an idle golem sets out afresh: whoever it met while standing has moved on
-        // the fleet's other members, where they stand and where they go (ajuste 80): bodies in the way while this route lasts, planned
-        // around from the first leg — except one on this very place (by rank a golem may stand on another's corner)
+        // the fleet's other members, where they stand and where they go (ajuste 80): the route's COMPANY (propuesta 107), planned around from
+        // the first leg while the route lasts — except one on this very place (by rank a golem may stand on another's corner); words of
+        // the convocation, never a peer met: the collisions module learns only what the bodies touched
+        var company = new List<Peer>();
         if (berths != null)
             foreach (var peer in berths)
             {
                 double reach = 2 * Radius() + Collisions.MarkMargin + Radius();   // the berth's half side, plus this body: the place must stand clear of it
-                if (Math.Max(Math.Abs(peer.Center.X - stop.X), Math.Abs(peer.Center.Y - stop.Y)) > reach) collisions.Meet(peer.Who, peer.Center);
+                if (Math.Max(Math.Abs(peer.Center.X - stop.X), Math.Abs(peer.Center.Y - stop.Y)) > reach) company.Add(peer);
             }
         // born with the golem's direct way, whatever is active (ajuste 62): the script improves it with a dash when the strategy says so
         var route = new Route(lastHandle + 1, stop, following, choosesOrder, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, this);
         if (facing != null) route.Faces(facing);   // a place of a formation: the body ends facing the centre (ajuste 79)
+        if (company.Count > 0) route.Among(company);   // the fleet around it (propuesta 107)
         route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
         if (!HasPendingMission()) standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
         routes.Add(route);

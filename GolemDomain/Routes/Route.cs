@@ -65,6 +65,7 @@ internal sealed class Route
     private Position origin;                             // where the way was decided from (the errand's start, or where the body stood)
     private Pose standing;                               // where the body stands and faces, as its last act reported it
     private Position faces;                              // where the body faces once it reached its last stop (a formation's centre, ajuste 79); null: nowhere in particular
+    private IReadOnlyList<Peer> company = Array.Empty<Peer>();   // THE COMPANY (propuesta 107): the bodies this route plans around while it lasts — a formation's other members, where each said it stands and where it goes; nobody touched them, so they are no obstacle
     private int nextLeg;                                 // the first leg not yet known to be walked
     private bool turned;                                 // the body already turned to face the next leg's point
     private bool startsTogether;                         // a step of a formation (propuesta 106): the first turn done, the route waits for the fleet's start
@@ -215,7 +216,7 @@ internal sealed class Route
         return this;
     }
 
-    private RoutePlanner Planner() => new(layout, collisions, radius, Navigation);
+    private RoutePlanner Planner() => new(layout, collisions, radius, Navigation, company);
 
     // The stops still ahead, in the order they will be reached: a Cover route lets the planner choose it, and keeps
     // that order as its own from then on (so what it reached and what lies ahead read from one list).
@@ -491,6 +492,21 @@ internal sealed class Route
 
     /// <summary>Where the body faces once on its last stop; null when nowhere in particular.</summary>
     internal Position FacesToward => faces;
+
+    /// <summary>THE COMPANY the route plans around (propuesta 107, 9-oct-2026; Juan: "no sé si conocer la última posición del peer sea un
+    /// obstáculo al final de cuentas"): the fleet's other members as the formation knows them — where each said it stands and the place it
+    /// goes to — handed to the route before its way is decided, kept while it lasts, gone with it. Words of the convocation, not things
+    /// learned by touching: they never enter the collisions module and never show among the obstacles. Said before the way is decided.</summary>
+    internal Route Among(IReadOnlyList<Peer> company)
+    {
+        if (company == null) throw new GolemDomainException("Route.Among: 'company' was not given");
+        if (IsRouted) throw new GolemDomainException($"route {Id} already decided its way: its company is said before");
+        this.company = company;
+        return this;
+    }
+
+    /// <summary>The bodies this route plans around, as it was told them; empty for an errand of the operator's.</summary>
+    internal IReadOnlyList<Peer> Company => company;
 
     // Stranded — the touch left only the retreat, no road fit from the point it was decided at — or awake with the body
     // carried elsewhere: the route decides its way again from where the body actually stands (18-sep-2026: the domain, not a

@@ -100,6 +100,8 @@ internal sealed class Formation
     internal int PlaceIndex => golem.Name != null && indices.TryGetValue(golem.Name, out int i) ? i : -1;
     /// <summary>How many members said they stand on their place, this round.</summary>
     internal int PlacedCount => placed.Count;
+    /// <summary>Whether this golem has a route in the formation yet — a word heard before it has one is only kept.</summary>
+    internal bool HasRoute => route != null;
     /// <summary>How many members said they are lined up for the round underway (propuesta 106).</summary>
     internal int AlignedCount => AlignedIn(Round).Count;
     private HashSet<string> AlignedIn(int round) => aligned.TryGetValue(round, out var set) ? set : aligned[round] = new HashSet<string>(StringComparer.Ordinal);

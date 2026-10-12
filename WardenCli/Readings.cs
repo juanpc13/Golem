@@ -42,7 +42,7 @@ public sealed record Obstacle(string Kind, string Who, string Shape, string Zone
     private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
     public string Title => IsThing ? $"thing · {Shape}" : $"peer met · {Who}";
     public string Where => $"at {N(X)},{N(Y)}{(Zone == "" ? "" : $" in {Zone}")}";
-    public string Marks => IsThing ? $"{Vertices.Count} mark(s): {string.Join("  ", Vertices.Select(v => $"{N(v.X)},{N(v.Y)}"))}" : "a body met: history, it moves on";
+    public string Marks => IsThing ? $"{Vertices.Count} mark(s): {string.Join("  ", Vertices.Select(v => $"{N(v.X)},{N(v.Y)}"))}" : "a body met by touching, in the way while the route lasts";
     /// <summary>The point a <c>forget</c> is said at: the obstacle's centre.</summary>
     public string Point => $"{N(X)},{N(Y)}";
 
