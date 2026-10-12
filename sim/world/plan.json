@@ -1,174 +1,218 @@
 {
-  "_": "Reality, as the simulator builds it (see build_world.py). Obstacles are EMPTY on purpose since 10-sep: the kiosk's four buttons (bridge/crates.py, :6081) put a crate in the west corridor, the central hall or the east corridor while the world RUNS, and take them away, so every test starts from a clean floor. The golems carry their OWN copy of places, doors and opens in their journal (release map_v1) — the obstacles they do not know: hitting one is a real collision the map never contemplated.",
+  "_": "Reality, as the simulator builds it (see build_world.py). ONE WORLD, THREE MAPS side by side (propuesta 109, 12-oct-2026): the open floor at the left, the warehouse in the middle, the maze at the right \u2014 each map in its own frame (the golems' Catalog maps, unchanged) laid at `at` in the world; build_world.py offsets places, doors, openings and the maze's drawing, derives the walls and writes maps.json for the levers. The maze is drawn in text (one character per cell of 1.5 m: # a wall, . free, P the cradle, G the den; the first line the north edge) \u2014 the same drawing as Catalog.MazeDrawing. Obstacles are EMPTY on purpose: the kiosk's crates are pressed into the running world. The bodies stand in the WORLD's frame (their marks, HOME_AT in the compose).",
   "world": "arena",
-  "places": [
+  "maps": [
     {
-      "name": "kitchen",
-      "x": 0,
-      "y": 8,
-      "w": 4,
-      "h": 3
+      "name": "open-floor",
+      "at": [
+        0,
+        0
+      ],
+      "places": [
+        {
+          "name": "floor",
+          "x": 0,
+          "y": 0,
+          "w": 11,
+          "h": 11
+        }
+      ],
+      "doors": [],
+      "opens": []
     },
     {
-      "name": "north",
-      "x": 4,
-      "y": 8,
-      "w": 3,
-      "h": 3
+      "name": "warehouse",
+      "at": [
+        13,
+        0
+      ],
+      "places": [
+        {
+          "name": "kitchen",
+          "x": 0,
+          "y": 8,
+          "w": 4,
+          "h": 3
+        },
+        {
+          "name": "north",
+          "x": 4,
+          "y": 8,
+          "w": 3,
+          "h": 3
+        },
+        {
+          "name": "storage",
+          "x": 7,
+          "y": 8,
+          "w": 4,
+          "h": 3
+        },
+        {
+          "name": "west",
+          "x": 0,
+          "y": 3,
+          "w": 1.5,
+          "h": 5
+        },
+        {
+          "name": "center",
+          "x": 4,
+          "y": 3,
+          "w": 3,
+          "h": 5
+        },
+        {
+          "name": "east",
+          "x": 9.5,
+          "y": 3,
+          "w": 1.5,
+          "h": 5
+        },
+        {
+          "name": "living",
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 3
+        },
+        {
+          "name": "south",
+          "x": 4,
+          "y": 0,
+          "w": 3,
+          "h": 3
+        },
+        {
+          "name": "garage",
+          "x": 7,
+          "y": 0,
+          "w": 4,
+          "h": 3
+        }
+      ],
+      "doors": [
+        {
+          "a": "kitchen",
+          "b": "north",
+          "x": 4,
+          "y": 9.5
+        },
+        {
+          "a": "kitchen",
+          "b": "west",
+          "x": 0.75,
+          "y": 8
+        },
+        {
+          "a": "north",
+          "b": "storage",
+          "x": 7,
+          "y": 9.5
+        },
+        {
+          "a": "storage",
+          "b": "east",
+          "x": 10.25,
+          "y": 8
+        },
+        {
+          "a": "west",
+          "b": "living",
+          "x": 0.75,
+          "y": 3
+        },
+        {
+          "a": "east",
+          "b": "garage",
+          "x": 10.25,
+          "y": 3
+        },
+        {
+          "a": "living",
+          "b": "south",
+          "x": 4,
+          "y": 1.5
+        },
+        {
+          "a": "south",
+          "b": "garage",
+          "x": 7,
+          "y": 1.5
+        }
+      ],
+      "opens": [
+        {
+          "a": "north",
+          "b": "center"
+        },
+        {
+          "a": "center",
+          "b": "south"
+        }
+      ]
     },
     {
-      "name": "storage",
-      "x": 7,
-      "y": 8,
-      "w": 4,
-      "h": 3
-    },
-    {
-      "name": "west",
-      "x": 0,
-      "y": 3,
-      "w": 1.5,
-      "h": 5
-    },
-    {
-      "name": "center",
-      "x": 4,
-      "y": 3,
-      "w": 3,
-      "h": 5
-    },
-    {
-      "name": "east",
-      "x": 9.5,
-      "y": 3,
-      "w": 1.5,
-      "h": 5
-    },
-    {
-      "name": "living",
-      "x": 0,
-      "y": 0,
-      "w": 4,
-      "h": 3
-    },
-    {
-      "name": "south",
-      "x": 4,
-      "y": 0,
-      "w": 3,
-      "h": 3
-    },
-    {
-      "name": "garage",
-      "x": 7,
-      "y": 0,
-      "w": 4,
-      "h": 3
+      "name": "maze",
+      "at": [
+        26,
+        0
+      ],
+      "maze": [
+        ".......",
+        ".#.#.#.",
+        ".#...#.",
+        "..#G#..",
+        ".#...#.",
+        ".#.#.#.",
+        "...P..."
+      ],
+      "cell": 1.5
     }
   ],
-  "doors": [
-    {
-      "a": "kitchen",
-      "b": "north",
-      "x": 4,
-      "y": 9.5
-    },
-    {
-      "a": "kitchen",
-      "b": "west",
-      "x": 0.75,
-      "y": 8
-    },
-    {
-      "a": "north",
-      "b": "storage",
-      "x": 7,
-      "y": 9.5
-    },
-    {
-      "a": "storage",
-      "b": "east",
-      "x": 10.25,
-      "y": 8
-    },
-    {
-      "a": "west",
-      "b": "living",
-      "x": 0.75,
-      "y": 3
-    },
-    {
-      "a": "east",
-      "b": "garage",
-      "x": 10.25,
-      "y": 3
-    },
-    {
-      "a": "living",
-      "b": "south",
-      "x": 4,
-      "y": 1.5
-    },
-    {
-      "a": "south",
-      "b": "garage",
-      "x": 7,
-      "y": 1.5
-    }
-  ],
-  "opens": [
-    {
-      "a": "north",
-      "b": "center"
-    },
-    {
-      "a": "center",
-      "b": "south"
-    }
-  ],
+  "obstacles": [],
   "bodies": [
     {
       "name": "blue",
-      "x": 6.3,
+      "x": 19.3,
       "y": 10.4,
       "yaw": 0,
       "color": "0.10 0.25 0.85"
     },
     {
       "name": "red",
-      "x": 2.5,
+      "x": 15.5,
       "y": 2.5,
       "yaw": 0,
       "color": "0.85 0.20 0.20"
     },
     {
       "name": "green",
-      "x": 10.0,
+      "x": 23.0,
       "y": 10.5,
       "yaw": 0,
       "color": "0.15 0.65 0.30"
     },
     {
       "name": "yellow",
-      "x": 9.5,
+      "x": 22.5,
       "y": 1.5,
       "yaw": 0,
       "color": "0.90 0.75 0.15"
     },
     {
       "name": "orange",
-      "x": 1.5,
+      "x": 14.5,
       "y": 9.5,
       "yaw": 0,
       "color": "0.95 0.50 0.10"
     },
     {
       "name": "cyan",
-      "x": 5.5,
+      "x": 18.5,
       "y": 1.5,
       "yaw": 0,
       "color": "0.10 0.80 0.85"
     }
-  ],
-  "obstacles": []
+  ]
 }

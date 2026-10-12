@@ -25,7 +25,9 @@ string journalPath = Environment.GetEnvironmentVariable("JOURNAL_PATH")
 string rosbridgeUrl = Environment.GetEnvironmentVariable("ROSBRIDGE_URL") ?? "ws://localhost:9090";
 string golem = Environment.GetEnvironmentVariable("GOLEM") ?? "blue";  // who I am (names the journal)
 string body = Environment.GetEnvironmentVariable("BODY") ?? golem;      // the model I drive in the world (/model/<body>/...)
-var home = ParsePoint(Environment.GetEnvironmentVariable("HOME_AT") ?? "5.5,5.5"); // the body's mark: reborn or let go, it is put back here
+var home = ParsePoint(Environment.GetEnvironmentVariable("HOME_AT") ?? "5.5,5.5"); // the body's mark IN THE WORLD: reborn or let go, it is put back here
+// Where each map lies in the world (propuesta 109): the host translates between the world's frame and the map's at the edges; nothing told: one frame
+var layout = WorldLayout.Parse(Environment.GetEnvironmentVariable("MAP_ORIGINS"));
 // Where the golem's pose comes from: "world" (the simulator's truth) or "wheels" (dead reckoning:
 // what a real robot without a sensor on the world would believe — the localization experiment).
 var poseSource = (Environment.GetEnvironmentVariable("POSE_SOURCE") ?? "world").Trim().ToLowerInvariant() == "wheels"
@@ -60,7 +62,7 @@ var peers = routes.Keys
     .ToList();
 
 // --- The golem assembled (GolemHost): the actor, the speech, the embodiment with its roles, the mechanics — started. ---
-var settings = new GolemSettings(golem, body, home, capabilities, peers, tellDoneTo, DatabaseType.FileSystem, journalPath);
+var settings = new GolemSettings(golem, body, home, capabilities, peers, tellDoneTo, DatabaseType.FileSystem, journalPath, layout);
 await using var host = GolemHost.Build(settings, ros, wire, feed);
 
 // --- The controllers: the actor's endpoints and the operator's. ---

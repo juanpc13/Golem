@@ -399,7 +399,11 @@ internal sealed class MapLayout : Map
     /// as a variable — its name, where it stands, how big it is — and then, all of them existing, the doors are placed and
     /// the boundaries opened BETWEEN OBJECTS. The areas live in a block of their own, so only <c>map</c> becomes a global of
     /// the actor; a name with a hyphen becomes a camelCase identifier (<c>north-aisle</c> → <c>northAisle</c>).</summary>
-    internal string AsRelease()
+    internal string AsRelease() => AsRelease(staged: false);
+
+    /// <summary>The release, and — staged — the golem staging the map at the end of the upgrade (<c>mazeScenario = g.Stage(maze);</c>),
+    /// as every map's release in the host does (29-sep-2026): the text the host writes verbatim.</summary>
+    internal string AsRelease(bool staged)
     {
         var text = new StringBuilder();
         text.Append("upgrade('").Append(Name).Append("_v1') {\n");
@@ -425,6 +429,7 @@ internal sealed class MapLayout : Map
                 else text.Append(".OpenTo(").Append(Identifier(p.B)).Append(");\n");
             }
         text.Append("    }\n");
+        if (staged) text.Append("    ").Append(Identifier(Name)).Append("Scenario = g.Stage(").Append(Identifier(Name)).Append(");\n");
         text.Append("}\n");
         return text.ToString();
     }

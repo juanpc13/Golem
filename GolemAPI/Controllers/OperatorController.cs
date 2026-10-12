@@ -53,6 +53,8 @@ public class OperatorController : Controller
             peers = identity.Peers,   // the golems a line may name besides this one (its tell routes)
             entry = performance.CurrentEntryId,
             poseSource = ros.Source == PoseSource.Wheels ? "wheels" : "world",
+            scenario = golemEmbodiment.Scenario,   // the frame the golem reads its pose in (propuesta 109)
+            at = golemEmbodiment.Pose == null ? null : new { x = golemEmbodiment.Pose.X, y = golemEmbodiment.Pose.Y, theta = golemEmbodiment.Pose.Theta },
             pose = pose == null ? null : new { x = pose.X, y = pose.Y, theta = pose.Theta },
             truth = truth == null ? null : new { x = truth.X, y = truth.Y, theta = truth.Theta },
             error,
@@ -109,12 +111,12 @@ public class OperatorController : Controller
 
     // The golem enters a scenario it knows (ajuste 60): {"scenario": "open-floor"} — its map and its collisions from here on.
     [HttpPost("enter")]
-    public IActionResult Enter([FromBody] ScenarioRequest request)
+    public async Task<IActionResult> Enter([FromBody] ScenarioRequest request)
     {
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ScenarioRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.Enter(request.Scenario);
+        var answer = await golemEmbodiment.EnterAsync(request.Scenario);
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 

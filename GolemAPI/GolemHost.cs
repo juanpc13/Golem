@@ -17,7 +17,8 @@ public sealed record GolemSettings(
     IReadOnlyList<string> Peers,         // every golem I can tell: what the body bumps into is told to all of them
     string TellDoneTo,                   // the peer that follows my stops, or null
     DatabaseType Storage,                // FileSystem in a container, IN_MEMORY in a test
-    string JournalPath);                 // where the FileSystem journal lives (and what reset-everything wipes)
+    string JournalPath,                  // where the FileSystem journal lives (and what reset-everything wipes)
+    WorldLayout Layout = null);          // where each map lies in the world (propuesta 109); null: one frame
 
 // THE GOLEM ASSEMBLED (propuesta 52, fase 0, 23-sep-2026): what Program.cs did in line, taken out so a scenario test can run
 // the SAME golem in its own process — the actor with the domain's assembly, the speech, the embodiment with its roles, the
@@ -74,7 +75,7 @@ public sealed class GolemHost : IAsyncDisposable
         // The golem given a body: what the body reports comes to it; every print goes out through the robot's mechanics,
         // the actor's output target.
         var embodiment = new GolemEmbodiment(performance, bodyWire, feed, tellWire, settings.Golem, settings.Home,
-                                             settings.JournalPath, settings.Capabilities, settings.Peers);
+                                             settings.JournalPath, settings.Capabilities, settings.Peers, settings.Layout ?? WorldLayout.OneFrame);
         Console.WriteLine($"[golem {settings.Golem}] roles: {settings.Capabilities}");
         embodiment.Mechanics.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print
 

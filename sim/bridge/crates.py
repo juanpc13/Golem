@@ -14,13 +14,14 @@ what the simulator reports as a touch is a real collision their map never contem
 The orders arrive as ROS topics, like teleport.py's do, so the kiosk needs no port of its own: the
 buttons' page (noVNC's index, on :6080) speaks to rosbridge (:9090), which the golems already use.
   /sim/crate  (std_msgs/String)  west | center | east | big | clear
-  /sim/floor  (std_msgs/String)  open | close — every inner wall, block and door mark taken out for the choreographies, and put back
-  /sim/view   (std_msgs/String)  top
-  /sim/crates (std_msgs/String)  what stands there now, told every couple of seconds: "west,big,floor:closed"
+  /sim/view   (std_msgs/String)  top | <map> — the camera over the whole world, or over one map's region (propuesta 109: the maps lie side by side)
+  /sim/crates (std_msgs/String)  what stands there now, told every couple of seconds: "west,big"
+The open-floor lever (29-sep-2026, every inner wall taken out) is gone with propuesta 109: the open floor is a region of its own.
 A lab lever, like teleport.py — nothing here decides anything about the golems.
 
 Usage: crates.py [world]
 """
+import json
 import math
 import re
 import subprocess
@@ -35,19 +36,12 @@ COLOR = "0.72 0.5 0.25"
 BIG_COLOR = "0.66 0.36 0.16"    # the big one reads darker: it is the one that shuts the hall
 NAME = "crate_%s"               # the model's name in the world: what a collision is reported as
 WORLD_SDF = "/world/arena.sdf"
+MAPS_JSON = "/world/maps.json"   # where each map lies in the world (build_world.py): the views, and the warehouse's origin for the crates
 
-# THE OPEN FLOOR (29-sep-2026; Juan: "remover todo lo que hay al centro y solo dejar un espacio libre para que los robots puedan
-# hacer estas coreografías… aún veo muros de las paredes de los cuartos, limpiarlos también"): EVERY inner piece of the plan —
-# the walls between the rooms, the corridors and the halls, the solid blocks, the door marks on the floor — read from the world
-# file itself, by position: a wall standing on the arena's outermost lines is the perimeter and stays. Opened, the floor is one
-# clear space inside the perimeter; closed, every piece comes back exactly as the world file built it. A LAB lever, never domain:
-# the golems' map still knows its walls and blocks.
-PIECE = re.compile(r'<model name="((?:wall|block|threshold)_[^"]+)">(.*?)</model>', re.S)
-FLOOR_SENTINEL = "wall_center_w"   # standing = the floor is closed"
 
-# The spots, named. Nothing outside this table can ever be placed: an order names a key, it never
-# carries a coordinate. A spot says where its crate stands, how wide and deep it is, and which other
-# spot it cannot share the floor with — two crates on the same point would sit inside each other.
+# The spots, named, IN THE WAREHOUSE'S OWN FRAME (the warehouse's origin in the world is read from maps.json). Nothing outside
+# this table can ever be placed: an order names a key, it never carries a coordinate. A spot says where its crate stands, how
+# wide and deep it is, and which other spot it cannot share the floor with — two crates on the same point would sit inside each other.
 SPOTS = {
     #          x       y     w    d    colour     excludes
     "west":   (0.75,  5.5,  0.7, 0.7, COLOR,     None),       # the west corridor: closed to a body
@@ -68,6 +62,22 @@ def model_sdf(name, x, y, w, d, color):
         "<visual name='visual'><geometry><box><size>%s</size></box></geometry>"
         "<material><ambient>%s 1</ambient><diffuse>%s 1</diffuse></material></visual>"
         "</link></model></sdf>" % (name, x, y, HEIGHT / 2, size, size, color, color))
+
+
+def maps():
+    """Where each map lies in the world, as build_world.py wrote it: name, origin and size."""
+    try:
+        with open(MAPS_JSON) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
+def origin_of(name):
+    for m in maps():
+        if m["name"] == name:
+            return float(m["x"]), float(m["y"])
+    return 0.0, 0.0
 
 
 def kiosk_camera():
@@ -91,18 +101,15 @@ class Levers(Node):
         super().__init__("sim_levers")
         self.world = world
         self.create_subscription(String, "/sim/crate", self.on_crate, 10)
-        self.create_subscription(String, "/sim/floor", self.on_floor, 10)
         self.create_subscription(String, "/sim/view", self.on_view, 10)
         self.telling = self.create_publisher(String, "/sim/crates", 10)
         # Asking the world what stands there spawns `ign model --list` — a whole ruby process, ~1 s of CPU
         # and 600 MB — so it is asked seldom: a slow heartbeat, plus at once after every order and whenever
         # a page asks ("tell"), which is how a freshly opened kiosk learns the floor without waiting.
         self.create_timer(10.0, self.tell_what_stands_there)
-        self.floor = self.inner_pieces()
-        self.get_logger().info("the open floor takes out %d inner piece(s), the perimeter stays" % len(self.floor))
         self.get_logger().info(
-            "levers over world '%s': /sim/crate (%s | clear), /sim/floor (open | close), /sim/view (top); telling /sim/crates"
-            % (world, " | ".join(SPOTS)))
+            "levers over world '%s': /sim/crate (%s | clear), /sim/view (top | %s); telling /sim/crates"
+            % (world, " | ".join(SPOTS), " | ".join(m["name"] for m in maps()) or "-"))
 
     # ---- the world's services ----
 
@@ -123,6 +130,8 @@ class Levers(Node):
         may have shoved it): the old one goes first, so the name stays free. The spot it excludes goes
         too — the big crate and the small one share a point, so only one of them stands there."""
         x, y, w, d, color, excludes = SPOTS[spot]
+        ox, oy = origin_of("warehouse")   # the spots are the warehouse's; the warehouse lies where the world says (propuesta 109)
+        x, y = x + ox, y + oy
         name = NAME % spot
         self.remove(name)
         if excludes:
@@ -132,76 +141,23 @@ class Levers(Node):
                          % (model_sdf(name, x, y, w, d, color), name))
 
     def placed(self):
-        """Which spots hold a crate right now, and whether the floor at the centre is open or closed — asked of the
-        world itself: this node keeps no state of its own, so what it tells is the truth even after a restart."""
+        """Which spots hold a crate right now — asked of the world itself: this node keeps no state of its own, so what it
+        tells is the truth even after a restart."""
         r = subprocess.run(["ign", "model", "--list"], capture_output=True, text=True)
         out = r.stdout or ""
         names = set(re.findall(r"crate_(\w+)", out))
-        floor = "closed" if re.search(r"\b%s\b" % FLOOR_SENTINEL, out) else "open"
-        return sorted(s for s in SPOTS if s in names) + ["floor:" + floor]
+        return sorted(s for s in SPOTS if s in names)
 
-    # ---- the floor at the centre ----
-
-    def inner_pieces(self):
-        """Every wall, block and door mark of the plan that is NOT the perimeter, by name, from the world file: a
-        vertical wall on the outermost x, or a horizontal one on the outermost y, is the perimeter."""
-        with open(WORLD_SDF, encoding="utf-8") as f:
-            world = f.read()
-        pieces = []
-        for m in PIECE.finditer(world):
-            name, body = m.groups()
-            pose = re.search(r"<pose>([-\d.]+) ([-\d.]+) ", body)
-            size = re.search(r"<size>([-\d.]+) ([-\d.]+) ", body)
-            if not pose or not size:
-                continue
-            pieces.append((name, float(pose.group(1)), float(pose.group(2)), float(size.group(1)), float(size.group(2))))
-        xs = [x for name, x, y, sx, sy in pieces if name.startswith("wall_") and sy > sx]   # the vertical walls' x
-        ys = [y for name, x, y, sx, sy in pieces if name.startswith("wall_") and sx > sy]   # the horizontal walls' y
-
-        def perimeter(piece):
-            name, x, y, sx, sy = piece
-            if not name.startswith("wall_"):
-                return False
-            if sy > sx:
-                return abs(x - min(xs)) < 1e-6 or abs(x - max(xs)) < 1e-6
-            return abs(y - min(ys)) < 1e-6 or abs(y - max(ys)) < 1e-6
-
-        return [piece[0] for piece in pieces if not perimeter(piece)]
-
-    def piece_sdf(self, name):
-        """A piece of the plan as the world file built it, wrapped as its own SDF; the attributes single-quoted
-        for the service's text-format request (see model_sdf)."""
-        with open(WORLD_SDF, encoding="utf-8") as f:
-            world = f.read()
-        m = re.search(r'<model name="%s">.*?</model>' % re.escape(name), world, re.S)
-        if not m:
-            return None
-        # one line: a newline inside the request's quoted string cuts it short (29-sep-2026: "Unable to read SDF string")
-        return "<sdf version='1.6'>%s</sdf>" % re.sub(r"\s+", " ", m.group(0)).replace('"', "'")
-
-    def open_floor(self):
-        """Every inner piece taken out of the world: one clear floor inside the perimeter."""
-        gone = [name for name in self.floor if self.remove(name)]
-        return len(gone)
-
-    def close_floor(self):
-        """Every piece put back as the plan built it: a piece still standing is left alone."""
-        back = 0
-        for name in self.floor:
-            sdf = self.piece_sdf(name)
-            if sdf is None:
-                self.get_logger().warning("the world file has no piece named '%s'" % name)
-                continue
-            self.remove(name)   # a piece still standing keeps its name free
-            if self.call("/world/%s/create" % self.world, "EntityFactory",
-                         'sdf: "%s", name: "%s", allow_renaming: false' % (sdf, name)):
-                back += 1
-        return back
-
-    def top_view(self):
-        """Put the GUI's camera back above the floor. The service takes a quaternion, the plan writes
-        roll-pitch-yaw: converted here."""
+    def top_view(self, over=None):
+        """Put the GUI's camera back above the floor — the whole world, or over one map's region (propuesta 109): its centre,
+        as high as the kiosk's lens over a floor that size. The service takes a quaternion, the plan writes roll-pitch-yaw:
+        converted here."""
         x, y, z, roll, pitch, yaw = kiosk_camera()
+        if over:
+            m = next((m for m in maps() if m["name"] == over), None)
+            if m is None:
+                return False
+            x, y, z = m["x"] + m["w"] / 2, m["y"] + m["h"] / 2, max(m["w"], m["h"]) * 0.66
         cr, sr = math.cos(roll / 2), math.sin(roll / 2)
         cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
         cy, sy = math.cos(yaw / 2), math.sin(yaw / 2)
@@ -229,21 +185,14 @@ class Levers(Node):
             self.get_logger().warning("no spot named '%s'" % order)
         self.tell_what_stands_there()
 
-    def on_floor(self, m):
-        order = (m.data or "").strip()
-        if order == "open":
-            self.get_logger().info("the floor opened: %d piece(s) taken out" % self.open_floor())
-        elif order == "close":
-            self.get_logger().info("the floor closed: %d piece(s) back" % self.close_floor())
-        elif order != "tell":
-            self.get_logger().warning("no floor order named '%s'" % order)
-        self.tell_what_stands_there()
-
     def on_view(self, m):
-        if (m.data or "").strip() == "top":
-            self.get_logger().info("camera back above the floor: %s" % self.top_view())
+        order = (m.data or "").strip()
+        if order == "top":
+            self.get_logger().info("camera back above the world: %s" % self.top_view())
+        elif any(order == x["name"] for x in maps()):
+            self.get_logger().info("camera over the %s: %s" % (order, self.top_view(order)))
         else:
-            self.get_logger().warning("no view named '%s'" % m.data)
+            self.get_logger().warning("no view named '%s'" % order)
 
     def tell_what_stands_there(self):
         self.telling.publish(String(data=",".join(self.placed())))

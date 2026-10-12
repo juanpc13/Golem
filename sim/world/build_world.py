@@ -146,6 +146,27 @@ def threshold(i, d, places):
     return box("threshold_%d" % i, d["x"], d["y"], sx, sy, 0.01, THRESHOLD_COLOR, collide=False, z=0.005)
 
 
+GRID_COLOR = "0.55 0.55 0.50"
+
+
+def grid(max_x, max_y):
+    """A metre grid drawn ON THE FLOOR, over every map (Juan, 12-oct-2026: "¿es posible expandir esta cuadrícula para los 3 lugares?"):
+    Gazebo's own GUI grid sits at the origin and reaches 10 m, so the world draws its own — one static model, a thin visual per line,
+    no collision, 8 cm wide and a centimetre above the floor so it shows at the kiosk's zoom (2 cm and 4 mm fought the floor plane and vanished at 17 %)."""
+    lines = []
+    for i in range(int(round(max_x)) + 1):
+        lines.append('<visual name="x%d"><pose>%s %s 0.006 0 0 0</pose><geometry><box><size>0.08 %s 0.01</size></box></geometry>'
+                     '<material><ambient>%s 1</ambient><diffuse>%s 1</diffuse></material></visual>' % (i, num(i), num(max_y / 2), num(max_y), GRID_COLOR, GRID_COLOR))
+    for j in range(int(round(max_y)) + 1):
+        lines.append('<visual name="y%d"><pose>%s %s 0.006 0 0 0</pose><geometry><box><size>%s 0.08 0.01</size></box></geometry>'
+                     '<material><ambient>%s 1</ambient><diffuse>%s 1</diffuse></material></visual>' % (j, num(max_x / 2), num(j), num(max_x), GRID_COLOR, GRID_COLOR))
+    return """    <model name="grid"><static>true</static>
+      <link name="link">
+        %s
+      </link>
+    </model>""" % chr(10).join(lines)
+
+
 def floor(max_x, max_y):
     return """    <model name="ground_plane"><static>true</static>
       <link name="link">
@@ -248,6 +269,7 @@ WORLD = """<?xml version="1.0" ?>
       <ambient>0.7 0.7 0.7 1</ambient>
       <background>0.08 0.09 0.13 1</background>
       <shadows>false</shadows>
+      <grid>false</grid>
     </scene>
 
     <!-- The kiosk's picture: one camera straight above the floor, +x to the right, +y up -->
@@ -313,6 +335,26 @@ def bridge_args(bodies):
     return " ".join(args)
 
 
+def maze(drawing, cell):
+    """The golems' Catalog.Maze, read the same way: '#' a wall, anything else a free cell named cell-<col>-<row> (column from the
+    west, row from the south), each open to its free neighbours east and north. The first line drawn is the north edge."""
+    rows = len(drawing)
+    free = {}
+    for line in range(rows):
+        row = rows - 1 - line
+        for col, ch in enumerate(drawing[line]):
+            if ch == '#':
+                continue
+            free[(col, row)] = {"name": "cell-%d-%d" % (col, row), "x": col * cell, "y": row * cell, "w": cell, "h": cell}
+    places = list(free.values())
+    opens = []
+    for (col, row), place in free.items():
+        for other in ((col + 1, row), (col, row + 1)):
+            if other in free:
+                opens.append({"a": place["name"], "b": free[other]["name"]})
+    return places, opens
+
+
 def main(plan_path, out_dir, keep=""):
     with open(plan_path) as f:
         plan = json.load(f)
@@ -322,11 +364,30 @@ def main(plan_path, out_dir, keep=""):
         if unknown:
             sys.exit("the plan has no body %s" % ", ".join(unknown))
         plan["bodies"] = [b for b in plan["bodies"] if b["name"] in wanted]
+    regions = []
+    if plan.get("maps"):   # ONE WORLD, SEVERAL MAPS side by side (propuesta 109): each map in its own frame, laid at `at`
+        plan.setdefault("places", []); plan.setdefault("doors", []); plan.setdefault("opens", [])
+        for m in plan["maps"]:
+            ox, oy = float(m["at"][0]), float(m["at"][1])
+            places, doors, opens = m.get("places", []), m.get("doors", []), m.get("opens", [])
+            if m.get("maze"):   # a maze drawn in text (propuesta 108): every free cell a place, open to its free neighbours; the walls follow
+                maze_places, maze_opens = maze(m["maze"], float(m.get("cell", 1.5)))
+                places, opens = places + maze_places, opens + maze_opens
+            plan["places"] += [dict(p, x=p["x"] + ox, y=p["y"] + oy) for p in places]
+            plan["doors"] += [dict(d, x=d["x"] + ox, y=d["y"] + oy) for d in doors]
+            plan["opens"] += opens
+            regions.append({"name": m["name"], "x": ox, "y": oy,
+                            "w": max(p["x"] + p["w"] for p in places), "h": max(p["y"] + p["h"] for p in places)})
+    elif plan.get("maze"):
+        maze_places, maze_opens = maze(plan["maze"], float(plan.get("cell", 1.5)))
+        plan["places"] = plan.get("places", []) + maze_places
+        plan["opens"] = plan.get("opens", []) + maze_opens
+        plan.setdefault("doors", [])
     places, doors, opens = plan["places"], plan["doors"], plan["opens"]
     max_x = max(p["x"] + p["w"] for p in places)
     max_y = max(p["y"] + p["h"] for p in places)
 
-    models = [floor(max_x, max_y)]
+    models = [floor(max_x, max_y), grid(max_x, max_y)]
     for i, cell in enumerate(blocks(places)):
         x0, y0, x1, y1 = cell
         models.append(box("block_%d" % (i + 1), (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, WALL_H, BLOCK_COLOR))
@@ -350,9 +411,11 @@ def main(plan_path, out_dir, keep=""):
         f.write(sdf)
     with open(os.path.join(out_dir, "bridge.args"), "w") as f:
         f.write(bridge_args(plan["bodies"]) + "\n")
-    print("world %s: %d places, %d walls, %d obstacles, %d bodies -> %s" % (
+    with open(os.path.join(out_dir, "maps.json"), "w") as f:   # where each map lies: the levers' views and crates, the golems' MAP_ORIGINS
+        json.dump(regions or [{"name": plan.get("world", "arena"), "x": 0, "y": 0, "w": max_x, "h": max_y}], f, indent=2)
+    print("world %s: %d places, %d walls, %d obstacles, %d bodies, %d map(s) -> %s" % (
         plan.get("world", "arena"), len(places), sum(1 for _ in walls(places, doors, opens)),
-        len(plan.get("obstacles", [])), len(plan["bodies"]), os.path.join(out_dir, "arena.sdf")))
+        len(plan.get("obstacles", [])), len(plan["bodies"]), max(1, len(regions)), os.path.join(out_dir, "arena.sdf")))
 
 
 if __name__ == "__main__":

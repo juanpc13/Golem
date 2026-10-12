@@ -24,9 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ros-humble-rosb
 
 # The world is generated from the plan: arena.sdf + the bridge's topic mappings.
 # BODIES (a build arg, docker-compose.yml) picks which of the plan's bodies stand in the world; empty = all.
+# PLAN (a build arg, docker-compose.maze.yml) picks the plan: the arena (plan.json) or the maze (plan-maze.json, propuesta 108).
 ARG BODIES=
+ARG PLAN=plan.json
 COPY world/ /world/
-RUN python3 /world/build_world.py /world/plan.json /world "$BODIES"
+RUN python3 /world/build_world.py "/world/$PLAN" /world "$BODIES"
 
 COPY --chown=ubuntu:ubuntu kiosk/kiosk.sh bridge/teleport.py bridge/crates.py bridge/body.py /golem/
 # The buttons' page becomes noVNC's index, so the ONE published port shows the levers with the

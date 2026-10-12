@@ -14,8 +14,9 @@ internal static class Catalog
     internal const string CrossCorridorsName = "cross-corridors";
     internal const string RingCorridorName = "ring-corridor";
     internal const string OpenFloorName = "open-floor";
+    internal const string MazeName = "maze";
 
-    internal static string[] Names() => new[] { WarehouseName, CrossCorridorsName, RingCorridorName, OpenFloorName };
+    internal static string[] Names() => new[] { WarehouseName, CrossCorridorsName, RingCorridorName, OpenFloorName, MazeName };
 
     internal static MapLayout Named(string name)
     {
@@ -25,6 +26,7 @@ internal static class Catalog
             case CrossCorridorsName: return CrossCorridors();
             case RingCorridorName: return RingCorridor();
             case OpenFloorName: return OpenFloor();
+            case MazeName: return Maze();
         }
         throw new GolemDomainException($"no map named '{name}': {string.Join(", ", Names())}");
     }
@@ -64,6 +66,59 @@ internal static class Catalog
         var l = new MapLayout(OpenFloorName);
         l.Area("floor").At(P(0, 0)).Size(11, 11);
         return l;
+    }
+
+    /// <summary>THE MAZE (propuesta 108, 12-oct-2026; Juan: "un laberinto donde hay golems… hay que ver cómo creamos un mapa así en Gazebo
+    /// y crear el mapa en el golem con todas las paredes"): drawn in text, one character per CELL of 1.5 m — <c>#</c> a wall, <c>.</c> a
+    /// free cell, <c>P</c> the cradle (free, where pacman starts), <c>G</c> the den (free, where the ghosts start) — the first line the
+    /// north edge. Every free cell is a zone named <c>cell-&lt;column&gt;-&lt;row&gt;</c> (column from the west, row from the south, both
+    /// from 0), OPEN to its free neighbours east and north, so the walls are what the zones' boundaries leave closed. The world builds the
+    /// same from the same drawing (sim/world/plan-maze.json: the builder expands it into places and openings and derives the walls). Seven
+    /// by seven on the 11 m floor: 37 free cells, two dead ends ((1,3) and (5,3)), a ring round the den.</summary>
+    internal static readonly string[] MazeDrawing =
+    {
+        ".......",
+        ".#.#.#.",
+        ".#...#.",
+        "..#G#..",
+        ".#...#.",
+        ".#.#.#.",
+        "...P...",
+    };
+    internal const double MazeCell = 1.5;
+
+    internal static MapLayout Maze()
+    {
+        var l = new MapLayout(MazeName);
+        var cells = new Dictionary<(int Col, int Row), Zone>();
+        int rows = MazeDrawing.Length;
+        for (int line = 0; line < rows; line++)
+        {
+            int row = rows - 1 - line;   // the first line drawn is the north edge
+            for (int col = 0; col < MazeDrawing[line].Length; col++)
+            {
+                if (MazeDrawing[line][col] == '#') continue;
+                cells[(col, row)] = l.Area($"cell-{col}-{row}").At(P(col * MazeCell, row * MazeCell)).Size(MazeCell, MazeCell);
+            }
+        }
+        foreach (var ((col, row), cell) in cells)
+        {
+            if (cells.TryGetValue((col + 1, row), out var east)) cell.OpenTo(east);
+            if (cells.TryGetValue((col, row + 1), out var north)) cell.OpenTo(north);
+        }
+        return l;
+    }
+
+    /// <summary>The centre of the cell drawn with that mark (<c>P</c> the cradle, <c>G</c> the den); refused when the drawing has none.</summary>
+    internal static Position MazeMark(char mark)
+    {
+        int rows = MazeDrawing.Length;
+        for (int line = 0; line < rows; line++)
+        {
+            int col = MazeDrawing[line].IndexOf(mark);
+            if (col >= 0) return P(col * MazeCell + MazeCell / 2, (rows - 1 - line) * MazeCell + MazeCell / 2);
+        }
+        throw new GolemDomainException($"the maze has no cell marked '{mark}'");
     }
 
     /// <summary>Four rooms in the corners, separated by two aisles that cross in the middle: each room opens to

@@ -1215,6 +1215,7 @@ public partial class MainWindow : Window
         {
             if (g.LastX == null || g.LastY == null) continue;
             if (g != selected && OthersBox.IsChecked != true) continue;   // the selected golem is always drawn; the others when the box says so
+            if (g != selected && selected != null && g.Knowledge.Scenario != "" && selected.Knowledge.Scenario != "" && g.Knowledge.Scenario != selected.Knowledge.Scenario) continue;   // another scenario is another frame (propuesta 109): not on this map
             var pc = Pixel(g.LastX.Value, g.LastY.Value); double cx = pc.X, cy = pc.Y, r = 0.25 * scale;
             var brush = new SolidColorBrush(GolemColor.Of(g.Name));
             var dot = new Ellipse { Width = 2 * r, Height = 2 * r, Fill = brush, Stroke = g == selected ? Brushes.White : brush, StrokeThickness = g == selected ? 2 : 1 };

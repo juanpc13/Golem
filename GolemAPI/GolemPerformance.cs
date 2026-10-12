@@ -10,6 +10,93 @@ namespace GolemAPI;
 // never edit an applied one (its body signature is guarded).
 internal sealed class GolemPerformance : PerformanceV2
 {
+    /// <summary>THE MAZE'S RELEASE (propuesta 108): the text <c>Catalog.Maze().AsRelease(staged: true)</c> renders — kept here verbatim, like the
+    /// other maps', and held equal to it by <c>MazeReleaseTests</c>. A journal keeps the map; the code keeps the recipe (the drawing).</summary>
+    internal const string MazeRelease = @"upgrade('maze_v1') {
+    maze = MapLayout('maze');
+    {
+        cell06 = maze.Area('cell-0-6').At(Position(0.0, 9.0)).Size(1.5, 1.5);
+        cell16 = maze.Area('cell-1-6').At(Position(1.5, 9.0)).Size(1.5, 1.5);
+        cell26 = maze.Area('cell-2-6').At(Position(3.0, 9.0)).Size(1.5, 1.5);
+        cell36 = maze.Area('cell-3-6').At(Position(4.5, 9.0)).Size(1.5, 1.5);
+        cell46 = maze.Area('cell-4-6').At(Position(6.0, 9.0)).Size(1.5, 1.5);
+        cell56 = maze.Area('cell-5-6').At(Position(7.5, 9.0)).Size(1.5, 1.5);
+        cell66 = maze.Area('cell-6-6').At(Position(9.0, 9.0)).Size(1.5, 1.5);
+        cell05 = maze.Area('cell-0-5').At(Position(0.0, 7.5)).Size(1.5, 1.5);
+        cell25 = maze.Area('cell-2-5').At(Position(3.0, 7.5)).Size(1.5, 1.5);
+        cell45 = maze.Area('cell-4-5').At(Position(6.0, 7.5)).Size(1.5, 1.5);
+        cell65 = maze.Area('cell-6-5').At(Position(9.0, 7.5)).Size(1.5, 1.5);
+        cell04 = maze.Area('cell-0-4').At(Position(0.0, 6.0)).Size(1.5, 1.5);
+        cell24 = maze.Area('cell-2-4').At(Position(3.0, 6.0)).Size(1.5, 1.5);
+        cell34 = maze.Area('cell-3-4').At(Position(4.5, 6.0)).Size(1.5, 1.5);
+        cell44 = maze.Area('cell-4-4').At(Position(6.0, 6.0)).Size(1.5, 1.5);
+        cell64 = maze.Area('cell-6-4').At(Position(9.0, 6.0)).Size(1.5, 1.5);
+        cell03 = maze.Area('cell-0-3').At(Position(0.0, 4.5)).Size(1.5, 1.5);
+        cell13 = maze.Area('cell-1-3').At(Position(1.5, 4.5)).Size(1.5, 1.5);
+        cell33 = maze.Area('cell-3-3').At(Position(4.5, 4.5)).Size(1.5, 1.5);
+        cell53 = maze.Area('cell-5-3').At(Position(7.5, 4.5)).Size(1.5, 1.5);
+        cell63 = maze.Area('cell-6-3').At(Position(9.0, 4.5)).Size(1.5, 1.5);
+        cell02 = maze.Area('cell-0-2').At(Position(0.0, 3.0)).Size(1.5, 1.5);
+        cell22 = maze.Area('cell-2-2').At(Position(3.0, 3.0)).Size(1.5, 1.5);
+        cell32 = maze.Area('cell-3-2').At(Position(4.5, 3.0)).Size(1.5, 1.5);
+        cell42 = maze.Area('cell-4-2').At(Position(6.0, 3.0)).Size(1.5, 1.5);
+        cell62 = maze.Area('cell-6-2').At(Position(9.0, 3.0)).Size(1.5, 1.5);
+        cell01 = maze.Area('cell-0-1').At(Position(0.0, 1.5)).Size(1.5, 1.5);
+        cell21 = maze.Area('cell-2-1').At(Position(3.0, 1.5)).Size(1.5, 1.5);
+        cell41 = maze.Area('cell-4-1').At(Position(6.0, 1.5)).Size(1.5, 1.5);
+        cell61 = maze.Area('cell-6-1').At(Position(9.0, 1.5)).Size(1.5, 1.5);
+        cell00 = maze.Area('cell-0-0').At(Position(0.0, 0.0)).Size(1.5, 1.5);
+        cell10 = maze.Area('cell-1-0').At(Position(1.5, 0.0)).Size(1.5, 1.5);
+        cell20 = maze.Area('cell-2-0').At(Position(3.0, 0.0)).Size(1.5, 1.5);
+        cell30 = maze.Area('cell-3-0').At(Position(4.5, 0.0)).Size(1.5, 1.5);
+        cell40 = maze.Area('cell-4-0').At(Position(6.0, 0.0)).Size(1.5, 1.5);
+        cell50 = maze.Area('cell-5-0').At(Position(7.5, 0.0)).Size(1.5, 1.5);
+        cell60 = maze.Area('cell-6-0').At(Position(9.0, 0.0)).Size(1.5, 1.5);
+        cell06.OpenTo(cell16);
+        cell16.OpenTo(cell26);
+        cell26.OpenTo(cell36);
+        cell36.OpenTo(cell46);
+        cell46.OpenTo(cell56);
+        cell56.OpenTo(cell66);
+        cell05.OpenTo(cell06);
+        cell25.OpenTo(cell26);
+        cell45.OpenTo(cell46);
+        cell65.OpenTo(cell66);
+        cell04.OpenTo(cell05);
+        cell24.OpenTo(cell34);
+        cell24.OpenTo(cell25);
+        cell34.OpenTo(cell44);
+        cell44.OpenTo(cell45);
+        cell64.OpenTo(cell65);
+        cell03.OpenTo(cell13);
+        cell03.OpenTo(cell04);
+        cell33.OpenTo(cell34);
+        cell53.OpenTo(cell63);
+        cell63.OpenTo(cell64);
+        cell02.OpenTo(cell03);
+        cell22.OpenTo(cell32);
+        cell32.OpenTo(cell42);
+        cell32.OpenTo(cell33);
+        cell62.OpenTo(cell63);
+        cell01.OpenTo(cell02);
+        cell21.OpenTo(cell22);
+        cell41.OpenTo(cell42);
+        cell61.OpenTo(cell62);
+        cell00.OpenTo(cell10);
+        cell00.OpenTo(cell01);
+        cell10.OpenTo(cell20);
+        cell20.OpenTo(cell30);
+        cell20.OpenTo(cell21);
+        cell30.OpenTo(cell40);
+        cell40.OpenTo(cell50);
+        cell40.OpenTo(cell41);
+        cell50.OpenTo(cell60);
+        cell60.OpenTo(cell61);
+    }
+    mazeScenario = g.Stage(maze);
+}
+";
+
     // True only on the boot where the journal was brand-new (the framework raises
     // OnFirstHydration exactly then). Used for the panel's birth announcement.
     internal bool BornThisBoot { get; private set; }
@@ -121,6 +208,7 @@ internal sealed class GolemPerformance : PerformanceV2
                 }
                 openFloorScenario = g.Stage(openFloor);
             }
+        " + MazeRelease + @"
         ")
         .WithParameters(p => { p["golemName", typeof(string)] = golemName; })   // the same release for every golem; only who it is changes
         .PerformCommand();

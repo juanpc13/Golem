@@ -48,9 +48,10 @@ public sealed class GolemEmbodiment
     private readonly string journalPath;
 
     public GolemEmbodiment(PerformanceV2 performance, IBodyWire ros, PanelFeed feed, ITellWire wire,
-                 string golem, (double X, double Y) home, string journalPath, Capabilities capabilities, IReadOnlyList<string> peers = null)
+                 string golem, (double X, double Y) home, string journalPath, Capabilities capabilities, IReadOnlyList<string> peers = null, WorldLayout layout = null)
     {
         if (capabilities == null) throw new ArgumentNullException(nameof(capabilities), "the embodiment needs to know which roles its body can play");
+        this.layout = layout ?? WorldLayout.OneFrame;
         Peers = peers ?? Array.Empty<string>();
         this.performance = performance;
         this.golemActor = performance.Actor;   // the golem itself, taken from the performance once
@@ -74,8 +75,39 @@ public sealed class GolemEmbodiment
     public IReadOnlyList<string> Peers { get; }
     /// <summary>A line of the command language handed to a peer's console over the wire (`visit … --with blue`); null when no such peer.</summary>
     public Task<PeerReply> CommandPeerAsync(string peer, string line) => wire.CommandPeerAsync(peer, line);
-    /// <summary>Where the body believes it stands (telemetry, never the journal's); null before the first word from it.</summary>
-    public Pose Pose => ros.LatestPose;
+    /// <summary>Where the body believes it stands (telemetry, never the journal's), IN THE FRAME OF THE SCENARIO the golem is in
+    /// (propuesta 109: the world lays the maps side by side; the membrane's pose is the world's); null before the first word from it.</summary>
+    public Pose Pose => layout.ToMap(scenario, ros.LatestPose);
+
+    // THE WORLD'S LAYOUT (propuesta 109): where each map lies in the world, and which scenario the golem is in — read from the journal at
+    // boot and kept at every `use map`; what every pose that enters is read in, and what every point that leaves is carried to
+    private readonly WorldLayout layout;
+    private string scenario = "";
+
+    /// <summary>The scenario the golem is in, as the journal says.</summary>
+    public string Scenario => scenario;
+    /// <summary>Where the body stands in the WORLD (the membrane's own words): for the lab's eyes, never for an act.</summary>
+    public Pose WorldPose => ros.LatestPose;
+
+    private string CurrentScenario()
+    {
+        try { return Read("print g.Current.Name 'v';").GetString() ?? ""; }
+        catch { return ""; }
+    }
+
+    // the golem WAKES IN THE SCENARIO ITS BODY STANDS IN (propuesta 109): reborn, let go or carried, the body lies in some map's region of
+    // the world; a journal that says another scenario is entered into this one — unless a route is pending, which the entering refuses
+    private void EnterWhereTheBodyStands()
+    {
+        scenario = CurrentScenario();
+        var world = ros.LatestPose;
+        if (world == null) return;
+        var at = layout.At(world.X, world.Y);
+        if (at == null || at == scenario) return;
+        var answer = EnterScenario(at);
+        if (answer.Ok) { scenario = at; Note($"the body stands in the {at}'s region of the world: the golem entered it"); }
+        else Note($"the body stands in the {at}'s region, but the golem could not enter it: {answer.Refused}");
+    }
     /// <summary>The robot's mechanics — the output target: the print the reactions emit, switched on and sent to the body over ROS.</summary>
     public RobotMechanics Mechanics { get; }
     /// <summary>The roles the operator declared for this body.</summary>
@@ -330,7 +362,7 @@ public sealed class GolemEmbodiment
     // ==================================================================
     public Answer Wake()
     {
-        var pose = ros.LatestPose;
+        var pose = Pose;
         if (pose == null) return Answer.Refusal("no telemetry from the body yet: the golem wakes where its body stands");
         return Answer.Of(golemActor.Using(@"
                 {
@@ -410,11 +442,12 @@ public sealed class GolemEmbodiment
         // brings a pose situates it (a told point cannot be planned until then).
         var patience = DateTime.UtcNow + TimeSpan.FromSeconds(15);
         while (ros.LatestPose == null && DateTime.UtcNow < patience && !ct.IsCancellationRequested) await Task.Delay(200, ct);
-        var here = ros.LatestPose;
+        EnterWhereTheBodyStands();
+        var here = Pose;
         if (here == null) Note("no pose from the body yet: the golem starts without waking where it stands");
         else
         {
-            try { Report(Wake(), $"awake where the body stands ({here.X:0.0}, {here.Y:0.0}) facing {here.Theta:0.00}"); }
+            try { Report(Wake(), $"awake where the body stands ({here.X:0.0}, {here.Y:0.0}) facing {here.Theta:0.00} in {scenario}"); }
             catch (Exception ex) { Note($"waking refused: {Reason(ex)}"); }
         }
         Mechanics.Dispatch(AskOrder());
@@ -436,9 +469,33 @@ public sealed class GolemEmbodiment
     /// <summary>The golem ENTERS a scenario it knows (ajuste 60): from here on its ways, distances and touches are decided on that
     /// map and its collisions — every script reads them through `g.Current` (no global map or collisions since 29-sep). The
     /// mind's own act, no role's. Refused while a route is pending, or for a name it does not know.</summary>
-    public Answer Enter(string scenario)
+    public async Task<Answer> EnterAsync(string into)
     {
-        if (string.IsNullOrWhiteSpace(scenario)) return Answer.Refusal("a scenario needs a name");
+        if (string.IsNullOrWhiteSpace(into)) return Answer.Refusal("a scenario needs a name");
+        var standing = Pose;   // where the body stands, in the frame of the scenario it leaves
+        var answer = EnterScenario(into.Trim());
+        if (!answer.Ok) return answer;
+        scenario = into.Trim();
+        // THE BODY FOLLOWS (propuesta 109): the maps lie side by side in the world, so the golem's new map is another region — the body is
+        // carried to the same point of the new map when that point is on it; off it, the operator places it
+        if (standing == null || layout.Of(scenario) == null) return answer;
+        bool fits;
+        try { fits = ReadAt("print g.Current.Map.IsOnMap(Position(@qx, @qy)) 'v';", standing.X, standing.Y).GetBoolean(); }
+        catch { fits = false; }
+        if (!fits) { Note($"the body stands at ({standing.X:0.##}, {standing.Y:0.##}), which is no point of {scenario}: place it"); return answer; }
+        var (wx, wy) = layout.ToWorld(scenario, standing.X, standing.Y);
+        Mechanics.StopOnMark();
+        try { await ros.TeleportAsync(wx, wy, 0.0, CancellationToken.None); } catch { /* best-effort in the world */ }
+        await SettledAtAsync(wx, wy, CancellationToken.None);
+        Note($"the body carried into the {scenario}'s region of the world, to ({standing.X:0.##}, {standing.Y:0.##}) of it");
+        try { Report(Wake(), $"awake where the body stands in {scenario}"); }
+        catch (Exception ex) { Note($"waking in {scenario} refused: {Reason(ex)}"); }
+        return answer;
+    }
+
+    // the act alone: the golem enters a scenario it knows
+    private Answer EnterScenario(string into)
+    {
         try
         {
             return Answer.Of(Actor.Using(
@@ -449,10 +506,10 @@ public sealed class GolemEmbodiment
                         print g.Current.Name 'scenario', g.Scenarios().Count 'known';
                     }
                 ")
-                .WithParameters(p => { p["into", typeof(string)] = scenario.Trim(); })
+                .WithParameters(p => { p["into", typeof(string)] = into; })
                 .PerformCommand());
         }
-        catch (Exception ex) { return Answer.Refusal($"enter {scenario}: " + Reason(ex)); }
+        catch (Exception ex) { return Answer.Refusal($"enter {into}: " + Reason(ex)); }
     }
 
     // THE STRATEGIES OF NAVIGATION (ajuste 63): the golem's own objects, one fixed template per strategy — a property, never a name,
@@ -506,6 +563,7 @@ public sealed class GolemEmbodiment
         // the body was carried: the golem wakes where it stands now (22-sep-2026, ajuste 49) — a told point that comes next is
         // planned from the real pose, not from where the body stood before the operator moved it
         await SettledAtAsync(home.X, home.Y, CancellationToken.None);
+        EnterWhereTheBodyStands();   // the mark lies in some map's region (propuesta 109)
         try { Report(Wake(), $"awake where the body stands after the reset"); }
         catch (Exception ex) { Note($"waking after the reset refused: {Reason(ex)}"); }
     }
@@ -515,12 +573,13 @@ public sealed class GolemEmbodiment
     /// teleported there and re-anchored, and the golem awake where it stands. Never domain: a real robot is not carried.</summary>
     public async Task PlaceAsync(double x, double y)
     {
+        var (wx, wy) = layout.ToWorld(scenario, x, y);   // a point of the golem's map, carried into its region of the world (propuesta 109)
         Mechanics.StopOnMark();
-        try { await ros.TeleportAsync(x, y, 0.0, CancellationToken.None); }
+        try { await ros.TeleportAsync(wx, wy, 0.0, CancellationToken.None); }
         catch { /* best-effort in the world; the journaled facts are the point */ }
         Report(LetGo($"the operator carried the body to ({x:0.##}, {y:0.##})"), "let go of every pending route: the body carried");
-        Note($"carried to ({x:0.##}, {y:0.##})");
-        await SettledAtAsync(x, y, CancellationToken.None);
+        Note($"carried to ({x:0.##}, {y:0.##}) of {(scenario == "" ? "the map" : scenario)}");
+        await SettledAtAsync(wx, wy, CancellationToken.None);
         try { Report(Wake(), "awake where the body stands after being carried"); }
         catch (Exception ex) { Note($"waking after being carried refused: {Reason(ex)}"); }
     }
@@ -627,6 +686,8 @@ public sealed class GolemEmbodiment
                 case "bumped":
                     if (Captor == null) { Note("the body says it bumped, but this body has no bumper"); return; }
                     double x = D("x"), y = D("y"), heading = D("heading"), bearing = D("bearing");
+                    var stood = layout.ToMap(scenario, new Pose(x, y, heading));   // the body speaks in the world's frame; the golem reads its map's (propuesta 109)
+                    x = stood.X; y = stood.Y;
                     if (double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(heading) || double.IsNaN(bearing)) { Note($"a bump without where the body stood or where it was pressed: {json}"); return; }
                     Captor.Bumped(x, y, heading, bearing);
                     return;
@@ -693,6 +754,15 @@ public sealed class GolemEmbodiment
     }
 
     internal double LingerAfterTold()     => Read("print body.LingerAfterTold.InSeconds 'v';").GetDouble();
+
+    // a read with a point as its parameters (never a literal in a script)
+    private JsonElement ReadAt(string script, double x, double y)
+    {
+        using var doc = JsonDocument.Parse(golemActor.Using(script)
+            .WithParameters(p => { p["qx", typeof(double)] = x; p["qy", typeof(double)] = y; })
+            .PerformQuery());
+        return doc.RootElement.GetProperty("v").Clone();
+    }
 
     private JsonElement Read(string script, int? id = null)
     {
