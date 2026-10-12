@@ -284,44 +284,45 @@ public class MapLayoutTests
         Assert.IsTrue(g.FitsAt(new Position(2.75, 5.5)), "where the warehouse has a solid block, the open floor has room");
     }
 
-    // THE MAZE (propuesta 108, 12-oct-2026): drawn in text, every free cell a zone of 1.5 m open to its free neighbours; the walls are what
-    // the boundaries leave closed. Read where the journal reads — the map's own reads, and a way decided over it through the golem.
+    // THE MAZE (propuesta 108, 12-oct-2026): drawn in text at Pacman's scale — 19 × 21 cells of 1.5 m — every free cell a zone open to its
+    // free neighbours; the walls are what the boundaries leave closed. Read where the journal reads — the map's own reads, and a way decided
+    // over it through the golem.
     [TestMethod]
     public void TheMaze_IsDrawnInText_EveryFreeCellAZone_OpenToItsNeighbours_AndAWayRunsThroughIt()
     {
         var map = Catalog.Maze();
-        Assert.AreEqual(37, map.ZoneCount, "seven by seven less the walls");
+        int free = Catalog.MazeDrawing.Sum(line => line.Count(c => c != '#'));
+        Assert.AreEqual(free, map.ZoneCount, "every free cell of the drawing is a zone");
+        Assert.AreEqual(19 * 21, Catalog.MazeDrawing.Sum(line => line.Length), "nineteen by twenty-one");
         Assert.AreEqual("maze", map.Name);
-        var cradle = map.Find("cell-3-0");
-        var den = map.Find("cell-3-3");
-        Assert.AreEqual(0.0, Catalog.MazeMark('P').DistanceTo(new Position(5.25, 0.75)), 1e-9, "the cradle's centre");
-        Assert.AreEqual(0.0, Catalog.MazeMark('G').DistanceTo(new Position(5.25, 5.25)), 1e-9, "the den's centre");
+        Assert.AreEqual(0.0, Catalog.MazeMark('P').DistanceTo(new Position(14.25, 8.25)), 1e-9, "the cradle's centre: column 9, row 5");
+        Assert.AreEqual(0.0, Catalog.MazeMark('G').DistanceTo(new Position(12.75, 18.75)), 1e-9, "the den's first cell: column 8, row 12");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => Catalog.MazeMark('X')).Message, "no cell marked");
-        Assert.IsTrue(map.Connects(cradle, map.Find("cell-2-0")), "the bottom row runs free");
-        Assert.IsFalse(map.Knows("cell-2-3"), "(2,3) is a wall: no zone there");
-        Assert.IsFalse(map.Connects(map.Find("cell-0-2"), map.Find("cell-1-3")), "(0,2) and (1,3) touch at a corner only: no passage");
-        Assert.AreEqual(1, map.Neighbours(map.Find("cell-1-3")).Count, "a dead end: one neighbour");
-        Assert.AreEqual(1, map.Neighbours(map.Find("cell-5-3")).Count, "the other dead end");
-        Assert.AreEqual(3, map.Neighbours(map.Find("cell-3-2")).Count, "an intersection south of the den");
-        Assert.AreEqual(2, map.Neighbours(den).Count, "the den is a corridor cell between (3,2) and (3,4)");
-        Assert.IsFalse(map.IsOnMap(new Position(2.25, 2.25)), "a wall cell is off the map");
+        Assert.IsFalse(map.Knows("cell-0-0"), "the corner is a wall: no zone there");
+        Assert.IsTrue(map.Connects(map.Find("cell-9-5"), map.Find("cell-8-5")), "the cradle's row runs free");
+        Assert.AreEqual(3, map.Neighbours(map.Find("cell-9-12")).Count, "the den's upper middle cell: its two sides and the cell below, the top closed");
+        // every free cell is reached from the cradle: no island in the drawing
+        var seen = new HashSet<string> { "cell-9-5" };
+        var frontier = new Queue<Area>(new[] { map.Find("cell-9-5") });
+        while (frontier.Count > 0) foreach (var n in map.Neighbours(frontier.Dequeue())) if (seen.Add(n.Name)) frontier.Enqueue(n);
+        Assert.AreEqual(free, seen.Count, "every cell reachable from the cradle");
 
         // a body fits in a 1.5 m corridor and a way runs from the cradle to the far corner, cell by cell on the openings' pivots
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var g = new Golem(body);
         g.Enter(new Scenario(map, new Collisions()));
-        Assert.IsTrue(g.FitsAt(new Position(5.25, 0.75)), "the cradle's centre leaves room for the body");
-        Assert.IsTrue(g.FitsAt(new Position(0.75, 5.25)), "the west corridor too");
-        var route = g.Visit(new Pose(5.25, 0.75, 0.0), new Position(9.75, 9.75));
+        Assert.IsTrue(g.FitsAt(new Position(14.25, 8.25)), "the cradle's centre leaves room for the body");
+        var route = g.Visit(new Pose(14.25, 8.25, 0.0), new Position(26.25, 29.25));
         Assert.AreEqual("pending", route.Status);
-        StringAssert.EndsWith(route.AsPlan().TrimEnd(), "cell-6-6@9.75,9.75", route.AsPlan());
-        Assert.IsTrue(route.LegsAhead.Count >= 3, "round the corner of the maze, never through a wall — " + route.AsPlan());
+        StringAssert.EndsWith(route.AsPlan().TrimEnd(), "cell-17-19@26.25,29.25", route.AsPlan());
+        Assert.IsTrue(route.LegsAhead.Count >= 3, "round the corners of the maze, never through a wall — " + route.AsPlan());
 
         // the release in two movements, every cell its own variable, the openings between objects — staged at the end
         string release = map.AsRelease(staged: true);
-        StringAssert.StartsWith(release, "upgrade('maze_v1') {\n    maze = MapLayout('maze');\n    {\n        cell06 = maze.Area('cell-0-6').At(Position(0.0, 9.0)).Size(1.5, 1.5);\n");
-        StringAssert.Contains(release, "        cell30.OpenTo(cell40);\n");
-        StringAssert.Contains(release, "        cell20.OpenTo(cell21);\n", "a cell open to its neighbour north; (3,1) is a wall, so cell30 opens east only");
+        StringAssert.StartsWith(release, "upgrade('maze_v1') {\n    maze = MapLayout('maze');\n    {\n        cell_1_19 = maze.Area('cell-1-19').At(Position(1.5, 28.5)).Size(1.5, 1.5);\n");
+        StringAssert.Contains(release, "        cell_9_5.OpenTo(cell_10_5);\n", "the cradle open to its neighbour east");
+        StringAssert.Contains(release, "        cell_1_19 = ", "a hyphen before a digit stays an underscore: cell-1-19 and cell-11-9 are two variables");
+        StringAssert.Contains(release, "        cell_11_9 = ", "the other one");
         StringAssert.EndsWith(release, "    }\n    mazeScenario = g.Stage(maze);\n}\n");
     }
 }

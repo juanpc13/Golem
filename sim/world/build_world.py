@@ -93,33 +93,78 @@ def cut_doors(edge, doors):
         yield (x0, cursor, x0, hi) if vertical else (cursor, y0, hi, y0)
 
 
-def walls(places, doors, opens):
-    """Every wall piece, named after the place and side it belongs to; a wall shared by two
-    places is emitted once (the first place to claim it names it)."""
+def wall_pieces(places, doors, opens):
+    """Every wall piece of every place's closed side, a door's gap cut out; a piece shared by two places once."""
     seen = set()
     for p in places:
         for side, edge in edges(p).items():
             if is_open(edge, p["name"], places, opens):
                 continue
-            pieces = list(cut_doors(edge, doors))
-            for k, s in enumerate(pieces):
+            for s in cut_doors(edge, doors):
                 key = tuple(round(v, 3) for v in s)
                 if key in seen:
                     continue
                 seen.add(key)
-                name = "wall_%s_%s" % (p["name"], side) + ("_%d" % (k + 1) if len(pieces) > 1 else "")
-                yield name, s
+                yield s
+
+
+def walls(places, doors, opens):
+    """The walls of the world: the pieces that lie on one line and touch, JOINED into one wall each (12-oct-2026: the
+    maze's cell boundaries made 398 pieces of 1.5 m; a run of cells along a corridor is one wall), named in order."""
+    lines = {}
+    for s in wall_pieces(places, doors, opens):
+        x0, y0, x1, y1 = s
+        if is_vertical(s):
+            lines.setdefault(("v", round(x0, 3)), []).append((min(y0, y1), max(y0, y1)))
+        else:
+            lines.setdefault(("h", round(y0, 3)), []).append((min(x0, x1), max(x0, x1)))
+    n = 0
+    for (axis, fixed), runs in sorted(lines.items()):
+        runs.sort()
+        lo, hi = runs[0]
+        for a, b in runs[1:] + [(None, None)]:
+            if a is not None and a <= hi + EPS:
+                hi = max(hi, b)
+                continue
+            n += 1
+            yield "wall_%d" % n, ((fixed, lo, fixed, hi) if axis == "v" else (lo, fixed, hi, fixed))
+            if a is not None:
+                lo, hi = a, b
 
 
 def blocks(places):
-    """The cells of the plan's grid that lie in no place: solid."""
+    """The cells of the plan's grid that lie in no place: solid — MERGED into as few rectangles as a greedy sweep gives
+    (12-oct-2026: the maze's 1.5 m grid crossed with the other maps' lines made 272 cells, every one a model; with the
+    398 walls the world of the Pacman maze outgrew the 4 GB of the Docker VM and the physics server was OOM-killed)."""
     xs = sorted({v for p in places for v in (p["x"], p["x"] + p["w"])})
     ys = sorted({v for p in places for v in (p["y"], p["y"] + p["h"])})
+    solid = set()
     for i in range(len(xs) - 1):
         for j in range(len(ys) - 1):
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2
             if not any(p["x"] <= cx <= p["x"] + p["w"] and p["y"] <= cy <= p["y"] + p["h"] for p in places):
-                yield (xs[i], ys[j], xs[i + 1], ys[j + 1])
+                solid.add((i, j))
+    rows = []   # runs along x within one band of y
+    for j in range(len(ys) - 1):
+        i = 0
+        while i < len(xs) - 1:
+            if (i, j) not in solid:
+                i += 1
+                continue
+            k = i
+            while (k + 1, j) in solid:
+                k += 1
+            rows.append([i, k, j, j])   # columns i..k, bands j..j
+            i = k + 1
+    merged = []   # runs of equal columns stacked along y
+    for r in sorted(rows, key=lambda r: (r[0], r[1], r[2])):
+        last = merged[-1] if merged else None
+        if last and last[0] == r[0] and last[1] == r[1] and last[3] + 1 == r[2]:
+            last[3] = r[3]
+        else:
+            merged.append(r)
+    for i, k, j0, j1 in merged:
+        yield (xs[i], ys[j0], xs[k + 1], ys[j1 + 1])
 
 
 def box(name, cx, cy, sx, sy, h, color, collide=True, z=None):

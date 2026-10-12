@@ -73,17 +73,33 @@ internal static class Catalog
     /// free cell, <c>P</c> the cradle (free, where pacman starts), <c>G</c> the den (free, where the ghosts start) — the first line the
     /// north edge. Every free cell is a zone named <c>cell-&lt;column&gt;-&lt;row&gt;</c> (column from the west, row from the south, both
     /// from 0), OPEN to its free neighbours east and north, so the walls are what the zones' boundaries leave closed. The world builds the
-    /// same from the same drawing (sim/world/plan-maze.json: the builder expands it into places and openings and derives the walls). Seven
-    /// by seven on the 11 m floor: 37 free cells, two dead ends ((1,3) and (5,3)), a ring round the den.</summary>
+    /// same from the same drawing (sim/world/plan.json's `maze` map: the builder expands it into places and openings and derives the walls).
+    /// AT PACMAN'S SCALE since the afternoon of 12-oct-2026 (Juan: "¿no debería ser más grande, para que se parezca a algo de Pacman en escala?"):
+    /// 19 × 21 cells, 28.5 × 31.5 m, the classic small board — an outer ring, inner loops, the den of six cells in the middle with a door at
+    /// each side, the cradle below it; the sides closed (no tunnels yet). The first drawing, 7 × 7 on the 11 m floor, served the first lab.</summary>
     internal static readonly string[] MazeDrawing =
     {
-        ".......",
-        ".#.#.#.",
-        ".#...#.",
-        "..#G#..",
-        ".#...#.",
-        ".#.#.#.",
-        "...P...",
+        "###################",
+        "#........#........#",
+        "#.##.###.#.###.##.#",
+        "#.................#",
+        "#.##.#.#####.#.##.#",
+        "#....#...#...#....#",
+        "####.###.#.###.####",
+        "#......#.#.#......#",
+        "#.####.#GGG#.####.#",
+        "#......#GGG#......#",
+        "#.####.#####.####.#",
+        "#........#........#",
+        "####.###.#.###.####",
+        "#........#........#",
+        "#.##.###.#.###.##.#",
+        "#..#.....P.....#..#",
+        "##.#.#.#####.#.#.##",
+        "#....#...#...#....#",
+        "#.######.#.######.#",
+        "#.................#",
+        "###################",
     };
     internal const double MazeCell = 1.5;
 

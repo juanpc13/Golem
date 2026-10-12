@@ -301,7 +301,7 @@ internal sealed class MapLayout : Map
         if (opening == null) throw new GolemDomainException("MapLayout.Pivots: 'opening' was not given");
         if (radius < 0) throw new GolemDomainException("MapLayout.Pivots: a body's radius cannot be negative");
         var edge = EdgeOf(opening);
-        if (edge.Length <= 2 * OpeningMargin + 1e-9) return new[] { edge.Midpoint };   // narrow: nowhere to turn but the middle
+        if (edge.Length - 2 * OpeningMargin <= 2 * radius + 1e-9) return new[] { edge.Midpoint };   // narrow: the ends inset would stand within a body's width of the middle — nowhere to turn but there (a maze's 1.5 m cell boundary, 12-oct-2026: three nodes per opening made the planner crawl)
         double clearance = Clearance(edge, radius);
         if (edge.IsVertical)
         {
@@ -434,11 +434,14 @@ internal sealed class MapLayout : Map
         return text.ToString();
     }
 
-    // The variable an area is held in while the release builds the map: its name, a hyphen turning the next letter upper.
+    // The variable an area is held in while the release builds the map: its name, a hyphen turning the next letter upper
+    // (`north-aisle` → `northAisle`) — and a hyphen before a DIGIT kept as an underscore (`cell-1-19` → `cell_1_19`; 12-oct-2026:
+    // joined bare, `cell-1-19` and `cell-11-9` were one variable `cell119`, and the second cell took the first one's openings in the
+    // golems' live maze — five such pairs on the Pacman board; the lexer takes `_` in an identifier).
     private static string Identifier(string name)
     {
         var parts = name.Split('-');
-        return parts[0] + string.Concat(parts.Skip(1).Select(p => p.Length == 0 ? "" : char.ToUpperInvariant(p[0]) + p[1..]));
+        return parts[0] + string.Concat(parts.Skip(1).Select(p => p.Length == 0 ? "" : char.IsDigit(p[0]) ? "_" + p : char.ToUpperInvariant(p[0]) + p[1..]));
     }
 
     // A double literal for the DSL: always with a decimal point.

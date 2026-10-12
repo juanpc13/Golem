@@ -1085,10 +1085,14 @@ public partial class MainWindow : Window
             foreach (var z in plan.Zones)
             {
                 var tl = Pixel(z.X, z.Y + z.H); var br = Pixel(z.X + z.W, z.Y);
-                var box = new Rectangle { Width = br.X - tl.X, Height = br.Y - tl.Y, Stroke = wall, StrokeThickness = 1.5, Fill = new SolidColorBrush(Color.FromArgb(0x18, 0xe6, 0xe1, 0xcf)) };
+                var box = new Rectangle { Width = br.X - tl.X, Height = br.Y - tl.Y, Stroke = wall, StrokeThickness = 1.5, Fill = new SolidColorBrush(Color.FromArgb(0x18, 0xe6, 0xe1, 0xcf)), ToolTip = z.Name };
                 Canvas.SetLeft(box, tl.X); Canvas.SetTop(box, tl.Y); Map.Children.Add(box);
-                var name = new TextBlock { Text = z.Name, Foreground = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99)), FontSize = 10 };
-                var centre = Pixel(z.X + z.W / 2, z.Y + z.H / 2); Canvas.SetLeft(name, centre.X - 3 * z.Name.Length); Canvas.SetTop(name, centre.Y - 8); Map.Children.Add(name);
+                // the name only where it fits (12-oct-2026: the maze's 201 cells of 1.5 m drowned the map in labels); a zone too small keeps it as its tooltip
+                if (box.Width >= 6 * z.Name.Length + 6 && box.Height >= 16)
+                {
+                    var name = new TextBlock { Text = z.Name, Foreground = new SolidColorBrush(Color.FromRgb(0x8a, 0x91, 0x99)), FontSize = 10 };
+                    var centre = Pixel(z.X + z.W / 2, z.Y + z.H / 2); Canvas.SetLeft(name, centre.X - 3 * z.Name.Length); Canvas.SetTop(name, centre.Y - 8); Map.Children.Add(name);
+                }
             }
             foreach (var z in plan.Zones)
             {
