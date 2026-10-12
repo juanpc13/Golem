@@ -15,6 +15,14 @@
     <RootNamespace>WardenCli</RootNamespace>
     <AssemblyName>WardenCli</AssemblyName>
     <ApplicationManifest></ApplicationManifest>
+    <!-- the warden's own face (12-oct-2026): the hooded figure of the fleet's picture, on a dark disc - the exe's icon (taskbar, explorer);
+         a 24 KB .ico of 16 to 64 px, the only image versioned in the repo -->
+    <ApplicationIcon>warden.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the same icon as a resource, so the window's title bar shows it too (MainWindow Icon="/warden.ico") -->
+    <Resource Include="warden.ico" />
+  </ItemGroup>
 
 </Project>
