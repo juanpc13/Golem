@@ -131,6 +131,17 @@ public class OperatorController : Controller
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 
+    // The body's pace from here on (propuesta 111): {"speed": 3.0, "turn": 2.5} — the cruise in m/s and, when given, the turn rate in rad/s.
+    [HttpPost("speed")]
+    public IActionResult Pace([FromBody] PaceRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PaceRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        var answer = golemEmbodiment.Pace(request.Speed, request.Turn);
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
     // The scenarios the golem knows, and the one it is in.
     [HttpGet("scenarios")]
     public IActionResult Scenarios() => Content(Readings.Scenarios(golemEmbodiment.Actor), "application/json");

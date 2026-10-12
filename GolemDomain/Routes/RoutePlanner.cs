@@ -181,6 +181,11 @@ internal sealed class RoutePlanner
         foreach (var o in layout.Openings)
             if (layout.Touches(o))
                 foreach (var pivot in layout.Pivots(o, radius)) nodes.Add(new Node(pivot, o));
+        // the MIDDLE of every narrow zone — a cell, a corridor — where the way turns square (propuesta 110, 12-oct-2026): a run through
+        // a narrow zone goes from one side to the opposite one or stops at its middle, never cutting the corner (the layout's Crossings)
+        foreach (var z in layout.NarrowZones(radius))
+            foreach (var at in layout.Middles(z))
+                if (Fits(at)) nodes.Add(new Node(at, z));
         // around every THING, the corners of its figure grown by the body — a hair further out, so the run from one
         // corner to the next stays clear — only where the body fits (the figure of a thing, not a ring per mark:
         // the second way around a crate already takes the crate's real width; Juan, 14-sep-2026)
@@ -222,6 +227,7 @@ internal sealed class RoutePlanner
             var n = path[i];
             if (n == goal) legs.Add(new Leg(n.At, layout.ZoneAt(to).Name));   // a stop: named by its zone alone
             else if (n.Kind == NodeKind.Detour) legs.Add(new Leg(n.At, Leg.Detour));
+            else if (n.Kind == NodeKind.Middle) legs.Add(new Leg(n.At, Leg.MiddleOf(n.Zone.Name)));   // the middle of a narrow zone, where the way turns square
             else if (n.Via is Door && i + 1 < path.Count && path[i + 1].Via == n.Via)
             {
                 // both points of clearance of one door in a row: ONE leg, the door itself — lined up at the first, crossed straight to the second
@@ -237,13 +243,17 @@ internal sealed class RoutePlanner
 
     // ---- the graph ----
 
-    private enum NodeKind { Start, Passage, Detour, Goal }
+    private enum NodeKind { Start, Passage, Middle, Detour, Goal }
 
     private sealed class Node
     {
         internal Position At { get; }
         internal Passage Via { get; }
+        internal Zone Zone { get; }
         internal NodeKind Kind { get; }
+        internal Node(Position at, Zone zone) {
+            if (at == null) throw new GolemDomainException("Node.Node: 'at' was not given");
+            if (zone == null) throw new GolemDomainException("Node.Node: 'zone' was not given"); At = at; Zone = zone; Kind = NodeKind.Middle; }
         internal Node(Position at, NodeKind kind) {
             if (at == null) throw new GolemDomainException("Node.Node: 'at' was not given");
             if (kind == null) throw new GolemDomainException("Node.Node: 'kind' was not given"); At = at; Kind = kind; }

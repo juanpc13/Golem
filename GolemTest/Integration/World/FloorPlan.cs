@@ -54,7 +54,17 @@ public sealed class FloorPlan
     public static FloorPlan Load(string path)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        var root = doc.RootElement;
+        var world = doc.RootElement;
+        var root = world;
+        double ox = 0.0, oy = 0.0;
+        if (world.TryGetProperty("maps", out var maps))
+        {
+            // ONE WORLD, SEVERAL MAPS (propuesta 109, 12-oct-2026): the world in memory is the WAREHOUSE in its own frame — its map
+            // read where the plan lays it, the bodies' marks (told in the world's frame) brought back by the map's origin
+            root = maps.EnumerateArray().First(m => m.GetProperty("name").GetString() == "warehouse");
+            var at = root.GetProperty("at");
+            ox = at[0].GetDouble(); oy = at[1].GetDouble();
+        }
         var places = root.GetProperty("places").EnumerateArray()
             .Select(p => (Name: p.GetProperty("name").GetString(), X: p.GetProperty("x").GetDouble(), Y: p.GetProperty("y").GetDouble(),
                           W: p.GetProperty("w").GetDouble(), H: p.GetProperty("h").GetDouble()))
@@ -63,8 +73,8 @@ public sealed class FloorPlan
             .Select(d => (X: d.GetProperty("x").GetDouble(), Y: d.GetProperty("y").GetDouble())).ToList();
         var opens = root.GetProperty("opens").EnumerateArray()
             .Select(o => (A: o.GetProperty("a").GetString(), B: o.GetProperty("b").GetString())).ToList();
-        var bodies = root.GetProperty("bodies").EnumerateArray()
-            .Select(b => new BodyMark(b.GetProperty("name").GetString(), b.GetProperty("x").GetDouble(), b.GetProperty("y").GetDouble(),
+        var bodies = world.GetProperty("bodies").EnumerateArray()
+            .Select(b => new BodyMark(b.GetProperty("name").GetString(), b.GetProperty("x").GetDouble() - ox, b.GetProperty("y").GetDouble() - oy,
                                       b.TryGetProperty("yaw", out var yaw) ? yaw.GetDouble() : 0.0))
             .ToList();
 

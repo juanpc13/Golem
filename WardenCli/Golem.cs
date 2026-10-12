@@ -37,7 +37,7 @@ public sealed class Golem : INotifyPropertyChanged
     public Readings Knowledge
     {
         get => knowledge;
-        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); }
+        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); Raise(nameof(PaceOptions)); Raise(nameof(PacePrompt)); }
     }
 
     /// <summary>The scenarios it knows, for the environment's drop-down that enters one at once; the one it is in says so.</summary>
@@ -49,6 +49,11 @@ public sealed class Golem : INotifyPropertyChanged
     /// <summary>What the environment's drop-downs show while closed: what is in force (the arrow says it can change).</summary>
     public string ScenarioPrompt => Knowledge.Scenario == "" ? "a scenario…" : Knowledge.Scenario;
     public string NavigationPrompt => Knowledge.Navigation == "" ? "a way…" : Knowledge.Navigation;
+
+    /// <summary>The paces the environment offers (propuesta 111): the presets, the one the golem has now marked.</summary>
+    public IReadOnlyList<PaceChoice> PaceOptions => PaceChoice.Presets.Select(p => new PaceChoice(p.Name, p.Speed, p.Turn, HasPace(p.Speed, p.Turn))).ToList();
+    public string PacePrompt => Knowledge.Speed is double v ? $"{v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} m/s, {(Knowledge.Turn ?? 0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} rad/s" : "a pace…";
+    private bool HasPace(double speed, double turn) => Knowledge.Speed is double v && Math.Abs(v - speed) < 1e-6 && Knowledge.Turn is double t && Math.Abs(t - turn) < 1e-6;
 
     // ---- THE DEBUGGER'S CARD, a field each (Juan, 7-oct-2026: "la parte de los datos del golem que él sabe o le consultamos… se ve muy simple");
     // numbers with a decimal point whatever the machine's culture, the heading in degrees too ----

@@ -241,9 +241,18 @@ internal sealed class MapLayout : Map
     private List<Position> Walk(Zone zone, Position p, Position to, double radius, bool throughDoors)
     {
         var crossings = new List<Position>();
+        // THE SQUARE WALK (propuesta 110, 12-oct-2026): through a NARROW zone a run goes from one side to the OPPOSITE one — or starts
+        // or ends inside it — never from one side to a neighbouring side: that diagonal cuts the corner of the bend (lab 12-oct: in the
+        // maze it passed 0.42 m from the corner and a body drifted 0.25 m touched it). A point standing on a side counts as entered by it.
+        bool? entered = SideOf(zone, p);
         for (int hops = 0; hops <= ZoneCount; hops++)
         {
-            if (zone.Contains(to)) return crossings;
+            if (zone.Contains(to))
+            {
+                var endSide = SideOf(zone, to);
+                if (entered != null && endSide != null && endSide != entered && IsNarrow(zone, radius)) return null;
+                return crossings;
+            }
             double dx = to.X - p.X, dy = to.Y - p.Y;
             var r = zone.Rect;
             double tx = dx > 1e-12 ? (r.X + r.Width - p.X) / dx : dx < -1e-12 ? (r.X - p.X) / dx : double.PositiveInfinity;
@@ -251,9 +260,10 @@ internal sealed class MapLayout : Map
             double t = Math.Min(tx, ty);
             if (t <= 1e-9) return null;                        // leaves at once through the side it stands on
             if (Math.Abs(tx - ty) < 1e-9) return null;         // through a corner: two walls meet there
+            bool vertical = tx < ty;
+            if (entered != null && entered != vertical && IsNarrow(zone, radius)) return null;   // a narrow zone cut from a side to a neighbouring side
             if (t >= 1 - 1e-9) return crossings;               // the end lies on this zone's boundary
             var exit = new Position(p.X + t * dx, p.Y + t * dy);
-            bool vertical = tx < ty;
             Passage through = null;
             foreach (var o in OpeningsOf(zone))
             {
@@ -289,8 +299,65 @@ internal sealed class MapLayout : Map
             crossings.Add(exit);
             zone = Of(through.OtherSide(zone));
             p = exit;
+            entered = vertical;
         }
         return null;
+    }
+
+    // The side of a zone a point stands on: true a vertical side (west or east), false a horizontal one (south or north), null inside.
+    private static bool? SideOf(Zone zone, Position p)
+    {
+        var r = zone.Rect;
+        if (Math.Abs(p.X - r.X) < 1e-6 || Math.Abs(p.X - (r.X + r.Width)) < 1e-6) return true;
+        if (Math.Abs(p.Y - r.Y) < 1e-6 || Math.Abs(p.Y - (r.Y + r.Height)) < 1e-6) return false;
+        return null;
+    }
+
+    /// <summary>Whether a zone is NARROW for a body — its smaller side no wider than the body and the room to turn at either side of it
+    /// (two radii and two OpeningMargins: a 1.5 m cell or corridor for a 0.25 body) — propuesta 110 (12-oct-2026; Juan: "esperaría que
+    /// sea algo cuadrada la navegación"): through a narrow zone a way goes SQUARE — its middle is a node of the planner and no run cuts
+    /// it from one side to a neighbouring side; a wide zone is crossed straight, as always. The same breadth that leaves a boundary one pivot.</summary>
+    internal bool IsNarrow(Zone zone, double radius)
+    {
+        if (zone == null) throw new GolemDomainException("MapLayout.IsNarrow: 'zone' was not given");
+        if (radius < 0) throw new GolemDomainException("MapLayout.IsNarrow: a body's radius cannot be negative");
+        return Narrow(Math.Min(zone.Width, zone.Height), radius);
+    }
+
+    /// <summary>The narrow zones of the map for a body: their middles are where the way turns.</summary>
+    internal IEnumerable<Zone> NarrowZones(double radius)
+    {
+        if (radius < 0) throw new GolemDomainException("MapLayout.NarrowZones: a body's radius cannot be negative");
+        return Zones.Where(z => IsNarrow(z, radius));
+    }
+
+    private static bool Narrow(double breadth, double radius) => breadth - 2 * OpeningMargin <= 2 * radius + 1e-9;
+
+    /// <summary>Where the way may TURN in a narrow zone, square: its centre — a cell's one point — and, in a CORRIDOR (longer than
+    /// wide), the point of its middle line in front of every passage on a long side, so a bend into a side opening or a door is taken
+    /// there, not at the corridor's centre far away (propuesta 110: up the west corridor of the ring and round into the north one at
+    /// (0.75, 10.25)). A passage at a corridor's end needs no point: the run along the middle line crosses it straight.</summary>
+    internal IReadOnlyList<Position> Middles(Zone zone)
+    {
+        if (zone == null) throw new GolemDomainException("MapLayout.Middles: 'zone' was not given");
+        var points = new List<Position> { zone.Center };
+        if (Math.Abs(zone.Width - zone.Height) < 1e-9) return points;
+        bool along = zone.Width > zone.Height;   // the middle line runs along x
+        var middles = new List<Position>();
+        foreach (var o in OpeningsOf(zone))
+            if (Touches(o)) middles.Add(EdgeOf(o).Midpoint);
+        foreach (var d in PlacedDoors)
+            if (d.Door.Joins(zone)) middles.Add(d.At);
+        foreach (var m in middles)
+        {
+            bool onLongSide = along
+                ? Math.Abs(m.Y - zone.Y) < 1e-6 || Math.Abs(m.Y - (zone.Y + zone.Height)) < 1e-6
+                : Math.Abs(m.X - zone.X) < 1e-6 || Math.Abs(m.X - (zone.X + zone.Width)) < 1e-6;
+            if (!onLongSide) continue;
+            var at = along ? new Position(m.X, zone.Center.Y) : new Position(zone.Center.X, m.Y);
+            if (points.All(q => q.DistanceTo(at) > 1e-6)) points.Add(at);
+        }
+        return points;
     }
 
     /// <summary>Where a body may TURN on an open boundary when its way is not straight: the two ends of the boundary, inset by
@@ -301,7 +368,8 @@ internal sealed class MapLayout : Map
         if (opening == null) throw new GolemDomainException("MapLayout.Pivots: 'opening' was not given");
         if (radius < 0) throw new GolemDomainException("MapLayout.Pivots: a body's radius cannot be negative");
         var edge = EdgeOf(opening);
-        if (edge.Length - 2 * OpeningMargin <= 2 * radius + 1e-9) return new[] { edge.Midpoint };   // narrow: the ends inset would stand within a body's width of the middle — nowhere to turn but there (a maze's 1.5 m cell boundary, 12-oct-2026: three nodes per opening made the planner crawl)
+        if (IsNarrow(Of(opening.AreaA), radius) && IsNarrow(Of(opening.AreaB), radius)) return Array.Empty<Position>();   // between two narrow zones the way turns at their MIDDLES (propuesta 110): a pivot here would only add a stop in line with them
+        if (Narrow(edge.Length, radius)) return new[] { edge.Midpoint };   // narrow: the ends inset would stand within a body's width of the middle — nowhere to turn but there (a maze's 1.5 m cell boundary, 12-oct-2026: three nodes per opening made the planner crawl)
         double clearance = Clearance(edge, radius);
         if (edge.IsVertical)
         {

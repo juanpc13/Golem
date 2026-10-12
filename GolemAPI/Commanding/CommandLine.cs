@@ -55,6 +55,7 @@ public static class CommandLine
         new CommandHelp("obstacles", "obstacles", "what the bodies learned by touching: the things outlined, the peers met", "obstacles"),
         new CommandHelp("place", "place x,y | place blue@x,y red@x,y …", "a lab lever (ajuste 87): the body carried onto that mark — every pending route let go, the body re-anchored there, the golem awake where it stands; with names, each golem of the fleet carried onto its own mark (this golem's own by its name or bare, every peer's line carried to it); never --with", "place blue@6,6.2 red@7,6.3 green@3.5,7.5 yellow@3,3"),
         new CommandHelp("optimize", "optimize on-the-way|door-by-door", "how the golem optimizes the routes it computes from here on: switches on one of its two strategies — the doors crossed on the way (fewer stops), or every door a leg of its own (the direct way, nothing converted); every route is born direct and the script improves it with a dash while on-the-way is active — at birth and at its next arrival (ajustes 62, 63; was adopt, ajuste 82)", "optimize on-the-way"),
+        new CommandHelp("speed", "speed <m/s> [--turn <rad/s>]", "the body's pace from here on (propuesta 111): its cruise in metres per second and, with --turn, how fast it turns in place in radians per second — every order after it carries them; born at 2 m/s and 1.5 rad/s (body_v1 and the body node's own cap); the motors cap what the body can really do", "speed 3 --turn 2.5"),
         new CommandHelp("use", "use map <scenario>", "the golem uses that map — it enters the scenario it knows by that name, its collisions with it, from here on (warehouse, open-floor); refused while a route is pending (was enter, 7-oct-2026)", "use map open-floor"),
         new CommandHelp("scenarios", "scenarios", "the scenarios the golem knows, and the one it is in", "scenarios"),
         new CommandHelp("set", "set name x,y [x,y …]", "the console keeps a value under that name, to write @name on a line (visit @stops)", "set stops 2,9.5 9,8"),
@@ -179,6 +180,20 @@ public static class CommandLine
             case "optimize":
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("on-the-way" or "door-by-door")) throw new CommandSyntaxException("optimize: expected the strategy, on-the-way or door-by-door");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+            case "speed":
+            {
+                // the body's pace (propuesta 111): the cruise, and the turn rate after --turn; numbers with a decimal point, above zero
+                if (args.Count is not (1 or 3) || !double.TryParse(args[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double cruise) || cruise <= 0)
+                    throw new CommandSyntaxException("speed: expected the cruise in metres per second above zero, then --turn and the rate in radians per second, or nothing — like speed 3 --turn 2.5");
+                var values = new Dictionary<string, string>();
+                if (args.Count == 3)
+                {
+                    if (args[1].ToLowerInvariant() != "--turn" || !double.TryParse(args[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double turning) || turning <= 0)
+                        throw new CommandSyntaxException($"speed: after the cruise comes --turn and the rate in radians per second above zero; found '{Head(string.Join(' ', args.Skip(1)))}'");
+                    values["turn"] = turning.ToString(CultureInfo.InvariantCulture);
+                }
+                return new Command(named, with, verb, none, noOptions, cruise.ToString(CultureInfo.InvariantCulture), values);
+            }
             case "use":
                 // the map the golem uses (Juan, 7-oct-2026: "cambiar en el lenguaje del api el comando de enter por use map"): `use map open-floor`
                 // — the scenario named after that map; the domain's verb stays g.Enter

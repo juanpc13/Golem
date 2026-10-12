@@ -305,6 +305,16 @@ public partial class MainWindow : Window
         await ActNowAsync(g, $"optimize {chosen.Name.Replace(' ', '-')}");
     }
 
+    // the body's pace (propuesta 111): a preset picked tells it at once — speed … --turn …
+    private async void Pace_Selected(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox box || box.SelectedItem is not PaceChoice chosen) return;
+        box.SelectedIndex = -1;
+        if (box.DataContext is not Golem g) return;
+        if (chosen.Current) { Log($"{g.Name} › already paces {chosen.Label}"); return; }
+        await ActNowAsync(g, chosen.Line);
+    }
+
     // THE SAME ENVIRONMENT FOR THE FLEET (Juan, 9-oct-2026: "algún botón para aplicar esa configuración a todos los golems"): the selected
     // golem's scenario and navigation, told now — use map …, optimize … — to every other golem of the workspace whose reads differ; one that
     // already has them is left alone, and said so
@@ -312,7 +322,8 @@ public partial class MainWindow : Window
     {
         if ((sender as Button)?.Tag is not Golem g) return;
         string scenario = g.Knowledge.Scenario, navigation = g.Knowledge.Navigation;
-        if (scenario == "" && navigation == "") { Log($"{g.Name} › its environment is not read yet: refresh first"); return; }
+        double? speed = g.Knowledge.Speed, turn = g.Knowledge.Turn;
+        if (scenario == "" && navigation == "" && speed == null) { Log($"{g.Name} › its environment is not read yet: refresh first"); return; }
         int told = 0;
         foreach (var other in golems.Where(x => x != g).ToList())
         {
@@ -320,9 +331,11 @@ public partial class MainWindow : Window
             bool same = true;
             if (scenario != "" && other.Knowledge.Scenario != scenario) { same = false; await ActNowAsync(other, $"use map {scenario}"); }
             if (navigation != "" && other.Knowledge.Navigation != navigation) { same = false; await ActNowAsync(other, $"optimize {navigation.Replace(' ', '-')}"); }
+            if (speed is double v && turn is double t && (other.Knowledge.Speed is not double ov || Math.Abs(ov - v) > 1e-6 || other.Knowledge.Turn is not double ot || Math.Abs(ot - t) > 1e-6))
+            { same = false; await ActNowAsync(other, new PaceChoice("", v, t, false).Line); }   // the pace too (propuesta 111)
             if (!same) told++;
         }
-        Log($"{g.Name} › environment applied to all: {scenario} · {navigation} — {told} golem(s) changed, {golems.Count - 1 - told} already had it");
+        Log($"{g.Name} › environment applied to all: {scenario} · {navigation} · {g.PacePrompt} — {told} golem(s) changed, {golems.Count - 1 - told} already had it");
     }
 
     private async void ResetNow_Click(object sender, RoutedEventArgs e)

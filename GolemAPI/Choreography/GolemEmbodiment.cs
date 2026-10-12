@@ -547,6 +547,40 @@ public sealed class GolemEmbodiment
         catch (Exception ex) { return Answer.Refusal($"optimize {which}: " + Reason(ex)); }
     }
 
+    // THE PACE (propuesta 111, 12-oct-2026): the body's cruise, and how fast it turns, told again — the body's own act on the journal's
+    // `body` (the module the golem drives; the golem wraps nothing), its magnitudes built from the parameters, never named like a print label
+    private const string PaceCruise = @"
+                    {
+                        pace = MetersPerSecond(@cruise);
+                        body.CruiseAt(pace);
+                        print body.Speed.InMetersPerSecond 'speed', body.TurnRate.InRadiansPerSecond 'turn';
+                    }
+                ";
+    private const string PaceCruiseAndTurn = @"
+                    {
+                        pace = MetersPerSecond(@cruise);
+                        rate = RadiansPerSecond(@turning);
+                        body.CruiseAt(pace);
+                        body.TurnAt(rate);
+                        print body.Speed.InMetersPerSecond 'speed', body.TurnRate.InRadiansPerSecond 'turn';
+                    }
+                ";
+
+    /// <summary>The body's pace from here on: its cruise in m/s and, when given, its turn rate in rad/s (propuesta 111). Every order after
+    /// this carries them; a route underway keeps its way and goes on at the new pace from its next order.</summary>
+    public Answer Pace(double cruise, double? turning)
+    {
+        if (double.IsNaN(cruise) || double.IsInfinity(cruise) || cruise <= 0) return Answer.Refusal($"a cruise speed is metres per second above zero, not '{cruise}'");
+        if (turning is double t && (double.IsNaN(t) || double.IsInfinity(t) || t <= 0)) return Answer.Refusal($"a turn rate is radians per second above zero, not '{turning}'");
+        try
+        {
+            return Answer.Of(turning == null
+                ? Actor.Using(PaceCruise).WithParameters(p => { p["cruise", typeof(double)] = cruise; }).PerformCommand()
+                : Actor.Using(PaceCruiseAndTurn).WithParameters(p => { p["cruise", typeof(double)] = cruise; p["turning", typeof(double)] = turning.Value; }).PerformCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"speed {cruise}: " + Reason(ex)); }
+    }
+
     // ==================================================================
     // The operator's levers on the body.
     // ==================================================================
@@ -744,13 +778,13 @@ public sealed class GolemEmbodiment
     }
 
     /// <summary>The body the golem declared in its journal: what the robot needs to carry an order out.</summary>
-    internal (double Speed, double Radius, double Retreat) BodyDeclared()
+    internal (double Speed, double Radius, double Retreat, double TurnRate) BodyDeclared()
     {
         using var doc = JsonDocument.Parse(golemActor.Using(@"
-            print body.Speed.InMetersPerSecond 'speed', body.Radius.InMeters 'radius', body.Retreat.InMeters 'retreat';
+            print body.Speed.InMetersPerSecond 'speed', body.Radius.InMeters 'radius', body.Retreat.InMeters 'retreat', body.TurnRate.InRadiansPerSecond 'turn';
         ").PerformQuery());
         var e = doc.RootElement;
-        return (e.GetProperty("speed").GetDouble(), e.GetProperty("radius").GetDouble(), e.GetProperty("retreat").GetDouble());
+        return (e.GetProperty("speed").GetDouble(), e.GetProperty("radius").GetDouble(), e.GetProperty("retreat").GetDouble(), e.GetProperty("turn").GetDouble());
     }
 
     internal double LingerAfterTold()     => Read("print body.LingerAfterTold.InSeconds 'v';").GetDouble();

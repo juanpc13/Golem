@@ -49,6 +49,18 @@ public sealed record PointRequest(double? X, double? Y)
 }
 
 /// <summary>The strategy the golem optimizes its routes by (ajuste 61; `optimize`, ajuste 82) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
+/// <summary>The body's pace (propuesta 111): the cruise in m/s and, optionally, the turn rate in rad/s — <c>{"speed": 3.0, "turn": 2.5}</c>.</summary>
+public sealed record PaceRequest(double Speed, double? Turn)
+{
+    public const string Shape = "{\"speed\": 3.0, \"turn\": 2.5}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (double.IsNaN(Speed) || double.IsInfinity(Speed) || Speed <= 0) yield return "the speed is metres per second above zero: " + Shape;
+        if (Turn is double t && (double.IsNaN(t) || double.IsInfinity(t) || t <= 0)) yield return "the turn is radians per second above zero, or left out: " + Shape;
+    }
+}
+
 public sealed record NavigationRequest(string Navigation)
 {
     public const string Shape = "{\"navigation\": \"on-the-way\"}";

@@ -5,7 +5,7 @@ qué hacer, y cuando termina le dice al actor por un endpoint que ya terminó, p
 
 Its vocabulary is the robot's BASE ACTIONS, each with an AMOUNT (Juan, 17-sep-2026: "al robot se le dice muy
 sencillamente lo que debe moverse hacia adelante, qué tanto debe rotar"). Orders arrive on /golem/<body>/order
-(std_msgs/String — the body's words alone, ajuste 55: {"order": 17, "action": "advance", "amount": 1.35, "speed": 2.0};
+(std_msgs/String — the body's words alone, ajuste 55: {"order": 17, "action": "advance", "amount": 1.35, "speed": 2.0, "rate": 1.5};
 the order is a TICKET the golem stamped, the only thing the body echoes back), switched on "action":
   {"action": "advance",   "amount": 2.35, "route": 3, ...}   — move forward that many metres
   {"action": "back",      "amount": 0.60, "route": 3, ...}   — move that many metres IN REVERSE
@@ -251,7 +251,8 @@ class Body(Node):
                     self.done({"order": ticket, "result": "stuck", "reason": "turn timeout"})
                     return
                 sign = 1.0 if action == "turnLeft" else -1.0
-                self.drive(0.0, sign * max(0.25, min(1.5, 3.0 * left)))
+                rate = order.get("rate", 1.5)   # how fast the golem says to turn (propuesta 111); 1.5 rad/s was this node's own cap
+                self.drive(0.0, sign * max(0.25, min(rate, 3.0 * left)))
                 return
             # a move, forward or in reverse: straight, holding the heading it began with, until the metres told are travelled
             travelled = self.moved(action, x, y)

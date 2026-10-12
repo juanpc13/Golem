@@ -228,7 +228,7 @@ public class CommandConsoleTests
         foreach (var g in fleet.Values) await UntilFormations(g, "sq");
         Assert.IsTrue((await blue.ExecuteAsync("take sq")).Ok);
         foreach (var g in fleet.Values) await Until(g, "route 1 completed");
-        StringAssert.Contains((await blue.ExecuteAsync("where")).Text, "(6.5, 6.5)", "blue, first of the names: the north-east corner");
+        StringAssert.Contains((await blue.ExecuteAsync("where")).Text, "(6.5, 6.5)", "blue, first of the names: the north-east corner — " + (await blue.ExecuteAsync("route")).Text);
         StringAssert.Contains((await fleet["green"].ExecuteAsync("where")).Text, "(4.5, 6.5)", "green, second: north-west");
         StringAssert.Contains((await fleet["purple"].ExecuteAsync("where")).Text, "(4.5, 4.5)", "purple, third: south-west");
         StringAssert.Contains((await fleet["yellow"].ExecuteAsync("where")).Text, "(6.5, 4.5)", "yellow, fourth: south-east");

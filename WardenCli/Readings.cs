@@ -5,13 +5,13 @@ namespace WardenCli;
 /// <summary>What the golem answered to its READS — where, state, route, obstacles — kept as INFORMATION beside the map, never as commands
 /// on the script (Juan, 7-oct-2026: "estos reads deberían ir más del lado del mapa… no tanto como botones sino como información"). The console
 /// asks every few seconds and shows what came back; it decides nothing.</summary>
-public sealed record Readings(string Zone, string Scenario, string Navigation, bool Held, int? Pending, int? Routes,
+public sealed record Readings(string Zone, string Scenario, string Navigation, double? Speed, double? Turn, bool Held, int? Pending, int? Routes,
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
                               int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios,
                               IReadOnlyList<FormationView> Formations)
 {
     /// <summary>Before anything was asked.</summary>
-    public static readonly Readings Nothing = new("", "", "", false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>(), Array.Empty<FormationView>());
+    public static readonly Readings Nothing = new("", "", "", null, null, false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>(), Array.Empty<FormationView>());
 
     /// <summary>The names the `scenarios` read lists under `known`.</summary>
     public static IReadOnlyList<string> ParseScenarios(JsonElement json)
@@ -30,6 +30,22 @@ public sealed record Choice(string Name, bool Current)
 {
     public string Label => Current ? $"{Name} · current" : Name;
     public override string ToString() => Label;
+}
+
+/// <summary>A PACE the environment offers (propuesta 111, 12-oct-2026; Juan: "en el panel del environment para subirle la velocidad"): a cruise
+/// in m/s and a turn rate in rad/s under a name, and whether it is the one the golem has now (`where` says its speed and turn).</summary>
+public sealed record PaceChoice(string Name, double Speed, double Turn, bool Current)
+{
+    private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    public string Label => $"{Name} · {N(Speed)} m/s, {N(Turn)} rad/s{(Current ? " · current" : "")}";
+    /// <summary>The line that tells it.</summary>
+    public string Line => $"speed {N(Speed)} --turn {N(Turn)}";
+    public override string ToString() => Label;
+
+    public static readonly (string Name, double Speed, double Turn)[] Presets =
+    {
+        ("slow", 1.0, 1.0), ("normal", 2.0, 1.5), ("fast", 3.0, 2.5), ("very fast", 4.0, 3.0),
+    };
 }
 
 /// <summary>An obstacle the golem hypothesizes from what its body touched — a THING (its vertices joined: two make a line, three or more a

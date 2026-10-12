@@ -132,14 +132,12 @@ public class MapLayoutTests
         warehouse.Enter(new Scenario(Catalog.Warehouse(), new Collisions()));
         Assert.AreEqual("north~center@4.5,8 > center~south@6.5,3 > south@6.9,2.4", warehouse.Visit(new Position(4.2, 8.6), new Position(6.9, 2.4)).AsPlan());
 
-        // the ring corridor: up the west corridor and round the corner into the north one — the corner is an open boundary 1.5 m long,
-        // and the margin still leaves three places to turn on it
+        // the ring corridor: up the west corridor and round the corner into the north one — the corridors are NARROW (1.5 m), so the
+        // corner is turned SQUARE on the corridors' middle lines (propuesta 110, 12-oct-2026): up to (0.75, 10.25), then east
         var ring = new Golem(body);
         ring.Enter(new Scenario(Catalog.RingCorridor(), new Collisions()));
         string corner = ring.Visit(new Position(0.75, 9.0), new Position(3.0, 10.25)).AsPlan();
-        StringAssert.Contains(corner, "~");
-        StringAssert.Contains(corner, "@1.5,10", "the way bends on a pivot of the corner opening, at x = 1.5: " + corner);
-        StringAssert.EndsWith(corner, "> north-corridor@3,10.25");
+        Assert.AreEqual("west-corridor:middle@0.75,10.25 > north-corridor@3,10.25", corner, "the way turns where the two middle lines meet: " + corner);
 
         // a boundary narrower than twice the margin has one pivot, its middle
         var tight = new MapLayout("tight");
@@ -149,7 +147,7 @@ public class MapLayoutTests
         var narrow = new Golem(body);
         narrow.Enter(new Scenario(tight, new Collisions()));
         Assert.AreEqual("b@0.2,3", narrow.Visit(new Position(0.2, 1.0), new Position(0.2, 3.0)).AsPlan(), "a straight run still passes wherever the body fits");
-        StringAssert.StartsWith(narrow.Visit(new Position(0.05, 1.0), new Position(0.05, 3.0)).AsPlan(), "a~b@0.4,2 > ", "but not hugging the wall: the way bends on the middle");
+        StringAssert.Contains(narrow.Visit(new Position(0.05, 1.0), new Position(0.05, 3.0)).AsPlan(), ":middle@0.4,", "but not hugging the wall: the zones are narrow, the way bends on their middle line (propuesta 110)");
     }
 
     // ---- the way the golem decides over the other maps of the catalog ----
@@ -165,16 +163,18 @@ public class MapLayoutTests
         Assert.AreEqual(12, map.PassageCount, "eight doors, four open boundaries around the crossing");
         Assert.AreEqual("crossing", map.ZoneAt(new Position(5.5, 5.5)).Name);
 
-        // from the northwest room to the southeast one: out a door into an aisle, bending on the crossing's two open
-        // boundaries (the straight run would graze the crossing's corner), along the other aisle and in through a door
+        // from the northwest room to the southeast one. The aisles are NARROW (1.5 m): the way through them goes SQUARE — along the
+        // west aisle to its middle, the crossing's middle, down the south aisle (propuesta 110, 12-oct-2026) — about 12.5 m; cutting
+        // through the southwest room by its two doors is shorter (~11.1 m), so door by door takes the rooms: four doors, no crossing,
+        // each aisle crossed straight from one side to the opposite one
         string plan = g.Visit(map.Find("northwest").Center, map.Find("southeast")).AsPlan();
-        StringAssert.StartsWith(plan, "northwest/");
-        Assert.AreEqual(2, plan.Split("crossing~").Length - 1, "in through one aisle, out through the other: " + plan);
+        StringAssert.StartsWith(plan, "northwest/west-aisle@2.38,6.25 > southwest/west-aisle@2.38,4.75 > southwest/south-aisle@4.75,2.38 > southeast/south-aisle@6.25,2.38");
+        Assert.AreEqual(0, plan.Split("crossing~").Length - 1, "the crossing is not bent on: " + plan);
         StringAssert.EndsWith(plan, "> southeast@8.63,2.38");
-        Assert.AreEqual(2, plan.Split('/').Length - 1, "exactly two doors: " + plan);
+        Assert.AreEqual(4, plan.Split('/').Length - 1, "exactly four doors: " + plan);
         double diagonal = g.Distance(map.Find("northwest"), map.Find("southeast"));
         double straight = Math.Sqrt(6.25 * 6.25 * 2);   // ~8.84, through the crossing's corner: not a road
-        Assert.IsTrue(diagonal > straight + 1.5 && diagonal < 11.5, "door, aisle, crossing, aisle, door — a bit over ten metres: " + diagonal);
+        Assert.IsTrue(diagonal > straight + 1.5 && diagonal < 11.5, "door, aisle, room, aisle, door — about eleven metres: " + diagonal);
     }
 
     [TestMethod]
@@ -316,6 +316,12 @@ public class MapLayoutTests
         Assert.AreEqual("pending", route.Status);
         StringAssert.EndsWith(route.AsPlan().TrimEnd(), "cell-17-19@26.25,29.25", route.AsPlan());
         Assert.IsTrue(route.LegsAhead.Count >= 3, "round the corners of the maze, never through a wall — " + route.AsPlan());
+        // THE SQUARE WALK (propuesta 110): every cell is narrow, so the way turns at the cells' middles and never bends on a boundary —
+        // no pivot, no diagonal across a cell: a corridor of cells is one straight run, a bend two legs at right angles
+        StringAssert.Contains(route.AsPlan(), ":middle@", "the way turns at a cell's middle: " + route.AsPlan());
+        Assert.IsFalse(route.AsPlan().Contains('~'), "no bend on a cell boundary: " + route.AsPlan());
+        foreach (var (a, b) in route.LegsAhead.Zip(route.LegsAhead.Skip(1)))
+            Assert.IsTrue(Math.Abs(a.At.X - b.At.X) < 1e-6 || Math.Abs(a.At.Y - b.At.Y) < 1e-6, "every leg runs along a row or a column: " + route.AsPlan());
 
         // the release in two movements, every cell its own variable, the openings between objects — staged at the end
         string release = map.AsRelease(staged: true);

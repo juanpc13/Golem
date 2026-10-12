@@ -19,6 +19,30 @@ namespace GolemTest;
 [TestClass]
 public class BodyTests
 {
+    // THE PACE TOLD AGAIN (propuesta 111, 12-oct-2026): the cruise and the turn rate are the body's to keep and the golem's to tell again —
+    // the road ahead is timed by the cruise in force, the rate reads in rad/s whatever told it, and a pace of nothing is refused
+    [TestMethod]
+    public void TheCruise_AndTheTurnRate_MayBeToldAgain_AndTheRoadAheadIsTimedByTheCruiseInForce()
+    {
+        var map = Catalog.Warehouse();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var g = new Golem(body);
+        g.Enter(new Scenario(map, new Collisions()));
+        Assert.AreEqual(1.5, body.TurnRate.InRadiansPerSecond, 1e-9, "born with the body node's own cap");
+        g.Visit(new Position(5.5, 1.5), map.Find("north"));   // the road ahead, pending
+        double atTwo = g.RouteSeconds();
+        body.CruiseAt(new MetersPerSecond(4.0));
+        Assert.AreEqual(4.0, body.Speed.InMetersPerSecond, 1e-9);
+        Assert.AreEqual(atTwo / 2, g.RouteSeconds(), 1e-6, "twice the cruise, half the time for the same road");
+        body.TurnAt(new RadiansPerSecond(2.5));
+        Assert.AreEqual(2.5, body.TurnRate.InRadiansPerSecond, 1e-9);
+        Assert.AreEqual(Math.PI / 2.5, body.TurnRate.TimeFor(new Degrees(180.0)).InSeconds, 1e-9, "half a turn at 2.5 rad/s");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => body.CruiseAt(new MetersPerSecond(0.0))).Message, "cruise speed above zero");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => body.TurnAt(new RadiansPerSecond(0.0))).Message, "turn rate above zero");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new RadiansPerSecond(-1.0)).Message, "cannot be negative");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => body.CruiseAt(null)).Message, "'speed' was not given");
+    }
+
     [TestMethod]
     public void TheRadius_IsWhereTheBodyFits_AndHowFarAFollowerStopsShortOfItsLeader()
     {

@@ -107,6 +107,7 @@ public sealed class Commander
             "obstacles" => Obstacles(),
             "use" => Answered(await golem.EnterAsync(command.Text), $"using map {command.Text}"),
             "optimize" => Answered(golem.Optimize(command.Text), $"navigating {command.Text.Replace('-', ' ')}"),
+            "speed" => Pace(command),
             "scenarios" => Scenarios(),
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),
             "help" => Help(command),
@@ -299,7 +300,8 @@ public sealed class Commander
     {
         string json = Readings.Where(golem.Actor);
         var e = JsonDocument.Parse(json).RootElement;
-        string scenario = (Str(e, "scenario") != "" ? $" · scenario {Str(e, "scenario")}" : "") + (Str(e, "navigation") != "" ? $" · navigating {Str(e, "navigation")}" : "");
+        string scenario = (Str(e, "scenario") != "" ? $" · scenario {Str(e, "scenario")}" : "") + (Str(e, "navigation") != "" ? $" · navigating {Str(e, "navigation")}" : "")
+                        + (e.TryGetProperty("speed", out _) ? $" · pacing {Num(e, "speed")} m/s, turning {Num(e, "turn")} rad/s" : "");
         if (!Bool(e, "knows")) return Reply.Done("the golem does not know where its body stands yet: no act brought its pose" + scenario, json);
         string zone = Str(e, "zone");
         return Reply.Done($"standing at ({Num(e, "x")}, {Num(e, "y")}) facing {Num(e, "heading")} rad" + (zone != "" ? $", in {zone}" : ", nowhere on the map") + (Bool(e, "held") ? " — held" : "") + scenario, json);
@@ -319,6 +321,17 @@ public sealed class Commander
     }
 
     // an act of the mind (no route to print): done in a few words, or refused in the domain's
+    // the body's pace told again (propuesta 111): `speed 3 [--turn 2.5]` — the cruise in m/s and, when given, the turn rate in rad/s
+    private Reply Pace(Command command)
+    {
+        double cruise = double.Parse(command.Text, CultureInfo.InvariantCulture);
+        double? turning = command.Values.TryGetValue("turn", out var t) ? double.Parse(t, CultureInfo.InvariantCulture) : null;
+        var answer = golem.Pace(cruise, turning);
+        if (!answer.Ok) return Reply.Refused(answer.Refused);
+        var e = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
+        return Reply.Done($"pacing at {Num(e, "speed")} m/s, turning {Num(e, "turn")} rad/s — every order from here on", answer.Print ?? "");
+    }
+
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
 
     // a formation taken (ajuste 80; propuesta 104): the route opens when the whole fleet said where it stands — at once for a fleet of one, else said so

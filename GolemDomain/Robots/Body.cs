@@ -28,8 +28,28 @@ internal sealed class Body
         if (speed == null || speed.IsZero) throw new GolemDomainException("a body needs a cruise speed above zero");
         Radius = radius;
         Speed = speed;
+        TurnRate = new RadiansPerSecond(1.5);   // the body node's own cap until told otherwise (sim/bridge/body.py, 1.5 rad/s)
         LingerAfterTold = linger;
         Retreat = retreat;
+    }
+
+    /// <summary>THE PACE TOLD AGAIN (propuesta 111, 12-oct-2026; Juan: "¿podríamos aumentar la velocidad del golem para giros y avanzar
+    /// mucho más rápido?… en el panel del environment para subirle la velocidad"): the cruise the body runs at from here on — a journaled
+    /// act, <c>body.CruiseAt(pace)</c>; every order carries it (<c>speed</c>), and the road ahead is timed by it (<c>RouteSeconds</c>).
+    /// The body's own motors cap what it can really do: the domain tells, the body obeys as far as it can.</summary>
+    internal void CruiseAt(Speed speed)
+    {
+        if (speed == null) throw new GolemDomainException("Body.CruiseAt: 'speed' was not given");
+        if (speed.IsZero) throw new GolemDomainException("a body needs a cruise speed above zero");
+        Speed = speed;
+    }
+
+    /// <summary>How fast it turns in place from here on — <c>body.TurnAt(rate)</c>; every turn order carries it (<c>rate</c>).</summary>
+    internal void TurnAt(AngularSpeed rate)
+    {
+        if (rate == null) throw new GolemDomainException("Body.TurnAt: 'rate' was not given");
+        if (rate.IsZero) throw new GolemDomainException("a body needs a turn rate above zero");
+        TurnRate = rate;
     }
 
     /// <summary>How far it backs off after touching something, once the touch is released — so it stands clear of the
@@ -39,8 +59,10 @@ internal sealed class Body
 
     /// <summary>The disk it occupies.</summary>
     internal Length Radius { get; }
-    /// <summary>Its cruise speed.</summary>
-    internal Speed Speed { get; }
+    /// <summary>Its cruise speed — as declared at birth, or as last told (<see cref="CruiseAt"/>).</summary>
+    internal Speed Speed { get; private set; }
+    /// <summary>How fast it turns in place — the body node's own cap at birth, or as last told (<see cref="TurnAt"/>).</summary>
+    internal AngularSpeed TurnRate { get; private set; }
     /// <summary>How long it lingers at every stop a peer told it about (the follower's pacing).</summary>
     internal Duration LingerAfterTold { get; }
 }

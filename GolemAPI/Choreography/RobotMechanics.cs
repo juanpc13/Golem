@@ -254,12 +254,12 @@ public sealed class RobotMechanics : IOutputSink
     // odometry (ajuste 53) — and the cruise of the body declared. The route, the leg and the point stay the golem's: the feed shows them.
     private Task PublishAsync(Order order)
     {
-        var (speed, _, _) = golemEmbodiment.BodyDeclared();
+        var (speed, _, _, rate) = golemEmbodiment.BodyDeclared();   // the cruise and the turn rate as the body has them now (propuesta 111: told again at will)
         return ros.PublishAsync(ros.OrderTopic, JsonSerializer.Serialize(new
         {
             order = order.Ticket, action = order.Action,
             amount = order.IsMove ? Resolution.Metres(order.Amount) : Resolution.Radians(order.Amount),
-            speed
+            speed, rate
         }));
     }
 

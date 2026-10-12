@@ -88,6 +88,8 @@ public static class GolemClient
             Zone = JsonWalk.String(reply.Json.Value, "zone") ?? "",
             Scenario = scenario ?? "",
             Navigation = JsonWalk.String(reply.Json.Value, "navigation") ?? "",
+            Speed = JsonWalk.Number(reply.Json.Value, "speed"),
+            Turn = JsonWalk.Number(reply.Json.Value, "turn"),
             Held = JsonWalk.Find(reply.Json.Value, "held") is { ValueKind: JsonValueKind.True },
         };
         golem.Status = golem.LastX == null ? "awake, position unknown" : $"in {scenario ?? "?"}";

@@ -197,11 +197,16 @@
                                             <TextBlock Text="navigation" Width="62" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center"/>
                                             <ComboBox Tag="{Binding NavigationPrompt, Mode=OneWay}" ItemsSource="{Binding NavigationOptions, Mode=OneWay}" DisplayMemberPath="Label" SelectionChanged="Navigation_Selected" ToolTip="how its routes take the doors — door by door, or the doors crossed on the way; pick one and it switches now"/>
                                         </DockPanel>
+                                        <!-- the body's pace (propuesta 111, 12-oct-2026; Juan: "en el panel del environment para subirle la velocidad"): presets of cruise and turn rate, told at once (`speed … turn …`) -->
+                                        <DockPanel>
+                                            <TextBlock Text="speed" Width="62" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center"/>
+                                            <ComboBox Tag="{Binding PacePrompt, Mode=OneWay}" ItemsSource="{Binding PaceOptions, Mode=OneWay}" DisplayMemberPath="Label" SelectionChanged="Pace_Selected" ToolTip="the body's cruise (m/s) and turn rate (rad/s) from here on — speed … --turn …, acted at once; the motors cap what it can really do"/>
+                                        </DockPanel>
                                         <!-- no place here (Juan, 8-oct-2026: "quita el place del ambiente del golem"): it is the map's ⌖ place button -->
                                         <!-- the same environment for the whole fleet (Juan, 9-oct-2026: "algún botón para aplicar esa configuración a todos los golems"):
                                              this golem's scenario and navigation, told now to every other golem of the workspace that differs -->
                                         <Button Content="apply to all golems" Tag="{Binding}" Click="ApplyEnvironmentToAll_Click" Margin="0,2,0,0" HorizontalAlignment="Stretch"
-                                                ToolTip="use map … and optimize … as this golem has them, sent now to every other golem of the workspace that differs"/>
+                                                ToolTip="use map …, optimize … and speed … as this golem has them, sent now to every other golem of the workspace that differs"/>
                                         <UniformGrid Columns="2" Margin="0,2,0,0">
                                             <Button Content="reset" Tag="{Binding}" Click="ResetNow_Click" ToolTip="every route let go, the body back on its mark — now"/>
                                             <Button Content="reset all" Tag="{Binding}" Click="ResetAllNow_Click" Foreground="{StaticResource Red}" ToolTip="reset --all: its journal wiped too — asks first"/>
