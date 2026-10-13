@@ -208,7 +208,9 @@ public class RouteTests
     }
 
     [TestMethod]
-    public void SeveralStopsInOneRoom_AreReachedInOrder_TheFirstWithAnAdvanceOfNothing()
+    // (13-oct-2026: the first stop, within a hair of where the body stands, is reached at birth — no line-up turn toward a point a centimetre
+    // away, no advance of nothing; the order is the way on to the next stop, from where the body really faces)
+    public void SeveralStopsInOneRoom_AreReachedInOrder_TheFirstReachedAtBirth()
     {
         var map = Catalog.Warehouse();
         var collisions = new Collisions();
@@ -217,12 +219,11 @@ public class RouteTests
         g.Enter(new Scenario(map, collisions));
 
         var route = g.Visit(new Pose(2.0, 9.5, 0.0), new Position(2.0, 9.5)).Then(new Position(3.0, 10.5));   // two points of the kitchen, from the first of them
-        Assert.AreEqual(2, route.StopsLeft);
-        Assert.AreEqual("advance", route.Order, "standing on the first stop already: an advance of nothing");
-        Assert.AreEqual(0.0, route.Amount, 1e-6);
-        Reach(route, 2.0, 9.5);
-        Assert.AreEqual("pending", route.Status, "one stop reached, one to go");
+        Assert.AreEqual(1, route.StopsLeft, "standing on the first stop already: reached at birth");
+        Assert.AreEqual("pending", route.Status);
         Assert.AreEqual(3.0, route.NextLeg.Target.X, 0.001);
+        Assert.AreEqual("turnLeft", route.Order, "the way on: north-east from facing east");
+        Assert.AreEqual(Math.PI / 4, route.Amount, 1e-6);
         Reach(route, 3.0, 10.5);
         Assert.AreEqual("completed", route.Status);
     }

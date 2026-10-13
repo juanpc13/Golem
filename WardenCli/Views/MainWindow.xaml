@@ -81,6 +81,11 @@
                             <Button Style="{StaticResource Big}" Content="New" local:Look.Glyph="✧" Click="NewWorkspace_Click" ToolTip="a clean window: no golems, no scripts"/>
                             <Button Style="{StaticResource Big}" Content="Open…" local:Look.Glyph="📂" Click="OpenWorkspace_Click" ToolTip="a workspace folder: the golems, their queues, the routines"/>
                             <Button Style="{StaticResource Big}" Content="Save" local:Look.Glyph="💾" Click="SaveWorkspace_Click"/>
+                            <!-- A SHOW (13-oct-2026; Juan: "cuando vuelvo a cargar el mismo workspace ya no tiene nada… ¿el ambiente reescribe el archivo?"): the queues
+                                 consume the lines as they go and the workspace autosaves them as they are, so a workspace used as a show was emptied by its own run.
+                                 A show is the same file, loaded INTO the tabs of the golems here and saved FROM them, never becoming the workspace: load it again, run it again -->
+                            <Button Style="{StaticResource Big}" Content="Load show…" local:Look.Glyph="🎭" Click="LoadShow_Click" ToolTip="a .golemws of scripts loaded into the tabs of the golems here, by name — the workspace stays this one; load it again to run it again"/>
+                            <Button Style="{StaticResource Big}" Content="Save show…" local:Look.Glyph="🎭" local:Look.Tint="{StaticResource Accent}" Click="SaveShow_Click" ToolTip="every tab's script into a .golemws of its own, to load as a show — the workspace stays this one"/>
                             <Button Style="{StaticResource Big}" Content="Save as…" local:Look.Glyph="💾" local:Look.Tint="{StaticResource Accent}" Click="SaveWorkspaceAs_Click"/>
                         </StackPanel>
                     </GroupBox>
@@ -214,6 +219,8 @@
                                              this golem's scenario and navigation, told now to every other golem of the workspace that differs -->
                                         <Button Content="apply to all golems" Tag="{Binding}" Click="ApplyEnvironmentToAll_Click" Margin="0,2,0,0" HorizontalAlignment="Stretch"
                                                 ToolTip="use map …, optimize … and speed … as this golem has them, sent now to every other golem of the workspace that differs"/>
+                                        <Button Content="anchor" Tag="{Binding}" Click="AnchorNow_Click" Margin="0,2,0,0" HorizontalAlignment="Stretch"
+                                                ToolTip="the golem takes where its body REALLY stands as where it stands — nothing moves, no reset; for when the map's position drifted from Gazebo's (13-oct-2026)"/>
                                         <UniformGrid Columns="2" Margin="0,2,0,0">
                                             <Button Content="reset" Tag="{Binding}" Click="ResetNow_Click" ToolTip="every route let go, the body back on its mark — now"/>
                                             <Button Content="reset all" Tag="{Binding}" Click="ResetAllNow_Click" Foreground="{StaticResource Red}" ToolTip="reset --all: its journal wiped too — asks first"/>
@@ -388,13 +395,17 @@
                          its eye (the figure PROJECTED on the map, propuesta 96), its steps (↻ ↺ write rotate on the tab) and its dissolution; FIRST of the foot's tabs, its count in the header (Juan, 9-oct-2026) -->
                     <TabItem x:Name="FormationsTab">
                         <TabItem.Header>
-                            <TextBlock><Run Text="formations"/><Run Text="{Binding SelectedItem.Knowledge.Formations.Count, ElementName=GolemList, Mode=OneWay, StringFormat=' ({0})'}"/></TextBlock>
+                            <TextBlock><Run Text="formations"/><Run x:Name="FormationsCount" Text=""/></TextBlock>
                         </TabItem.Header>
                         <DockPanel Background="{StaticResource Well}">
                             <DockPanel DockPanel.Dock="Top" Margin="6,4,6,2">
+                                <!-- the other golems' formations too (12-oct-2026; Juan: "me gustaría poder ver las de los otros también… agrégame el checkbox de other golems también ahí"):
+                                     those the selected golem is not in, each row naming its golem; ↻ ↺ write on that golem's tab and ✕ asks that golem; read every refresh while on -->
+                                <CheckBox x:Name="OthersFormationsBox" DockPanel.Dock="Right" Content="other golems" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" Checked="OthersFormations_Changed" Unchecked="OthersFormations_Changed"
+                                          ToolTip="list the other golems' formations too — the ones the selected golem is not in, each with its golem's name; they are read with every refresh while this is on. A formation told on the tabs and not sent is always listed, marked 'to send'"/>
                                 <TextBlock x:Name="NoFormation" Text="select a golem: its formations are read from it" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             </DockPanel>
-                            <ListBox x:Name="FormationList" ItemsSource="{Binding SelectedItem.Knowledge.Formations, ElementName=GolemList}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox x:Name="FormationList" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel Margin="4,2">
@@ -409,6 +420,7 @@
                                                     <Button Content="↻" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="write rotate … clockwise on the selected golem's tab; sent, every body takes one place down the figure's order once all stand on theirs — the golem tells its fleet, and who holds what is read back from it"/>
                                                     <Button Content="↺" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="write rotate … counterclockwise on the selected golem's tab"/>
                                                 </StackPanel>
+                                                <Button Content="✎" Tag="{Binding}" Click="Edit_Click" ToolTip="edit it: the figure, centre, size, policy and fleet told again under the same name — its form (and take) lines rewritten on the tabs, a golem added gets them, one dropped loses them; SEND when ready"/>
                                                 <Button Content="✕" Tag="{Binding}" Click="Dissolve_Click" ToolTip="dissolve …, asked of the golem now: the formation leaves every golem of its fleet; the bodies stay where they are"/>
                                             </StackPanel>
                                             <!-- a double ring turns ring by ring (8-oct-2026; Juan: "que se pueda rotar el superior y el inferior"): rotate with the ring named, outer or inner -->
@@ -421,8 +433,9 @@
                                                 <Button Content="↺" Tag="{Binding}" Click="RotateInnerCounter_Click" ToolTip="write rotate … counterclockwise --ring inner on the tab"/>
                                             </StackPanel>
                                             <StackPanel VerticalAlignment="Center">
-                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="  "/><Run Text="{Binding Shape, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text=" at "/><Run Text="{Binding CenterText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding RoundText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding DraftText, Mode=OneWay}" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
+                                                <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="{Binding OwnerText, Mode=OneWay}" FontWeight="Normal" Foreground="{StaticResource Dim}"/><Run Text="  "/><Run Text="{Binding Shape, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text=" at "/><Run Text="{Binding CenterText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding RoundText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding DraftText, Mode=OneWay}" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
                                                 <TextBlock Text="{Binding HoldersText, Mode=OneWay}" ToolTip="{Binding HoldersText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock x:Name="StrandedRow" Text="{Binding StrandedText, Mode=OneWay}" ToolTip="{Binding StrandedText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Red}" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                                             </StackPanel>
                                         </DockPanel>
                                         <DataTemplate.Triggers>
@@ -432,6 +445,9 @@
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding HasDraft}" Value="True">
                                                 <Setter TargetName="DraftButtons" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Stranded}" Value="True">
+                                                <Setter TargetName="StrandedRow" Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>

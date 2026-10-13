@@ -89,7 +89,7 @@ public static class Readings
                 foreach (told in g.Choreography.Formations()) {
                     print told.Name 'called', told.Figure.Name 'shape', told.Figure.Center.X 'atX', told.Figure.Center.Y 'atY',
                           told.Figure.Measure.InMeters 'length', told.Figure.Turn.InDegrees 'degrees', told.Policy 'policy',
-                          told.Fleet.Roster 'crew', told.Fleet.Division 'division', told.PlaceCount 'places', told.PlacedCount 'placed', told.AlignedCount 'aligned', told.Queued 'queued', told.Round 'round', told.PlaceIndex 'mine';
+                          told.Fleet.Roster 'crew', told.Fleet.Division 'division', told.PlaceCount 'places', told.PlacedCount 'placed', told.AlignedCount 'aligned', told.Stranded 'stranded', told.StrandedWhy 'strandedWhy', told.Queued 'queued', told.Round 'round', told.PlaceIndex 'mine';
                     foreach (holders in told.Holders()) {
                         print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
                     }

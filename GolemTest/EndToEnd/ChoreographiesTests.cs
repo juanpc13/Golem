@@ -181,4 +181,38 @@ public class ChoreographiesTests
             route.Arrive(route.NextLeg);
         }
     }
+
+    // A WORD HEARD AHEAD (13-oct-2026; propuesta 112: the warden writes the same `form` on every tab, and red's came two seconds after blue's and
+    // green's words of the round — they found no formation and were lost; red never completed its round and the fleet waited for ever): the
+    // module keeps the word and the `form` of that name takes it in; a word from a member already heard is about the NEXT telling
+    [TestMethod]
+    public void AWordHeardBeforeTheFormationIsTold_IsKept_AndTheFormTakesItIn()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var red = new Golem(body, "red");
+        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        Assert.IsFalse(red.Choreography.Awaits("tri", "blue"), "no formation of that name yet: the word is not for a copy in hand");
+        red.Choreography.Overheard("tri", "blue", new Position(3.0, 7.0));
+        red.Choreography.Overheard("tri", "green", new Position(1.5, 4.5));
+        Assert.AreEqual(2, red.Choreography.OverheardCount("tri"));
+
+        var fleet = new Fleet("blue,red,green");
+        var tri = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), fleet, "rank", "s1");
+        Assert.AreEqual(0, red.Choreography.OverheardCount("tri"), "taken in by the form");
+        Assert.AreEqual(2, tri.StoodCount, "blue and green spoke before red was told");
+        var route = tri.Convene(new Pose(4.5, 4.0, 0.0), fleet.Member(red));
+        Assert.IsNotNull(route, "red's own word completes the round: its route opens");
+        Assert.IsTrue(tri.IsComplete);
+
+        // blue speaks again: a NEW telling of the name (the show run again) — kept for the next form, not mixed into this one
+        Assert.IsFalse(red.Choreography.Awaits("tri", "blue"), "blue already spoke in this copy");
+        red.Choreography.Overheard("tri", "blue", new Position(3.0, 7.2));
+        var again = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), fleet, "rank", "s2");
+        Assert.AreEqual(1, again.StoodCount, "the new telling starts with blue's new word");
+
+        // a dissolution drops what was kept for its name
+        red.Choreography.Overheard("tri", "green", new Position(1.5, 4.6));
+        red.Choreography.Dissolve(again);
+        Assert.AreEqual(0, red.Choreography.OverheardCount("tri"));
+    }
 }

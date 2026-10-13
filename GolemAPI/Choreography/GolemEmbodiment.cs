@@ -156,20 +156,6 @@ public sealed class GolemEmbodiment
             g.LearnForget(at);
         }
         ";
-    // A FORMATION TOLD TO THE FLEET (propuesta 104): a peer formed it and its act told me — if I am in its fleet, I form the same, by the same
-    // name, with the same stamp (the once of the call), so every copy is one. No expose: my forming spreads nothing further (one hop).
-    public const string UptakeFormedAs = @"
-        {
-            fleet = Fleet(@names);
-            if (fleet.Has(g)) {
-                center = Position(@cx, @cy);
-                measure = Meters(@measureLength);
-                turn = Degrees(@angle);
-                formation = g.Choreography.Form(@call, @shape, center, measure, turn, fleet, @by, @nonce);
-                print formation.Name 'called', fleet.Count 'members';
-            }
-        }
-        ";
     // A PLAY TOLD TO THE CAST (propuesta 108, fase 2): a peer staged it and its act told me — if I am in the cast, I stage the same copy, by
     // the same title and stamp. No expose: one hop.
     public const string UptakeStagedAs = @"
@@ -181,25 +167,12 @@ public sealed class GolemEmbodiment
             }
         }
         ";
-    public const string UptakeFormedRingsAs = @"
-        {
-            fleet = Fleet(@names, @innerNames);
-            if (fleet.Has(g)) {
-                center = Position(@cx, @cy);
-                outer = Meters(@outerRadius);
-                inner = Meters(@innerRadius);
-                turn = Degrees(@angle);
-                formation = g.Choreography.FormRings(@call, center, outer, inner, turn, fleet, @by, @nonce);
-                print formation.Name 'called', fleet.Count 'members';
-            }
-        }
-        ";
     // A PEER TOOK THE FORMATION and told me where it stood (ajustes 73, 80; propuesta 104): if I was told that formation and I am in its fleet —
     // already convened, its word may complete my round or take my place and interrupt my route; not yet, I keep its word and convene myself,
     // once, and my act tells everybody where I stand. The peer's position enters as @px @py: x and y are the print's labels.
     public const string UptakeStoodFor = @"
         {
-            if (g.Choreography.HasFormation(@call)) {
+            if (g.Choreography.Awaits(@call, @teller)) {
                 formation = g.Choreography.Find(@call);
                 fleet = formation.Fleet;
                 if (fleet.Has(g)) {
@@ -257,6 +230,9 @@ public sealed class GolemEmbodiment
                         expose @call call, formation.Stamp nonce, me.Name who, from.X stoodX, from.Y stoodY;
                     }
                 }
+            } else {
+                said = Position(@px, @py);
+                g.Choreography.Overheard(@call, @teller, said);
             }
         }
         ";
@@ -312,41 +288,6 @@ public sealed class GolemEmbodiment
                     }
                 } else {
                     print formation.AlignedCount 'aligned';
-                }
-            }
-        }
-        ";
-    // `HasFormation`, not `Knows` (lab 9-oct-2026, 14:48: cyan's copy dropped a line-up word that came 160 ms before its own route opened — the
-    // word of a member whose turn was next to nothing — and waited forever with 5 of 6): the formation exists before the route, and the word is
-    // kept in its round even then
-    // A STEP was asked of the fleet (ajuste 77; propuesta 104: of one ring or whole): the same step is queued here, in the same order it was
-    // queued there (the wire keeps a topic's order); it opens at once when everybody already stands on its place (next-order-step pushes).
-    public const string UptakeRotateTo = @"
-        {
-            if (g.Choreography.Knows(@call)) {
-                formation = g.Choreography.Find(@call);
-                move = formation.Figure.Rotate(@sense, @ring);
-                formation.Queue(move, @stepId);
-                if (formation.CanStep) {
-                    route = formation.Step();
-                    if (g.Strategy.OnTheWay.IsActive) {
-                        route = g.Dash(route);
-                    }
-                    if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                        if (route.IsWalkable) {
-                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
-                    } else {
-                        print route.Id 'route', route.Status 'ended';
-                        if (route.EndedShort) {
-                            print route.Why 'why';
-                        }
-                    }
-                } else {
-                    print formation.Queued 'queued';
                 }
             }
         }
@@ -465,6 +406,7 @@ public sealed class GolemEmbodiment
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(2000, ct);
+            Displacer?.PlacedIfStanding();   // a route to its place completed at birth inside a peer's word (13-oct-2026): no arrival will say it
             var now = AskOrder();
             var mine = Mechanics.Carrying;
             if (now == null) { if (mine != null) Mechanics.Stop(); continue; }
@@ -484,9 +426,13 @@ public sealed class GolemEmbodiment
     {
         if (string.IsNullOrWhiteSpace(into)) return Answer.Refusal("a scenario needs a name");
         var standing = Pose;   // where the body stands, in the frame of the scenario it leaves
+        bool already = string.Equals(scenario, into.Trim(), StringComparison.OrdinalIgnoreCase);
         var answer = EnterScenario(into.Trim());
         if (!answer.Ok) return answer;
         scenario = into.Trim();
+        // the scenario the golem is in already: the body stands on that map, nothing to carry (13-oct-2026: blue, on its place in the open floor, was
+        // "carried" to the same point, its heading reset by the teleport, and woke before the teleport landed — believing one heading, facing another)
+        if (already) return answer;
         // THE BODY FOLLOWS (propuesta 109): the maps lie side by side in the world, so the golem's new map is another region — the body is
         // carried to the same point of the new map when that point is on it; off it, the operator places it
         if (standing == null || layout.Of(scenario) == null) return answer;
@@ -496,8 +442,8 @@ public sealed class GolemEmbodiment
         if (!fits) { Note($"the body stands at ({standing.X:0.##}, {standing.Y:0.##}), which is no point of {scenario}: place it"); return answer; }
         var (wx, wy) = layout.ToWorld(scenario, standing.X, standing.Y);
         Mechanics.StopOnMark();
-        try { await ros.TeleportAsync(wx, wy, 0.0, CancellationToken.None); } catch { /* best-effort in the world */ }
-        await SettledAtAsync(wx, wy, CancellationToken.None);
+        try { await ros.TeleportAsync(wx, wy, standing.Theta, CancellationToken.None); } catch { /* best-effort in the world */ }   // facing as it faced: the maps only lie side by side
+        await SettledAtAsync(wx, wy, standing.Theta, CancellationToken.None);
         Note($"the body carried into the {scenario}'s region of the world, to ({standing.X:0.##}, {standing.Y:0.##}) of it");
         try { Report(Wake(), $"awake where the body stands in {scenario}"); }
         catch (Exception ex) { Note($"waking in {scenario} refused: {Reason(ex)}"); }
@@ -596,6 +542,19 @@ public sealed class GolemEmbodiment
     // The operator's levers on the body.
     // ==================================================================
 
+    /// <summary>THE ANCHOR (13-oct-2026; Juan: "¿debo reiniciarlos para que vuelvan a tomar la posición?"): the golem takes WHERE ITS BODY REALLY
+    /// STANDS, from telemetry, as where it stands — the scenario whose region holds it and a waking there, a plan underway decided again inside —
+    /// without a reset and without moving anything. For when the belief drifted from the truth (legs are not corrected at arrivals since ajuste
+    /// 68; a body teleported late) and the formations miss. Refused while a route is pending? No: the waking decides the way again from the truth.</summary>
+    public Answer Anchor()
+    {
+        if (ros.LatestPose == null) return Answer.Refusal("no telemetry from the body: nothing to anchor to");
+        EnterWhereTheBodyStands();
+        var answer = Wake();
+        Report(answer, "anchored: awake where the body really stands");
+        return answer;
+    }
+
     // Let go of everything: the body stopped and put back on its mark (ephemeral, a lab lever); the letting go itself
     // is the golem's act, one command for every pending route.
     public async Task LetGoAsync()
@@ -607,7 +566,7 @@ public sealed class GolemEmbodiment
         Note("letting go of every pending route");
         // the body was carried: the golem wakes where it stands now (22-sep-2026, ajuste 49) — a told point that comes next is
         // planned from the real pose, not from where the body stood before the operator moved it
-        await SettledAtAsync(home.X, home.Y, CancellationToken.None);
+        await SettledAtAsync(home.X, home.Y, 0.0, CancellationToken.None);
         EnterWhereTheBodyStands();   // the mark lies in some map's region (propuesta 109)
         try { Report(Wake(), $"awake where the body stands after the reset"); }
         catch (Exception ex) { Note($"waking after the reset refused: {Reason(ex)}"); }
@@ -619,12 +578,13 @@ public sealed class GolemEmbodiment
     public async Task PlaceAsync(double x, double y)
     {
         var (wx, wy) = layout.ToWorld(scenario, x, y);   // a point of the golem's map, carried into its region of the world (propuesta 109)
+        double facing = ros.LatestPose?.Theta ?? 0.0;    // carried, not turned: the body keeps the heading it had (13-oct-2026)
         Mechanics.StopOnMark();
-        try { await ros.TeleportAsync(wx, wy, 0.0, CancellationToken.None); }
+        try { await ros.TeleportAsync(wx, wy, facing, CancellationToken.None); }
         catch { /* best-effort in the world; the journaled facts are the point */ }
         Report(LetGo($"the operator carried the body to ({x:0.##}, {y:0.##})"), "let go of every pending route: the body carried");
         Note($"carried to ({x:0.##}, {y:0.##}) of {(scenario == "" ? "the map" : scenario)}");
-        await SettledAtAsync(wx, wy, CancellationToken.None);
+        await SettledAtAsync(wx, wy, facing, CancellationToken.None);
         try { Report(Wake(), "awake where the body stands after being carried"); }
         catch (Exception ex) { Note($"waking after being carried refused: {Reason(ex)}"); }
     }
@@ -636,17 +596,20 @@ public sealed class GolemEmbodiment
     {
         await ros.TeleportAsync(home.X, home.Y, 0.0, ct);
         Mechanics.StopOnMark();
-        await SettledAtAsync(home.X, home.Y, ct);
+        await SettledAtAsync(home.X, home.Y, 0.0, ct);
     }
 
-    // The body's pose, as the membrane brings it, within a body's width of that mark — or five seconds of patience.
-    private async Task SettledAtAsync(double x, double y, CancellationToken ct)
+    // The body's pose, as the membrane brings it, within a body's width of that mark AND facing as it was put — or twenty seconds of patience.
+    // The heading counts too (13-oct-2026): a body carried to where it already stood was "settled" at once, and the golem woke facing the old
+    // way before the teleport turned it.
+    private async Task SettledAtAsync(double x, double y, double theta, CancellationToken ct)
     {
-        var patience = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        var patience = DateTime.UtcNow + TimeSpan.FromSeconds(20);   // a teleport may take its time when six are asked at once (13-oct-2026); the golem must not wake before the body lands
         while (DateTime.UtcNow < patience && !ct.IsCancellationRequested)
         {
             var pose = ros.LatestPose;
-            if (pose != null && Math.Sqrt((pose.X - x) * (pose.X - x) + (pose.Y - y) * (pose.Y - y)) < 0.3) return;
+            if (pose != null && Math.Sqrt((pose.X - x) * (pose.X - x) + (pose.Y - y) * (pose.Y - y)) < 0.3
+                && Math.Abs(Math.Atan2(Math.Sin(pose.Theta - theta), Math.Cos(pose.Theta - theta))) < 0.1) return;
             await Task.Delay(100, ct);
         }
         Note("the body's pose did not settle on its mark in time: the golem wakes where the membrane says it stands");

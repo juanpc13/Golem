@@ -1,3 +1,4 @@
+using WardenCli.Formations;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -36,6 +37,25 @@ public partial class FormationDialog : Window
     }
 
     private string Picked => Figures.Children.OfType<RadioButton>().FirstOrDefault(r => r.IsChecked == true)?.Content as string ?? "square";
+
+    /// <summary>THE DIALOG SEEDED with a formation told already (13-oct-2026; Juan: "¿podríamos reeditar la formación para que tome otros valores de
+    /// la creación?"): its figure, centre, size, inner radius, policy and fleet as the row says them, so the operator changes what it likes and the
+    /// lines are rewritten on the tabs under the same name.</summary>
+    public void Seed(FormationView formation)
+    {
+        Title = $"Formation — {formation.Name} edited: its form (and take) lines rewritten on the tabs";
+        foreach (var r in Figures.Children.OfType<RadioButton>()) r.IsChecked = (r.Content as string) == formation.Shape;
+        CenterBox.Text = formation.CenterText;
+        MeasureBox.Text = formation.Measure.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        if (formation.IsDoubleRing && formation.AsFigure() is DoubleRing rings) InnerBox.Text = rings.InnerRadius.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        ByRankBox.IsChecked = formation.Policy != "distance";
+        var names = formation.CrewNames;
+        var outer = formation.IsDoubleRing && formation.Division > 0 ? names.Take(formation.Division).ToList() : names.ToList();
+        var inner = formation.IsDoubleRing && formation.Division > 0 ? names.Skip(formation.Division).ToList() : new List<string>();
+        GolemsBox.SelectedItems.Clear();
+        InnerGolemsBox.SelectedItems.Clear();
+        foreach (var n in golems) { if (outer.Contains(n)) GolemsBox.SelectedItems.Add(n); if (inner.Contains(n)) InnerGolemsBox.SelectedItems.Add(n); }
+    }
 
     // the figure changes what the dialog asks: a side, a radius, or the two radii and the two rings' golems
     private void Figure_Checked(object sender, RoutedEventArgs e)

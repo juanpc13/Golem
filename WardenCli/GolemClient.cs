@@ -97,6 +97,17 @@ public static class GolemClient
         return true;
     }
 
+    /// <summary>Only what the formations tab needs of ANOTHER golem (12-oct-2026: the other golems' formations listed too): its where and its
+    /// formations, so a refresh with the box on stays light.</summary>
+    public static async Task<bool> RefreshFormationsAsync(Golem golem, CancellationToken ct = default)
+    {
+        if (!await RefreshWhereAsync(golem, ct)) return false;
+        var formations = await SendAsync(golem, "formations", ct);
+        if (formations.Ok && formations.Json is { } fj)
+            golem.Knowledge = golem.Knowledge with { Formations = FormationView.Parse(fj) };
+        return true;
+    }
+
     /// <summary>Everything the golem answers to its reads — where, state, route, obstacles — in one refresh (Juan, 7-oct-2026: the reads are
     /// information beside the map, not buttons on the script); false when the golem did not answer `where`.</summary>
     public static async Task<bool> RefreshReadingsAsync(Golem golem, CancellationToken ct = default)

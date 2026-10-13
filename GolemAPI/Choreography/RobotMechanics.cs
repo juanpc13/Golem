@@ -72,7 +72,8 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-aligned", "[_:Formation].Aligned(_)"),             // this golem is lined up for the step: with the last word the fleet starts (propuesta 106)
             ("next-order-heard-aligned", "[_:Formation].HeardAligned(_, _)"), // a peer's word that it is lined up, with its round: the same (lab 9-oct: with one argument it never fired — the clock released the body up to 2 s late)
             ("next-order-dissolve", "[_:Choreographies].Dissolve(_)"),
-            ("next-order-run",    "[_:Dynamics].Run(_, _)"),               // pacman's run opened: released, or at a decision cell (propuesta 108)      // a formation dissolved: a route of it let go, the body stops (propuesta 104)
+            ("next-order-run",    "[_:Dynamics].Run(_, _)"),
+            ("next-order-retake", "[_:Formation].Retake(_)"),               // a failed route to a place opened again from where the body stands (propuesta 113)               // pacman's run opened: released, or at a decision cell (propuesta 108)      // a formation dissolved: a route of it let go, the body stops (propuesta 104)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),
             ("next-order-resume", "[_:Golem].Resume(_)"),   // a zero-argument pattern on the golem did not fire (17-sep lab): the pose rides along, and it is true

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GolemAPI.Membrane;
 using Puppeteer;
 
@@ -111,7 +112,6 @@ public sealed class Displacer
                         foreach (holders in formation.Holders()) {
                             print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
                         }
-                        expose @formationName call, @figure shape, @cx atX, @cy atY, @measureLength length, @angle degrees, @names crew, @by policy, @stamp nonce;
                     }
                 ";
 
@@ -129,7 +129,6 @@ public sealed class Displacer
                         foreach (holders in formation.Holders()) {
                             print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
                         }
-                        expose @formationName call, @cx atX, @cy atY, @outerRadius outerLength, @innerRadius innerLength, @angle degrees, @names crew, @innerNames innerCrew, @by policy, @stamp nonce;
                     }
                 ";
 
@@ -203,7 +202,6 @@ public sealed class Displacer
                         } else {
                             print formation.Queued 'queued';
                         }
-                        expose @formationName call, @sense turning, @ring orbit, @stepId step;
                     }
                 ";
 
@@ -278,7 +276,12 @@ public sealed class Displacer
             var answer = Answer.Of(robot.Actor.Using(TakeCheck, TakeFormation)
                 .WithParameters(p => { p["formationName", typeof(string)] = name; })
                 .PerformCheckThenCommand());
-            return answer.Ok ? answer : Answer.Refusal($"take {name}: " + answer.Refused);
+            if (!answer.Ok) return Answer.Refusal($"take {name}: " + answer.Refused);
+            // the body already stands on its place: the route opened is nothing to walk and completed at once — no arrival will say it, so the golem
+            // says it here (13-oct-2026), and the fleet hears PlacedAt instead of waiting for a line-up that never comes
+            var placed = Placed();
+            if (placed.Ok) { robot.Report(placed, $"take {name}: already on its place — the fleet is told"); return placed; }
+            return answer;
         }
         catch (Exception ex) { return Answer.Refusal($"take {name}: " + GolemEmbodiment.Reason(ex)); }
     }
@@ -586,6 +589,7 @@ public sealed class Displacer
             var aligned = Aligned();
             if (aligned.Ok) { robot.Report(aligned, $"route {was.Route}: lined up for the step — the fleet is told"); return aligned; }
         }
+        if (Retaken(answer, was) is { } retaken) return retaken;   // the route ended short on this arrival (a correction with no road): the retake (propuesta 113)
         if (!answer.Ok || !stop) return answer;
         robot.ReportLocalization(was.Route);
         if (was.Following && was.IsLastStop)
@@ -820,6 +824,67 @@ public sealed class Displacer
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
     }
 
+    // THE RETAKE (propuesta 113, 13-oct-2026): this golem's route to its place in the formation ended short — the formation opens it again from
+    // where the body stands (telemetry, like the halt), once; a second failure leaves the formation stranded for this golem, said in its read.
+    // Fired by whatever answer says the route ended short (an arrival whose correction found no road, a stuck body); nothing written otherwise.
+    private const string RetakeScript = @"
+                    {
+                        me = Pose(@px, @py, @ptheta);
+                        formation = g.Choreography.Current;
+                        route = formation.Retake(me);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        print formation.Name 'called', formation.Stranded 'stranded';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ";
+
+    private Answer Retake()
+    {
+        var pose = robot.Pose;
+        if (pose == null) return Answer.Refusal("no telemetry from the body: the retake needs where it stands");
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Current.NeedsRetake) Error 'no route of the formation in place ended short';
+                ", RetakeScript)
+                .WithParameters(p => {
+                    p["px", typeof(double)] = Resolution.Metres(pose.X);
+                    p["py", typeof(double)] = Resolution.Metres(pose.Y);
+                    p["ptheta", typeof(double)] = Resolution.Radians(pose.Theta);
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
+
+    // a route ended short: the formation's retake, if it was this golem's route to its place (propuesta 113); null when nothing was written
+    private Answer? Retaken(Answer answer, Order was)
+    {
+        if (!answer.Ok || answer.Order is not { IsEnded: true, Ended: "failed" or "abandoned" }) return null;
+        var retaken = Retake();
+        if (!retaken.Ok) return null;
+        bool stranded = false;
+        try { stranded = JsonDocument.Parse(retaken.Print ?? "{}").RootElement.TryGetProperty("stranded", out var v) && v.ValueKind == JsonValueKind.True; } catch { }
+        robot.Report(retaken, stranded ? $"route {was.Route} ended short twice: the formation is stranded for this golem — take it again, move it or dissolve it"
+                                       : $"route {was.Route} ended short: its place is taken again from where the body stands");
+        return retaken;
+    }
+
     private Answer Aligned()
     {
         try
@@ -831,6 +896,19 @@ public sealed class Displacer
                 .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The clock's question (13-oct-2026): does this golem stand on its place of the formation in place with nobody told yet? A route to
+    /// a place can complete AT BIRTH (the body on its place and facing it already) inside the uptake of a peer's word that closed the round, and
+    /// then no arrival says it — so the clock asks the domain, and only its yes (the same Check as an arrival's) says Placed.</summary>
+    public void PlacedIfStanding()
+    {
+        try
+        {
+            var placed = Placed();
+            if (placed.Ok) robot.Report(placed, "on its place in the formation with nothing to walk — the fleet is told");
+        }
+        catch { /* the clock asks again */ }
     }
 
     private Answer Placed()
@@ -855,6 +933,7 @@ public sealed class Displacer
         robot.Mechanics.Done();
         var answer = Failed(reason);
         robot.Report(answer, $"route {was.Route} failed: {reason}");
+        if (Retaken(answer, was) is { } retaken) return retaken;   // the body could not: the formation takes the place again (propuesta 113)
         return answer;
     }
 

@@ -161,7 +161,7 @@ public class CommandConsoleTests
     // itself, and the routes open when everybody spoke. The fleet is what --fleet says (left out: red and all its peers): blue first
     // (north-east), red second (north-west) of the two names; two on a square take two neighbouring corners (ajuste 86). --with is refused.
     [TestMethod]
-    public async Task AFormation_ToldToOneGolem_SpreadsByTell_AndTheTakeOpensEveryRoute()
+    public async Task AFormation_ToldToEveryGolemOfItsFleet_AndTheTakeOpensEveryRoute()
     {
         await using var world = new MockWorld();
         await world.PlaceGolemAsync("red");
@@ -173,7 +173,9 @@ public class CommandConsoleTests
         Assert.IsTrue(formed.Ok, formed.Text);
         StringAssert.Contains(formed.Text, "formed sq-1 for 4 by rank", formed.Text);
         StringAssert.Contains(formed.Text, "red 4.5,4.5", "red, third of the four names: the south-west corner — " + formed.Text);
-        StringAssert.Contains(await UntilFormations(blue, "sq-1"), "sq-1", "blue was told the same formation by red's act");
+        // the warden tells every golem of the fleet on its own tab (propuesta 112): blue is told the same line, nothing spreads by tell
+        Assert.IsTrue((await blue.ExecuteAsync("form sq-1 square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,red,green,yellow")).Ok);
+        StringAssert.Contains(await UntilFormations(blue, "sq-1"), "sq-1", "blue was told the same formation");
         var taken = await red.ExecuteAsync("take sq-1");
         Assert.IsTrue(taken.Ok, taken.Text);
         StringAssert.Contains(taken.Text, "taken", "red said where it stands and waits for the fleet's words (ajuste 80) — " + taken.Text);
@@ -182,6 +184,7 @@ public class CommandConsoleTests
 
         await red.ExecuteAsync("reset");
         Assert.IsTrue((await red.ExecuteAsync("form sq-2 square --center 5.5,5.5 --side 2.0 --fleet blue,red")).Ok);
+        Assert.IsTrue((await blue.ExecuteAsync("form sq-2 square --center 5.5,5.5 --side 2.0 --fleet blue,red")).Ok);
         await UntilFormations(blue, "sq-2");
         taken = await red.ExecuteAsync("take sq-2");
         Assert.IsTrue(taken.Ok, taken.Text);
@@ -224,7 +227,7 @@ public class CommandConsoleTests
         var blue = fleet["blue"];
 
         Assert.AreEqual("refused", (await blue.ExecuteAsync("rotate sq clockwise")).Kind, "no formation told yet");
-        Assert.IsTrue((await blue.ExecuteAsync("form sq square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,green,purple,yellow")).Ok);
+        foreach (var g in fleet.Values) Assert.IsTrue((await g.ExecuteAsync("form sq square --center 5.5,5.5 --side 2.0 --by rank --fleet blue,green,purple,yellow")).Ok);   // on every tab (propuesta 112)
         foreach (var g in fleet.Values) await UntilFormations(g, "sq");
         Assert.IsTrue((await blue.ExecuteAsync("take sq")).Ok);
         foreach (var g in fleet.Values) await Until(g, "route 1 completed");
@@ -238,10 +241,12 @@ public class CommandConsoleTests
         CollectionAssert.AreEqual(new[] { 4, 4, 4, 4 }, names.Select(n => world.Read(n, "print g.Choreography.Current.PlacedCount 'v';").GetInt32()).ToList(), "every copy heard that all four stand on their places");
         var step = await blue.ExecuteAsync("rotate sq clockwise");
         Assert.IsTrue(step.Ok, step.Text);
+        foreach (var g in fleet.Values.Where(x => x != blue)) Assert.IsTrue((await g.ExecuteAsync("rotate sq clockwise")).Ok);   // every member's own line (propuesta 112)
         StringAssert.StartsWith(step.Text, "route 2 · ", "everybody already stands: the step opens at once — " + step.Text);
         StringAssert.Contains(step.Text, "(6.5, 4.5)", "one step clockwise: blue heads from the north-east corner to the south-east one — " + step.Text);
         var again = await blue.ExecuteAsync("rotate sq clockwise");
         Assert.IsTrue(again.Ok, again.Text);
+        foreach (var g in fleet.Values.Where(x => x != blue)) Assert.IsTrue((await g.ExecuteAsync("rotate sq clockwise")).Ok);
         StringAssert.Contains(again.Text, "queued", "the second step waits for everybody — " + again.Text);
         // the step spreads: every peer queues the same two steps and opens the first — green from north-west to north-east, purple from
         // south-west to north-west, yellow from south-east to south-west (the walk itself is the Gazebo lab's: this world's wire may hand a
@@ -323,6 +328,7 @@ public class CommandConsoleTests
         var blue = new Commander(world.HostOf("blue").Embodiment);
 
         Assert.IsTrue((await red.ExecuteAsync("form near square --center 2.0,1.5 --side 1.0 --by distance --fleet blue,red")).Ok);
+        Assert.IsTrue((await blue.ExecuteAsync("form near square --center 2.0,1.5 --side 1.0 --by distance --fleet blue,red")).Ok);   // on every tab (propuesta 112)
         await UntilFormations(blue, "near");
         var call = await red.ExecuteAsync("take near");
         Assert.IsTrue(call.Ok, call.Text);

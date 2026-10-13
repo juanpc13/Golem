@@ -101,28 +101,124 @@ public partial class MainWindow : Window
         if (reading || Current is not { } g) return;
         if (g.Status == "unreachable" && ++quietTicks % 5 != 0) return;
         reading = true;
-        try { await GolemClient.RefreshReadingsAsync(g); }
+        try
+        {
+            await GolemClient.RefreshReadingsAsync(g);
+            // the other golems' formations too, while the box says so (12-oct-2026): their where and formations, nothing more
+            if (OthersFormationsBox.IsChecked == true)
+                foreach (var other in golems.Where(x => x != g && x.Status != "unreachable").ToList()) await GolemClient.RefreshFormationsAsync(other);
+        }
         finally { reading = false; }
         SyncFormations(g);
+    }
+
+    // THE FORMATIONS LISTED (12-oct-2026; Juan: "poder ver las de los otros también, no solo las del golem seleccionado"): the selected golem's
+    // own, and — with the box on — every other golem's that the selected one is not in (a formation shared by the fleet is listed once, the
+    // selected golem's copy), each knowing whose read it is; only those in the same scenario, so the map draws nothing of another floor
+    private readonly List<FormationView> listed = new();
+
+    private void OthersFormations_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || Current is not { } g) return;
+        SyncFormations(g);
+        _ = RefreshCurrentAsync();
+    }
+
+    private Golem? OwnerOf(FormationView f) => golems.FirstOrDefault(x => x.Name == f.Owner) ?? Current;
+
+    // the `form` line a dialog describes, under a name and with an orientation (the dialog asks none: a new formation lies at 0°, an edited one keeps its own)
+    private static string FormLineOf(FormationDialog dialog, string name, double angle)
+    {
+        string shape = dialog.Figure == "double ring" ? "double-ring" : dialog.Figure;
+        string centre = $"{Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}";
+        string size = dialog.Figure == "double ring" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)}"
+                    : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
+        string fleet = $"--fleet {string.Join(",", dialog.Chosen)}" + (dialog.Figure == "double ring" ? $" --inner-fleet {string.Join(",", dialog.InnerChosen)}" : "");
+        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {dialog.Policy}";
+    }
+
+    private static bool LineOf(string line, string name) =>
+        System.Text.RegularExpressions.Regex.IsMatch(line, $@"^(form|take|rotate)\s+{System.Text.RegularExpressions.Regex.Escape(name)}(\s|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    // A FORMATION EDITED (13-oct-2026; Juan: "¿podríamos reeditar la formación para que tome otros valores de la creación?"): the dialog seeded with
+    // its values; accepted, the same name is told again — the form line rewritten in place on every member's tab (added where a member is new,
+    // with its take), and a golem no longer in the fleet loses the formation's lines
+    private void Edit_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not FormationView formation) return;
+        var dialog = new FormationDialog(golems.Select(x => x.Name).ToList(), Point) { Owner = this };
+        dialog.Seed(formation);
+        if (dialog.ShowDialog() != true) return;
+        string name = formation.Name;
+        string line = FormLineOf(dialog, name, formation.Degrees);
+        var members = Members(dialog.Chosen.Concat(dialog.Figure == "double ring" ? dialog.InnerChosen : Array.Empty<string>()));
+        int rewritten = 0, added = 0, dropped = 0;
+        foreach (var member in members)
+        {
+            if (member.Replace(l => l.StartsWith($"form {name} ", StringComparison.OrdinalIgnoreCase), line)) rewritten++; else added++;
+            if (!member.Lines().Any(l => l.Trim().StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {name}");
+        }
+        foreach (var other in golems.Where(x => !members.Contains(x))) if (other.RemoveLines(l => LineOf(l, name)) > 0) dropped++;
+        drafts.Remove(name);
+        Log($"{name} › edited: {dialog.Figure} at {Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}, {string.Join(",", dialog.Chosen)} by {dialog.Policy} — {rewritten} form line(s) rewritten, {added} tab(s) given form and take, {dropped} tab(s) cleared of it; SEND to selected when ready");
+        FormationsTab.IsSelected = true;
+        if (Current is { } c) SyncFormations(c);
+    }
+
+    // the golems of the workspace named in a fleet (propuesta 112): a formation's lines go on each one's tab; a name not here is said in the log
+    private List<Golem> Members(IEnumerable<string> names)
+    {
+        var found = new List<Golem>();
+        foreach (var name in names.Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct())
+        {
+            if (golems.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } g) found.Add(g);
+            else Log($"{name} › not in this workspace: its line is not written");
+        }
+        return found;
     }
 
     // the selected golem's formations, as the console looks at them: the eyes closed by name stay closed, the one selected stays selected
     private void SyncFormations(Golem g)
     {
-        var views = g.Knowledge.Formations;
-        foreach (var gone in drafts.Keys.Where(k => views.All(v => v.Name != k)).ToList()) drafts.Remove(gone);   // a formation dissolved takes its draft with it
-        foreach (var v in views)
+        var own = g.Knowledge.Formations;
+        foreach (var gone in drafts.Keys.Where(k => own.All(v => v.Name != k)).ToList()) drafts.Remove(gone);   // a formation dissolved takes its draft with it
+        foreach (var v in own)
         {
+            v.Owner = g.Name; v.IsOthers = false;
             v.Shown = !hiddenFormations.Contains(v.Name);
             v.Draft = drafts.TryGetValue(v.Name, out var d) ? d : null;
         }
+        var all = new List<FormationView>(own);
+        if (OthersFormationsBox.IsChecked == true)
+            foreach (var other in golems.Where(x => x != g && x.Knowledge.Scenario == g.Knowledge.Scenario))
+                foreach (var v in other.Knowledge.Formations)
+                {
+                    if (all.Any(o => o.Name == v.Name)) continue;   // the fleet's shared formation: the selected golem's copy is the one listed
+                    v.Owner = other.Name; v.IsOthers = true;
+                    v.Shown = !hiddenFormations.Contains(v.Name);
+                    v.Draft = null;
+                    all.Add(v);
+                }
+        // THE FORMATIONS TO SEND (13-oct-2026): told on the tabs and not sent — listed from their `form` lines unless a golem already has one by
+        // that name (then the golem's read is the one shown), so steps and grips may be composed before one SEND
+        foreach (var pending in PendingFormations.Parse(golems))
+        {
+            if (all.Any(o => o.Name == pending.Name)) continue;
+            pending.Shown = !hiddenFormations.Contains(pending.Name);
+            pending.Draft = drafts.TryGetValue(pending.Name, out var pd) ? pd : null;
+            all.Add(pending);
+        }
+        listed.Clear(); listed.AddRange(all);
+        var views = all;
+        FormationList.ItemsSource = null; FormationList.ItemsSource = listed;
+        FormationsCount.Text = $" ({listed.Count})";
         if (selectedFormation != null && views.FirstOrDefault(v => v.Name == selectedFormation) is { } keep && FormationList.SelectedItem != keep) FormationList.SelectedItem = keep;
         NoFormation.Text = views.Count == 0 ? $"{g.Name} is in no formation — Console › Formation forms one" : "the golem's own: select one — its centre moves it, the square resizes it, the knob turns it (a draft until shot writes form + take on the tab); ↻ ↺ write a step on the tab, ✕ dissolves it now";
         Draw();
     }
 
     // the selected golem's formations, as it tells them
-    private IReadOnlyList<FormationView> Views() => Current?.Knowledge.Formations ?? Array.Empty<FormationView>();
+    private IReadOnlyList<FormationView> Views() => Current == null ? Array.Empty<FormationView>() : listed;
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -155,7 +251,8 @@ public partial class MainWindow : Window
             mapHeight,
             DebuggerPanel.Visibility == Visibility.Visible,
             OthersBox.IsChecked == true,
-            AutoBox.IsChecked == true));
+            AutoBox.IsChecked == true,
+            OthersFormationsBox.IsChecked == true));
     }
 
     private void RestorePanes()
@@ -173,6 +270,7 @@ public partial class MainWindow : Window
         if (!p.DebuggerShown) SetDebugger(false);
         if (p.ShowOthers is bool others) OthersBox.IsChecked = others;
         if (p.AutoRefresh is bool auto) AutoBox.IsChecked = auto;
+        if (p.ShowOthersFormations is bool othersFormations) OthersFormationsBox.IsChecked = othersFormations;
         FitDebugger();
     }
 
@@ -198,7 +296,11 @@ public partial class MainWindow : Window
         if (golem.Name == "") { Log("a golem needs its name"); return; }
         if (golems.Any(g => g.Name == golem.Name)) { Log($"{golem.Name} is already here"); return; }
         golems.Add(golem);
-        golem.PropertyChanged += (_, args) => { if (args.PropertyName is nameof(Golem.LastX) or nameof(Golem.LastY) or nameof(Golem.LastHeading) or nameof(Golem.Plan) or nameof(Golem.Knowledge)) Draw(); };
+        golem.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is nameof(Golem.LastX) or nameof(Golem.LastY) or nameof(Golem.LastHeading) or nameof(Golem.Plan) or nameof(Golem.Knowledge)) Draw();
+            else if (args.PropertyName == nameof(Golem.Script) && IsLoaded && Current is { } c) SyncFormations(c);   // a form line typed or written on a tab: the formations to send follow it (13-oct-2026)
+        };
         GolemList.SelectedItem = golem;
         await ConnectAsync(golem);
     }
@@ -359,6 +461,12 @@ public partial class MainWindow : Window
     {
         if (Current == null) return;
         await ActNowAsync(Current, "release");
+    }
+
+    // the anchor (13-oct-2026): the golem re-reads where its body really stands — the belief back on the truth, nothing moved
+    private async void AnchorNow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is Golem g) await ActNowAsync(g, "anchor");
     }
 
     private async void ResetNow_Click(object sender, RoutedEventArgs e)
@@ -704,12 +812,41 @@ public partial class MainWindow : Window
         OpenWorkspace(dialog.FileName);
     }
 
+    // A SHOW (13-oct-2026): the scripts of a .golemws loaded into the tabs of the golems here, matched by name — the workspace stays this one, so
+    // running the show (the queues consume its lines) and closing never rewrite the show's file; saved from the tabs the same way
+    private void LoadShow_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Load a show into the tabs", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}|all files|*.*", InitialDirectory = Workspace.RoutinesFolder(workspace) };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var loaded = Workspace.Load(dialog.FileName);
+            int filled = 0; var missing = new List<string>();
+            foreach (var l in loaded)
+            {
+                if (golems.FirstOrDefault(g => g.Name.Equals(l.Name, StringComparison.OrdinalIgnoreCase)) is { } g) { g.Script = l.Script; filled++; }
+                else missing.Add(l.Name);
+            }
+            Log($"show loaded: {System.IO.Path.GetFileName(dialog.FileName)} — {filled} tab(s) filled{(missing.Count > 0 ? $"; not in this workspace: {string.Join(", ", missing)}" : "")}; SEND to selected when ready, load it again to run it again");
+            if (Current is { } c) SyncFormations(c);
+        }
+        catch (Exception ex) { Log($"the show could not be loaded: {ex.Message}"); }
+    }
+
+    private void SaveShow_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog { Title = "Save the tabs as a show", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}", DefaultExt = Workspace.Extension.TrimStart('.'), InitialDirectory = Workspace.RoutinesFolder(workspace) };
+        if (dialog.ShowDialog(this) != true) return;
+        try { Workspace.Save(dialog.FileName, golems); Log($"show saved: {dialog.FileName} — every tab's script, {golems.Count} golem(s); the workspace stays {System.IO.Path.GetFileName(workspace ?? "none")}"); }
+        catch (Exception ex) { Log($"the show could not be saved: {ex.Message}"); }
+    }
+
     private void OpenWorkspace(string path)
     {
         try
         {
             var loaded = Workspace.Load(path);
-            AutoSave();
+            if (!string.Equals(workspace, path, StringComparison.OrdinalIgnoreCase)) AutoSave();   // the same file opened again is a RELOAD from disk, not a save of the tabs over it (13-oct-2026)
             foreach (var g in golems.ToList()) Stop(g);
             golems.Clear();
             workspace = path;
@@ -815,7 +952,6 @@ public partial class MainWindow : Window
 
     private void Formation_Click(object sender, RoutedEventArgs e)
     {
-        if (Current is not { } g) { Log("select a golem: the formation is formed in it, and it tells its fleet"); return; }
         var dialog = new FormationDialog(golems.Select(x => x.Name).ToList(), Point) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         // THE FORMATION IS THE GOLEM'S (propuesta 104; Juan: "el CLI sólo servirá como interfaz"): two lines on the selected golem's tab — the
@@ -826,14 +962,16 @@ public partial class MainWindow : Window
         int n = 1;
         while (known.Contains($"{shape}-{n}")) n++;
         string name = $"{shape}-{n}";
-        string centre = $"{Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}";
-        string size = dialog.Figure == "double ring" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)}"
-                    : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
-        string fleet = $"--fleet {string.Join(",", dialog.Chosen)}" + (dialog.Figure == "double ring" ? $" --inner-fleet {string.Join(",", dialog.InnerChosen)}" : "");
-        g.Enqueue($"form {name} {shape} --center {centre} {size} --angle 0 {fleet} --by {dialog.Policy}");
-        g.Enqueue($"take {name}");
+        // THE FORMATION ON EVERY MEMBER'S TAB (propuesta 112, 13-oct-2026; Juan: "cuando se cree la formación todos los golems sabrán cuál es la
+        // formación a la que pertenecen porque se mandó a crear"): the warden tells form and take to every golem of the fleet, each on its own tab
+        var members = Members(dialog.Chosen.Concat(dialog.Figure == "double ring" ? dialog.InnerChosen : Array.Empty<string>()));
+        foreach (var member in members)
+        {
+            member.Enqueue(FormLineOf(dialog, name, 0.0));
+            member.Enqueue($"take {name}");
+        }
         FormationsTab.IsSelected = true;
-        Log($"{g.Name} › form {name} and take {name} on its tab — the golem tells its fleet; SEND to selected when ready");
+        Log($"form {name} and take {name} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))} — SEND to selected when ready");
     }
 
     // A STEP OF A FORMATION (propuesta 104; ajuste 77): the line `rotate <name> <sense> [--ring …]` WRITTEN on the selected golem's tab, sent
@@ -850,10 +988,14 @@ public partial class MainWindow : Window
 
     private void Rotate(object sender, Sense sense, Ring ring)
     {
-        if ((sender as Button)?.Tag is not FormationView formation || Current is not { } g) return;
+        if ((sender as Button)?.Tag is not FormationView formation) return;
         string line = $"rotate {formation.Name} {(sense == Sense.Clockwise ? "clockwise" : "counterclockwise")}{(ring == Ring.Whole ? "" : $" --ring {ring.ToString().ToLowerInvariant()}")}";
-        g.Enqueue(line);
-        Log($"{g.Name} › {line} on its tab — SEND to selected when ready; the golem tells its fleet, and its formation says who holds what");
+        // on every member's tab (propuesta 112): each golem queues the step in its own copy and resolves its next place from where it stands
+        var members = Members(formation.CrewNames);
+        // right after that formation's take, or its last step, on each tab (13-oct-2026: the whole choreography composed before one SEND)
+        string name = formation.Name;
+        foreach (var member in members) member.EnqueueAfter(l => l.StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase) || l.StartsWith($"rotate {name} ", StringComparison.OrdinalIgnoreCase), line);
+        Log($"{line} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))}, after the take — SEND to selected when ready; every golem's formation says who holds what");
     }
 
     // the eye: the console's own way of looking, remembered by name across the reads
@@ -903,8 +1045,28 @@ public partial class MainWindow : Window
 
     private async void Dissolve_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not FormationView formation || Current is not { } g) return;
+        if ((sender as Button)?.Tag is not FormationView formation) return;
+        if (formation.IsPending)
+        {
+            // a formation to send: nothing in any golem yet — its lines (form, take, rotate) are taken out of every tab, after asking
+            if (MessageBox.Show(this, $"take {formation.Name} off the tabs? its form, take and rotate lines go ({formation.PendingOn}); nothing was sent to any golem.", $"drop {formation.Name}",
+                                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            int gone = 0;
+            foreach (var golem in golems) gone += golem.RemoveLines(l => LineOf(l, formation.Name));
+            drafts.Remove(formation.Name);
+            Log($"{formation.Name} › {gone} line(s) taken off the tabs");
+            if (Current is { } c) SyncFormations(c);
+            return;
+        }
+        if (OwnerOf(formation) is not { } g) return;
+        // asks first (13-oct-2026: a click on the ✕ beside ↻ ↺ dissolved triangle-1 for the whole fleet at once, and the next rotate was refused)
+        if (MessageBox.Show(this, $"dissolve {formation.Name}? {g.Name} lets it go and tells its fleet ({formation.Crew}); the bodies stay where they are.", $"dissolve {formation.Name}",
+                            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         await ActNowAsync(g, $"dissolve {formation.Name}");   // the golem lets it go and tells its fleet
+        // the fleet dissolved it too: their reads asked again, so the tab does not keep showing it from a stale read while the box lists the others
+        if (OthersFormationsBox.IsChecked == true)
+            foreach (var other in golems.Where(x => x != g && x.Status != "unreachable").ToList()) await GolemClient.RefreshFormationsAsync(other);
+        if (Current is { } current) SyncFormations(current);
     }
 
     // ==================================================================
@@ -1129,12 +1291,19 @@ public partial class MainWindow : Window
     // figure (the same name, fleet and policy; the golem tells its fleet) and the `take` that moves the fleet to it — and nothing goes until SEND
     private void Shot_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not FormationView formation || formation.Draft is not { } next || Current is not { } g) return;
+        if ((sender as Button)?.Tag is not FormationView formation || formation.Draft is not { } next) return;
         drafts.Remove(formation.Name);
         formation.Draft = null;
-        g.Enqueue(formation.FormLine(next));
-        g.Enqueue($"take {formation.Name}");
-        Log($"{g.Name} › shot: form {formation.Name} {Shape(next)} and take {formation.Name} on its tab — the golem tells its fleet; SEND to selected when ready");
+        // on every member's tab (propuesta 112): the figure told again to each golem of the fleet, and each takes it
+        var members = Members(formation.CrewNames);
+        int rewritten = 0;
+        foreach (var member in members)
+        {
+            // a form line of it already on the tab (a formation to send, or one told again): rewritten in its place; else form and take added
+            if (member.Replace(l => l.StartsWith($"form {formation.Name} ", StringComparison.OrdinalIgnoreCase), formation.FormLine(next))) rewritten++;
+            if (!member.Lines().Any(l => l.Trim().StartsWith($"take {formation.Name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {formation.Name}");
+        }
+        Log($"shot: form {formation.Name} {Shape(next)} and take {formation.Name} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))}{(rewritten > 0 ? $" ({rewritten} form line(s) rewritten in place)" : "")} — SEND to selected when ready");
         Draw();
     }
 

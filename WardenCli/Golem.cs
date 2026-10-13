@@ -106,6 +106,43 @@ public sealed class Golem : INotifyPropertyChanged
         Script = s == "" ? line : s + Environment.NewLine + line;
     }
 
+    /// <summary>The tab's lines, as written.</summary>
+    public List<string> Lines() => (Script ?? "").Replace("\r", "").Split('\n').ToList();
+
+    private void SetLines(IEnumerable<string> lines) => Script = string.Join(Environment.NewLine, lines).TrimEnd('\r', '\n');
+
+    /// <summary>A line written right after the LAST line that satisfies `anchor` (13-oct-2026: a step after its formation's take, or its last
+    /// step); none, at the end.</summary>
+    public void EnqueueAfter(Func<string, bool> anchor, string line)
+    {
+        var lines = Lines();
+        int at = lines.FindLastIndex(l => anchor(l.Trim()));
+        if (at < 0) { Enqueue(line); return; }
+        lines.Insert(at + 1, line);
+        SetLines(lines);
+    }
+
+    /// <summary>The first line that satisfies `which` replaced by another; none, the new one at the end. Whether one was replaced.</summary>
+    public bool Replace(Func<string, bool> which, string line)
+    {
+        var lines = Lines();
+        int at = lines.FindIndex(l => which(l.Trim()));
+        if (at < 0) { Enqueue(line); return false; }
+        lines[at] = line;
+        SetLines(lines);
+        return true;
+    }
+
+    /// <summary>Every line that satisfies `which` taken out; how many went.</summary>
+    public int RemoveLines(Func<string, bool> which)
+    {
+        var lines = Lines();
+        int before = lines.Count;
+        lines.RemoveAll(l => which(l.Trim()));
+        if (lines.Count != before) SetLines(lines);
+        return before - lines.Count;
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void Set<T>(ref T field, T value, [CallerMemberName] string? property = null)
     {

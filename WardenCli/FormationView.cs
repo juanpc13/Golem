@@ -19,13 +19,28 @@ public sealed record HolderView(string Name, int Index, double X, double Y, int 
 public sealed class FormationView : INotifyPropertyChanged
 {
     public FormationView(string name, string shape, double centerX, double centerY, double measure, double degrees, string policy, string crew, int division,
-                         int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots, int aligned = 0)
+                         int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots, int aligned = 0,
+                         bool stranded = false, string strandedWhy = "")
     {
         Name = name; Shape = shape; CenterX = centerX; CenterY = centerY; Measure = measure; Degrees = degrees; Policy = policy; Crew = crew; Division = division;
         Places = places; Placed = placed; Queued = queued; Round = round; Mine = mine; Holders = holders; Spots = spots; Aligned = aligned;
+        Stranded = stranded; StrandedWhy = strandedWhy;
     }
 
+    /// <summary>This golem could not reach its place twice (propuesta 113): the formation waits for the warden — take again, move, dissolve.</summary>
+    public bool Stranded { get; }
+    public string StrandedWhy { get; }
+    public string StrandedText => Stranded ? $"✗ stranded — {StrandedWhy} — take it again, move it or dissolve it" : "";
+
     public string Name { get; }
+    /// <summary>WHOSE READ this is (12-oct-2026; Juan: "me gustaría poder ver las de los otros también, no solo las del golem seleccionado"): the golem
+    /// that answered it, and whether it is another golem's than the one selected — then its row says so, and ↻ ↺ ✕ act on that golem.</summary>
+    public string Owner { get; set; } = "";
+    public bool IsOthers { get; set; }
+    /// <summary>A formation TO SEND (13-oct-2026): told on the tabs — `form … / take …` not sent yet — and listed from those lines, with the tabs it is on.</summary>
+    public bool IsPending { get; set; }
+    public string PendingOn { get; set; } = "";
+    public string OwnerText => IsPending ? $"  to send · on {PendingOn}" : IsOthers ? $"  {Owner}'s" : "";
     /// <summary>square, pentagon, triangle, circle, double ring — the golem's word.</summary>
     public string Shape { get; }
     public double CenterX { get; }
@@ -150,7 +165,8 @@ public sealed class FormationView : INotifyPropertyChanged
             if (f.TryGetProperty("spots", out var ss) && ss.ValueKind == JsonValueKind.Array)
                 foreach (var sp in ss.EnumerateArray()) spots.Add((Num(sp, "x"), Num(sp, "y")));
             list.Add(new FormationView(Str(f, "called"), Str(f, "shape"), Num(f, "atX"), Num(f, "atY"), Num(f, "length"), Num(f, "degrees"), Str(f, "policy"), Str(f, "crew"),
-                                       (int)Num(f, "division"), (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned")));
+                                       (int)Num(f, "division"), (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned"),
+                                       f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True, Str(f, "strandedWhy")));
         }
         return list;
     }

@@ -85,6 +85,11 @@ internal sealed class Route
     internal const int PatienceWithThings = 6;
     /// <summary>A turn smaller than this (radians) is not asked: the body already faces its point closely enough.</summary>
     internal const double TurnTolerance = 0.05;
+    /// <summary>A stop WITHIN A HAIR of where the body stands is reached at birth (13-oct-2026): the direction of a leg of a centimetre is
+    /// noise, and a line-up turn toward it (a route that starts together asks one however small) sent the body a radian off before its
+    /// `face` — green took its place with turnLeft 1.32, advance 0.01, turnRight 1.29, and its belief of where it faced parted from the truth
+    /// for every step after. Metres.</summary>
+    internal const double WithinAHair = 0.05;
     /// <summary>How many turns a route asks on one leg before it takes the heading the body reached (22-sep-2026).</summary>
     internal const int TurnsAtMost = 3;
     /// <summary>The clearance a follower keeps beyond the two bodies on its last stop, in metres.</summary>
@@ -251,6 +256,16 @@ internal sealed class Route
         linedUp = false;
         bumpsSinceRoute = 0;
         grazesOnLeg = 0;
+        // a stop within a hair of where the body stands, with a leg after it (the facing): reached at birth — no turn toward a point a
+        // centimetre away, no advance of nothing; the order goes to the leg that follows, measured from where the body really faces
+        while (nextLeg + 1 < way.Count && NextLeg.IsStop && standing.DistanceTo(NextLeg.At) <= WithinAHair)
+        {
+            reached++;
+            nextLeg++;
+        }
+        // …and facing as the place asks already: the facing is behind too and the route is COMPLETE AT BIRTH (13-oct-2026 lab: blue, on its
+        // place and facing the centre, was asked `advance 0.02` on its facing leg — the order of a leg whose turn is not needed)
+        if (nextLeg > 0 && nextLeg < way.Count && NextLeg.IsFacing && Math.Abs(TurnAhead) <= TurnTolerance) Faced();
     }
 
     /// <summary>Whether the body has set out on this route: a turn made, a door lined up, a leg or a stop behind.</summary>
@@ -424,7 +439,7 @@ internal sealed class Route
     /// line-up word) and then stands, waiting (<see cref="Waiting"/>), until <see cref="Go"/>.</summary>
     internal Route StartTogether()
     {
-        MustBePending();
+        if (!IsPending()) return this;   // complete at birth (on its place, facing it already): nothing to set out, no line-up word to say (13-oct-2026)
         startsTogether = true;
         return this;
     }

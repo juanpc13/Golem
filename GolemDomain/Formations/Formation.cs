@@ -55,6 +55,7 @@ internal sealed class Formation
     private Position place;                                             // the place it is going to, or holds
     private Route route;                                                // …and the route there
     private string yieldedTo;                                           // the peer whose word made that route yield, until it is replaced
+    private int retakes;                                                // how many times this golem's failed route was opened again this round (propuesta 113)
 
     internal Formation(string name, Figure figure, Fleet fleet, Golem golem, bool byDistance) : this(name, figure, fleet, golem, byDistance, name) { }
 
@@ -194,10 +195,19 @@ internal sealed class Formation
     {
         place = Figure.Places(Fleet.Count)[indices[me.Name]];
         route = golem.TakePlace(convenedFrom, place, Figure.Center, Berths(), Where(place));
-        movers = Fleet.Names.ToHashSet(StringComparer.Ordinal);   // the take moves everybody: the fleet sets out together once every body faces its place (propuesta 106)
+        // the take moves everybody — except a member that said it STANDS ON ITS PLACE already (a take again after a failure, 13-oct-2026: its route is
+        // nothing to walk, so it never lines up, and the others waited for its word for ever): the fleet sets out together once every body that moves
+        // faces its place (propuesta 106)
+        movers = Fleet.Names.Where(n => !StandsOnItsPlace(n)).ToHashSet(StringComparer.Ordinal);
         route.StartTogether();
         return route;
     }
+
+    /// <summary>How near its place a member that said where it stands counts as standing ON it.</summary>
+    internal const double OnPlaceTolerance = 0.3;
+
+    private bool StandsOnItsPlace(string name) =>
+        stood.TryGetValue(name, out var at) && indices.TryGetValue(name, out int index) && at.DistanceTo(Figure.Places(Fleet.Count)[index]) <= OnPlaceTolerance;
 
     /// <summary>The OTHER members as bodies in the way (ajuste 80): where each said it stands and the place it gets — by rank its rank's,
     /// by distance the table's, once it spoke. What the golem plans around when it opens its route to its place.</summary>
@@ -245,7 +255,7 @@ internal sealed class Formation
         }
         if (route.IsPending()) route.Abandon($"{yieldedTo} took this place by distance: {me.Name} goes to ({Fmt(place.X)}, {Fmt(place.Y)})");   // waiting, lined up, the body stands: nothing to halt (propuesta 106)
         else placed.Remove(me.Name);              // it leaves the place it had reached
-        route = golem.TakePlace(route.Standing, place, Figure.Center, Berths(), Where(place));
+        route = golem.TakePlace(golem.Destination, place, Figure.Center, Berths(), Where(place));   // from where the body is (13-oct-2026): the place it had reached, or wherever an errand took it since
         route.StartTogether();                    // the same round: the others' line-up words stay counted, so it sets out as soon as its own body is lined up
         yieldedTo = null;
         return route;
@@ -254,6 +264,44 @@ internal sealed class Formation
     /// <summary>The body STOPPED for the route that yields, and says where it stood (propuesta 74): that route is abandoned in the words
     /// of the peer that took its place, and the route that replaces it opens from where the body really is, to the place kept —
     /// <c>route = formation.Halted(me)</c>. Refused when this golem's route does not yield.</summary>
+    /// <summary>Whether this golem's route in the formation ENDED SHORT — failed, or abandoned by a touch's correction that found no road — and
+    /// the retake is to be decided (propuesta 113, 13-oct-2026; Juan, on a triangle of 2 m where two members touched on their way and their
+    /// routes failed, the fleet then waiting for ever: "que la formación la vuelva a abrir desde donde quedó el cuerpo").</summary>
+    internal bool NeedsRetake => !Dissolved && !Stranded && me != null && place != null && route != null && !route.IsPending() && route.EndedShort;
+
+    /// <summary>This golem could not reach its place — its route failed twice in the round: the formation says so, and the warden decides
+    /// (take again, move the figure, dissolve).</summary>
+    internal bool Stranded { get; private set; }
+    internal string StrandedWhy { get; private set; } = "";
+
+    /// <summary>THE RETAKE (propuesta 113): this golem's route to its place ended short — the golem opens it AGAIN BY ITSELF, from where its
+    /// body really stands (telemetry, like the hold), to the same place it holds in this copy: <c>route = formation.Retake(me)</c>; the same
+    /// round, so it sets out as soon as its own body is lined up (propuesta 106). ONCE: a second failure, or no road from where it stands,
+    /// leaves the formation STRANDED for this golem and the failed route as it is — nothing moves in silence.</summary>
+    internal Route Retake(Pose me)
+    {
+        if (me == null) throw new GolemDomainException("Formation.Retake: 'me' was not given");
+        if (!NeedsRetake) throw new GolemDomainException($"no route of {Name} ended short: nothing to take again");
+        if (retakes >= 1)
+        {
+            Stranded = true;
+            StrandedWhy = $"{this.me.Name} could not reach ({Fmt(place.X)}, {Fmt(place.Y)}) twice: {route.Why}";
+            return route;
+        }
+        retakes++;
+        try
+        {
+            route = golem.TakePlace(me, place, Figure.Center, Berths(), Where(place));
+            route.StartTogether();                // the same round: it sets out as soon as its own body is lined up (propuesta 106)
+        }
+        catch (GolemDomainException ex)
+        {
+            Stranded = true;
+            StrandedWhy = $"{this.me.Name} could not reach ({Fmt(place.X)}, {Fmt(place.Y)}) again from ({Fmt(me.X)}, {Fmt(me.Y)}): {ex.Message}";
+        }
+        return route;
+    }
+
     internal Route Halted(Pose me)
     {
         if (me == null) throw new GolemDomainException("Formation.Halted: 'me' was not given");
@@ -327,6 +375,11 @@ internal sealed class Formation
     {
         if (!Fleet.Names.Contains(member.Name)) throw new GolemDomainException($"'{member.Name}' is not a member of the fleet of {Name}");
         placed.Add(member.Name);
+        if (me != null && member.Name == me.Name) { retakes = 0; Stranded = false; StrandedWhy = ""; }   // placed: the retake of this round is spent no more (propuesta 113)
+        // placed implies lined up (13-oct-2026): a body standing on its place needs no line-up turn, and its word of being there is at least as
+        // strong — so a route waiting for the fleet's start never waits for one that already arrived (a take again with a member already in place)
+        AlignedIn(Round).Add(member.Name);
+        if (route != null && route.Waiting && movers.All(AlignedIn(Round).Contains)) route.Go();
         if (route == null) return null;
         return CanStep ? Step() : route;
     }
@@ -346,9 +399,11 @@ internal sealed class Formation
     }
 
     /// <summary>The next step OPENS (ajuste 77): every member stands on its place and a move waits — every member the move touches heads to
-    /// the next place along its orbit (<see cref="Move.Next"/>: the figure's own geometry, ajuste 84), this golem from where its route in
-    /// place left the body; a member of a ring the move leaves alone stays placed. A new round begins. <c>route = formation.Step();</c>.
-    /// Refused when it cannot step yet.</summary>
+    /// the next place along its orbit (<see cref="Move.Next"/>: the figure's own geometry, ajuste 84), this golem FROM WHERE ITS BODY STANDS
+    /// (<see cref="Golem.Destination"/>; 13-oct-2026, Juan: "si le digo visit a blue estando en una posición de formación, cuando le doy rotate no
+    /// se posiciona donde tiene que estar" — the step was planned from where the route in place had left the body, so a golem sent elsewhere
+    /// in between turned and advanced as if it still stood on its vertex; now it comes back to the figure, to the place the step gives it);
+    /// a member of a ring the move leaves alone stays placed. A new round begins. <c>route = formation.Step();</c>. Refused when it cannot step yet.</summary>
     internal Route Step()
     {
         if (route == null) throw new GolemDomainException($"'{Name}': this golem has no place in the formation yet");
@@ -372,7 +427,7 @@ internal sealed class Formation
         if (staying.Contains(me.Name)) return route;          // this golem does not move on this step: its route in place stands
         int next = indices[me.Name];
         place = places[next];
-        route = golem.TakePlace(route.Standing, place, Figure.Center, Array.Empty<Peer>(), $"place {next + 1} of {places.Count} of the {Figure.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come
+        route = golem.TakePlace(golem.Destination, place, Figure.Center, Array.Empty<Peer>(), $"place {next + 1} of {places.Count} of the {Figure.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come; from where the body is, wherever an errand took it
         route.StartTogether();                                // the body turns to face its next place, then stands until every mover is lined up (propuesta 106)
         return route;
     }

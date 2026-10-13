@@ -43,9 +43,10 @@ public sealed class Commander
         // `golem blue …` on red's console: the line is another golem's — a console commands its own golem; the peers ride along with --with
         if (command.Golem != "" && !IsMe(command.Golem))
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
-        // a formation spreads by itself, by tell (ajustes 71, 104): this golem is told, its peers are told — never a line carried to them
+        // a formation is the warden's to tell to every golem of its fleet, one line on each tab (propuesta 112, 13-oct-2026; the words of the round
+        // still cross between the members by tell); a play spreads by itself (propuesta 108) — never a line carried by --with
         if (command.Verb is "form" or "take" or "rotate" or "dissolve" or "play" && command.With.Count > 0)
-            return Reply.Syntax($"{command.Verb}: a formation spreads by itself — command one golem; --with carries single orders (visit, reset, use, optimize)");
+            return Reply.Syntax($"{command.Verb}: told to every golem involved on its own tab — never --with, which carries single orders (visit, reset, use, optimize, speed)");
         // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
         if (command.Verb == "place" && command.With.Count > 0)
             return Reply.Syntax("place carries each golem to its own mark — write the names on the line, place blue@6,6.2 red@7,6.3, not --with");
@@ -102,6 +103,7 @@ public sealed class Commander
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
             "forget" => Forget(command),
+            "anchor" => Answered(golem.Anchor(), "anchored: awake where the body really stands"),
             "reset" => await ResetAsync(command),
             "place" => await PlaceAsync(command),
             "state" => State(),

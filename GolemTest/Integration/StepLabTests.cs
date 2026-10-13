@@ -184,7 +184,7 @@ public class StepLabTests
         log.Add("reached after: " + Try("{ print g.Choreography.Current.Reached 'v'; }"));
         log.Add("red's word (completes the round): " + Try(GolemEmbodiment.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
         log.Add("placed count: " + Try("{ print g.Choreography.Current.PlacedCount 'v', g.Choreography.Current.CanStep 'can'; }"));
-        log.Add("rotate: " + Try(GolemEmbodiment.UptakeRotateTo, p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s1"; p["call", typeof(string)] = "blue-1"; }));
+        log.Add("rotate: " + Try("{ formation = g.Choreography.Current; move = formation.Figure.Rotate(@sense, @ring); formation.Queue(move, @stepId); print formation.Queued 'v'; }", p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s1"; p["call", typeof(string)] = "blue-1"; }));
         Console.WriteLine(string.Join("\n", log));
         Assert.IsFalse(log.Any(l => l.Contains("FAILED")), string.Join("\n", log));
         StringAssert.Contains(log.Last(l => l.StartsWith("placed count")), "\"v\":2", string.Join("\n", log));
@@ -228,7 +228,7 @@ public class StepLabTests
         log.Add("uptake whole: " + Try(GolemEmbodiment.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
         log.Add("rotate: " + Try("{ formation = g.Choreography.Current; move = formation.Figure.Rotate(@sense, @ring); formation.Queue(move, @stepId); print formation.Queued 'v'; }",
             p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s1"; }));
-        log.Add("uptake rotate whole: " + Try(GolemEmbodiment.UptakeRotateTo, p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s2"; p["call", typeof(string)] = "blue-1"; }));
+        log.Add("uptake rotate whole: " + Try("{ formation = g.Choreography.Current; move = formation.Figure.Rotate(@sense, @ring); formation.Queue(move, @stepId); print formation.Queued 'v'; }", p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s2"; p["call", typeof(string)] = "blue-1"; }));
         Console.WriteLine(string.Join("\n", log));
         Assert.IsFalse(log.Any(l => l.Contains("FAILED")), string.Join("\n", log));
     }

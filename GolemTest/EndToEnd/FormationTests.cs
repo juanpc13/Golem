@@ -361,6 +361,141 @@ public class FormationTests
     }
 
     // The body's walk: the leg the route asks, done as asked — reported the way the robot does (ajuste 68).
+    // A BODY ALREADY ON ITS PLACE, TOLD TO TAKE IT (13-oct-2026; lab: green, carried onto its place, was asked turnLeft 1.32, advance 0.01 and
+    // turnRight 1.29 — a line-up toward a point a centimetre away, pure noise — and faced one way while its golem believed another; every step
+    // after went a radian off): the stop within a hair is reached at birth and the route asks the facing turn alone, from where the body faces
+    [TestMethod]
+    public void ABodyOnItsPlaceAlready_IsAskedTheFacingTurnAlone_NoLineUpTowardACentimetre()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var copy = blue.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), new Fleet("blue"), "rank", "call-1");
+        var place = copy.Figure.Places(1)[0];   // the apex, north of the centre: (3, 7.23)
+        var route = copy.Convene(new Pose(place.X + 0.008, place.Y - 0.006, -0.08), copy.Fleet.Member(blue));   // standing on it, a centimetre off, facing east-ish
+        Assert.IsNotNull(route);
+        Assert.AreEqual(1, route.LegsAhead.Count, "the stop was reached at birth: the facing alone is ahead — " + route.AsPlan());
+        Assert.IsTrue(route.NextLeg.IsFacing);
+        Assert.AreEqual("turnRight", route.Order, "the centre lies south of the apex: a right turn from facing east, measured from where the body really faces");
+        Assert.AreEqual(Math.PI / 2 - 0.08, route.Amount, 0.02, "down to facing south, nothing else");
+        route.Arrive(route.NextLeg);
+        Assert.AreEqual("completed", route.Status, "faced: on its place");
+        Assert.IsTrue(copy.Reached);
+
+        // on its place AND facing the centre already: nothing to walk, nothing to turn — the route is complete at birth (13-oct-2026 lab: blue was
+        // asked `advance 0.02` on its facing leg), and the formation knows the golem stands on its place
+        var red = new Golem(body, "red");
+        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var redCopy = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), new Fleet("red"), "rank", "call-1");
+        var apex = redCopy.Figure.Places(1)[0];
+        var born = redCopy.Convene(new Pose(apex.X + 0.01, apex.Y - 0.01, -Math.PI / 2 + 0.02), redCopy.Fleet.Member(red));
+        Assert.AreEqual("completed", born.Status, born.AsPlan());
+        Assert.IsTrue(redCopy.Reached, "the host says Placed with no arrival");
+    }
+
+    // A MEMBER ALREADY ON ITS PLACE (13-oct-2026: a take again after a failure, one member standing where it must; the others waited for its
+    // line-up word for ever): it is no mover of the round, and placed implies lined up — the others set out without a word from it
+    [TestMethod]
+    public void AMemberStandingOnItsPlace_IsNoMover_AndPlacedCountsAsLinedUp_SoTheOthersSetOut()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var fleet = new Fleet("blue,red");
+        var red = new Golem(body, "red");
+        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var copy = red.Choreography.Form("pair", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank", "call-1");
+        var blue = fleet.Member("blue");
+        var me = fleet.Member("red");
+        // blue said it stands on the north-east corner, its place (6.5, 6.5), near enough; red stands far away
+        Assert.IsNull(copy.Stood(blue, new Position(6.4, 6.6)));
+        var route = copy.Convene(new Pose(2.0, 2.0, 0.0), me);
+        Assert.IsNotNull(route, "the round is complete: red's route opens");
+        route.Arrive(route.NextLeg);   // red's line-up turn
+        Assert.IsTrue(route.Waiting, "lined up, red waits for the movers");
+        copy.Aligned(me);
+        Assert.IsTrue(!route.Waiting, "blue is no mover — it stands on its place — so red's own line-up is the whole start: " + route.Order);
+
+        // and a member heard as PLACED counts as lined up: a round where the other stood away but arrived before lining up (its word of being there)
+        var later = red.Choreography.Form("pair-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank", "call-2");
+        Assert.IsNull(later.Stood(blue, new Position(9.0, 9.0)));
+        var again = later.Convene(new Pose(2.0, 2.0, 0.0), me);
+        again.Arrive(again.NextLeg);
+        later.Aligned(me);
+        Assert.IsTrue(again.Waiting, "blue moves and said nothing yet");
+        later.Heard(blue);
+        Assert.IsFalse(again.Waiting, "blue placed: as good as lined up — red sets out");
+    }
+
+    // THE RETAKE (propuesta 113, 13-oct-2026): a member's route to its place ended short — the formation opens it again from where the body
+    // stands, once; a second failure leaves it stranded for that golem, said in the read, and placed once the retake reaches, it is forgotten
+    [TestMethod]
+    public void ARouteToAPlaceThatEndedShort_IsTakenAgainFromWhereTheBodyStands_Once_ThenTheFormationIsStranded()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var formation = blue.Choreography.Form("tri-1", "triangle", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), new Fleet("blue"), "rank", "call-1");
+        var route = formation.Convene(new Pose(2.0, 2.0, 0.0), formation.Fleet.Member(blue));
+        Assert.IsNotNull(route, "a fleet of one: the round is complete at once");
+        Assert.IsFalse(formation.NeedsRetake, "underway: nothing ended short");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => formation.Retake(new Pose(2.5, 2.5, 0.0))).Message, "nothing to take again");
+
+        route.Fail("stalled: no progress for 3 s");
+        Assert.IsTrue(formation.NeedsRetake, "the route to the place failed");
+        var again = formation.Retake(new Pose(3.0, 3.0, 0.0));
+        Assert.AreNotSame(route, again, "a new route, from where the body stands");
+        Assert.IsTrue(again.IsPending());
+        StringAssert.EndsWith(again.AsPlan().Trim(), "face@5.5,6.65", "to the same place, ending facing the centre: " + again.AsPlan());
+        Assert.IsFalse(formation.Stranded);
+        Assert.IsFalse(formation.NeedsRetake, "underway again");
+
+        again.Fail("stalled: no progress for 3 s");
+        Assert.IsTrue(formation.NeedsRetake);
+        var same = formation.Retake(new Pose(3.2, 3.1, 0.0));
+        Assert.AreSame(again, same, "a second failure: no third route");
+        Assert.IsTrue(formation.Stranded, "the formation says it: the warden decides");
+        StringAssert.Contains(formation.StrandedWhy, "blue could not reach (5.5, 6.65) twice");
+        Assert.IsFalse(formation.NeedsRetake, "stranded: nothing more by itself");
+
+        // placed at last (the warden took it again and the body reached): the stranding is forgotten and a retake is to be had again
+        formation.Placed(formation.Fleet.Member(blue));
+        Assert.IsFalse(formation.Stranded, "placed: forgotten");
+        Assert.AreEqual("", formation.StrandedWhy);
+    }
+
+    // A GOLEM SENT ELSEWHERE, THEN THE STEP (13-oct-2026; Juan: "si le digo visit a blue estando en una posición de formación, cuando le doy
+    // rotate no se posiciona donde tiene que estar… me parece un error que no vuelva a su posición"): the step is planned from where the body IS,
+    // not from the vertex the formation had left it on — so the golem comes back to the figure, to the place the step gives it
+    [TestMethod]
+    public void AGolemSentElsewhere_ComesBackToItsNextPlace_WhenTheFormationSteps()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red");
+        var square = blue.Choreography.Form("sq", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "rank");
+        var first = square.Join(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
+        WalkToTheEnd(first);
+        square.Placed(square.Me);
+        Assert.AreEqual(6.5, blue.Standing.X, 1e-6, "blue on its place, the north-east corner");
+
+        var errand = blue.Visit(blue.Destination, new Position(2.0, 2.0));   // the operator sends it away from the figure
+        WalkToTheEnd(errand);
+        Assert.AreEqual(2.0, blue.Standing.X, 1e-6);
+
+        square.Queue(square.Figure.Rotate(Sense.Clockwise), "step-1");
+        var step = square.Heard(fleet.Member("red"));
+        Assert.IsNotNull(step);
+        Assert.AreEqual(2.0, step.Standing.X, 1e-6, "the step starts where the body is, not on the corner it left");
+        Assert.AreEqual(2.0, step.Standing.Y, 1e-6);
+        step.Arrive(step.NextLeg);   // the line-up turn, toward the south-east corner from (2, 2)
+        step.Go();
+        Assert.AreEqual("advance", step.Order);
+        Assert.AreEqual(Math.Sqrt(4.5 * 4.5 + 2.5 * 2.5), step.Amount, 1e-6, "the run from (2, 2) to the south-east corner (6.5, 4.5) — not the 2 m from the corner it had left");
+        WalkToTheEnd(step);
+        Assert.AreEqual(6.5, blue.Standing.X, 1e-6, "back on the figure, on the place the step gives it");
+        Assert.AreEqual(4.5, blue.Standing.Y, 1e-6);
+    }
+
     private static void WalkToTheEnd(GolemDomain.Routes.Route route)
     {
         for (int i = 0; i < 50 && route.IsPending(); i++)
@@ -385,7 +520,7 @@ public class FormationTests
         call.Placed(call.Me);
         call.Queue(call.Figure.Rotate(Sense.Clockwise), "step-1");
         Assert.AreSame(first, call.HeardAligned(fleet.Member("red"), 1), "red is lined up for round 1, a step blue has not opened yet: the word is kept in its round, nothing moves");
-        Assert.AreEqual(0, call.AlignedCount, "nothing said of round 0");
+        Assert.AreEqual(1, call.AlignedCount, "of round 0 only blue's own: placed implies lined up (13-oct-2026); red's word is round 1's");
         var step = call.Heard(fleet.Member("red"));   // red's placed word arrives after its line-up: the step opens
         Assert.AreNotSame(first, step);
         Assert.AreEqual(1, call.Round);

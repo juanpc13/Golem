@@ -75,27 +75,10 @@ public sealed class GolemSpeech
             // THE CALL (ajustes 73, 80, both policies): a golem that convened tells every peer where it stood — its act's expose, the position read from
             // the domain (expose takes any primitive expression). The peer that had not convened convenes itself and tells in turn; each
             // golem convenes once, so the word spreads with no loop. The once is per call, teller and peer.
-            // THE FORMATION TOLD (propuesta 104): the operator's form exposes the formation — its name, figure, centre, measure, orientation, fleet,
-            // policy and the stamp of the call — and every peer is told; the peer's own form (its uptake) carries no expose, so it spreads nothing
-            // further. The once is per stamp and peer: a formation told again under the same name is a new call.
-            string formed = string.Join("\n", peers.Select(p => $@"
-                tell FormedAs with @call, @shape, @atX, @atY, @length, @degrees, @crew, @policy, @nonce
-                    to {p}
-                    once 'formed-' + @nonce + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-formed")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Formed").One()
-                    .OnMatch("[_:Choreographies].Form(_, _, _, _, _, _, _, _) expose $call call, $shape shape, $atX atX, $atY atY, $length length, $degrees degrees, $crew crew, $policy policy, $nonce nonce;")
-                .Causation.Continue(formed);
-            string formedRings = string.Join("\n", peers.Select(p => $@"
-                tell FormedRingsAs with @call, @atX, @atY, @outerLength, @innerLength, @degrees, @crew, @innerCrew, @policy, @nonce
-                    to {p}
-                    once 'formed-' + @nonce + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-formed-rings")
-                .Cue().Company().WithSharedHydration()
-                .Seek("FormedRings").One()
-                    .OnMatch("[_:Choreographies].FormRings(_, _, _, _, _, _, _, _) expose $call call, $atX atX, $atY atY, $outerLength outerLength, $innerLength innerLength, $degrees degrees, $crew crew, $innerCrew innerCrew, $policy policy, $nonce nonce;")
-                .Causation.Continue(formedRings);
+            // NO FormedAs, FormedRingsAs, RotateTo since propuesta 112 (13-oct-2026; Juan: "ya no será el golem blue haciendo tell para pasarles la
+            // coreografía: cuando se cree la formación todos los golems sabrán cuál es la formación a la que pertenecen porque se mandó a crear"): the
+            // warden tells form, take and rotate to every golem of the fleet, one line on each tab; the words of the round (StoodFor, PlacedAt,
+            // AlignedAt) and the dissolution stay: lived facts between the members, never an operator's order relayed
             // A PLAY STAGED (propuesta 108, fase 2): the golem it was told stages it and every peer is told the title, the cast and the stamp;
             // a peer in the cast stages the same copy (UptakeStagedAs, no expose: one hop)
             string staged = string.Join("\n", peers.Select(p => $@"
@@ -140,15 +123,6 @@ public sealed class GolemSpeech
                 .Seek("Aligned").One()
                     .OnMatch("[_:Formation].Aligned(_) expose $who who, $call call, $nonce nonce, $round round;")
                 .Causation.Continue(aligned);
-            string rotate = string.Join("\n", peers.Select(p => $@"
-                tell RotateTo with @call, @sense, @ring, @stepId
-                    to {p}
-                    once 'rotate-' + @stepId + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-rotate")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Rotate").One()
-                    .OnMatch("[_:Formation].Queue(_, _) expose $call call, $sense turning, $ring orbit, $stepId step;")   // the figure's move queued in the formation (ajuste 84)
-                .Causation.Continue(rotate);
             string dissolved = string.Join("\n", peers.Select(p => $@"
                 tell Dissolved with @call
                     to {p}
@@ -195,20 +169,12 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeObstacleGone)
             .Told("StagedAs").With<string>("title").With<string>("star").With<string>("crew").With<string>("nonce")
                 .Command(GolemEmbodiment.UptakeStagedAs)
-            .Told("FormedAs").With<string>("call").With<string>("shape").With<double>("cx").With<double>("cy").With<double>("measureLength")
-                .With<double>("angle").With<string>("names").With<string>("by").With<string>("nonce")
-                .Command(GolemEmbodiment.UptakeFormedAs)
-            .Told("FormedRingsAs").With<string>("call").With<double>("cx").With<double>("cy").With<double>("outerRadius").With<double>("innerRadius")
-                .With<double>("angle").With<string>("names").With<string>("innerNames").With<string>("by").With<string>("nonce")
-                .Command(GolemEmbodiment.UptakeFormedRingsAs)
             .Told("StoodFor").With<string>("call").With<string>("nonce").With<string>("teller").With<double>("px").With<double>("py")
                 .Command(GolemEmbodiment.UptakeStoodFor)
             .Told("PlacedAt").With<string>("call").With<string>("who")
                 .Command(GolemEmbodiment.UptakePlacedAt)
             .Told("AlignedAt").With<string>("call").With<string>("who").With<int>("round")
                 .Command(GolemEmbodiment.UptakeAlignedAt)
-            .Told("RotateTo").With<string>("call").With<string>("sense").With<string>("ring").With<string>("stepId")
-                .Command(GolemEmbodiment.UptakeRotateTo)
             .Told("Dissolved").With<string>("call")
                 .Command(GolemEmbodiment.UptakeDissolved)
             .Start();

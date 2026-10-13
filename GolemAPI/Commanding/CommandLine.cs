@@ -51,6 +51,7 @@ public static class CommandLine
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
         new CommandHelp("forget", "forget x,y", "what stood there is gone: the golem forgets it, marks and all, and tells the peers", "forget 10.13,5.5"),
+        new CommandHelp("anchor", "anchor", "the golem takes where its body REALLY stands (telemetry) as where it stands — the scenario whose region holds it, a waking there, a plan underway decided again — without a reset and without moving anything; for when its belief drifted from the truth (13-oct-2026)", "anchor"),
         new CommandHelp("reset", "reset [--all]", "let go: every pending route abandoned, the body back on its mark; --all wipes the journal — the peers' too — and reboots reborn", "reset"),
         new CommandHelp("state", "state", "the board: the routes pending, the one underway and its next point, how the last one ended", "state"),
         new CommandHelp("route", "route", "the newest route: its way, the legs ahead, what it asks the body now", "route"),
@@ -260,6 +261,9 @@ public static class CommandLine
                 }
                 return new Command(named, with, verb, none, noOptions, "", marks);
             }
+            case "anchor":
+                if (args.Count > 0) throw new CommandSyntaxException($"anchor takes nothing more; found '{Head(string.Join(' ', args))}'");
+                return new Command(named, with, verb, none, noOptions, "");
             case "reset":
                 foreach (var a in args)
                     if (a.ToLowerInvariant() != "--all") throw new CommandSyntaxException($"reset takes no argument but the option --all; found '{Head(a)}'");
