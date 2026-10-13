@@ -567,6 +567,57 @@ public partial class MainWindow : Window
     }
 
     private Golem? journalOf;   // whose journal the pane follows now
+    // every entry received, so the pane can be drawn again with other kinds shown; a box per kind of entry, made as the kind first appears
+    private readonly List<(int Entry, string At, string Kind, string Text)> journalEntries = new();
+    private readonly Dictionary<string, CheckBox> journalKinds = new(StringComparer.Ordinal);
+
+    private bool JournalShows(string kind) => !journalKinds.TryGetValue(kind, out var box) || box.IsChecked != false;
+
+    private void JournalKindSeen(string kind)
+    {
+        if (journalKinds.ContainsKey(kind)) return;
+        var box = new CheckBox { Content = kind, IsChecked = true, FontSize = 11, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = $"show the entries of kind '{kind}'" };
+        box.Checked += (_, _) => RenderJournal();
+        box.Unchecked += (_, _) => RenderJournal();
+        journalKinds[kind] = box;
+        JournalKinds.Children.Add(box);
+    }
+
+    private static string JournalBlock((int Entry, string At, string Kind, string Text) e)
+    {
+        string body = e.Text.Contains('\n') ? Environment.NewLine + "    " + e.Text.Replace("\n", Environment.NewLine + "    ") : " " + e.Text;
+        return $"#{e.Entry} {e.At} {e.Kind}{body}{Environment.NewLine}";
+    }
+
+    private void RenderJournal()
+    {
+        var text = new System.Text.StringBuilder();
+        if (journalOf is { } g) text.Append($"— {g.Name}'s journal, live from its first entry (the definitions hidden) —{Environment.NewLine}");
+        foreach (var e in journalEntries) if (JournalShows(e.Kind)) text.Append(JournalBlock(e));
+        JournalBox.Text = text.ToString();
+        JournalBox.ScrollToEnd();
+    }
+
+    /// <summary>A script of the journal with its line breaks back: the engine keeps the canonical form on one line — this puts a statement per
+    /// line and indents by the braces, so an act reads as the template it came from. Quoted text is left alone.</summary>
+    internal static string PrettyScript(string script)
+    {
+        var sb = new System.Text.StringBuilder();
+        int depth = 0; bool inQuote = false; char quote = '\0'; bool lineStart = true;
+        void NewLine() { while (sb.Length > 0 && sb[^1] == ' ') sb.Length--; sb.Append('\n'); lineStart = true; }
+        foreach (char ch in script.Replace("\r", " ").Replace("\t", " "))
+        {
+            if (inQuote) { sb.Append(ch); if (ch == quote) inQuote = false; continue; }
+            if (ch == '\'' || ch == '"') { if (lineStart) { sb.Append(new string(' ', 4 * depth)); lineStart = false; } sb.Append(ch); inQuote = true; quote = ch; continue; }
+            if (ch == '\n' || ch == ' ') { if (!lineStart && sb.Length > 0 && sb[^1] != ' ') sb.Append(' '); continue; }
+            if (ch == '}') { depth = Math.Max(0, depth - 1); if (!lineStart) NewLine(); sb.Append(new string(' ', 4 * depth)).Append('}'); NewLine(); continue; }
+            if (lineStart) { sb.Append(new string(' ', 4 * depth)); lineStart = false; }
+            sb.Append(ch);
+            if (ch == '{') { depth++; NewLine(); }
+            else if (ch == ';') NewLine();
+        }
+        return sb.ToString().Trim('\n', ' ');
+    }
 
     private async void FollowJournal(Golem golem)
     {
@@ -574,8 +625,8 @@ public partial class MainWindow : Window
         var cts = journalFollow = new CancellationTokenSource();
         journalOf = golem;
         JournalTab.Header = $"journal of {golem.Name}";
-        JournalBox.Clear();
-        JournalBox.AppendText($"— {golem.Name}'s journal, live from its first entry (the definitions hidden) —{Environment.NewLine}");
+        journalEntries.Clear();
+        RenderJournal();
         try
         {
             using var wire = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
@@ -595,8 +646,10 @@ public partial class MainWindow : Window
                     string note = JsonWalk.String(e, "Note") ?? "";
                     if (kind == "command" && script.StartsWith("define action", StringComparison.Ordinal)) continue;   // the definitions, hidden like the panel did
                     string at = JsonWalk.String(e, "At") is string s && DateTime.TryParse(s, null, DateTimeStyles.RoundtripKind, out var t) ? t.ToLocalTime().ToString("HH:mm:ss") : "";
-                    JournalBox.AppendText($"#{JsonWalk.Number(e, "Entry")} {at} {kind,-8} {OneLine(script == "" ? note : script)}{Environment.NewLine}");
-                    JournalBox.ScrollToEnd();
+                    var entry = ((int)(JsonWalk.Number(e, "Entry") ?? 0), at, kind, script == "" ? note.Trim() : PrettyScript(script));
+                    journalEntries.Add(entry);
+                    JournalKindSeen(kind);
+                    if (JournalShows(kind)) { JournalBox.AppendText(JournalBlock(entry)); JournalBox.ScrollToEnd(); }
                 }
                 catch (JsonException) { }
             }

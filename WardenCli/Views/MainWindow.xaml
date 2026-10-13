@@ -167,7 +167,14 @@
                     <TextBox x:Name="LogBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
                 </TabItem>
                 <TabItem x:Name="JournalTab" Header="journal">
-                    <TextBox x:Name="JournalBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
+                    <!-- the scripts with their line breaks, and a box per kind of entry to hide it (13-oct-2026; Juan: "que se vean bien los scripts del
+                         journal con sus saltos de línea… y permitir esconder de cierto tipo") -->
+                    <DockPanel>
+                        <WrapPanel x:Name="JournalKinds" DockPanel.Dock="Top" Margin="6,3,6,2" VerticalAlignment="Center">
+                            <TextBlock Text="show:" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        </WrapPanel>
+                        <TextBox x:Name="JournalBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0" AcceptsReturn="True"/>
+                    </DockPanel>
                 </TabItem>
             </TabControl>
 
