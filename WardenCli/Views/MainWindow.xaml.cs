@@ -66,6 +66,9 @@ public partial class MainWindow : Window
         };
         golems.CollectionChanged += (_, _) => { Draw(); NoGolem.Visibility = golems.Count == 0 ? Visibility.Visible : Visibility.Collapsed; };
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
+        // THE JOURNAL TAB ITSELF starts the feed (13-oct-2026; Juan: "falta la parte de poder ver el journal, así como se hacía antes en el panel"): clicking
+        // the tab, not only View › Journal, follows the selected golem's journal from its first entry
+        JournalBox.IsVisibleChanged += (_, e) => { if (e.NewValue is true && Current is { } g && journalOf != g) FollowJournal(g); };
         DebuggerBody.SizeChanged += (_, _) => FitDebugger();
         ReadsBox.SizeChanged += (_, _) => FitDebugger();
         PreviewKeyDown += (_, e) =>
@@ -230,7 +233,7 @@ public partial class MainWindow : Window
     {
         Draw();
         _ = RefreshCurrentAsync();
-        if (journalFollow != null && GolemList.SelectedItem is Golem j) FollowJournal(j);
+        if ((journalFollow != null || JournalBox.IsVisible) && GolemList.SelectedItem is Golem j && journalOf != j) FollowJournal(j);
     }
 
     // ==================================================================
@@ -563,12 +566,16 @@ public partial class MainWindow : Window
         FollowJournal(g);
     }
 
+    private Golem? journalOf;   // whose journal the pane follows now
+
     private async void FollowJournal(Golem golem)
     {
         journalFollow?.Cancel();
         var cts = journalFollow = new CancellationTokenSource();
+        journalOf = golem;
         JournalTab.Header = $"journal of {golem.Name}";
         JournalBox.Clear();
+        JournalBox.AppendText($"— {golem.Name}'s journal, live from its first entry (the definitions hidden) —{Environment.NewLine}");
         try
         {
             using var wire = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
@@ -595,7 +602,7 @@ public partial class MainWindow : Window
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) when (ex is HttpRequestException or IOException) { JournalBox.AppendText($"— the journal's feed ended: {ex.Message}{Environment.NewLine}"); }
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { JournalBox.AppendText($"— the journal's feed ended: {ex.Message}{Environment.NewLine}"); if (journalOf == golem) journalOf = null; }
     }
 
     // ==================================================================
