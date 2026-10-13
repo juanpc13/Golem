@@ -215,4 +215,54 @@ public class ChoreographiesTests
         red.Choreography.Dissolve(again);
         Assert.AreEqual(0, red.Choreography.OverheardCount("tri"));
     }
+
+    // THE PROPELLER (propuesta 114, 13-oct-2026; Juan: "quiero una nueva formación de hélice y que cambien de posición al rotar"… "la hélice tiene
+    // que tener uno al centro también"): one golem at the centre, the others along blades out of it, the first north; six golems on three blades
+    // are the centre and two rungs (one tip left free); a step takes every golem on a blade to the NEXT BLADE at its own distance, and leaves the
+    // one at the centre where it stands, facing along the first blade
+    [TestMethod]
+    public void APropeller_HasOneAtTheCentre_AndAStepTurnsTheBladesRoundIt()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var cyan = new Golem(body, "cyan");
+        cyan.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,cyan,green,orange,red,yellow");
+        var propeller = cyan.Choreography.FormPropeller("prop", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 3, new Degrees(0.0), fleet, "rank", "s1");
+        var places = propeller.Figure.Places(6);
+        Assert.AreEqual(7, places.Count, "the centre and two rungs on three blades — one tip left free");
+        Assert.AreEqual(5.5, places[0].X, 1e-9, "the first place, the centre");
+        Assert.AreEqual(5.5, places[0].Y, 1e-9);
+        Assert.AreEqual(6.5, places[1].Y, 1e-9, "the hub's rung, the north blade");
+        Assert.AreEqual(8.5, places[4].Y, 1e-9, "the tips' rung, the north blade");
+        Assert.AreEqual(5.5 + 3.0 * Math.Cos(Math.PI * 210 / 180), places[5].X, 1e-9, "the second blade, 120° on, counter-clockwise");
+        Assert.AreEqual(3, propeller.Figure.Orbits(6).Count, "the centre, and every rung an orbit");
+        Assert.AreEqual(1.0, propeller.Figure.InnerMeters, 1e-9);
+        Assert.AreEqual(3, propeller.Figure.Arms);
+        Assert.AreEqual(8.5, new Propeller(new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 5, new Degrees(0.0)).Places(6)[1].Y, 1e-9, "one rung: at the tip");
+
+        // cyan (rank 1) holds the hub of the north blade; one step clockwise takes it to the hub of the blade before, the south-east one (330°)
+        var route = propeller.Join(new Pose(5.5, 6.4, 0.0), fleet.Member(cyan));
+        for (int i = 0; i < 50 && route.IsPending(); i++) { if (route.Waiting) route.Go(); route.Arrive(route.NextLeg); }
+        propeller.Placed(propeller.Me);
+        foreach (var other in new[] { "blue", "green", "orange", "red", "yellow" }) propeller.Heard(fleet.Member(other));
+        propeller.Queue(propeller.Figure.Rotate(Sense.Clockwise), "step-1");
+        var step = propeller.Step();
+        Assert.AreEqual(3, propeller.PlaceIndex, "cyan to the hub of the next blade clockwise");
+        for (int i = 0; i < 50 && step.IsPending(); i++) { if (step.Waiting) step.Go(); step.Arrive(step.NextLeg); }
+        Assert.AreEqual(5.5 + Math.Cos(Math.PI * 330 / 180), cyan.Standing.X, 1e-6, "on the south-east blade, still at the hub");
+        Assert.AreEqual(5.5 + Math.Sin(Math.PI * 330 / 180), cyan.Standing.Y, 1e-6);
+        Assert.AreEqual(1, propeller.Holders().Count(h => h.Index == 0 && h.Name == "blue"), "blue still holds the centre: no step moves it");
+
+        // blue (rank 0) takes the centre and faces along the first blade, north
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var blues = blue.Choreography.FormPropeller("prop", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 3, new Degrees(0.0), fleet, "rank", "s1");
+        var centre = blues.Join(new Pose(5.0, 5.0, 0.0), fleet.Member(blue));
+        for (int i = 0; i < 50 && centre.IsPending(); i++) { if (centre.Waiting) centre.Go(); centre.Arrive(centre.NextLeg); }
+        Assert.AreEqual(5.5, blue.Standing.X, 1e-6);
+        Assert.AreEqual(Math.PI / 2, blue.Standing.Heading, 1e-6, "facing along the first blade");
+
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Choreography.FormPropeller("bad", new Position(5.5, 5.5), new Meters(3.0), new Meters(3.5), 3, new Degrees(0.0), fleet, "rank")).Message, "hub");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Choreography.FormPropeller("bad", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 1, new Degrees(0.0), fleet, "rank")).Message, "from 2 to 12 blades");
+    }
 }

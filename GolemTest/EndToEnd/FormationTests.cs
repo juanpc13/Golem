@@ -496,6 +496,31 @@ public class FormationTests
         Assert.AreEqual(4.5, blue.Standing.Y, 1e-6);
     }
 
+    // EVERY COPY RECKONS ON THE SAME NUMBERS (13-oct-2026; lab: by distance, green's own copy held its word at full precision, the others as the
+    // tell carried it, to the millimetre; on a near tie green's copy gave green the place the others gave red): green and red stand a fraction of a
+    // millimetre apart in x, each nearer the east place at full precision — so, unrounded, each copy would give its own golem the east place
+    [TestMethod]
+    public void TwoCopiesByDistance_GiveThePlacesAlike_WhenTheWordsTravelToTheMillimetre()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var green = new Golem(body, "green");
+        green.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var red = new Golem(body, "red");
+        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("green,red");
+        var greens = green.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "g1");
+        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "r1");
+
+        greens.Convene(new Pose(5.5004, 8.0, 0.0), fleet.Member(green));
+        greens.Stood(fleet.Member(red), new Position(5.5, 8.0));        // red's word, as the tell carries it
+        reds.Convene(new Pose(5.5002, 8.0, 0.0), fleet.Member(red));
+        reds.Stood(fleet.Member(green), new Position(5.5, 8.0));        // green's word, as the tell carries it
+
+        string Table(Formation f) => string.Join(" ", f.Holders().OrderBy(h => h.Name).Select(h => $"{h.Name}@{h.Index}"));
+        Assert.AreEqual(Table(greens), Table(reds), "both copies share the places alike");
+        Assert.AreEqual("green@0 red@1", Table(greens), "a tie at the millimetre: by name, green first, the east place");
+    }
+
     private static void WalkToTheEnd(GolemDomain.Routes.Route route)
     {
         for (int i = 0; i < 50 && route.IsPending(); i++)

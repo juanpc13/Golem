@@ -37,6 +37,17 @@ internal abstract class Figure
     /// <summary>What says its size: a polygon's side, a circle's radius, a double ring's outer radius — what the formations read prints.</summary>
     internal abstract Units.Length Measure { get; }
 
+    /// <summary>Its INNER measure, in metres, when it has one (propuesta 114): a double ring's inner radius, a propeller's hub; 0 otherwise —
+    /// what the formations read prints so the console draws the figure the golem holds.</summary>
+    internal virtual double InnerMeters => 0.0;
+
+    /// <summary>Its ARMS, when it has some (propuesta 114): a propeller's blades; 0 otherwise.</summary>
+    internal virtual int Arms => 0;
+
+    /// <summary>What a body on that place faces once there (ajuste 79): the centre — but the propeller's centre faces its first blade
+    /// (propuesta 114: a body cannot face the point it stands on).</summary>
+    internal virtual Position Facing(Position place) => Center;
+
     /// <summary>The places of this figure for a fleet of that many bodies, in a fixed order.</summary>
     internal abstract IReadOnlyList<Position> Places(int count);
 
@@ -143,6 +154,8 @@ internal sealed class DoubleRing : Figure
     internal override string Name => "double ring";
 
     internal override Units.Length Measure => OuterRadius;
+
+    internal override double InnerMeters => InnerRadius.InMeters;
 
     /// <summary>Whether the place of that index is on the inner ring.</summary>
     internal bool IsInner(int index) => index >= OuterPlaces;
@@ -278,4 +291,72 @@ internal sealed class Pentagon : Polygon
     internal Pentagon(Position center, Units.Length side, Units.Angle turn) : base(center, side, turn) { }
     internal override string Name => "pentagon";
     protected override IReadOnlyList<double> Bearings => new[] { 90.0, 162.0, 234.0, 306.0, 18.0 };
+}
+
+/// <summary>THE PROPELLER (propuesta 114, 13-oct-2026; Juan: "quiero una nueva formación de hélice y que cambien de posición al rotar"… "la hélice
+/// tiene que tener uno al centro también"): ONE BODY AT THE CENTRE — the first place, an orbit of its own that no step moves, facing along the
+/// first blade — and BLADES out of it — the first north, like the triangle's apex, the rest evenly counter-clockwise, all turned by its
+/// orientation — from its HUB to its RADIUS (the tips); the other bodies along the blades, as many RUNGS on each as the fleet needs (one: at
+/// the tip; more: evenly from the hub to the tip). After the centre the places run BY RUNG — the hub's rung on every blade, then the next — so
+/// every rung is an ORBIT of one place per blade, and a step moves every orbit one place: every body on a blade to the NEXT BLADE at its own
+/// distance from the centre, the propeller turning one blade round the one that stays. Places left over stay free and turn with everybody.</summary>
+internal sealed class Propeller : Figure
+{
+    internal Units.Length Radius { get; }
+    internal Units.Length Hub { get; }
+    internal int Blades { get; }
+
+    internal Propeller(Position center, Units.Length radius, Units.Length hub, int blades, Units.Angle turn) : base(center, turn)
+    {
+        if (radius == null) throw new GolemDomainException("Propeller.Propeller: 'radius' was not given");
+        if (hub == null) throw new GolemDomainException("Propeller.Propeller: 'hub' was not given");
+        if (radius.InMeters <= 0) throw new GolemDomainException("a propeller needs a radius greater than zero");
+        if (hub.InMeters <= 0 || hub.InMeters >= radius.InMeters) throw new GolemDomainException("a propeller's hub is greater than zero and smaller than its radius");
+        if (blades < 2 || blades > 12) throw new GolemDomainException($"a propeller has from 2 to 12 blades, not {blades}");
+        Radius = radius;
+        Hub = hub;
+        Blades = blades;
+    }
+
+    internal override string Name => "propeller";
+
+    internal override Units.Length Measure => Radius;
+
+    internal override double InnerMeters => Hub.InMeters;
+
+    internal override int Arms => Blades;
+
+    /// <summary>How many bodies each blade carries for a fleet of that many: all but the one at the centre.</summary>
+    internal int Rungs(int count) => (count - 1 + Blades - 1) / Blades;
+
+    private double FirstBlade => 90.0 + Turn.InDegrees;
+
+    internal override IReadOnlyList<Position> Places(int count)
+    {
+        if (count < 1) throw new GolemDomainException("Propeller.Places: a propeller needs at least one body");
+        int rungs = Rungs(count);
+        var places = new List<Position> { Center };
+        for (int rung = 0; rung < rungs; rung++)
+        {
+            double reach = rungs == 1 ? Radius.InMeters : Hub.InMeters + (Radius.InMeters - Hub.InMeters) * rung / (rungs - 1);
+            for (int blade = 0; blade < Blades; blade++)
+                places.Add(Center.Along(AngleUtility.ToRadians(FirstBlade + 360.0 * blade / Blades), reach));
+        }
+        return places;
+    }
+
+    /// <summary>The centre an orbit of its own; every rung an orbit: one place on every blade, at one distance from the centre.</summary>
+    internal override IReadOnlyList<(int Start, int Count)> Orbits(int count) =>
+        new[] { (0, 1) }.Concat(Enumerable.Range(0, Rungs(count)).Select(rung => (1 + rung * Blades, Blades))).ToList();
+
+    /// <summary>A step: every body on a blade to the next blade, at its own distance — the blades run counter-clockwise, so clockwise is one
+    /// place down; the centre's orbit of one place leaves its body where it is.</summary>
+    internal override Move Rotate(Sense sense) => OnePlace(sense);
+
+    /// <summary>The centre faces along the first blade; every other place, the centre.</summary>
+    internal override Position Facing(Position place)
+    {
+        if (place == null) throw new GolemDomainException("Propeller.Facing: 'place' was not given");
+        return place.DistanceTo(Center) < 1e-6 ? Center.Along(AngleUtility.ToRadians(FirstBlade), 1.0) : Center;
+    }
 }

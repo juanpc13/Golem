@@ -59,4 +59,25 @@ public class PendingFormationsTests
         g.EnqueueAfter(l => l.StartsWith("take none"), "rotate none clockwise");
         Assert.AreEqual("rotate none clockwise", g.Lines().Last(), "no take to follow: at the end");
     }
+
+    // THE PROPELLER (propuesta 114): a form line of it on the tabs is a formation to send, its places the same as the golem's module lays them —
+    // by rung, the first blade north — and its form line written again with its hub and blades
+    [TestMethod]
+    public void APropellerLine_IsAFormationToSend_WithItsPlacesByRung()
+    {
+        var blue = new Golem { Name = "blue", Host = "localhost", Port = 8081, Script = "form prop-1 propeller --center 5.5,5.5 --radius 3 --inner-radius 1 --blades 3 --fleet blue,cyan,green,orange,red,yellow --by rank\ntake prop-1" };
+        var v = PendingFormations.Parse(new[] { blue }).Single();
+        Assert.AreEqual("propeller", v.Shape);
+        Assert.AreEqual(7, v.Spots.Count, "the centre and two rungs on three blades — one tip free");
+        Assert.AreEqual(5.5, v.Spots[0].Y, 1e-3, "the centre first");
+        Assert.AreEqual(5.5, v.Spots[1].X, 1e-3, "the hub's rung, the north blade");
+        Assert.AreEqual(6.5, v.Spots[1].Y, 1e-3);
+        Assert.AreEqual(8.5, v.Spots[4].Y, 1e-3, "the tips' rung, the north blade");
+        Assert.AreEqual("blue C", v.HoldersText.Split(" · ")[0], "blue, first of the names, holds the centre");
+        var figure = (WardenCli.Formations.Propeller)v.AsFigure()!;
+        Assert.AreEqual(1.0, figure.Hub, 1e-9);
+        Assert.AreEqual(3, figure.Blades);
+        Assert.AreEqual(3, figure.Orbits(6).Count, "the centre, and every rung an orbit");
+        StringAssert.Contains(v.FormLine(figure), "propeller --center 5.5,5.5 --radius 3 --inner-radius 1 --blades 3");
+    }
 }

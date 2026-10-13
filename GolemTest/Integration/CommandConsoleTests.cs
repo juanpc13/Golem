@@ -285,7 +285,10 @@ public class CommandConsoleTests
         Assert.IsTrue(taken.Ok, taken.Text);
         StringAssert.StartsWith(taken.Text, "route 1 · ", "a fleet of one: its own word completes the round, the route opens at once — " + taken.Text);
         StringAssert.Contains((await console.ExecuteAsync("route")).Text, "face@3.2,2.5", "straight to its place, facing the centre");
-        Assert.AreEqual("refused", (await console.ExecuteAsync("take ring-1")).Kind, "taken once: a golem convenes once");
+        // taken again: a golem convenes once — the second take is TAKEN, nothing written (13-oct-2026: a refusal let the console's queue run on)
+        var again = await console.ExecuteAsync("take ring-1");
+        Assert.AreEqual("done", again.Kind, again.Text);
+        StringAssert.Contains((await console.ExecuteAsync("state")).Text, "of 1 route(s)", "still its one route: the second take wrote nothing");
     }
 
     [TestMethod]

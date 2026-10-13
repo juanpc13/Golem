@@ -1,0 +1,6 @@
+use map open-floor
+form tri-right triangle --center 8,5.5 --side 3 --angle 0 --fleet yellow,orange,cyan --by rank
+take tri-right
+rotate tri-right clockwise
+rotate tri-right clockwise
+rotate tri-right clockwise

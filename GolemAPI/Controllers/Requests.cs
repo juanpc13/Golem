@@ -113,17 +113,24 @@ public sealed record ScenarioRequest(string Scenario)
 /// "radius"</c> the outer ring's, <c>"innerRadius"</c>, <c>"fleet"</c> the outer ring's golems, <c>"innerFleet"</c> the inner ring's. The fleet
 /// may be left out (this golem and every peer it can reach); the policy too (rank).</summary>
 public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side = null, double? Radius = null, double? InnerRadius = null,
-                                 double? Angle = null, List<string> Fleet = null, List<string> InnerFleet = null, string By = null)
+                                 double? Angle = null, List<string> Fleet = null, List<string> InnerFleet = null, string By = null, int? Blades = null)
 {
     public const string Shape = "{\"name\": \"square-2\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0, \"fleet\": [\"blue\", \"red\"], \"by\": \"rank\"} — a circle: \"radius\"; a double ring: \"figure\": \"double-ring\", \"radius\", \"innerRadius\", \"fleet\" (outer), \"innerFleet\"";
-    public static readonly string[] Figures = { "square", "pentagon", "triangle", "circle", "double-ring" };
+    public static readonly string[] Figures = { "square", "pentagon", "triangle", "circle", "double-ring", "propeller" };
 
     public string Kind => (Figure ?? "").Trim().ToLowerInvariant().Replace("double ring", "double-ring");
     public bool IsCircle => Kind == "circle";
     public bool IsRings => Kind == "double-ring";
+    public bool IsPropeller => Kind == "propeller";
 
-    /// <summary>What says its size: the side of a polygon, the radius of a circle, the outer radius of a double ring.</summary>
-    public double? Measure => IsCircle || IsRings ? Radius : Side;
+    /// <summary>What says its size: the side of a polygon, the radius of a circle, the outer radius of a double ring, a propeller's tips.</summary>
+    public double? Measure => IsCircle || IsRings || IsPropeller ? Radius : Side;
+
+    /// <summary>A propeller's hub (propuesta 114): told, or a third of its radius.</summary>
+    public double? Hub => IsPropeller ? InnerRadius ?? Radius / 3 : null;
+
+    /// <summary>A propeller's blades: told, or three.</summary>
+    public int BladeCount => Blades ?? 3;
 
     /// <summary>How the places are shared: by rank, the default, or by distance.</summary>
     public string Policy => string.IsNullOrWhiteSpace(By) ? "rank" : By.Trim().ToLowerInvariant();
@@ -131,10 +138,10 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
     public IEnumerable<string> Problems()
     {
         if (string.IsNullOrWhiteSpace(Name) || !System.Text.RegularExpressions.Regex.IsMatch(Name.Trim(), @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "the formation needs a name like square-2: " + Shape;
-        if (!Figures.Contains(Kind)) yield return "the figure is square, pentagon, triangle, circle or double-ring: " + Shape;
+        if (!Figures.Contains(Kind)) yield return "the figure is square, pentagon, triangle, circle, double-ring or propeller: " + Shape;
         if (Center == null) yield return "give the centre: " + Shape;
         else foreach (var p in Center.Problems()) yield return "centre: " + p;
-        if (IsCircle || IsRings)
+        if (IsCircle || IsRings || IsPropeller)
         {
             if (!Radius.HasValue || !double.IsFinite(Radius.Value) || Radius.Value <= 0) yield return $"a {Kind.Replace('-', ' ')}'s radius must be a number of metres greater than zero";
             if (Side.HasValue) yield return $"a {Kind.Replace('-', ' ')} is said by its radius, not a side";
@@ -151,11 +158,19 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
             if (InnerFleet == null || InnerFleet.Count == 0) yield return "a double ring needs the inner ring's golems: \"innerFleet\"";
             if (Fleet == null || Fleet.Count == 0) yield return "a double ring needs the outer ring's golems: \"fleet\"";
         }
-        else
+        else if (IsPropeller)
         {
-            if (InnerRadius.HasValue) yield return "only a double ring has an inner radius";
+            if (InnerRadius.HasValue && (!double.IsFinite(InnerRadius.Value) || InnerRadius.Value <= 0 || (Radius.HasValue && InnerRadius.Value >= Radius.Value)))
+                yield return "a propeller's hub (its inner radius) is metres greater than zero and smaller than its radius";
+            if (Blades.HasValue && (Blades.Value < 2 || Blades.Value > 12)) yield return "a propeller has from 2 to 12 blades";
             if (InnerFleet != null && InnerFleet.Count > 0) yield return "only a double ring has an inner fleet";
         }
+        else
+        {
+            if (InnerRadius.HasValue) yield return "only a double ring or a propeller has an inner radius";
+            if (InnerFleet != null && InnerFleet.Count > 0) yield return "only a double ring has an inner fleet";
+        }
+        if (Blades.HasValue && !IsPropeller) yield return "only a propeller has blades";
         if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
         if (Policy is not ("rank" or "distance")) yield return "the policy is \"rank\" or \"distance\"";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";

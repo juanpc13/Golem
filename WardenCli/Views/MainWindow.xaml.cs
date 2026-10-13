@@ -132,6 +132,7 @@ public partial class MainWindow : Window
         string shape = dialog.Figure == "double ring" ? "double-ring" : dialog.Figure;
         string centre = $"{Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}";
         string size = dialog.Figure == "double ring" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)}"
+                    : dialog.Figure == "propeller" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)} --blades {dialog.Blades}"
                     : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
         string fleet = $"--fleet {string.Join(",", dialog.Chosen)}" + (dialog.Figure == "double ring" ? $" --inner-fleet {string.Join(",", dialog.InnerChosen)}" : "");
         return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {dialog.Policy}";
@@ -608,6 +609,8 @@ public partial class MainWindow : Window
                     continue;
                 }
                 var started = DateTime.UtcNow;
+                string verbSent = line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+                int? routesBefore = Movers.Contains(verbSent) ? await GolemClient.RouteTotalAsync(golem, cts.Token) : null;
                 var reply = await GolemClient.SendAsync(golem, line, cts.Token);
                 golem.Sent++;
                 if (!reply.Ok)
@@ -620,12 +623,36 @@ public partial class MainWindow : Window
                 if (Movers.Contains(verb))
                 {
                     Log($"{golem.Name} › {line} — sent: {OneLine(reply.Text)}");
-                    bool finished = await WaitUntilDoneAsync(golem, cts.Token);
+                    var walk = verbSent == "take"
+                        ? await WaitForTheRoundAsync(golem, line.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "", cts.Token)
+                        : await WaitUntilDoneAsync(golem, cts.Token);
                     done++;
-                    var ending = await GolemClient.LastRouteAsync(golem, cts.Token);
-                    bool completed = finished && ending.Status == "completed";
-                    Log($"{golem.Name} › {(completed ? "✓" : "✗")} {line} {(completed ? "completed" : ending.Status == "" ? "ended" : ending.Status)}{(ending.Why == "" ? "" : " — " + ending.Why)} in {(DateTime.UtcNow - started).TotalSeconds:0.0} s ({done} of {total})");
-                    if (!completed) golem.Status = $"route {ending.Status}{(ending.Why == "" ? "" : ": " + ending.Why)}";
+                    if (walk == Walk.Unreachable) { Log($"{golem.Name} › stopped: the golem does not answer; the rest of the queue stays"); break; }
+                    if (walk == Walk.Cancelled) break;
+                    int? routesAfter = await GolemClient.RouteTotalAsync(golem, cts.Token);
+                    if (walk == Walk.NoRoute && routesBefore != null && routesAfter != null && routesAfter <= routesBefore)
+                    {
+                        // NO ROUTE OPENED (13-oct-2026; Juan, on a routine loaded on blue's tab alone: "se ven que sí se van consumiendo los comandos, pero no
+                        // se nota nada reflejado en el simulador" — the log said "rotate … completed in 8.1 s", the golem's OLD route read as this line's):
+                        // the line was taken, but nothing moves yet — say what it waits for, never a route that is not this line's
+                        string waits = verbSent switch
+                        {
+                            "take" => "still waiting for the fleet's words after three minutes: the route opens when every member of the formation took it — each needs its own form and take on its tab",
+                            "rotate" => "the step is queued: it opens when every member of the formation stands on its place",
+                            _ => "nothing to walk"
+                        };
+                        Log($"{golem.Name} › … {line} — no route opened in {(DateTime.UtcNow - started).TotalSeconds:0.0} s: {waits} ({done} of {total})");
+                        golem.Status = verbSent is "take" or "rotate" ? "waiting for the fleet" : "nothing to walk";
+                    }
+                    else
+                    {
+                        var ending = await GolemClient.LastRouteAsync(golem, cts.Token);
+                        bool completed = ending.Status == "completed";
+                        // a route that opened and ended at once, the body already there (a take on its own place): no walk, said so
+                        string at = walk == Walk.NoRoute && completed ? " at once — already there" : "";
+                        Log($"{golem.Name} › {(completed ? "✓" : "✗")} {line} {(completed ? "completed" : ending.Status == "" ? "ended" : ending.Status)}{at}{(ending.Why == "" ? "" : " — " + ending.Why)} in {(DateTime.UtcNow - started).TotalSeconds:0.0} s ({done} of {total})");
+                        if (!completed) golem.Status = $"route {ending.Status}{(ending.Why == "" ? "" : ": " + ending.Why)}";
+                    }
                 }
                 else
                 {
@@ -645,9 +672,34 @@ public partial class MainWindow : Window
         }
     }
 
+    // how the wait for a line's route ended: the route was walked to its end, none was pending within the grace, the golem stopped answering,
+    // or the queue was stopped
+    private enum Walk { Walked, NoRoute, Unreachable, Cancelled }
+
+    // A TAKE WAITS FOR ITS ROUND (13-oct-2026; lab, the marching hexagon: red's `use map` carried its body for 13 s, blue's take opened no route
+    // within the 8 s grace, and blue's queue ran on through the next two `form`s before the fleet had set out): the take is done when this golem's
+    // copy of the formation opened its route (the read's `routed`, the round complete) and nothing is pending — or when it is stranded; three
+    // minutes without the fleet's words, and the queue says so and goes on.
+    private async Task<Walk> WaitForTheRoundAsync(Golem golem, string name, CancellationToken ct)
+    {
+        var started = DateTime.UtcNow;
+        while (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(1000, ct);
+            int? pending = await GolemClient.PendingAsync(golem, ct);
+            if (pending == null) { golem.Status = "unreachable"; return Walk.Unreachable; }
+            var state = await GolemClient.FormationStateAsync(golem, name, ct);
+            if (state is { Stranded: true }) return Walk.Walked;   // its route ended short twice: the log says how it ended
+            if (state is { Routed: true } && pending == 0) return Walk.Walked;
+            golem.Status = pending > 0 ? $"busy: {pending} route(s) pending" : $"waiting for the fleet's words in {name}";
+            if ((DateTime.UtcNow - started).TotalMinutes > 3) return Walk.NoRoute;
+        }
+        return Walk.Cancelled;
+    }
+
     // the golem finished when nothing is pending; a route may take a moment to open (a choreography waits for the fleet's words), so a
-    // short grace is given for it to appear before "nothing pending" counts as done
-    private async Task<bool> WaitUntilDoneAsync(Golem golem, CancellationToken ct)
+    // short grace is given for it to appear before "nothing pending" counts — as NO ROUTE, never as a route done (13-oct-2026)
+    private async Task<Walk> WaitUntilDoneAsync(Golem golem, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         bool seenPending = false;
@@ -655,12 +707,12 @@ public partial class MainWindow : Window
         {
             await Task.Delay(1000, ct);
             int? pending = await GolemClient.PendingAsync(golem, ct);
-            if (pending == null) { golem.Status = "unreachable"; return false; }
+            if (pending == null) { golem.Status = "unreachable"; return Walk.Unreachable; }
             if (pending > 0) { seenPending = true; golem.Status = $"busy: {pending} route(s) pending"; continue; }
-            if (seenPending) return true;
-            if ((DateTime.UtcNow - started).TotalSeconds > 8) return false;
+            if (seenPending) return Walk.Walked;
+            if ((DateTime.UtcNow - started).TotalSeconds > 8) return Walk.NoRoute;
         }
-        return false;
+        return Walk.Cancelled;
     }
 
     // ==================================================================
@@ -1253,6 +1305,8 @@ public partial class MainWindow : Window
     // what the figure became, in the operator's words: its centre, its measure, its orientation
     private static string Shape(Figure figure) => figure is DoubleRing rings
         ? $"at {figure.Center}, diameters {Spot.Fmt(rings.OuterDiameter)} and {Spot.Fmt(rings.InnerDiameter)} m, {Spot.Fmt(figure.Angle)}°"
+        : figure is Propeller propeller
+        ? $"at {figure.Center}, {propeller.Blades} blades of {Spot.Fmt(propeller.Radius)} m, hub {Spot.Fmt(propeller.Hub)} m, {Spot.Fmt(figure.Angle)}°"
         : $"at {figure.Center}, {(figure is Circle ? "radius" : "side")} {Spot.Fmt(figure.Measure)} m, {Spot.Fmt(figure.Angle)}°";
 
     // the formation let go: reshaped if its figure changed — every golem the visit to its own vertex on its tab
@@ -1544,6 +1598,18 @@ public partial class MainWindow : Window
                 double r = radius * scale;
                 var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = filled ? fill : Brushes.Transparent };
                 Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); layer.Children.Add(ring);
+            }
+        }
+        else if (figure is Propeller propeller)
+        {
+            // THE PROPELLER (propuesta 114): its blades as strokes from the centre to the tips, its hub a faint ring
+            double hub = propeller.Hub * scale;
+            var ring = new Ellipse { Width = 2 * hub, Height = 2 * hub, Stroke = line, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 2, 2 }, Fill = fill };
+            Canvas.SetLeft(ring, centre.X - hub); Canvas.SetTop(ring, centre.Y - hub); layer.Children.Add(ring);
+            foreach (var tip in propeller.Tips())
+            {
+                var pt = Pixel(tip.X, tip.Y);
+                layer.Children.Add(new Line { X1 = centre.X, Y1 = centre.Y, X2 = pt.X, Y2 = pt.Y, Stroke = line, StrokeThickness = strong ? 5 : 3, StrokeDashArray = dash, Opacity = 0.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round });
             }
         }
         else if (vertices.Count >= 3)

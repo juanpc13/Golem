@@ -64,7 +64,7 @@ public abstract class Figure
     public Figure Oriented(double angle) => With(Center, Measure, angle);
 
     /// <summary>What the operator calls a vertex: its compass point from the centre (NE, N, NW…), the nearest of eight (propuesta 96).</summary>
-    public string Label(int index, int count)
+    public virtual string Label(int index, int count)
     {
         string[] points = { "E", "NE", "N", "NW", "W", "SW", "S", "SE" };
         double deg = ((Bearing(index, count) % 360) + 360) % 360;
@@ -78,10 +78,11 @@ public abstract class Figure
         "pentagon" => new Pentagon(center, measure),
         "triangle" => new Triangle(center, measure),
         "circle" => new Circle(center, measure),
-        _ => throw new ArgumentException($"no figure named '{name}': square, pentagon, triangle or circle"),
+        "propeller" => new Propeller(center, measure, measure / 3, 3),
+        _ => throw new ArgumentException($"no figure named '{name}': square, pentagon, triangle, circle or propeller"),
     };
 
-    public static readonly string[] Known = { "square", "pentagon", "triangle", "circle" };
+    public static readonly string[] Known = { "square", "pentagon", "triangle", "circle", "propeller" };
 
     protected Spot AtBearing(double degrees, double reach)
     {
@@ -267,4 +268,63 @@ public sealed class DoubleRing : Figure
 
     public override IReadOnlyList<(int Start, int Count)> Orbits(int count) => new[] { (0, OuterPlaces), (OuterPlaces, InnerPlaces) };
 
+}
+
+/// <summary>THE PROPELLER (propuesta 114, 13-oct-2026; Juan: "quiero una nueva formación de hélice y que cambien de posición al rotar"… "la hélice
+/// tiene que tener uno al centro también"): one golem at the CENTRE — the first place, an orbit of its own no step moves — and blades out of it,
+/// the first north, the rest counter-clockwise, turned by its orientation, from its HUB to its RADIUS (the tips); the others along them, as many
+/// rungs on each blade as the fleet needs (one: at the tip); after the centre the places run BY RUNG, the same order as the golem's module, so
+/// every rung is an orbit and a step takes every golem on a blade to the next blade at its own distance. Its measure is the radius; resized,
+/// the hub keeps its proportion.</summary>
+public sealed class Propeller : Figure
+{
+    public Propeller(Spot center, double radius, double hub, int blades, double angle = 0) : base(center, angle)
+    {
+        if (radius <= 0) throw new ArgumentException("a propeller needs a radius above zero");
+        if (hub <= 0 || hub >= radius) throw new ArgumentException("a propeller's hub is above zero and smaller than its radius");
+        if (blades < 2 || blades > 12) throw new ArgumentException("a propeller has from 2 to 12 blades");
+        Radius = radius;
+        Hub = hub;
+        Blades = blades;
+    }
+
+    public double Radius { get; }
+    public double Hub { get; }
+    public int Blades { get; }
+
+    public override string Name => "propeller";
+    public override double Measure => Radius;
+    public override double Reach => Radius;
+    public override double MeasureFor(double reach) => reach;
+    public override Figure With(Spot center, double measure, double angle) => new Propeller(center, measure, Hub * measure / Radius, Blades, angle);
+
+    /// <summary>How many golems each blade carries for a fleet of that many: all but the one at the centre.</summary>
+    public int Rungs(int count) => (count - 1 + Blades - 1) / Blades;
+
+    /// <summary>How far from the centre a rung lies: at the tip alone, else evenly from the hub to the tip.</summary>
+    public double RungReach(int rung, int rungs) => rungs == 1 ? Radius : Hub + (Radius - Hub) * rung / (rungs - 1);
+
+    /// <summary>Where the blade of that place points, from the centre (the centre itself: along the first blade).</summary>
+    public override double Bearing(int index, int count)
+    {
+        if (index < 0 || index >= 1 + Rungs(count) * Blades) throw new ArgumentException($"a propeller of {1 + Rungs(count) * Blades} places has no place {index}");
+        return index == 0 ? 90.0 + Angle : 90.0 + 360.0 * ((index - 1) % Blades) / Blades + Angle;
+    }
+
+    /// <summary>The centre is the centre; a blade's place, its compass point.</summary>
+    public override string Label(int index, int count) => index == 0 ? "C" : base.Label(index, count);
+
+    public override IReadOnlyList<Spot> Places(int count)
+    {
+        if (count < 1) throw new ArgumentException("a propeller needs at least one golem");
+        int rungs = Rungs(count);
+        return new[] { new Spot(Math.Round(Center.X, 3), Math.Round(Center.Y, 3)) }
+            .Concat(Enumerable.Range(0, rungs * Blades).Select(i => AtBearing(Bearing(i + 1, count), RungReach(i / Blades, rungs)))).ToList();
+    }
+
+    public override IReadOnlyList<(int Start, int Count)> Orbits(int count) =>
+        new[] { (0, 1) }.Concat(Enumerable.Range(0, Rungs(count)).Select(rung => (1 + rung * Blades, Blades))).ToList();
+
+    /// <summary>The tip of every blade, for drawing.</summary>
+    public IReadOnlyList<Spot> Tips() => Enumerable.Range(0, Blades).Select(b => AtBearing(90.0 + 360.0 * b / Blades + Angle, Radius)).ToList();
 }

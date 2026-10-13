@@ -16,7 +16,7 @@ namespace GolemDomain.Formations;
 /// </summary>
 internal sealed class Choreographies
 {
-    private static readonly string[] Known = { "square", "pentagon", "triangle", "circle", "double ring" };
+    private static readonly string[] Known = { "square", "pentagon", "triangle", "circle", "double ring", "propeller" };
     private readonly Golem golem;                        // the golem it was born with: it opens the route to a place (refused off the map or without room)
     private readonly List<Formation> formations = new();   // the formations the golem was told, by name, the dissolved ones among them (history)
     private readonly Dictionary<string, Dictionary<string, Position>> overheard = new();   // words of a round heard AHEAD of the formation they are about: name → who → where
@@ -46,6 +46,7 @@ internal sealed class Choreographies
             "triangle" => new Triangle(center, measure, turn),
             "circle" => new Circle(center, measure, turn),
             "double ring" or "double-ring" => throw new GolemDomainException("a double ring is said by its two radii and its two rings of golems: FormRings"),
+            "propeller" => throw new GolemDomainException("a propeller is said by its radius, its hub and its blades: FormPropeller"),
             _ => throw new GolemDomainException($"the golem knows no figure named '{name}': {string.Join(", ", Known)}")
         };
     }
@@ -100,6 +101,23 @@ internal sealed class Choreographies
         if (!fleet.IsDivided) throw new GolemDomainException("a double ring needs its fleet in two rings: Fleet(outer, inner)");
         var rings = new DoubleRing(center, outerRadius, innerRadius, fleet.Division, fleet.Count - fleet.Division, turn);
         return Keep(name, rings, fleet, by, stamp);
+    }
+
+    /// <summary>THE PROPELLER TOLD (propuesta 114) — <c>formation = g.Choreography.FormPropeller(@formationName, center, tip, hub, @blades, turn, fleet, @by, @stamp);</c>:
+    /// its blades from the hub to the tip, the fleet along them; a step turns it one blade.</summary>
+    internal Formation FormPropeller(string name, Position center, Units.Length radius, Units.Length hub, int blades, Units.Angle turn, Fleet fleet, string by) => FormPropeller(name, center, radius, hub, blades, turn, fleet, by, name);
+
+    internal Formation FormPropeller(string name, Position center, Units.Length radius, Units.Length hub, int blades, Units.Angle turn, Fleet fleet, string by, string stamp)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.FormPropeller: 'name' was not given");
+        if (center == null) throw new GolemDomainException("Choreographies.FormPropeller: 'center' was not given");
+        if (radius == null) throw new GolemDomainException("Choreographies.FormPropeller: 'radius' was not given");
+        if (hub == null) throw new GolemDomainException("Choreographies.FormPropeller: 'hub' was not given");
+        if (turn == null) throw new GolemDomainException("Choreographies.FormPropeller: 'turn' was not given");
+        if (fleet == null) throw new GolemDomainException("Choreographies.FormPropeller: 'fleet' was not given");
+        if (by == null) throw new GolemDomainException("Choreographies.FormPropeller: 'by' was not given");
+        if (fleet.IsDivided) throw new GolemDomainException("a fleet in two rings takes a double ring: FormRings");
+        return Keep(name, new Propeller(center, radius, hub, blades, turn), fleet, by, stamp);
     }
 
     private Formation Keep(string name, Figure figure, Fleet fleet, string by, string stamp)

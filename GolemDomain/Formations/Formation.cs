@@ -165,10 +165,10 @@ internal sealed class Formation
         if (member == null) throw new GolemDomainException("Formation.Join: 'member' was not given");
         MustBeFree(member);
         me = member;
-        stood[me.Name] = new Position(from.X, from.Y);
+        stood[me.Name] = Said(from);
         indices[me.Name] = member.Rank;
         place = Figure.Place(member);
-        route = golem.TakePlace(from, place, Figure.Center, Berths(), $"place {me.Rank + 1} of {me.Of} of the {Figure.Name} at ({Fmt(place.X)}, {Fmt(place.Y)})");
+        route = golem.TakePlace(from, place, Figure.Facing(place), Berths(), $"place {me.Rank + 1} of {me.Of} of the {Figure.Name} at ({Fmt(place.X)}, {Fmt(place.Y)})");
         return route;
     }
 
@@ -184,7 +184,7 @@ internal sealed class Formation
         if (!byDistance) golem.CheckPlace(Figure.Place(member), $"place {member.Rank + 1} of {member.Of} of the {Figure.Name}");   // known at once by rank: refused now, not after the fleet waited
         me = member;
         convenedFrom = from;
-        stood[me.Name] = new Position(from.X, from.Y);
+        stood[me.Name] = Said(from);
         if (byDistance) Retable();
         return IsComplete ? Open() : null;
     }
@@ -194,7 +194,7 @@ internal sealed class Formation
     private Route Open()
     {
         place = Figure.Places(Fleet.Count)[indices[me.Name]];
-        route = golem.TakePlace(convenedFrom, place, Figure.Center, Berths(), Where(place));
+        route = golem.TakePlace(convenedFrom, place, Figure.Facing(place), Berths(), Where(place));
         // the take moves everybody — except a member that said it STANDS ON ITS PLACE already (a take again after a failure, 13-oct-2026: its route is
         // nothing to walk, so it never lines up, and the others waited for its word for ever): the fleet sets out together once every body that moves
         // faces its place (propuesta 106)
@@ -202,6 +202,13 @@ internal sealed class Formation
         route.StartTogether();
         return route;
     }
+
+    /// <summary>A WORD AS IT TRAVELS (13-oct-2026; lab, the hexagon wheel by distance: green stood 1.7503 m from two places alike, its own copy
+    /// held its word at full precision while the other five held it as the tell carried it, to the millimetre — and green's copy gave green the
+    /// place the others gave red; both went to it, touched, and were stranded): every word of the round, this golem's own among them, is kept
+    /// to the MILLIMETRE, so every copy of the convocation reckons the law on the same numbers and a tie falls the same way in all of them.</summary>
+    private static Position Said(Position at) =>
+        new Position(Math.Round(at.X, 3, MidpointRounding.AwayFromZero), Math.Round(at.Y, 3, MidpointRounding.AwayFromZero));
 
     /// <summary>How near its place a member that said where it stands counts as standing ON it.</summary>
     internal const double OnPlaceTolerance = 0.3;
@@ -238,7 +245,7 @@ internal sealed class Formation
         if (me != null && peer.Name == me.Name) throw new GolemDomainException($"'{peer.Name}' is this golem: its own word is its Convene");
         if (!Fleet.Names.Contains(peer.Name)) throw new GolemDomainException($"'{peer.Name}' is not a member of the fleet of {Name}");
         if (Round > 0) return route;
-        stood[peer.Name] = new Position(at.X, at.Y);
+        stood[peer.Name] = Said(at);
         if (byDistance) Retable();
         if (me == null) return null;
         if (route == null) return IsComplete ? Open() : null;
@@ -255,7 +262,7 @@ internal sealed class Formation
         }
         if (route.IsPending()) route.Abandon($"{yieldedTo} took this place by distance: {me.Name} goes to ({Fmt(place.X)}, {Fmt(place.Y)})");   // waiting, lined up, the body stands: nothing to halt (propuesta 106)
         else placed.Remove(me.Name);              // it leaves the place it had reached
-        route = golem.TakePlace(golem.Destination, place, Figure.Center, Berths(), Where(place));   // from where the body is (13-oct-2026): the place it had reached, or wherever an errand took it since
+        route = golem.TakePlace(golem.Destination, place, Figure.Facing(place), Berths(), Where(place));   // from where the body is (13-oct-2026): the place it had reached, or wherever an errand took it since
         route.StartTogether();                    // the same round: the others' line-up words stay counted, so it sets out as soon as its own body is lined up
         yieldedTo = null;
         return route;
@@ -291,7 +298,7 @@ internal sealed class Formation
         retakes++;
         try
         {
-            route = golem.TakePlace(me, place, Figure.Center, Berths(), Where(place));
+            route = golem.TakePlace(me, place, Figure.Facing(place), Berths(), Where(place));
             route.StartTogether();                // the same round: it sets out as soon as its own body is lined up (propuesta 106)
         }
         catch (GolemDomainException ex)
@@ -307,7 +314,7 @@ internal sealed class Formation
         if (me == null) throw new GolemDomainException("Formation.Halted: 'me' was not given");
         if (route == null || !route.Yielding || !route.IsPending()) throw new GolemDomainException($"no route of {Name} yields its place: nothing to halt");
         route.Abandon($"{yieldedTo} took this place by distance: {this.me.Name} goes to ({Fmt(place.X)}, {Fmt(place.Y)})");
-        route = golem.TakePlace(me, place, Figure.Center, Berths(), Where(place));
+        route = golem.TakePlace(me, place, Figure.Facing(place), Berths(), Where(place));
         route.StartTogether();                    // the same round: it sets out as soon as its own body is lined up (propuesta 106)
         yieldedTo = null;
         return route;
@@ -416,7 +423,7 @@ internal sealed class Formation
         foreach (var name in indices.Keys.ToList())
         {
             int orbit = Figure.OrbitOf(indices[name], places.Count);
-            if (!move.Moves(orbit)) { staying.Add(name); continue; }
+            if (!move.Moves(orbit) || orbits[orbit].Count == 1) { staying.Add(name); continue; }   // an orbit of one place (a propeller's centre, propuesta 114) has nowhere to go: its body stays placed
             indices[name] = move.Next(indices[name], orbits[orbit].Start, orbits[orbit].Count);
         }
         placed.Clear();
@@ -427,7 +434,7 @@ internal sealed class Formation
         if (staying.Contains(me.Name)) return route;          // this golem does not move on this step: its route in place stands
         int next = indices[me.Name];
         place = places[next];
-        route = golem.TakePlace(golem.Destination, place, Figure.Center, Array.Empty<Peer>(), $"place {next + 1} of {places.Count} of the {Figure.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come; from where the body is, wherever an errand took it
+        route = golem.TakePlace(golem.Destination, place, Figure.Facing(place), Array.Empty<Peer>(), $"place {next + 1} of {places.Count} of the {Figure.Name}, {move.Name}, at ({Fmt(place.X)}, {Fmt(place.Y)})");   // in lockstep: no berths, the one ahead leaves as I come; from where the body is, wherever an errand took it
         route.StartTogether();                                // the body turns to face its next place, then stands until every mover is lined up (propuesta 106)
         return route;
     }

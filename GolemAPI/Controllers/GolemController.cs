@@ -78,6 +78,8 @@ public class GolemController : Controller
                                                     : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
         var center = (request.Center.X.Value, request.Center.Y.Value);
         string name = request.Name.Trim().ToLowerInvariant();
+        if (request.IsPropeller)
+            return Answered(displacer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy));
         if (request.IsRings)
             return Answered(displacer.FormRings(name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0,
                                                 fleet, request.InnerFleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList(), request.Policy));

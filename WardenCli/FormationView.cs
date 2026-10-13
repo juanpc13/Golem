@@ -20,12 +20,18 @@ public sealed class FormationView : INotifyPropertyChanged
 {
     public FormationView(string name, string shape, double centerX, double centerY, double measure, double degrees, string policy, string crew, int division,
                          int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots, int aligned = 0,
-                         bool stranded = false, string strandedWhy = "")
+                         bool stranded = false, string strandedWhy = "", double inner = 0, int arms = 0)
     {
+        Inner = inner; Arms = arms;
         Name = name; Shape = shape; CenterX = centerX; CenterY = centerY; Measure = measure; Degrees = degrees; Policy = policy; Crew = crew; Division = division;
         Places = places; Placed = placed; Queued = queued; Round = round; Mine = mine; Holders = holders; Spots = spots; Aligned = aligned;
         Stranded = stranded; StrandedWhy = strandedWhy;
     }
+
+    /// <summary>The figure's inner measure as the golem says it (propuesta 114): a propeller's hub, a double ring's inner radius; 0 otherwise.</summary>
+    public double Inner { get; }
+    /// <summary>A propeller's blades as the golem says them; 0 otherwise.</summary>
+    public int Arms { get; }
 
     /// <summary>This golem could not reach its place twice (propuesta 113): the formation waits for the warden — take again, move, dissolve.</summary>
     public bool Stranded { get; }
@@ -94,6 +100,7 @@ public sealed class FormationView : INotifyPropertyChanged
     public Figure? Projected => draft ?? AsFigure();
 
     public bool IsDoubleRing => Shape == "double ring";
+    public bool IsPropeller => Shape == "propeller";
     public IReadOnlyList<string> CrewNames => Crew.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(n => n.Trim()).ToList();
     public int CrewCount => CrewNames.Count;
     public string? HolderOf(int index) => Holders.FirstOrDefault(h => h.Index == index)?.Name;
@@ -113,7 +120,7 @@ public sealed class FormationView : INotifyPropertyChanged
             return IsDoubleRing ? $"outer: {Of(0, Division)} — inner: {Of(Division, Places - Division)}" : Of(0, Places);
         }
     }
-    public string Describe() => $"{Name} · {Shape} at {CenterText}, {(IsDoubleRing || Shape == "circle" ? "radius" : "side")} {N(Measure)} m, {N(Degrees)}°, by {Policy}: {HoldersText}";
+    public string Describe() => $"{Name} · {Shape} at {CenterText}, {(IsDoubleRing || IsPropeller || Shape == "circle" ? "radius" : "side")} {N(Measure)} m, {N(Degrees)}°, by {Policy}: {HoldersText}";
 
     /// <summary>The geometry the console draws and grips — built from what the golem said: the figure of that kind, centre, size and
     /// orientation; a double ring with its inner radius read from its spots. Null when the shape is unknown to the console.</summary>
@@ -128,6 +135,8 @@ public sealed class FormationView : INotifyPropertyChanged
                 double inner = Spots.Count > outer ? new Spot(Spots[outer].X, Spots[outer].Y).DistanceTo(centre) : Measure / 2;
                 return new DoubleRing(centre, Measure, Math.Max(0.1, Math.Round(inner, 3)), outer, Math.Max(1, Places - outer), Degrees);
             }
+            if (IsPropeller)
+                return new Propeller(new Spot(CenterX, CenterY), Measure, Inner > 0 && Inner < Measure ? Inner : Measure / 3, Arms >= 2 ? Arms : 3, Degrees);
             return Figure.Named(Shape, new Spot(CenterX, CenterY), Measure).Oriented(Degrees);
         }
         catch (ArgumentException) { return null; }
@@ -147,6 +156,7 @@ public sealed class FormationView : INotifyPropertyChanged
     {
         string size = figure is DoubleRing rings
             ? $"--radius {N(rings.OuterRadius)} --inner-radius {N(rings.InnerRadius)}"
+            : figure is Propeller propeller ? $"--radius {N(propeller.Radius)} --inner-radius {N(propeller.Hub)} --blades {propeller.Blades}"
             : figure is Circle ? $"--radius {N(figure.Measure)}" : $"--side {N(figure.Measure)}";
         string shape = figure is DoubleRing ? "double-ring" : figure.Name;
         return $"form {Name} {shape} --center {figure.Center} {size} --angle {N(figure.Angle)} {FleetOptions()} --by {Policy}";
@@ -166,7 +176,7 @@ public sealed class FormationView : INotifyPropertyChanged
                 foreach (var sp in ss.EnumerateArray()) spots.Add((Num(sp, "x"), Num(sp, "y")));
             list.Add(new FormationView(Str(f, "called"), Str(f, "shape"), Num(f, "atX"), Num(f, "atY"), Num(f, "length"), Num(f, "degrees"), Str(f, "policy"), Str(f, "crew"),
                                        (int)Num(f, "division"), (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned"),
-                                       f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True, Str(f, "strandedWhy")));
+                                       f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True, Str(f, "strandedWhy"), Num(f, "inner"), (int)Num(f, "arms")));
         }
         return list;
     }

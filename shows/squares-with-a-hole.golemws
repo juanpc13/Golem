@@ -1,0 +1,42 @@
+{
+ "Kind": "golem workspace",
+ "Version": 3,
+ "Golems": [
+  {
+   "Name": "blue",
+   "Host": "localhost",
+   "Port": 8081,
+   "Script": "use map open-floor\nform sq-left square --center 3,5.5 --side 3 --angle 0 --fleet blue,green,red --by distance\ntake sq-left\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync"
+  },
+  {
+   "Name": "red",
+   "Host": "localhost",
+   "Port": 8082,
+   "Script": "use map open-floor\nform sq-left square --center 3,5.5 --side 3 --angle 0 --fleet blue,green,red --by distance\ntake sq-left\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync"
+  },
+  {
+   "Name": "green",
+   "Host": "localhost",
+   "Port": 8083,
+   "Script": "use map open-floor\nform sq-left square --center 3,5.5 --side 3 --angle 0 --fleet blue,green,red --by distance\ntake sq-left\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync\nrotate sq-left clockwise\n@sync"
+  },
+  {
+   "Name": "yellow",
+   "Host": "localhost",
+   "Port": 8084,
+   "Script": "use map open-floor\nform sq-right square --center 8,5.5 --side 3 --angle 0 --fleet cyan,orange,yellow --by distance\ntake sq-right\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync"
+  },
+  {
+   "Name": "orange",
+   "Host": "localhost",
+   "Port": 8085,
+   "Script": "use map open-floor\nform sq-right square --center 8,5.5 --side 3 --angle 0 --fleet cyan,orange,yellow --by distance\ntake sq-right\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync"
+  },
+  {
+   "Name": "cyan",
+   "Host": "localhost",
+   "Port": 8086,
+   "Script": "use map open-floor\nform sq-right square --center 8,5.5 --side 3 --angle 0 --fleet cyan,orange,yellow --by distance\ntake sq-right\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync\nrotate sq-right counterclockwise\n@sync"
+  }
+ ]
+}

@@ -15,8 +15,10 @@ public partial class FormationDialog : Window
     public double CenterY { get; private set; }
     /// <summary>The side of a polygon, the radius of a circle, the OUTER radius of a double ring.</summary>
     public double Measure { get; private set; }
-    /// <summary>The inner radius of a double ring.</summary>
+    /// <summary>The inner radius of a double ring, a propeller's hub.</summary>
     public double InnerRadius { get; private set; }
+    /// <summary>A propeller's blades (propuesta 114).</summary>
+    public int Blades { get; private set; } = 3;
     /// <summary>rank or distance.</summary>
     public string Policy { get; private set; } = "rank";
     /// <summary>The golems chosen — the outer ring's, for a double ring.</summary>
@@ -48,6 +50,11 @@ public partial class FormationDialog : Window
         CenterBox.Text = formation.CenterText;
         MeasureBox.Text = formation.Measure.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         if (formation.IsDoubleRing && formation.AsFigure() is DoubleRing rings) InnerBox.Text = rings.InnerRadius.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        if (formation.IsPropeller && formation.AsFigure() is Propeller propeller)
+        {
+            InnerBox.Text = propeller.Hub.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            BladesBox.Text = propeller.Blades.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         ByRankBox.IsChecked = formation.Policy != "distance";
         var names = formation.CrewNames;
         var outer = formation.IsDoubleRing && formation.Division > 0 ? names.Take(formation.Division).ToList() : names.ToList();
@@ -62,8 +69,13 @@ public partial class FormationDialog : Window
     {
         if (MeasureBox == null) return;   // the first radio is checked while the window is still being built
         bool rings = Picked == "double ring";
-        MeasureLabel.Text = Picked switch { "circle" => "radius", "double ring" => "outer radius", _ => "side" };
-        InnerLabel.Visibility = InnerBox.Visibility = OuterHeader.Visibility = rings ? Visibility.Visible : Visibility.Collapsed;
+        bool propeller = Picked == "propeller";
+        MeasureLabel.Text = Picked switch { "circle" => "radius", "double ring" => "outer radius", "propeller" => "radius (the tips)", _ => "side" };
+        InnerLabel.Text = propeller ? "hub radius" : "inner radius";
+        InnerLabel.Visibility = InnerBox.Visibility = rings || propeller ? Visibility.Visible : Visibility.Collapsed;
+        OuterHeader.Visibility = rings ? Visibility.Visible : Visibility.Collapsed;
+        BladesPanel.Visibility = propeller ? Visibility.Visible : Visibility.Collapsed;
+        if (propeller && MeasureBox.Text == "2.0") MeasureBox.Text = "3.0";
         InnerColumn.Width = rings ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         GolemsLabel.Text = rings ? "golems of each ring" : "golems of the fleet";
         if (rings)
@@ -105,6 +117,15 @@ public partial class FormationDialog : Window
             if (both.Count > 0) { Problem.Text = $"a golem rides one ring: {string.Join(", ", both)} on both"; return; }
             InnerRadius = inner;
             InnerChosen = InnerGolemsBox.SelectedItems.Cast<string>().ToList();
+        }
+        if (Figure == "propeller")
+        {
+            if (!double.TryParse(InnerBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double hub) || hub <= 0 || hub >= measure)
+            { Problem.Text = "the hub radius is above zero and smaller than the radius"; return; }
+            if (!int.TryParse(BladesBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int blades) || blades < 2 || blades > 12)
+            { Problem.Text = "a propeller has from 2 to 12 blades"; return; }
+            InnerRadius = hub;
+            Blades = blades;
         }
         Policy = ByRankBox.IsChecked == true ? "rank" : "distance";
         CenterX = cx; CenterY = cy; Measure = measure;

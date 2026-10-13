@@ -132,9 +132,47 @@ public sealed class Displacer
                     }
                 ";
 
+    private const string FormPropellerScript = @"
+                    {
+                        center = Position(@cx, @cy);
+                        tip = Meters(@tipRadius);
+                        hub = Meters(@hubRadius);
+                        turn = Degrees(@angle);
+                        fleet = Fleet(@names);
+                        formation = g.Choreography.FormPropeller(@formationName, center, tip, hub, @blades, turn, fleet, @by, @stamp);
+                        print formation.Name 'called', formation.Figure.Name 'shape', formation.Figure.Center.X 'atX', formation.Figure.Center.Y 'atY',
+                              formation.Figure.Measure.InMeters 'length', formation.Figure.Turn.InDegrees 'degrees', formation.Policy 'policy',
+                              fleet.Count 'crew', formation.PlaceCount 'count';
+                        foreach (holders in formation.Holders()) {
+                            print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
+                        }
+                    }
+                ";
+
     private const string TakeCheck = @"
                     Check(g.KnowsWhereItStands) Error 'the golem does not know yet where its body stands: it wakes on its mark first';
                     Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name: form it first';
+                ";
+
+    // TAKEN ALREADY (13-oct-2026; lab, the marching hexagon: red heard blue's word 13 ms after forming the march and, as a hearer does (ajuste 80),
+    // convened by itself; its own take that followed was REFUSED — "already took its place" — and the console's queue, taking a refusal for the end
+    // of the line, went on at once to the next `form`, which made the march again under the fleet's feet): the take asks first whether this golem
+    // already spoke in that formation, and if so it is taken — nothing written, the route (or the round's wait) is the one its word opened.
+    private const string TakenAlready = @"
+                    {
+                        if (g.Choreography.HasFormation(@formationName)) {
+                            formation = g.Choreography.Find(@formationName);
+                            fleet = formation.Fleet;
+                            if (fleet.Has(g)) {
+                                me = fleet.Member(g);
+                                print formation.Knows(me) 'spoke', formation.StoodCount 'stood', fleet.Count 'of';
+                            } else {
+                                print false 'spoke';
+                            }
+                        } else {
+                            print false 'spoke';
+                        }
+                    }
                 ";
 
     // THE TAKE: this golem's word into the formation (Convene, ajuste 81); the route opens with the word that completes the round — this one
@@ -240,6 +278,30 @@ public sealed class Displacer
         catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
     }
 
+    /// <summary>A PROPELLER TOLD (propuesta 114): its tip, its hub and its blades; the fleet along them, a step turns it one blade.</summary>
+    public Answer FormPropeller(string name, (double X, double Y) center, double radius, double hub, int blades, double angle, IReadOnlyList<string> fleet, string policy)
+    {
+        string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        try
+        {
+            return Answer.Of(robot.Actor.Using(FormCheck, FormPropellerScript)
+                .WithParameters(p => {
+                    p["formationName", typeof(string)] = name;
+                    p["cx", typeof(double)] = Resolution.Metres(center.X);
+                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
+                    p["tipRadius", typeof(double)] = Resolution.Metres(radius);   // never @tip / @hub: the script's locals are named so
+                    p["hubRadius", typeof(double)] = Resolution.Metres(hub);
+                    p["blades", typeof(int)] = blades;
+                    p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
+                    p["names", typeof(string)] = string.Join(",", fleet);
+                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
+                    p["stamp", typeof(string)] = stamp;
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
     /// <summary>A DOUBLE RING TOLD (propuesta 104): the outer ring's radius and golems, the inner ring's radius and golems.</summary>
     public Answer FormRings(string name, (double X, double Y) center, double outerRadius, double innerRadius, double angle, IReadOnlyList<string> outer, IReadOnlyList<string> inner, string policy)
     {
@@ -273,6 +335,12 @@ public sealed class Displacer
     {
         try
         {
+            using (var taken = JsonDocument.Parse(robot.Actor.Using(TakenAlready).WithParameters(p => { p["formationName", typeof(string)] = name; }).PerformQuery()))
+                if (taken.RootElement.TryGetProperty("spoke", out var spoke) && spoke.ValueKind == JsonValueKind.True)
+                {
+                    robot.Note($"take {name}: already taken — it convened when it heard a peer's word; nothing written");
+                    return Answer.Of(taken.RootElement.GetRawText());
+                }
             var answer = Answer.Of(robot.Actor.Using(TakeCheck, TakeFormation)
                 .WithParameters(p => { p["formationName", typeof(string)] = name; })
                 .PerformCheckThenCommand());

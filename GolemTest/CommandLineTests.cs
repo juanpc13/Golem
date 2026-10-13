@@ -118,7 +118,15 @@ public class CommandLineTests
         Assert.AreEqual((5.5, 5.5), form.Points[0]); Assert.AreEqual("2", form.Values["side"]); Assert.AreEqual("45", form.Values["angle"]);
         Assert.AreEqual("Blue,red", form.Values["fleet"]); Assert.AreEqual("distance", form.Values["by"]);
         Assert.IsFalse(CommandLine.Parse("form p pentagon --center 5,5 --side 1.5").Values.ContainsKey("fleet"), "no fleet said: this golem and every peer");
-        StringAssert.Contains(Refused("form square-1 hexagon --center 5,5 --side 1"), "form: the figure is square, pentagon, triangle, circle or double-ring");
+        StringAssert.Contains(Refused("form square-1 hexagon --center 5,5 --side 1"), "form: the figure is square, pentagon, triangle, circle, double-ring or propeller");
+        // the propeller (propuesta 114): its tips by --radius, its hub and its blades told or left to their defaults
+        var propeller = CommandLine.Parse("form prop-1 propeller --center 5.5,5.5 --radius 3 --inner-radius 1 --blades 3 --fleet blue,red,green,yellow,orange,cyan");
+        Assert.AreEqual("propeller", propeller.Values["figure"]); Assert.AreEqual("1", propeller.Values["inner-radius"]); Assert.AreEqual("3", propeller.Values["blades"]);
+        Assert.AreEqual("propeller", CommandLine.Parse("form prop-2 propeller --center 5.5,5.5 --radius 3").Values["figure"], "hub and blades left to their defaults");
+        StringAssert.Contains(Refused("form prop-1 propeller --center 5.5,5.5 --radius 3 --blades 1"), "--blades expects a whole number from 2 to 12");
+        StringAssert.Contains(Refused("form prop-1 propeller --center 5.5,5.5 --radius 3 --inner-radius 4"), "hub");
+        StringAssert.Contains(Refused("form prop-1 propeller --center 5.5,5.5 --side 3"), "is said by its --radius");
+        StringAssert.Contains(Refused("form sq square --center 5.5,5.5 --side 3 --blades 3"), "only a propeller has --blades");
         StringAssert.Contains(Refused("form square-1 square --side 2"), "expected --center x,y and --side s");
         StringAssert.Contains(Refused("form square-1 square --center 5,5 --side 2 --angle north"), "--angle expects degrees");
         StringAssert.Contains(Refused("form t triangle --center 5,5 --side 2 --places 6"), "--places is gone (propuesta 104)");
@@ -131,7 +139,7 @@ public class CommandLineTests
         Assert.AreEqual("double-ring", rings.Values["figure"]); Assert.AreEqual("1.2", rings.Values["inner-radius"]); Assert.AreEqual("orange,red,yellow", rings.Values["inner-fleet"]);
         StringAssert.Contains(Refused("form rings-1 double-ring --center 5.5,5.5 --radius 3 --fleet blue --inner-fleet red"), "a double ring needs --inner-radius r");
         StringAssert.Contains(Refused("form rings-1 double-ring --center 5.5,5.5 --radius 3 --inner-radius 1"), "needs --fleet a,b (the outer ring's golems) and --inner-fleet");
-        StringAssert.Contains(Refused("form s square --center 5,5 --side 2 --inner-fleet red"), "only a double ring has an inner ring");
+        StringAssert.Contains(Refused("form s square --center 5,5 --side 2 --inner-fleet red"), "only a double ring or a propeller has an inner radius");
         // the formation taken: its name alone — who goes where is the golem's (Juan: "lo que teníamos malo era --place 0")
         var take = CommandLine.Parse("take Square-2");
         Assert.AreEqual("take", take.Verb); Assert.AreEqual("square-2", take.Text);

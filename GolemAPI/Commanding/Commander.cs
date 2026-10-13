@@ -138,12 +138,15 @@ public sealed class Commander
         var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
                                       Metres("side"), Metres("radius"), Metres("inner-radius"), Metres("angle") ?? 0.0,
                                       FleetOf(command).ToList(), command.Values.ContainsKey("inner-fleet") ? FleetOf(command, "inner-fleet").ToList() : null,
-                                      command.Values.TryGetValue("by", out var by) ? by : null);
+                                      command.Values.TryGetValue("by", out var by) ? by : null,
+                                      command.Values.TryGetValue("blades", out var blades) ? int.Parse(blades, CultureInfo.InvariantCulture) : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
-        var answer = request.IsRings
+        var answer = request.IsPropeller
+            ? displacer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy)
+            : request.IsRings
             ? displacer.FormRings(request.Name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0, request.Fleet, request.InnerFleet, request.Policy)
             : displacer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy);
         if (!answer.Ok) return Reply.Refused(answer.Refused);

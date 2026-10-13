@@ -172,6 +172,28 @@ public static class GolemClient
         return (JsonWalk.String(reply.Json.Value, "status") ?? "", JsonWalk.String(reply.Json.Value, "why") ?? "");
     }
 
+    /// <summary>How many routes the golem was ever given — `state`'s total, read by the queue before a line that may open one, so it can tell a
+    /// route that opened and ended at once (the body already there) from no route at all (a take waiting for the fleet, a step queued).</summary>
+    public static async Task<int?> RouteTotalAsync(Golem golem, CancellationToken ct = default)
+    {
+        var reply = await SendAsync(golem, "state", ct);
+        if (!reply.Ok || reply.Json == null) return null;
+        double? total = JsonWalk.Number(reply.Json.Value, "total");
+        return total == null ? null : (int)total.Value;
+    }
+
+    /// <summary>Where this golem's copy of a formation stands for the queue (13-oct-2026): whether its round opened its route yet, and whether it
+    /// is stranded — `formations`, the formation of that name. Null when the golem does not answer or was told no such formation.</summary>
+    public static async Task<(bool Routed, bool Stranded)?> FormationStateAsync(Golem golem, string name, CancellationToken ct = default)
+    {
+        var reply = await SendAsync(golem, "formations", ct);
+        if (!reply.Ok || reply.Json == null || JsonWalk.Find(reply.Json.Value, "told") is not { ValueKind: JsonValueKind.Array } told) return null;
+        foreach (var f in told.EnumerateArray())
+            if (f.TryGetProperty("called", out var called) && string.Equals(called.GetString(), name, StringComparison.OrdinalIgnoreCase))
+                return (f.TryGetProperty("routed", out var r) && r.ValueKind == JsonValueKind.True, f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True);
+        return null;
+    }
+
     /// <summary>How many routes the golem still has pending — `state`, read for the queue: the next command goes when it is zero.</summary>
     public static async Task<int?> PendingAsync(Golem golem, CancellationToken ct = default)
     {

@@ -14,7 +14,7 @@ namespace WardenCli;
 /// </summary>
 public static class PendingFormations
 {
-    private static readonly Regex FormLine = new(@"^\s*form\s+(?<name>[A-Za-z_][A-Za-z0-9_-]*)\s+(?<figure>square|pentagon|triangle|circle|double-ring)\b(?<opts>.*)$",
+    private static readonly Regex FormLine = new(@"^\s*form\s+(?<name>[A-Za-z_][A-Za-z0-9_-]*)\s+(?<figure>square|pentagon|triangle|circle|double-ring|propeller)\b(?<opts>.*)$",
                                                  RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex Option = new(@"--(?<key>[a-z-]+)\s+(?<value>\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -55,7 +55,8 @@ public static class PendingFormations
         var xy = centre.Split(',');
         if (xy.Length != 2 || !double.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double cx) || !double.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double cy)) return null;
         bool rings = figure == "double-ring";
-        bool round = rings || figure == "circle";
+        bool propeller = figure == "propeller";
+        bool round = rings || propeller || figure == "circle";
         double? measure = round ? Num("radius") : Num("side");
         if (measure is not > 0) return null;
         double angle = Num("angle") ?? 0.0;
@@ -74,6 +75,8 @@ public static class PendingFormations
         {
             shape = rings
                 ? new DoubleRing(new Spot(cx, cy), measure.Value, Num("inner-radius") ?? measure.Value / 2, outer.Count, Math.Max(1, inner.Count), angle)
+                : propeller
+                ? new Propeller(new Spot(cx, cy), measure.Value, Num("inner-radius") ?? measure.Value / 3, (int)(Num("blades") ?? 3), angle)
                 : Figure.Named(figure, new Spot(cx, cy), measure.Value).Oriented(angle);
         }
         catch (ArgumentException) { return null; }
@@ -83,6 +86,7 @@ public static class PendingFormations
             for (int i = 0; i < Math.Min(places, spots.Count); i++)
                 holders.Add(new HolderView(crew[i], i, spots[i].X, spots[i].Y, rings && i >= outer.Count ? 1 : 0));
         return new FormationView(name, rings ? "double ring" : figure, cx, cy, measure.Value, angle, policy, string.Join(",", crew), rings ? outer.Count : 0,
-                                 spots.Count, 0, 0, 0, -1, holders, spots);
+                                 spots.Count, 0, 0, 0, -1, holders, spots,
+                                 inner: shape is Propeller p ? p.Hub : shape is DoubleRing d ? d.InnerRadius : 0, arms: shape is Propeller q ? q.Blades : 0);
     }
 }

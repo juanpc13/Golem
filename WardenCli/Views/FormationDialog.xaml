@@ -24,8 +24,10 @@
             <RadioButton Content="pentagon" Margin="0,0,10,0" Checked="Figure_Checked"/>
             <RadioButton Content="triangle" Margin="0,0,10,0" Checked="Figure_Checked"/>
             <RadioButton Content="circle" Margin="0,0,10,0" Checked="Figure_Checked"/>
-            <RadioButton Content="double ring" Checked="Figure_Checked"
+            <RadioButton Content="double ring" Margin="0,0,10,0" Checked="Figure_Checked"
                          ToolTip="two rings round one centre, said by their radii, each with the golems you put on it; each ring turns on its own"/>
+            <RadioButton Content="propeller" Checked="Figure_Checked"
+                         ToolTip="blades out of the centre, the golems along them from the hub to the tips; a step takes every golem to the next blade at its own distance (propuesta 114)"/>
         </StackPanel>
 
         <TextBlock Grid.Row="1" Text="center x,y" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
@@ -37,7 +39,14 @@
         <!-- THE DOUBLE RING (8-oct-2026; Juan: "que pregunte por los diámetros de los dos anillos… y seleccionar cuáles serían los golems del anillo
              inferior y superior"): the inner radius, and a second list for the golems of the inner ring -->
         <TextBlock x:Name="InnerLabel" Grid.Row="3" Text="inner radius" VerticalAlignment="Center" Foreground="{StaticResource Dim}" Visibility="Collapsed"/>
-        <TextBox x:Name="InnerBox" Grid.Row="3" Grid.Column="1" Text="1.0" Visibility="Collapsed"/>
+        <DockPanel Grid.Row="3" Grid.Column="1">
+            <!-- THE PROPELLER'S BLADES (propuesta 114): beside its hub -->
+            <StackPanel x:Name="BladesPanel" DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0" Visibility="Collapsed">
+                <TextBlock Text="blades" VerticalAlignment="Center" Foreground="{StaticResource Dim}" Margin="0,0,6,0"/>
+                <TextBox x:Name="BladesBox" Width="44" Text="3"/>
+            </StackPanel>
+            <TextBox x:Name="InnerBox" Text="1.0" Visibility="Collapsed"/>
+        </DockPanel>
 
         <!-- THE POLICY is the formation's (propuesta 104: the formation is the golem's, and the golems share its places by rank — the names
              sorted — or by distance — who stands nearest, over their words) -->

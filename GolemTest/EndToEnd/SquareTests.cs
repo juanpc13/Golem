@@ -99,7 +99,7 @@ public class SquareTests
         Assert.IsInstanceOfType(g.Choreography.Figure("Circle", center, new Meters(1.0)), typeof(Circle), "any case; a circle by its radius");
         Assert.IsInstanceOfType(g.Choreography.Figure("triangle", center, side), typeof(Triangle));
         Assert.IsInstanceOfType(g.Choreography.Figure("pentagon", center, side), typeof(Pentagon), "the pentagon (ajuste 85)");
-        CollectionAssert.AreEqual(new[] { "square", "pentagon", "triangle", "circle", "double ring" }, g.Choreography.Names().ToList());
+        CollectionAssert.AreEqual(new[] { "square", "pentagon", "triangle", "circle", "double ring", "propeller" }, g.Choreography.Names().ToList());
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Figure("hexagon", center, side)).Message, "knows no figure named 'hexagon'");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => g.Choreography.Figure("square", null, side)).Message, "'center' was not given");
 
