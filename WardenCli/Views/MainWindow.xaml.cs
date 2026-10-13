@@ -573,13 +573,13 @@ public partial class MainWindow : Window
 
     private bool JournalShows(string kind) => !journalKinds.TryGetValue(kind, out var box) || box.IsChecked != false;
 
-    // the kinds a journal has, in a fixed order, every box there from the start (13-oct-2026; Juan: "¿no faltó el de script?"): the engine's
-    // "script" is shown as LITERAL — a command written whole, no action defined — so it is not taken for the golem's script on its tab
+    // the kinds a journal has, in a fixed order, every box there from the start (13-oct-2026; Juan: "¿no faltó el de script?"); the engine's
+    // "script" — a command written whole, no action defined — keeps its name (Juan: "no literal, ponle script")
     private static readonly (string Kind, string Label, string What)[] JournalKindsKnown =
     {
         ("define", "define", "the definitions of actions (hidden at first, as the panel hid them)"),
         ("action", "action", "every act of a defined action, the script with its values"),
-        ("script", "literal", "a command written whole in the journal, no action defined — the engine's 'script' kind, nothing to do with the golem's script on its tab"),
+        ("script", "script", "a command written whole in the journal, no action defined — the engine's own kind, not the golem's script on its tab"),
         ("record", "record", "the engine's own records (a tell, a reaction's mark)"),
         ("info", "info", "what the host noted"),
         ("runtime", "runtime", "what the host did at runtime: the orders, the answers"),
@@ -589,7 +589,7 @@ public partial class MainWindow : Window
     {
         if (journalKinds.ContainsKey(kind)) return;
         var known = JournalKindsKnown.FirstOrDefault(k => k.Kind == kind);
-        // the definitions start hidden, as the panel hid them; the acts (action), the literals and the rest start shown
+        // the definitions start hidden, as the panel hid them; the acts (action), the scripts and the rest start shown
         var box = new CheckBox { Content = known.Label ?? kind, IsChecked = kind != "define", FontSize = 11, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = known.What ?? $"show the entries of kind '{kind}'" };
         box.Checked += (_, _) => RenderJournal();
         box.Unchecked += (_, _) => RenderJournal();
