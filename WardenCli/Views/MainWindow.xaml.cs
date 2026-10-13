@@ -601,7 +601,8 @@ public partial class MainWindow : Window
     {
         string body = e.Text.Contains('\n') ? Environment.NewLine + "    " + e.Text.Replace("\n", Environment.NewLine + "    ") : " " + e.Text;
         string label = JournalKindsKnown.FirstOrDefault(k => k.Kind == e.Kind).Label ?? e.Kind;
-        return $"#{e.Entry} {e.At} {label}{body}{Environment.NewLine}";
+        // one entry apart from the next: a blank line between them (13-oct-2026; Juan: "que se note la separación de un row con el otro")
+        return $"#{e.Entry} {e.At} {label}{body}{Environment.NewLine}{Environment.NewLine}";
     }
 
     private void RenderJournal()
