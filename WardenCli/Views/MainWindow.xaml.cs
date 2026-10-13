@@ -576,7 +576,8 @@ public partial class MainWindow : Window
     private void JournalKindSeen(string kind)
     {
         if (journalKinds.ContainsKey(kind)) return;
-        var box = new CheckBox { Content = kind, IsChecked = true, FontSize = 11, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = $"show the entries of kind '{kind}'" };
+        // the definitions start hidden, as the panel hid them; the acts (action), the plain scripts and the rest start shown
+        var box = new CheckBox { Content = kind, IsChecked = kind != "define", FontSize = 11, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = $"show the entries of kind '{kind}'" };
         box.Checked += (_, _) => RenderJournal();
         box.Unchecked += (_, _) => RenderJournal();
         journalKinds[kind] = box;
@@ -644,7 +645,12 @@ public partial class MainWindow : Window
                     string kind = JsonWalk.String(e, "Kind") ?? "";
                     string script = JsonWalk.String(e, "Script") ?? "";
                     string note = JsonWalk.String(e, "Note") ?? "";
-                    if (kind == "command" && script.StartsWith("define action", StringComparison.Ordinal)) continue;   // the definitions, hidden like the panel did
+                    // a journaled command is one of THREE kinds (13-oct-2026; Juan: "el comando se filtra por si es un define, script o action"): the feed's
+                    // note says which — a definition, an act of a defined action, or a plain script — and each has its own box
+                    if (kind == "command")
+                    {
+                        try { kind = JsonWalk.String(JsonDocument.Parse(note).RootElement, "kind") ?? "command"; note = ""; } catch (JsonException) { }
+                    }
                     string at = JsonWalk.String(e, "At") is string s && DateTime.TryParse(s, null, DateTimeStyles.RoundtripKind, out var t) ? t.ToLocalTime().ToString("HH:mm:ss") : "";
                     var entry = ((int)(JsonWalk.Number(e, "Entry") ?? 0), at, kind, script == "" ? note.Trim() : PrettyScript(script));
                     journalEntries.Add(entry);
