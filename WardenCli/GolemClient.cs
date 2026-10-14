@@ -143,6 +143,10 @@ public static class GolemClient
         var formations = await SendAsync(golem, "formations", ct);
         if (formations.Ok && formations.Json is { } fj)
             k = k with { Formations = FormationView.Parse(fj) };
+        // THE DISPUTES (14-oct-2026): the disputes tab is this read of the selected golem
+        var disputes = await SendAsync(golem, "disputes", ct);
+        if (disputes.Ok && disputes.Json is { } dj)
+            k = k with { Disputes = DisputeView.Parse(dj) };
         // THE PLAY (propuesta 108): the play tab is this read of the selected golem
         var play = await SendAsync(golem, "play", ct);
         if (play.Ok && play.Json is { } pj)
@@ -184,13 +188,16 @@ public static class GolemClient
 
     /// <summary>Where this golem's copy of a formation stands for the queue (13-oct-2026): whether its round opened its route yet, and whether it
     /// is stranded — `formations`, the formation of that name. Null when the golem does not answer or was told no such formation.</summary>
-    public static async Task<(bool Routed, bool Stranded)?> FormationStateAsync(Golem golem, string name, CancellationToken ct = default)
+    public static async Task<FormationState?> FormationStateAsync(Golem golem, string name, CancellationToken ct = default)
     {
         var reply = await SendAsync(golem, "formations", ct);
         if (!reply.Ok || reply.Json == null || JsonWalk.Find(reply.Json.Value, "told") is not { ValueKind: JsonValueKind.Array } told) return null;
         foreach (var f in told.EnumerateArray())
             if (f.TryGetProperty("called", out var called) && string.Equals(called.GetString(), name, StringComparison.OrdinalIgnoreCase))
-                return (f.TryGetProperty("routed", out var r) && r.ValueKind == JsonValueKind.True, f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True);
+                return new FormationState(f.TryGetProperty("routed", out var r) && r.ValueKind == JsonValueKind.True,
+                                          f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True,
+                                          (int)(JsonWalk.Number(f, "queued") ?? 0), (int)(JsonWalk.Number(f, "placed") ?? 0),
+                                          (JsonWalk.String(f, "crew") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Length);
         return null;
     }
 
@@ -270,3 +277,7 @@ public static class JsonWalk
         return v == null ? null : v.Value.ValueKind == JsonValueKind.String ? v.Value.GetString() : v.Value.ToString();
     }
 }
+
+/// <summary>A formation as the queue waits on it (13/14-oct-2026): whether this golem's round opened its route, whether it is stranded, how many steps
+/// wait in its queue, how many members stand on their places this round, and how many the fleet has.</summary>
+public sealed record FormationState(bool Routed, bool Stranded, int Queued, int Placed, int Crew);

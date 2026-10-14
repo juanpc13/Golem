@@ -23,7 +23,13 @@ public sealed class Golem : INotifyPropertyChanged
     public Uri Url => new($"http://{Host}:{Port}/");
 
     /// <summary>The commands built for this golem, one per line: its queue.</summary>
-    public string Script { get => script; set => Set(ref script, value); }
+    public string Script { get => script; set { Set(ref script, value); if (!sending) Written = value; } }
+
+    /// <summary>THE SCRIPT AS THE OPERATOR LEFT IT (14-oct-2026): what the workspace saves — the queue consumes the lines it sends, and a show opened
+    /// as a workspace was saved back EMPTIED when the console closed (three shows lost their scripts so). Every change to the tab updates it — an edit,
+    /// a load, a clear — except a line taken by the queue.</summary>
+    public string Written { get; private set; } = "";
+    private bool sending;
     public string Status { get => status; set { Set(ref status, value); Raise(nameof(StatusLine)); } }
     /// <summary>Whether its queue is being sent now; the box says so.</summary>
     public bool Running { get => running; set { Set(ref running, value); Raise(nameof(StatusLine)); } }
@@ -95,7 +101,9 @@ public sealed class Golem : INotifyPropertyChanged
         if (i < 0) return null;
         string line = lines[i].Trim();
         lines.RemoveAt(i);
-        Script = string.Join(Environment.NewLine, lines).TrimStart('\r', '\n');
+        sending = true;
+        try { Script = string.Join(Environment.NewLine, lines).TrimStart('\r', '\n'); }
+        finally { sending = false; }
         return line;
     }
 

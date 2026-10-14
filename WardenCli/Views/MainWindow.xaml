@@ -531,6 +531,62 @@
                             </ListBox>
                         </DockPanel>
                     </TabItem>
+                    <!-- THE DISPUTES (14-oct-2026; Juan: "otro apartado o tab abajo del mapa relacionado a las disputas que ha tenido el golem para resolver
+                         una posición con otro golem y el resultado de si éste cedió o la ganó él, por la política de distance"): the selected golem's
+                         `disputes` read — a place it wanted by distance, won or yielded, against whom, both distances -->
+                    <TabItem x:Name="DisputesTab">
+                        <TabItem.Header>
+                            <TextBlock><Run Text="disputes"/><Run Text="{Binding SelectedItem.Knowledge.DisputeList.Count, ElementName=GolemList, Mode=OneWay, StringFormat=' ({0})'}"/></TextBlock>
+                        </TabItem.Header>
+                        <DockPanel Background="{StaticResource Well}">
+                            <!-- CLEARED (14-oct-2026; Juan: "algún botón para limpiar las disputas"): forget disputes, on the selected golem or on every golem -->
+                            <DockPanel DockPanel.Dock="Top" Margin="6,4,6,2">
+                                <Button DockPanel.Dock="Right" Content="clear all golems" Click="ClearAllDisputes_Click" Margin="6,0,0,0"
+                                        ToolTip="every golem of the workspace forgets its disputes — forget disputes on each, at once"/>
+                                <Button DockPanel.Dock="Right" Content="clear" Click="ClearDisputes_Click" Margin="6,0,0,0"
+                                        ToolTip="the selected golem forgets its disputes — forget disputes, at once; the next ones come with the next rounds played"/>
+                                <TextBlock Foreground="{StaticResource Dim}" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Text="every golem wants the place nearest to where it stood; by distance the nearer one keeps it, by rps they play for it"/>
+                            </DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Margin="6,6" Foreground="{StaticResource Dim}" FontSize="12" Text="no disputes yet — they come with the formations taken by distance">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedItem.Knowledge.DisputeList.Count, ElementName=GolemList}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <ListBox ItemsSource="{Binding SelectedItem.Knowledge.DisputeList, ElementName=GolemList}" BorderThickness="0" Background="Transparent"
+                                     HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="4,2">
+                                            <TextBlock TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding Title, Mode=OneWay}" FontWeight="Bold">
+                                                    <Run.Style>
+                                                        <Style TargetType="Run">
+                                                            <Setter Property="Foreground" Value="{StaticResource Orange}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Won}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource Green}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Run.Style>
+                                                </Run>
+                                                <Run Text="  "/><Run Text="{Binding Text, Mode=OneWay}" Foreground="{StaticResource Ink}"/><Run Text="  "/><Run Text="{Binding Where, Mode=OneWay}" Foreground="{StaticResource Dim}" FontSize="11"/>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Distances, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </TabItem>
                                     <!-- THE PLAY (propuesta 108, fase 2): what the selected golem's `play` read says, the keyboard's wishes (the arrow keys, or these
                          buttons, say head … at once to pacman) and the release -->
                     <TabItem x:Name="PlayTab" Header="play">

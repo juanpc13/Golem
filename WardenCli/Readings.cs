@@ -8,8 +8,11 @@ namespace WardenCli;
 public sealed record Readings(string Zone, string Scenario, string Navigation, double? Speed, double? Turn, bool Held, int? Pending, int? Routes,
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
                               int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios,
-                              IReadOnlyList<FormationView> Formations, PlayView? Play = null)
+                              IReadOnlyList<FormationView> Formations, PlayView? Play = null, IReadOnlyList<DisputeView>? Disputes = null)
 {
+    /// <summary>The disputes by distance (14-oct-2026), none before the golem answered.</summary>
+    public IReadOnlyList<DisputeView> DisputeList => Disputes ?? Array.Empty<DisputeView>();
+
     /// <summary>Before anything was asked.</summary>
     public static readonly Readings Nothing = new("", "", "", null, null, false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>(), Array.Empty<FormationView>());
 

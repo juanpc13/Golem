@@ -55,7 +55,9 @@ public partial class FormationDialog : Window
             InnerBox.Text = propeller.Hub.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
             BladesBox.Text = propeller.Blades.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
-        ByRankBox.IsChecked = formation.Policy != "distance";
+        ByRankBox.IsChecked = formation.Policy == "rank";
+        ByDistanceBox.IsChecked = formation.Policy == "distance";
+        ByGameBox.IsChecked = formation.Policy == "rps";
         var names = formation.CrewNames;
         var outer = formation.IsDoubleRing && formation.Division > 0 ? names.Take(formation.Division).ToList() : names.ToList();
         var inner = formation.IsDoubleRing && formation.Division > 0 ? names.Skip(formation.Division).ToList() : new List<string>();
@@ -127,7 +129,7 @@ public partial class FormationDialog : Window
             InnerRadius = hub;
             Blades = blades;
         }
-        Policy = ByRankBox.IsChecked == true ? "rank" : "distance";
+        Policy = ByGameBox.IsChecked == true ? "rps" : ByDistanceBox.IsChecked == true ? "distance" : "rank";
         CenterX = cx; CenterY = cy; Measure = measure;
         Chosen = GolemsBox.SelectedItems.Cast<string>().ToList();
         DialogResult = true;

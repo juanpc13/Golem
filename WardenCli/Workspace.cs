@@ -23,7 +23,7 @@ public static class Workspace
 
     public static void Save(string path, IEnumerable<Golem> golems)
     {
-        var file = new File_("golem workspace", 3, golems.Select(g => new SavedGolem(g.Name, g.Host, g.Port, g.Script)).ToList());
+        var file = new File_("golem workspace", 3, golems.Select(g => new SavedGolem(g.Name, g.Host, g.Port, g.Written)).ToList());   // as the operator wrote it, not as the queue left it
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         File.WriteAllText(path, JsonSerializer.Serialize(file, Pretty));
         Remember(path);

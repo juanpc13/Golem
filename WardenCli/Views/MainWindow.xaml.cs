@@ -623,9 +623,10 @@ public partial class MainWindow : Window
                 if (Movers.Contains(verb))
                 {
                     Log($"{golem.Name} › {line} — sent: {OneLine(reply.Text)}");
-                    var walk = verbSent == "take"
-                        ? await WaitForTheRoundAsync(golem, line.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "", cts.Token)
-                        : await WaitUntilDoneAsync(golem, cts.Token);
+                    string formationName = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "";
+                    var walk = verbSent == "take" ? await WaitForTheRoundAsync(golem, formationName, cts.Token)
+                             : verbSent == "rotate" ? await WaitForTheStepsAsync(golem, formationName, cts.Token)
+                             : await WaitUntilDoneAsync(golem, cts.Token);
                     done++;
                     if (walk == Walk.Unreachable) { Log($"{golem.Name} › stopped: the golem does not answer; the rest of the queue stays"); break; }
                     if (walk == Walk.Cancelled) break;
@@ -638,7 +639,7 @@ public partial class MainWindow : Window
                         string waits = verbSent switch
                         {
                             "take" => "still waiting for the fleet's words after three minutes: the route opens when every member of the formation took it — each needs its own form and take on its tab",
-                            "rotate" => "the step is queued: it opens when every member of the formation stands on its place",
+                            "rotate" => "still waiting for the fleet's steps after three minutes: a step opens when every member of the formation stands on its place",
                             _ => "nothing to walk"
                         };
                         Log($"{golem.Name} › … {line} — no route opened in {(DateTime.UtcNow - started).TotalSeconds:0.0} s: {waits} ({done} of {total})");
@@ -692,6 +693,29 @@ public partial class MainWindow : Window
             if (state is { Stranded: true }) return Walk.Walked;   // its route ended short twice: the log says how it ended
             if (state is { Routed: true } && pending == 0) return Walk.Walked;
             golem.Status = pending > 0 ? $"busy: {pending} route(s) pending" : $"waiting for the fleet's words in {name}";
+            if ((DateTime.UtcNow - started).TotalMinutes > 3) return Walk.NoRoute;
+        }
+        return Walk.Cancelled;
+    }
+
+    // A ROTATE WAITS FOR THE FLEET'S STEPS (14-oct-2026; Juan, on by-distance/breathing-hexagon: "en el gazebo está más grande y en el CLI está más
+    // corto"): a rotate only queues a step in the golem, which opens when every member stands on its place; the queue gave it 8 s and ran on to the
+    // next `form`, which made the formation again while the steps were still being walked — yellow was left behind in the old one, the others
+    // waited for its word for ever. The rotate is done when no step waits, every member stands on its place and nothing is pending — or stranded;
+    // three minutes, and the log says so.
+    private async Task<Walk> WaitForTheStepsAsync(Golem golem, string name, CancellationToken ct)
+    {
+        var started = DateTime.UtcNow;
+        while (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(1000, ct);
+            int? pending = await GolemClient.PendingAsync(golem, ct);
+            if (pending == null) { golem.Status = "unreachable"; return Walk.Unreachable; }
+            var state = await GolemClient.FormationStateAsync(golem, name, ct);
+            if (state == null) return Walk.NoRoute;                  // no such formation: the golem refused the rotate, the log said why
+            if (state.Stranded) return Walk.Walked;
+            if (state.Queued == 0 && pending == 0 && state.Placed >= state.Crew) return Walk.Walked;
+            golem.Status = pending > 0 ? $"busy: {pending} route(s) pending" : $"waiting for the fleet's steps in {name} — {state.Placed} of {state.Crew} placed";
             if ((DateTime.UtcNow - started).TotalMinutes > 3) return Walk.NoRoute;
         }
         return Walk.Cancelled;
@@ -1082,6 +1106,17 @@ public partial class MainWindow : Window
 
     // EVERYTHING IT LEARNED BY TOUCHING, FORGOTTEN (Juan, 8-oct-2026: "permitir remover los obstáculos del golem"): one forget at each obstacle's
     // centre, in turn — the golem's own verb, so every peer is told too; asked first
+    // THE DISPUTES CLEARED (14-oct-2026): the selected golem forgets its disputes, or every golem of the workspace does
+    private async void ClearDisputes_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current is { } g) await ActNowAsync(g, "forget disputes");
+    }
+
+    private async void ClearAllDisputes_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var g in golems.ToList()) await ActNowAsync(g, "forget disputes");
+    }
+
     private async void ForgetAll_Click(object sender, RoutedEventArgs e)
     {
         if (Current is not { } g) return;
