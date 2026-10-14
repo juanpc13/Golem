@@ -101,6 +101,20 @@ public static class Readings
         ")
         .PerformQuery();
 
+    /// <summary>THE DISPUTES (14-oct-2026): the places this golem disputed with another by distance — the formation, the place, the rival, whether
+    /// it won or yielded, and both distances.</summary>
+    public static string Disputes(ActorV2 actor) =>
+        actor.Using(@"
+            {
+                print g.Choreography.Disputes().Count 'count';
+                foreach (disputes in g.Choreography.Disputes()) {
+                    print disputes.Called 'called', disputes.Place 'place', disputes.At.X 'x', disputes.At.Y 'y', disputes.Rival 'rival',
+                          disputes.Won 'won', disputes.Mine 'mine', disputes.Theirs 'theirs', disputes.Game 'game';
+                }
+            }
+        ")
+        .PerformQuery();
+
     /// <summary>THE PLAY THE GOLEM IS IN (propuesta 108): its title, this golem's part, the state, pacman's heading and wish, the runs made.</summary>
     public static string Play(ActorV2 actor) =>
         actor.Using(@"

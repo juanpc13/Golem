@@ -180,7 +180,7 @@ public sealed class GolemEmbodiment
                     at = Position(@px, @py);
                     me = fleet.Member(g);
                     if (formation.Knows(me)) {
-                        formation.Stood(peer, at);
+                        formation.Stood(peer, at, @nonce);
                         if (formation.IsComplete) {
                             route = formation.Route;
                             if (g.Strategy.OnTheWay.IsActive) {
@@ -203,7 +203,7 @@ public sealed class GolemEmbodiment
                             print formation.StoodCount 'stood', fleet.Count 'of';
                         }
                     } else {
-                        formation.Stood(peer, at);
+                        formation.Stood(peer, at, @nonce);
                         from = g.Destination;
                         formation.Convene(from, me);
                         if (formation.IsComplete) {
@@ -232,7 +232,7 @@ public sealed class GolemEmbodiment
                 }
             } else {
                 said = Position(@px, @py);
-                g.Choreography.Overheard(@call, @teller, said);
+                g.Choreography.Overheard(@call, @teller, said, @nonce);
             }
         }
         ";
@@ -541,6 +541,23 @@ public sealed class GolemEmbodiment
     // ==================================================================
     // The operator's levers on the body.
     // ==================================================================
+
+    // THE DISPUTES FORGOTTEN (14-oct-2026): the mind's own act, how many it forgot printed
+    private const string ForgetDisputesScript = @"
+                    {
+                        forgotten = g.Choreography.Disputes().Count;
+                        g.Choreography.ForgetDisputes();
+                        print forgotten 'forgotten';
+                    }
+                ";
+
+    /// <summary>THE DISPUTES FORGOTTEN (14-oct-2026; Juan: "algún botón para limpiar las disputas"): every dispute this golem had, in every formation,
+    /// goes; the next ones come with the next rounds played. Written, so a golem reborn forgets them too.</summary>
+    public Answer ForgetDisputes()
+    {
+        try { return Answer.Of(Actor.Using(ForgetDisputesScript).PerformCommand()); }
+        catch (Exception ex) { return Answer.Refusal("forget disputes: " + Reason(ex)); }
+    }
 
     /// <summary>THE ANCHOR (13-oct-2026; Juan: "¿debo reiniciarlos para que vuelvan a tomar la posición?"): the golem takes WHERE ITS BODY REALLY
     /// STANDS, from telemetry, as where it stands — the scenario whose region holds it and a waking there, a plan underway decided again inside —

@@ -172,7 +172,7 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
         }
         if (Blades.HasValue && !IsPropeller) yield return "only a propeller has blades";
         if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
-        if (Policy is not ("rank" or "distance")) yield return "the policy is \"rank\" or \"distance\"";
+        if (Policy is not ("rank" or "distance" or "rps")) yield return "the policy is \"rank\", \"distance\" or \"rps\"";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
         if (InnerFleet != null && InnerFleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the inner fleet must be a name";
     }

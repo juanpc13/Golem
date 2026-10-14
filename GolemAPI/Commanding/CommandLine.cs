@@ -39,10 +39,11 @@ public static class CommandLine
     {
         new CommandHelp("visit", "visit x,y [x,y …]", "an errand through those points, in that order", "visit 2,9.5 9,8"),
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
-        new CommandHelp("form", "form <name> square|pentagon|triangle --center x,y --side s [--angle a] [--fleet a,b] [--by rank|distance]  ·  form <name> circle --center x,y --radius r …  ·  form <name> double-ring --center x,y --radius R --inner-radius r --fleet a,b --inner-fleet c,d …  ·  form <name> propeller --center x,y --radius R [--inner-radius hub] [--blades n] …", "a formation of the golem's (propuesta 104): its name, its figure, its centre, its size (a polygon's side, a circle's radius, a double ring's two radii, a propeller's tips — its hub a third of it and three blades unless told; a step turns it one blade, every golem to the next blade at its own distance), its orientation (counter-clockwise, 0 as laid out), its FLEET (left out: this golem and every peer) and the POLICY that shares the places — by rank, the names sorted, the default; by distance, who stands nearest (ajuste 73); told again under the same name, it is made again (moved, turned, resized, re-crewed); every golem of the fleet is told the same (--with is refused); it answers the places it resolved and who holds each", "form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red,green,yellow"),
+        new CommandHelp("form", "form <name> square|pentagon|triangle --center x,y --side s [--angle a] [--fleet a,b] [--by rank|distance]  ·  form <name> circle --center x,y --radius r …  ·  form <name> double-ring --center x,y --radius R --inner-radius r --fleet a,b --inner-fleet c,d …  ·  form <name> propeller --center x,y --radius R [--inner-radius hub] [--blades n] …", "a formation of the golem's (propuesta 104): its name, its figure, its centre, its size (a polygon's side, a circle's radius, a double ring's two radii, a propeller's tips — its hub a third of it and three blades unless told; a step turns it one blade, every golem to the next blade at its own distance), its orientation (counter-clockwise, 0 as laid out), its FLEET (left out: this golem and every peer) and the POLICY that shares the places — by rank, the names sorted, the default; by distance, who stands nearest (ajuste 73); by rps, who stands nearest and, when several want the same place, rock, paper, scissors between them (propuesta 115); told again under the same name, it is made again (moved, turned, resized, re-crewed); every golem of the fleet is told the same (--with is refused); it answers the places it resolved and who holds each", "form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red,green,yellow"),
         new CommandHelp("take", "take <name>", "the fleet takes that formation: this golem says where it stands, every peer of the fleet is told and says where it stands, and the routes open when everybody spoke — each to the place the policy gives it, ending facing the centre; it spreads by itself (--with is refused)", "take square-2"),
         new CommandHelp("rotate", "rotate <name> clockwise|counterclockwise [--ring outer|inner]", "one step of that formation: every body — of one ring of a double ring, or of the whole figure — takes the next place in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused)", "rotate square-2 clockwise"),
         new CommandHelp("dissolve", "dissolve <name>", "the formation leaves every golem of its fleet; a route of it still pending is let go", "dissolve square-2"),
+        new CommandHelp("disputes", "disputes", "the places this golem disputed with another by distance, formation by formation: whether it won the place or yielded it, to whom, and both distances (a golem disputes the place nearest to where it stood)", "disputes"),
         new CommandHelp("formations", "formations", "the formations this golem is in: each one's figure, centre, size, orientation, policy, fleet and who holds which place", "formations"),
         new CommandHelp("play", "play pacman --pacman <golem> --ghosts a,b | play", "the play of pacman staged on this golem (propuesta 108): who plays pacman and who the ghosts (left out, this golem and every peer but pacman); it spreads by itself to the cast, never --with; alone, play says the play this golem is in — its part, state, heading, wish, runs", "play pacman --pacman blue --ghosts red,green,yellow"),
         new CommandHelp("head", "head north|south|east|west", "the keyboard's wish: the direction pacman takes at its next decision cell (an intersection, or where straight on is closed); closed there, kept for the next; without one, straight on, else right, else left, else back", "head north"),
@@ -50,7 +51,7 @@ public static class CommandLine
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
-        new CommandHelp("forget", "forget x,y", "what stood there is gone: the golem forgets it, marks and all, and tells the peers", "forget 10.13,5.5"),
+        new CommandHelp("forget", "forget x,y  ·  forget disputes", "what stood there is gone: the golem forgets it, marks and all, and tells the peers — or, with disputes, it forgets the disputes it had over places (the next ones come with the next rounds played)", "forget 10.13,5.5"),
         new CommandHelp("anchor", "anchor", "the golem takes where its body REALLY stands (telemetry) as where it stands — the scenario whose region holds it, a waking there, a plan underway decided again — without a reset and without moving anything; for when its belief drifted from the truth (13-oct-2026)", "anchor"),
         new CommandHelp("reset", "reset [--all]", "let go: every pending route abandoned, the body back on its mark; --all wipes the journal — the peers' too — and reboots reborn", "reset"),
         new CommandHelp("state", "state", "the board: the routes pending, the one underway and its next point, how the last one ended", "state"),
@@ -113,6 +114,8 @@ public static class CommandLine
                 return new Command(named, with, verb, Points(verb, args, atLeast: 2), noOptions, "");
             case "then":
             case "forget":
+                if (args.Count == 1 && args[0].Equals("disputes", StringComparison.OrdinalIgnoreCase))
+                    return new Command(named, with, verb, none, noOptions, "disputes");   // the disputes over places forgotten (14-oct-2026)
                 return new Command(named, with, verb, Points(verb, args, exactly: 1), noOptions, "");
             case "form":
             {
@@ -165,7 +168,7 @@ public static class CommandLine
                 if (values.TryGetValue("by", out var by))
                 {
                     values["by"] = by.ToLowerInvariant();
-                    if (values["by"] is not ("rank" or "distance")) throw new CommandSyntaxException($"form: --by is rank or distance; found '{Head(by)}'");
+                    if (values["by"] is not ("rank" or "distance" or "rps")) throw new CommandSyntaxException($"form: --by is rank, distance or rps; found '{Head(by)}'");
                 }
                 foreach (var key in new[] { "fleet", "inner-fleet" })
                     if (values.TryGetValue(key, out var crew) && !Names.IsMatch(crew)) throw new CommandSyntaxException($"form: --{key} expects names like blue,red; found '{Head(crew)}'");
@@ -250,6 +253,7 @@ public static class CommandLine
             case "obstacles":
             case "scenarios":
             case "formations":
+            case "disputes":
                 if (args.Count > 0) throw new CommandSyntaxException($"{verb} takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");
             case "place":

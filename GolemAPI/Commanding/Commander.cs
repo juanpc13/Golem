@@ -96,13 +96,14 @@ public sealed class Commander
             "rotate" => Rotate(command),
             "dissolve" => Motors(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
             "formations" => Formations(),
+            "disputes" => Disputes(),
             "play" => command.Text == "" ? PlayRead() : Play(command),
             "head" => Motors(out var h, out var hr) ? Answered(h.Head(command.Text), $"heading {command.Text} at the next decision cell") : hr,
             "release" => Motors(out var rl, out var rr) ? Answered(rl.Release()) : rr,
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
-            "forget" => Forget(command),
+            "forget" => command.Text == "disputes" ? ForgetDisputes() : Forget(command),
             "anchor" => Answered(golem.Anchor(), "anchored: awake where the body really stands"),
             "reset" => await ResetAsync(command),
             "place" => await PlaceAsync(command),
@@ -181,6 +182,22 @@ public sealed class Commander
         return Stepped(displacer.Rotate(request.Name, request.Sense, request.Orbit), $"{request.Name} {request.Sense}{(request.Orbit == "whole" ? "" : " · " + request.Orbit + " ring")}");
     }
 
+    // the disputes by distance (14-oct-2026): one line each, won or yielded, against whom, both distances
+    private Reply Disputes()
+    {
+        string json = Readings.Disputes(golem.Actor);
+        var e = JsonDocument.Parse(json).RootElement;
+        var lines = new List<string>();
+        if (e.TryGetProperty("disputes", out var all) && all.ValueKind == JsonValueKind.Array)
+            foreach (var d in all.EnumerateArray())
+            {
+                bool won = d.TryGetProperty("won", out var w) && w.ValueKind == JsonValueKind.True;
+                string game = Str(d, "game");
+                lines.Add($"{Str(d, "called")} · place {Int(d, "place")} at ({Num(d, "x")}, {Num(d, "y")}) · {(won ? "won it against" : "yielded it to")} {Str(d, "rival")}{(game == "" ? "" : " · " + game)} · {Num(d, "mine")} m from it, {Str(d, "rival")} {Num(d, "theirs")} m");
+            }
+        return Reply.Done(lines.Count == 0 ? "no disputes: nobody contended with this golem for a place, by distance or by the game" : string.Join(Environment.NewLine, lines), json);
+    }
+
     private Reply Formations()
     {
         string json = Readings.Formations(golem.Actor);
@@ -215,6 +232,17 @@ public sealed class Commander
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
         return Answered(displacer.Then((request.X.Value, request.Y.Value)));
+    }
+
+    // the disputes forgotten (14-oct-2026): how many went
+    private Reply ForgetDisputes()
+    {
+        var answer = golem.ForgetDisputes();
+        if (!answer.Ok) return Reply.Refused(answer.Refused);
+        int n = 0;
+        try { n = JsonDocument.Parse(answer.Print ?? "{}").RootElement.TryGetProperty("forgotten", out var f) && f.ValueKind == JsonValueKind.Number ? f.GetInt32() : 0; }
+        catch (JsonException) { }
+        return Reply.Done($"{n} dispute(s) forgotten — the next ones come with the next rounds played", answer.Print ?? "");
     }
 
     private Reply Forget(Command command)
