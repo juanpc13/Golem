@@ -49,7 +49,7 @@ public class PentagonTests
 
         // the fleet of four takes it by rank, every route ending facing the centre; a step moves everybody one vertex — and the hole with them
         var fleet = new Fleet("blue,green,red,yellow");
-        var call = g.Choreography.Form("red-1", pentagon, fleet, "rank");
+        var call = g.Choreography.Form("red-1", pentagon, fleet, Policy.Rank);
         var route = call.Join(new Pose(5.5, 9.0, -1.5708), fleet.Member(g));
         StringAssert.Contains(route.AsPlan(), "floor@5.5,7.2 > face@5.5,7.2", "blue, first by rank: the north vertex, then facing the centre: " + route.AsPlan());
         Assert.AreEqual(0, call.PlaceIndex);

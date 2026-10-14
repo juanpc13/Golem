@@ -18,7 +18,7 @@ public sealed record HolderView(string Name, int Index, double X, double Y, int 
 /// </summary>
 public sealed class FormationView : INotifyPropertyChanged
 {
-    public FormationView(string name, string shape, double centerX, double centerY, double measure, double degrees, string policy, string crew, int division,
+    public FormationView(string name, string shape, double centerX, double centerY, double measure, double degrees, Policy policy, string crew, int division,
                          int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots, int aligned = 0,
                          bool stranded = false, string strandedWhy = "", double inner = 0, int arms = 0)
     {
@@ -54,7 +54,9 @@ public sealed class FormationView : INotifyPropertyChanged
     /// <summary>A polygon's side, a circle's radius, a double ring's outer radius.</summary>
     public double Measure { get; }
     public double Degrees { get; }
-    public string Policy { get; }
+    public Policy Policy { get; }
+    /// <summary>The policy as a line says it: rank, distance, rps.</summary>
+    public string PolicyWord => Policies.Word(Policy);
     /// <summary>The fleet's names as the golem lists them, in rank order, comma-separated.</summary>
     public string Crew { get; }
     /// <summary>Where the inner ring begins in the crew (0: one ring).</summary>
@@ -108,7 +110,7 @@ public sealed class FormationView : INotifyPropertyChanged
     // ---- the list's words ----
     private static string N(double v) => Math.Round(v, 3).ToString("0.###", CultureInfo.InvariantCulture);
     public string CenterText => $"{N(CenterX)},{N(CenterY)}";
-    public string RoundText => $"  by {Policy} · round {Round} · {Placed}/{CrewCount} placed{(Aligned > 0 ? $" · {Aligned} lined up" : "")}{(Queued > 0 ? $" · {Queued} step(s) queued" : "")}";
+    public string RoundText => $"  by {PolicyWord} · round {Round} · {Placed}/{CrewCount} placed{(Aligned > 0 ? $" · {Aligned} lined up" : "")}{(Queued > 0 ? $" · {Queued} step(s) queued" : "")}";
     public string HoldersText
     {
         get
@@ -116,11 +118,11 @@ public sealed class FormationView : INotifyPropertyChanged
             var figure = AsFigure();
             if (figure == null) return Crew;
             string Of(int start, int count) => string.Join(" · ", Enumerable.Range(start, count).Select(i => HolderOf(i) is { } who ? $"{who} {figure.Label(i, Places)}" : $"{figure.Label(i, Places)} free"));
-            if (Holders.Count == 0) return $"{Crew} — nobody placed yet (by {Policy})";
+            if (Holders.Count == 0) return $"{Crew} — nobody placed yet (by {PolicyWord})";
             return IsDoubleRing ? $"outer: {Of(0, Division)} — inner: {Of(Division, Places - Division)}" : Of(0, Places);
         }
     }
-    public string Describe() => $"{Name} · {Shape} at {CenterText}, {(IsDoubleRing || IsPropeller || Shape == "circle" ? "radius" : "side")} {N(Measure)} m, {N(Degrees)}°, by {Policy}: {HoldersText}";
+    public string Describe() => $"{Name} · {Shape} at {CenterText}, {(IsDoubleRing || IsPropeller || Shape == "circle" ? "radius" : "side")} {N(Measure)} m, {N(Degrees)}°, by {PolicyWord}: {HoldersText}";
 
     /// <summary>The geometry the console draws and grips — built from what the golem said: the figure of that kind, centre, size and
     /// orientation; a double ring with its inner radius read from its spots. Null when the shape is unknown to the console.</summary>
@@ -159,7 +161,7 @@ public sealed class FormationView : INotifyPropertyChanged
             : figure is Propeller propeller ? $"--radius {N(propeller.Radius)} --inner-radius {N(propeller.Hub)} --blades {propeller.Blades}"
             : figure is Circle ? $"--radius {N(figure.Measure)}" : $"--side {N(figure.Measure)}";
         string shape = figure is DoubleRing ? "double-ring" : figure.Name;
-        return $"form {Name} {shape} --center {figure.Center} {size} --angle {N(figure.Angle)} {FleetOptions()} --by {Policy}";
+        return $"form {Name} {shape} --center {figure.Center} {size} --angle {N(figure.Angle)} {FleetOptions()} --by {PolicyWord}";
     }
 
     public static IReadOnlyList<FormationView> Parse(JsonElement json)
@@ -174,7 +176,7 @@ public sealed class FormationView : INotifyPropertyChanged
             var spots = new List<(double X, double Y)>();
             if (f.TryGetProperty("spots", out var ss) && ss.ValueKind == JsonValueKind.Array)
                 foreach (var sp in ss.EnumerateArray()) spots.Add((Num(sp, "x"), Num(sp, "y")));
-            list.Add(new FormationView(Str(f, "called"), Str(f, "shape"), Num(f, "atX"), Num(f, "atY"), Num(f, "length"), Num(f, "degrees"), Str(f, "policy"), Str(f, "crew"),
+            list.Add(new FormationView(Str(f, "called"), Str(f, "shape"), Num(f, "atX"), Num(f, "atY"), Num(f, "length"), Num(f, "degrees"), Policies.Parse(Str(f, "policy")) ?? Policy.Rank, Str(f, "crew"),
                                        (int)Num(f, "division"), (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned"),
                                        f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True, Str(f, "strandedWhy"), Num(f, "inner"), (int)Num(f, "arms")));
         }

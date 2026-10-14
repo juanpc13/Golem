@@ -105,15 +105,15 @@ public class StepLabTests
                 from = g.Destination;
                 center = Position(@cx, @cy);
                 side = Meters(@sideLength);
-                figure = g.Choreography.Figure(@figure, center, side);
+                turn = Degrees(@angle);
                 fleet = Fleet(@names);
                 me = fleet.Member(g);
-                formation = g.Choreography.Form(@callId, figure, fleet, @by);
+                formation = g.Choreography.Form(@callId, @figure, center, side, turn, fleet, @by, @callId);   // the policy an enum (14-oct-2026): the host's form, by its member's name
                 route = formation.Join(from, me);
                 print route.Id 'route', route.Order 'action';
             }").WithParameters(p => {
                 p["cx", typeof(double)] = 5.5; p["cy", typeof(double)] = 5.5; p["sideLength", typeof(double)] = 2.0;
-                p["figure", typeof(string)] = "square"; p["callId", typeof(string)] = "blue-1"; p["names", typeof(string)] = "blue,red"; p["by", typeof(string)] = "rank";
+                p["figure", typeof(string)] = "square"; p["callId", typeof(string)] = "blue-1"; p["names", typeof(string)] = "blue,red"; p["by", typeof(string)] = "Rank"; p["angle", typeof(double)] = 0.0;
             }).PerformCommand();
         // walk the route to its end, as the arrivals do
         for (int i = 0; i < 6; i++)
@@ -160,15 +160,15 @@ public class StepLabTests
                 from = g.Destination;
                 center = Position(@cx, @cy);
                 side = Meters(@sideLength);
-                figure = g.Choreography.Figure(@figure, center, side);
+                turn = Degrees(@angle);
                 fleet = Fleet(@names);
                 me = fleet.Member(g);
-                formation = g.Choreography.Form(@callId, figure, fleet, @by);
+                formation = g.Choreography.Form(@callId, @figure, center, side, turn, fleet, @by, @callId);   // the policy an enum (14-oct-2026): the host's form, by its member's name
                 route = formation.Join(from, me);
                 print route.Id 'route', route.Order 'action';
             }", p => {
                 p["cx", typeof(double)] = 5.5; p["cy", typeof(double)] = 5.5; p["sideLength", typeof(double)] = 2.0;
-                p["figure", typeof(string)] = "square"; p["callId", typeof(string)] = "blue-1"; p["names", typeof(string)] = "blue,red"; p["by", typeof(string)] = "rank";
+                p["figure", typeof(string)] = "square"; p["callId", typeof(string)] = "blue-1"; p["names", typeof(string)] = "blue,red"; p["by", typeof(string)] = "Rank"; p["angle", typeof(double)] = 0.0;
             }));
         for (int i = 0; i < 6 && Try("{ print g.HasPendingMission() 'v'; }").Contains("true"); i++)
             log.Add("walk: " + Try("{ route = g.Underway(); leg = route.NextLeg; route.Arrive(leg); print route.Id 'route', route.Order 'action'; }"));
@@ -199,15 +199,15 @@ public class StepLabTests
                 from = g.Destination;
                 center = Position(@cx, @cy);
                 side = Meters(@sideLength);
-                figure = g.Choreography.Figure(@figure, center, side);
+                turn = Degrees(@angle);
                 fleet = Fleet(@names);
                 me = fleet.Member(g);
-                formation = g.Choreography.Form(@callId, figure, fleet, @by);
+                formation = g.Choreography.Form(@callId, @figure, center, side, turn, fleet, @by, @callId);   // the policy an enum (14-oct-2026): the host's form, by its member's name
                 route = formation.Join(from, me);
                 print route.Id 'route', route.Order 'action';
             }", p => {
                 p["cx", typeof(double)] = 5.5; p["cy", typeof(double)] = 5.5; p["sideLength", typeof(double)] = 2.0;
-                p["figure", typeof(string)] = "square"; p["callId", typeof(string)] = "blue-1"; p["names", typeof(string)] = "blue,red"; p["by", typeof(string)] = "rank";
+                p["figure", typeof(string)] = "square"; p["callId", typeof(string)] = "blue-1"; p["names", typeof(string)] = "blue,red"; p["by", typeof(string)] = "Rank"; p["angle", typeof(double)] = 0.0;
             }));
         // an act with @id first — the arrival's shape — then the uptake: does a parameter named id linger on the table?
         log.Add("arrive: " + Try(@"

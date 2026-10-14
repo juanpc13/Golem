@@ -2,6 +2,8 @@ using System.Text.Json;
 using GolemAPI.Membrane;
 using Puppeteer;
 
+using GolemAPI.Commanding;
+
 namespace GolemAPI.Choreography.Roles;
 
 // THE DISPLACER — the role of the MOTORS: the body displaces itself through the world (Juan, 17-sep-2026: "Displacer";
@@ -257,6 +259,7 @@ public sealed class Displacer
     /// holds each by rank, so the warden draws what the golem knows. The fleet is told (echo-formed). No route: nothing for the body to do.</summary>
     public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, IReadOnlyList<string> fleet, string policy)
     {
+        if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // the once of the call, frozen as a parameter
         try
@@ -270,7 +273,7 @@ public sealed class Displacer
                     p["measureLength", typeof(double)] = Resolution.Metres(measure);   // never @measure: the script's own local is named so
                     p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
                     p["names", typeof(string)] = string.Join(",", fleet);   // never "fleet": the script's own variable holds the object built from it
-                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
+                    p["by", typeof(string)] = PolicyWords.Member(policy);   // the member's name: the engine resolves the domain's Policy by it (ajuste 90)
                     p["stamp", typeof(string)] = stamp;
                 })
                 .PerformCheckThenCommand());
@@ -281,6 +284,7 @@ public sealed class Displacer
     /// <summary>A PROPELLER TOLD (propuesta 114): its tip, its hub and its blades; the fleet along them, a step turns it one blade.</summary>
     public Answer FormPropeller(string name, (double X, double Y) center, double radius, double hub, int blades, double angle, IReadOnlyList<string> fleet, string policy)
     {
+        if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         try
         {
@@ -294,7 +298,7 @@ public sealed class Displacer
                     p["blades", typeof(int)] = blades;
                     p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
                     p["names", typeof(string)] = string.Join(",", fleet);
-                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
+                    p["by", typeof(string)] = PolicyWords.Member(policy);   // the member's name: the engine resolves the domain's Policy by it (ajuste 90)
                     p["stamp", typeof(string)] = stamp;
                 })
                 .PerformCheckThenCommand());
@@ -305,6 +309,7 @@ public sealed class Displacer
     /// <summary>A DOUBLE RING TOLD (propuesta 104): the outer ring's radius and golems, the inner ring's radius and golems.</summary>
     public Answer FormRings(string name, (double X, double Y) center, double outerRadius, double innerRadius, double angle, IReadOnlyList<string> outer, IReadOnlyList<string> inner, string policy)
     {
+        if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
         if (outer == null || outer.Count == 0) return Answer.Refusal("the outer ring needs at least one golem");
         if (inner == null || inner.Count == 0) return Answer.Refusal("the inner ring needs at least one golem");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
@@ -320,7 +325,7 @@ public sealed class Displacer
                     p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
                     p["names", typeof(string)] = string.Join(",", outer);
                     p["innerNames", typeof(string)] = string.Join(",", inner);
-                    p["by", typeof(string)] = policy.Trim().ToLowerInvariant();
+                    p["by", typeof(string)] = PolicyWords.Member(policy);   // the member's name: the engine resolves the domain's Policy by it (ajuste 90)
                     p["stamp", typeof(string)] = stamp;
                 })
                 .PerformCheckThenCommand());

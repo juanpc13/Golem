@@ -135,7 +135,7 @@ public partial class MainWindow : Window
                     : dialog.Figure == "propeller" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)} --blades {dialog.Blades}"
                     : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
         string fleet = $"--fleet {string.Join(",", dialog.Chosen)}" + (dialog.Figure == "double ring" ? $" --inner-fleet {string.Join(",", dialog.InnerChosen)}" : "");
-        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {dialog.Policy}";
+        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}";
     }
 
     private static bool LineOf(string line, string name) =>
@@ -161,7 +161,7 @@ public partial class MainWindow : Window
         }
         foreach (var other in golems.Where(x => !members.Contains(x))) if (other.RemoveLines(l => LineOf(l, name)) > 0) dropped++;
         drafts.Remove(name);
-        Log($"{name} › edited: {dialog.Figure} at {Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}, {string.Join(",", dialog.Chosen)} by {dialog.Policy} — {rewritten} form line(s) rewritten, {added} tab(s) given form and take, {dropped} tab(s) cleared of it; SEND to selected when ready");
+        Log($"{name} › edited: {dialog.Figure} at {Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}, {string.Join(",", dialog.Chosen)} by {Policies.Word(dialog.Policy)} — {rewritten} form line(s) rewritten, {added} tab(s) given form and take, {dropped} tab(s) cleared of it; SEND to selected when ready");
         FormationsTab.IsSelected = true;
         if (Current is { } c) SyncFormations(c);
     }

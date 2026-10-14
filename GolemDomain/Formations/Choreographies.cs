@@ -55,13 +55,13 @@ internal sealed class Choreographies
     internal IReadOnlyList<string> Names() => Known;
 
     /// <summary>THE FORMATION TOLD (propuesta 104) — <c>formation = g.Choreography.Form(@formationName, @figure, center, measure, turn, fleet, @by);</c>:
-    /// made with its figure, its fleet and its policy (<c>rank</c> | <c>distance</c>), and KEPT by its name; told again with the same name it
+    /// made with its figure, its fleet and its <c>Policy</c> (the member's name, <c>@by</c>), and KEPT by its name; told again with the same name it
     /// is MADE AGAIN — moving, turning, resizing or re-crewing a formation is saying it again — the old one dissolved (a route already given
     /// keeps the figure it was given by). The same words reach every golem of the fleet, so every copy is the same.</summary>
-    internal Formation Form(string name, string figure, Position center, Units.Length measure, Units.Angle turn, Fleet fleet, string by) => Form(name, figure, center, measure, turn, fleet, by, name);
+    internal Formation Form(string name, string figure, Position center, Units.Length measure, Units.Angle turn, Fleet fleet, Policy by) => Form(name, figure, center, measure, turn, fleet, by, name);
 
     /// <summary>The same, with the STAMP the host minted — the once of the call, carried by every tell about the formation.</summary>
-    internal Formation Form(string name, string figure, Position center, Units.Length measure, Units.Angle turn, Fleet fleet, string by, string stamp)
+    internal Formation Form(string name, string figure, Position center, Units.Length measure, Units.Angle turn, Fleet fleet, Policy by, string stamp)
     {
         if (name == null) throw new GolemDomainException("Choreographies.Form: 'name' was not given");
         if (figure == null) throw new GolemDomainException("Choreographies.Form: 'figure' was not given");
@@ -69,27 +69,25 @@ internal sealed class Choreographies
         if (measure == null) throw new GolemDomainException("Choreographies.Form: 'measure' was not given");
         if (turn == null) throw new GolemDomainException("Choreographies.Form: 'turn' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.Form: 'fleet' was not given");
-        if (by == null) throw new GolemDomainException("Choreographies.Form: 'by' was not given");
         if (fleet.IsDivided) throw new GolemDomainException("a fleet in two rings takes a double ring: FormRings");
         return Keep(name, Figure(figure, center, measure, turn), fleet, by, stamp);
     }
 
     /// <summary>The same, with the figure in hand — the tests' and this module's way (methods take instances).</summary>
-    internal Formation Form(string name, Figure figure, Fleet fleet, string by)
+    internal Formation Form(string name, Figure figure, Fleet fleet, Policy by)
     {
         if (name == null) throw new GolemDomainException("Choreographies.Form: 'name' was not given");
         if (figure == null) throw new GolemDomainException("Choreographies.Form: 'figure' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.Form: 'fleet' was not given");
-        if (by == null) throw new GolemDomainException("Choreographies.Form: 'by' was not given");
         return Keep(name, figure, fleet, by, name);
     }
 
     /// <summary>THE DOUBLE RING TOLD (propuesta 104; Juan: "que pregunte por los diámetros de los dos anillos… seleccionar cuáles serían los
     /// golems del anillo inferior y superior") — <c>formation = g.Choreography.FormRings(@formationName, center, outer, inner, turn, fleet, @by);</c>:
     /// the fleet DIVIDED in two (<c>Fleet(@names, @innerNames)</c>) rides the two rings, the outer radius and the inner one as given.</summary>
-    internal Formation FormRings(string name, Position center, Units.Length outerRadius, Units.Length innerRadius, Units.Angle turn, Fleet fleet, string by) => FormRings(name, center, outerRadius, innerRadius, turn, fleet, by, name);
+    internal Formation FormRings(string name, Position center, Units.Length outerRadius, Units.Length innerRadius, Units.Angle turn, Fleet fleet, Policy by) => FormRings(name, center, outerRadius, innerRadius, turn, fleet, by, name);
 
-    internal Formation FormRings(string name, Position center, Units.Length outerRadius, Units.Length innerRadius, Units.Angle turn, Fleet fleet, string by, string stamp)
+    internal Formation FormRings(string name, Position center, Units.Length outerRadius, Units.Length innerRadius, Units.Angle turn, Fleet fleet, Policy by, string stamp)
     {
         if (name == null) throw new GolemDomainException("Choreographies.FormRings: 'name' was not given");
         if (center == null) throw new GolemDomainException("Choreographies.FormRings: 'center' was not given");
@@ -97,7 +95,6 @@ internal sealed class Choreographies
         if (innerRadius == null) throw new GolemDomainException("Choreographies.FormRings: 'innerRadius' was not given");
         if (turn == null) throw new GolemDomainException("Choreographies.FormRings: 'turn' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.FormRings: 'fleet' was not given");
-        if (by == null) throw new GolemDomainException("Choreographies.FormRings: 'by' was not given");
         if (!fleet.IsDivided) throw new GolemDomainException("a double ring needs its fleet in two rings: Fleet(outer, inner)");
         var rings = new DoubleRing(center, outerRadius, innerRadius, fleet.Division, fleet.Count - fleet.Division, turn);
         return Keep(name, rings, fleet, by, stamp);
@@ -105,9 +102,9 @@ internal sealed class Choreographies
 
     /// <summary>THE PROPELLER TOLD (propuesta 114) — <c>formation = g.Choreography.FormPropeller(@formationName, center, tip, hub, @blades, turn, fleet, @by, @stamp);</c>:
     /// its blades from the hub to the tip, the fleet along them; a step turns it one blade.</summary>
-    internal Formation FormPropeller(string name, Position center, Units.Length radius, Units.Length hub, int blades, Units.Angle turn, Fleet fleet, string by) => FormPropeller(name, center, radius, hub, blades, turn, fleet, by, name);
+    internal Formation FormPropeller(string name, Position center, Units.Length radius, Units.Length hub, int blades, Units.Angle turn, Fleet fleet, Policy by) => FormPropeller(name, center, radius, hub, blades, turn, fleet, by, name);
 
-    internal Formation FormPropeller(string name, Position center, Units.Length radius, Units.Length hub, int blades, Units.Angle turn, Fleet fleet, string by, string stamp)
+    internal Formation FormPropeller(string name, Position center, Units.Length radius, Units.Length hub, int blades, Units.Angle turn, Fleet fleet, Policy by, string stamp)
     {
         if (name == null) throw new GolemDomainException("Choreographies.FormPropeller: 'name' was not given");
         if (center == null) throw new GolemDomainException("Choreographies.FormPropeller: 'center' was not given");
@@ -115,18 +112,15 @@ internal sealed class Choreographies
         if (hub == null) throw new GolemDomainException("Choreographies.FormPropeller: 'hub' was not given");
         if (turn == null) throw new GolemDomainException("Choreographies.FormPropeller: 'turn' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.FormPropeller: 'fleet' was not given");
-        if (by == null) throw new GolemDomainException("Choreographies.FormPropeller: 'by' was not given");
         if (fleet.IsDivided) throw new GolemDomainException("a fleet in two rings takes a double ring: FormRings");
         return Keep(name, new Propeller(center, radius, hub, blades, turn), fleet, by, stamp);
     }
 
-    private Formation Keep(string name, Figure figure, Fleet fleet, string by, string stamp)
+    private Formation Keep(string name, Figure figure, Fleet fleet, Policy by, string stamp)
     {
-        string policy = by.Trim().ToLowerInvariant();
-        if (policy is not ("rank" or "distance" or "rps")) throw new GolemDomainException($"the places are shared by 'rank', by 'distance' or by 'rps', not by '{by}'");
         string called = name.Trim().ToLowerInvariant();
         if (called == "") throw new GolemDomainException("a formation needs a name");
-        var formation = new Formation(called, figure, fleet, golem, policy, stamp);
+        var formation = new Formation(called, figure, fleet, golem, by, stamp);
         var known = formations.FirstOrDefault(f => f.Name == called && !f.Dissolved);
         known?.Dissolve();                                  // told again: the old one goes, the new one takes its name
         formations.Add(formation);

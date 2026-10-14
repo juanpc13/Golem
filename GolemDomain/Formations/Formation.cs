@@ -42,8 +42,8 @@ internal sealed class Holder
 internal sealed class Formation
 {
     private readonly Golem golem;                                        // whose copy this is: it opens every route to a place (ajustes 70, 78)
-    private readonly string policy;                                      // the policy, the formation's from birth (ajuste 80): rank, who stands nearest, or the game (propuesta 115)
-    private bool byDistance => policy != "rank";                         // shared BY THE WORDS — by distance or by the game: the table is the law over who spoke
+    private readonly Policy policy;                                      // the policy, the formation's from birth (ajuste 80): rank, who stands nearest, or the game (propuesta 115)
+    private bool byDistance => policy != Policy.Rank;                         // shared BY THE WORDS — by distance or by the game: the table is the law over who spoke
     private readonly Dictionary<string, string> nonces = new(StringComparer.Ordinal);   // the stamp each peer's word carried: its hand at the game (propuesta 115)
     private readonly List<(int Place, string Winner, string Loser, string Game)> matches = new();   // the game's matches at the last table
     private Position convenedFrom;                                       // where this golem said it stood, to open its route from once the round completes
@@ -62,15 +62,11 @@ internal sealed class Formation
     private string yieldedTo;                                           // the peer whose word made that route yield, until it is replaced
     private int retakes;                                                // how many times this golem's failed route was opened again this round (propuesta 113)
 
-    internal Formation(string name, Figure figure, Fleet fleet, Golem golem, bool byDistance) : this(name, figure, fleet, golem, byDistance, name) { }
-
-    internal Formation(string name, Figure figure, Fleet fleet, Golem golem, bool byDistance, string stamp) : this(name, figure, fleet, golem, byDistance ? "distance" : "rank", stamp) { }
-
     /// <param name="stamp">the ONCE of the formation (ajuste 71's call id, kept): the host mints it when the warden forms, every copy keeps the same, and
     /// every tell about the formation carries it, so a formation told again under the same name is a new round of words to the peers</param>
-    internal Formation(string name, Figure figure, Fleet fleet, Golem golem, string policy, string stamp)
+    internal Formation(string name, Figure figure, Fleet fleet, Golem golem, Policy policy, string stamp)
     {
-        if (policy is not ("rank" or "distance" or "rps")) throw new GolemDomainException($"the places are shared by 'rank', 'distance' or 'rps', not by '{policy}'");
+        if (!Enum.IsDefined(policy)) throw new GolemDomainException($"the places are shared by Rank, Distance or RockPaperScissors, not by '{policy}'");
         if (string.IsNullOrWhiteSpace(stamp)) throw new GolemDomainException("a formation needs its stamp: the once of its call");
         if (string.IsNullOrWhiteSpace(name)) throw new GolemDomainException("a formation needs a name");
         if (figure == null) throw new GolemDomainException("Formation.Formation: 'figure' was not given");
@@ -90,9 +86,9 @@ internal sealed class Formation
     internal string Name { get; }
     /// <summary>The once of this formation's call, minted by the host: what every tell about it carries, so the peers take each word once.</summary>
     internal string Stamp { get; }
-    /// <summary>How the places are shared: <c>rank</c> (the names sorted), <c>distance</c> (who stands nearest, the first law) or <c>rps</c>
-    /// (who stands nearest, and rock, paper, scissors between those who want the same place — propuesta 115).</summary>
-    internal string Policy => policy;
+    /// <summary>How the places are shared: <c>Rank</c> (the names sorted), <c>Distance</c> (who stands nearest, the first law) or
+    /// <c>RockPaperScissors</c> (who stands nearest, and the game between those who want the same place — propuesta 115).</summary>
+    internal Policy Policy => policy;
     internal Figure Figure { get; }
     internal Fleet Fleet { get; }
     /// <summary>Dissolved by the warden (propuesta 104): it stays in the journal's history and in no list.</summary>
@@ -487,7 +483,7 @@ internal sealed class Formation
         disputes.Clear();
         if (disputesForgotten || !byDistance || me == null || !IsComplete || !indices.TryGetValue(me.Name, out int mine)) return;
         var places = Figure.Places(Fleet.Count);
-        if (policy == "rps")
+        if (policy == Policy.RockPaperScissors)
         {
             // the game's matches this golem played: won or lost, against whom, the throw that decided
             foreach (var m in matches.Where(m => m.Winner == me.Name || m.Loser == me.Name))
@@ -520,7 +516,7 @@ internal sealed class Formation
             throw new GolemDomainException($"'{member.Name}' is not a member of the fleet of {Name}");
     }
 
-    private IReadOnlyDictionary<string, int> Table() => policy == "rps" ? GameTable() : NearestTable();
+    private IReadOnlyDictionary<string, int> Table() => policy == Policy.RockPaperScissors ? GameTable() : NearestTable();
 
     // THE GAME (propuesta 115): every member who spoke wants the FREE place nearest to where it stood; a place wanted by one is its; a place
     // wanted by several is played — the contenders by name, the first challenged by the next and the winner going on — and the losers want

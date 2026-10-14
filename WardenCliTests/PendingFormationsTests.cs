@@ -1,4 +1,5 @@
 using WardenCli;
+using WardenCli.Formations;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace WardenCliTests;
@@ -32,7 +33,7 @@ public class PendingFormationsTests
         // by distance nothing is anticipated; a circle by its radius; the fleet left out is every golem of the workspace
         var cyan = new Golem { Name = "cyan", Host = "localhost", Port = 8086, Script = "form ring-1 circle --center 5,5 --radius 3 --by distance" };
         var ring = PendingFormations.Parse(new[] { cyan, blue }).Single(x => x.Name == "ring-1");
-        Assert.AreEqual("distance", ring.Policy);
+        Assert.AreEqual(Policy.Distance, ring.Policy);
         Assert.AreEqual(0, ring.Holders.Count);
         Assert.AreEqual("blue,cyan", ring.Crew);
         Assert.AreEqual(2, ring.Spots.Count);

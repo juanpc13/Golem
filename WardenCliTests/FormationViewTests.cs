@@ -51,7 +51,7 @@ public class FormationViewTests
     [TestMethod]
     public void AFigureReshaped_IsADraft_UntilShot_AndTheShotIsTheFormLineWithIt()
     {
-        var view = new FormationView("square-2", "square", 5.5, 5.5, 2.0, 0.0, "rank", "blue,green,red,yellow", 0, 4, 0, 0, 0, -1, Array.Empty<HolderView>(), Array.Empty<(double, double)>());
+        var view = new FormationView("square-2", "square", 5.5, 5.5, 2.0, 0.0, Policy.Rank, "blue,green,red,yellow", 0, 4, 0, 0, 0, -1, Array.Empty<HolderView>(), Array.Empty<(double, double)>());
         Assert.IsFalse(view.HasDraft);
         Assert.AreEqual("", view.DraftText);
         Assert.IsInstanceOfType(view.Projected, typeof(Square), "nothing drafted: the figure as the golem told it");

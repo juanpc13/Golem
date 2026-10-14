@@ -25,11 +25,11 @@ public class ChoreographiesTests
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red,green,yellow");
 
-        var square = blue.Choreography.Form("Square-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank", "call-7");
+        var square = blue.Choreography.Form("Square-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, Policy.Rank, "call-7");
         Assert.AreEqual("square-2", square.Name, "the name the warden gave it, lower case");
         Assert.AreEqual("call-7", square.Stamp, "the once of its call, the host's");
         Assert.AreEqual("square", square.Figure.Name);
-        Assert.AreEqual("rank", square.Policy);
+        Assert.AreEqual(Policy.Rank, square.Policy);
         Assert.AreSame(fleet, square.Fleet);
         Assert.AreSame(square, blue.Choreography.Find("square-2"), "found again by its name");
         Assert.IsTrue(blue.Choreography.HasFormation("SQUARE-2"));
@@ -45,9 +45,9 @@ public class ChoreographiesTests
         Assert.IsTrue(holders.All(h => h.Orbit == 0), "a square has one orbit");
 
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Find("pentagon-7")).Message, "the golem was told no formation named 'pentagon-7': form it first");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("h", "hexagon", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank")).Message, "knows no figure named 'hexagon'");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("s", "square", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "luck")).Message, "by 'rank', by 'distance' or by 'rps'");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("d", "double ring", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank")).Message, "two rings of golems: FormRings");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("h", "hexagon", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Rank)).Message, "knows no figure named 'hexagon'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("s", "square", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, (Policy)7)).Message, "by Rank, Distance or RockPaperScissors");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("d", "double ring", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Rank)).Message, "two rings of golems: FormRings");
     }
 
     [TestMethod]
@@ -58,14 +58,14 @@ public class ChoreographiesTests
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
 
-        var turned = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(45.0), fleet, "rank");
+        var turned = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(45.0), fleet, Policy.Rank);
         var corner = turned.Holders()[0];
         Assert.AreEqual(5.5, corner.X, 1e-9, "the north-east corner, turned 45°, stands due north");
         Assert.AreEqual(5.5 + Math.Sqrt(2), corner.Y, 1e-9);
         var route = turned.Join(new Pose(5.5, 9.0, -1.5708), fleet.Member(blue));
         StringAssert.Contains(route.AsPlan(), "floor@5.5,6.91", "blue's route to the turned corner: " + route.AsPlan());
 
-        var moved = blue.Choreography.Form("square-1", "square", new Position(3.0, 3.0), new Meters(2.0), new Degrees(0.0), fleet, "rank");
+        var moved = blue.Choreography.Form("square-1", "square", new Position(3.0, 3.0), new Meters(2.0), new Degrees(0.0), fleet, Policy.Rank);
         Assert.AreSame(moved, blue.Choreography.Find("square-1"), "told again by the same name: made again");
         Assert.IsTrue(turned.Dissolved, "the old one dissolved");
         Assert.AreEqual(1, blue.Choreography.Formations().Count, "one formation by that name in the list");
@@ -87,7 +87,7 @@ public class ChoreographiesTests
         CollectionAssert.AreEqual(new[] { "blue", "cyan", "green", "orange", "red", "yellow" }, fleet.Names.ToList(), "the outer ring's names sorted, then the inner ring's");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Fleet("blue,red", "red,yellow")).Message, "a golem rides one ring: red on both");
 
-        var rings = red.Choreography.FormRings("double-ring-1", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), fleet, "rank");
+        var rings = red.Choreography.FormRings("double-ring-1", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), fleet, Policy.Rank);
         Assert.AreEqual("double ring", rings.Figure.Name);
         Assert.AreEqual(6, rings.PlaceCount);
         var holders = rings.Holders();
@@ -140,9 +140,9 @@ public class ChoreographiesTests
         Assert.AreEqual(0, rings.Holders().Single(h => h.Name == "blue").Index, "everybody one place down the order");
         Assert.AreEqual(5, rings.PlaceIndex);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Square(new Position(5.5, 5.5), new Meters(2.0)).Rotate(Sense.Clockwise, Ring.Inner)).Message, "has no rings: it turns whole");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), new Fleet("blue,red"), "rank")).Message, "needs its fleet in two rings");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.Form("r", "circle", new Position(5.5, 5.5), new Meters(3.0), new Degrees(0.0), fleet, "rank")).Message, "a fleet in two rings takes a double ring");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(1.0), new Meters(1.2), new Degrees(0.0), fleet, "rank")).Message, "wider than the inner one");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), new Fleet("blue,red"), Policy.Rank)).Message, "needs its fleet in two rings");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.Form("r", "circle", new Position(5.5, 5.5), new Meters(3.0), new Degrees(0.0), fleet, Policy.Rank)).Message, "a fleet in two rings takes a double ring");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(1.0), new Meters(1.2), new Degrees(0.0), fleet, Policy.Rank)).Message, "wider than the inner one");
     }
 
     [TestMethod]
@@ -152,8 +152,8 @@ public class ChoreographiesTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var square = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank");
-        var ring = blue.Choreography.Form("ring-1", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance");
+        var square = blue.Choreography.Form("square-1", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, Policy.Rank);
+        var ring = blue.Choreography.Form("ring-1", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Distance);
         Assert.AreEqual(2, blue.Choreography.Formations().Count);
         Assert.AreEqual(0, ring.Holders().Count, "by distance nobody holds a place until it speaks");
 
@@ -197,7 +197,7 @@ public class ChoreographiesTests
         Assert.AreEqual(2, red.Choreography.OverheardCount("tri"));
 
         var fleet = new Fleet("blue,red,green");
-        var tri = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), fleet, "rank", "s1");
+        var tri = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), fleet, Policy.Rank, "s1");
         Assert.AreEqual(0, red.Choreography.OverheardCount("tri"), "taken in by the form");
         Assert.AreEqual(2, tri.StoodCount, "blue and green spoke before red was told");
         var route = tri.Convene(new Pose(4.5, 4.0, 0.0), fleet.Member(red));
@@ -207,7 +207,7 @@ public class ChoreographiesTests
         // blue speaks again: a NEW telling of the name (the show run again) — kept for the next form, not mixed into this one
         Assert.IsFalse(red.Choreography.Awaits("tri", "blue"), "blue already spoke in this copy");
         red.Choreography.Overheard("tri", "blue", new Position(3.0, 7.2));
-        var again = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), fleet, "rank", "s2");
+        var again = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), fleet, Policy.Rank, "s2");
         Assert.AreEqual(1, again.StoodCount, "the new telling starts with blue's new word");
 
         // a dissolution drops what was kept for its name
@@ -227,7 +227,7 @@ public class ChoreographiesTests
         var cyan = new Golem(body, "cyan");
         cyan.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,cyan,green,orange,red,yellow");
-        var propeller = cyan.Choreography.FormPropeller("prop", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 3, new Degrees(0.0), fleet, "rank", "s1");
+        var propeller = cyan.Choreography.FormPropeller("prop", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 3, new Degrees(0.0), fleet, Policy.Rank, "s1");
         var places = propeller.Figure.Places(6);
         Assert.AreEqual(7, places.Count, "the centre and two rungs on three blades — one tip left free");
         Assert.AreEqual(5.5, places[0].X, 1e-9, "the first place, the centre");
@@ -256,13 +256,13 @@ public class ChoreographiesTests
         // blue (rank 0) takes the centre and faces along the first blade, north
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var blues = blue.Choreography.FormPropeller("prop", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 3, new Degrees(0.0), fleet, "rank", "s1");
+        var blues = blue.Choreography.FormPropeller("prop", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 3, new Degrees(0.0), fleet, Policy.Rank, "s1");
         var centre = blues.Join(new Pose(5.0, 5.0, 0.0), fleet.Member(blue));
         for (int i = 0; i < 50 && centre.IsPending(); i++) { if (centre.Waiting) centre.Go(); centre.Arrive(centre.NextLeg); }
         Assert.AreEqual(5.5, blue.Standing.X, 1e-6);
         Assert.AreEqual(Math.PI / 2, blue.Standing.Heading, 1e-6, "facing along the first blade");
 
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Choreography.FormPropeller("bad", new Position(5.5, 5.5), new Meters(3.0), new Meters(3.5), 3, new Degrees(0.0), fleet, "rank")).Message, "hub");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Choreography.FormPropeller("bad", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 1, new Degrees(0.0), fleet, "rank")).Message, "from 2 to 12 blades");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Choreography.FormPropeller("bad", new Position(5.5, 5.5), new Meters(3.0), new Meters(3.5), 3, new Degrees(0.0), fleet, Policy.Rank)).Message, "hub");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Choreography.FormPropeller("bad", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.0), 1, new Degrees(0.0), fleet, Policy.Rank)).Message, "from 2 to 12 blades");
     }
 }

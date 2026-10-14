@@ -209,7 +209,7 @@ public sealed class Commander
                 var who = new List<string>();
                 if (f.TryGetProperty("holders", out var hs) && hs.ValueKind == JsonValueKind.Array)
                     foreach (var h in hs.EnumerateArray()) who.Add($"{Str(h, "who")}@{Num(h, "x")},{Num(h, "y")}");
-                lines.Add($"{Str(f, "called")} · {Str(f, "shape")} at {Num(f, "atX")},{Num(f, "atY")}, {(Str(f, "shape") == "square" || Str(f, "shape") == "pentagon" || Str(f, "shape") == "triangle" ? "side" : "radius")} {Num(f, "length")} m, {Num(f, "degrees")}° · by {Str(f, "policy")} · {Str(f, "crew")}, {Int(f, "placed")} placed, {Int(f, "queued")} step(s) queued, round {Int(f, "round")}" + (who.Count > 0 ? $" · {string.Join(" · ", who)}" : " · nobody placed yet"));
+                lines.Add($"{Str(f, "called")} · {Str(f, "shape")} at {Num(f, "atX")},{Num(f, "atY")}, {(Str(f, "shape") == "square" || Str(f, "shape") == "pentagon" || Str(f, "shape") == "triangle" ? "side" : "radius")} {Num(f, "length")} m, {Num(f, "degrees")}° · by {PolicyWords.Word(Str(f, "policy"))} · {Str(f, "crew")}, {Int(f, "placed")} placed, {Int(f, "queued")} step(s) queued, round {Int(f, "round")}" + (who.Count > 0 ? $" · {string.Join(" · ", who)}" : " · nobody placed yet"));
             }
         return Reply.Done(lines.Count == 0 ? "in no formation" : string.Join(Environment.NewLine, lines), json);
     }

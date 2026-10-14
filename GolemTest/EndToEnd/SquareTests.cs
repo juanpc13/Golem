@@ -69,7 +69,7 @@ public class SquareTests
         // member here: a golem takes one place per call)
         GolemDomain.Routes.Route AsMember(string name)
         {
-            var taken = g.Choreography.Form("call-" + name, square, fleet, "rank").Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
+            var taken = g.Choreography.Form("call-" + name, square, fleet, Policy.Rank).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(name));
             taken.Abandon("this golem plays the next member now");   // its route ended: the berths of the others move on (ajuste 80)
             return taken;
         }
@@ -113,7 +113,7 @@ public class SquareTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => fleet.Member(g)).Message, "a golem without a name is in no fleet");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Golem(body, " ")).Message, "a golem's name must be a name");
         Assert.AreEqual(2, fleet.Member(red).Rank, "its member, by the name it was born with: blue, green, red, yellow");
-        var route = red.Choreography.Form("red-1", formation, fleet, "rank").Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
+        var route = red.Choreography.Form("red-1", formation, fleet, Policy.Rank).Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
         StringAssert.Contains(route.AsPlan(), "floor@4.5,4.5", "red, third: the south-west corner of the square the module made");
     }
 }

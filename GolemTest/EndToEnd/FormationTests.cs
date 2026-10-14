@@ -29,9 +29,9 @@ public class FormationTests
         var fleet = new Fleet("blue,red");
         var center = new Position(5.5, 5.5);
         var side = new Meters(2.0);
-        var blueCall = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", center, side), fleet, "distance");
-        var redCall = red.Choreography.Form("red-1", red.Choreography.Figure("square", center, side), fleet, "distance");
-        Assert.AreEqual("distance", blueCall.Policy);
+        var blueCall = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", center, side), fleet, Policy.Distance);
+        var redCall = red.Choreography.Form("red-1", red.Choreography.Figure("square", center, side), fleet, Policy.Distance);
+        Assert.AreEqual(Policy.Distance, blueCall.Policy);
 
         // each says where it stands: nobody sets out until the round is complete (ajuste 80)
         Assert.IsNull(blueCall.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue)), "blue spoke; red has not: no route yet");
@@ -80,9 +80,9 @@ public class FormationTests
         Assert.AreSame(blueNow, blueCall.Stood(fleet.Member(red), new Position(4.4, 4.4)));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueCall.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue))).Message, "already took its place");
         Assert.AreSame(blueCall, blue.Choreography.Find("red-1"), "the formation by its name");
-        Assert.AreNotSame(blueCall, blue.Choreography.Form("red-2", blue.Choreography.Figure("square", center, side), fleet, "distance"), "another name, another formation");
+        Assert.AreNotSame(blueCall, blue.Choreography.Form("red-2", blue.Choreography.Figure("square", center, side), fleet, Policy.Distance), "another name, another formation");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueCall.Stood(fleet.Member(blue), new Position(1.0, 1.0))).Message, "its own word is its Convene");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("red-3", blue.Choreography.Figure("square", center, side), fleet, "luck")).Message, "by 'rank', by 'distance' or by 'rps'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("red-3", blue.Choreography.Figure("square", center, side), fleet, (Policy)7)).Message, "by Rank, Distance or RockPaperScissors");
     }
 
     [TestMethod]
@@ -92,7 +92,7 @@ public class FormationTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var call = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
+        var call = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, Policy.Distance);
         Assert.IsNull(call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue)), "the round is not complete");
         var first = call.Stood(fleet.Member("red"), new Position(7.0, 7.0));
         StringAssert.Contains(first.AsPlan(), "floor@4.5,6.5", "red nearer to the north-east corner: blue takes the north-west one");
@@ -116,7 +116,7 @@ public class FormationTests
         var green = new Golem(body, "green");
         green.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,green,red");
-        var call = green.Choreography.Form("red-1", green.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
+        var call = green.Choreography.Form("red-1", green.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, Policy.Distance);
         // three bodies on a square: the round — blue and red far away, green by the north-east corner — gives green the nearest place
         Assert.IsNull(call.Convene(new Pose(7.0, 7.0, 0.0), fleet.Member(green)));
         Assert.IsNull(call.Stood(fleet.Member("blue"), new Position(0.5, 0.5)));
@@ -150,8 +150,8 @@ public class FormationTests
         blue.Enter(new Scenario(Catalog.OpenFloor(), collisions));
         var fleet = new Fleet("blue,yellow");   // two on a square: blue the north-east corner (6.5, 6.5), yellow the north-west one; two corners free (ajuste 86)
         var square = blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0));
-        var call = blue.Choreography.Form("red-1", square, fleet, "rank");
-        Assert.AreEqual("rank", call.Policy);
+        var call = blue.Choreography.Form("red-1", square, fleet, Policy.Rank);
+        Assert.AreEqual(Policy.Rank, call.Policy);
 
         // yellow stands in the middle of blue's column, by the south-east corner; blue comes from the south, straight up x = 6.5
         Assert.IsNull(call.Stood(fleet.Member("yellow"), new Position(6.5, 4.5)), "yellow's word, before blue joined: kept");
@@ -171,7 +171,7 @@ public class FormationTests
         // a peer standing on MY place is no berth (by rank a golem may stand on another's corner): the route still opens
         var other = new Golem(body, "yellow");
         other.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var otherCall = other.Choreography.Form("red-1", square, fleet, "rank");
+        var otherCall = other.Choreography.Form("red-1", square, fleet, Policy.Rank);
         otherCall.Stood(fleet.Member("blue"), new Position(4.6, 6.4));   // blue stands almost on the north-west corner, yellow's place by rank
         var toNorthWest = otherCall.Join(new Pose(2.5, 8.5, 0.0), fleet.Member(other));
         StringAssert.Contains(toNorthWest.AsPlan(), "floor@4.5,6.5", "the place is taken even so: " + toNorthWest.AsPlan());
@@ -188,7 +188,7 @@ public class FormationTests
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
         var square = blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0));
-        var call = blue.Choreography.Form("red-1", square, fleet, "rank");
+        var call = blue.Choreography.Form("red-1", square, fleet, Policy.Rank);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Current).Message, "stands in no formation");
 
         // blue joins by rank: first of two, the north-east corner (place 1 of 2 of the square: north-east, then south-west)
@@ -275,7 +275,7 @@ public class FormationTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var call = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
+        var call = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, Policy.Distance);
         Assert.IsNull(call.Heard(fleet.Member("red")), "a word before blue has a route is only kept");
         Assert.IsNull(call.Stood(fleet.Member("red"), new Position(7.0, 7.0)));
         var first = call.Convene(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
@@ -299,7 +299,7 @@ public class FormationTests
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,green,purple,yellow");
         var square = blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0));
-        var call = blue.Choreography.Form("red-1", square, fleet, "rank");
+        var call = blue.Choreography.Form("red-1", square, fleet, Policy.Rank);
 
         // blue comes from the north, down x = 6.5, to the north-east corner: it arrives facing south, and the route then has it face the centre
         var route = call.Join(new Pose(6.5, 10.4, -1.5708), fleet.Member(blue));
@@ -333,7 +333,7 @@ public class FormationTests
         // a body that already faces the centre when it reaches its place completes at once
         var green = new Golem(body, "green");
         green.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var greens = green.Choreography.Form("red-1", square, fleet, "rank");
+        var greens = green.Choreography.Form("red-1", square, fleet, Policy.Rank);
         var toNorthWest = greens.Join(new Pose(3.5, 7.5, -0.7854), fleet.Member(green));   // from the north-west diagonal, facing the centre
         toNorthWest.Arrive(toNorthWest.NextLeg);
         Assert.AreEqual("completed", toNorthWest.Status, "already facing the centre on arrival: nothing to turn — " + toNorthWest.AsPlan());
@@ -349,7 +349,7 @@ public class FormationTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var square = blue.Choreography.Form("sq", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank");
+        var square = blue.Choreography.Form("sq", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, Policy.Rank);
         var route = square.Join(new Pose(0.5, 6.5, 0.0), fleet.Member(blue));   // from the west edge, straight east to the north-east corner
         StringAssert.EndsWith(route.AsPlan(), "floor@6.5,6.5 > face@6.5,6.5", route.AsPlan());
         // the body touches the perimeter wall it brushed along, a graze: the way is kept, the retreat first, the facing once at the end
@@ -370,7 +370,7 @@ public class FormationTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var copy = blue.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), new Fleet("blue"), "rank", "call-1");
+        var copy = blue.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), new Fleet("blue"), Policy.Rank, "call-1");
         var place = copy.Figure.Places(1)[0];   // the apex, north of the centre: (3, 7.23)
         var route = copy.Convene(new Pose(place.X + 0.008, place.Y - 0.006, -0.08), copy.Fleet.Member(blue));   // standing on it, a centimetre off, facing east-ish
         Assert.IsNotNull(route);
@@ -386,7 +386,7 @@ public class FormationTests
         // asked `advance 0.02` on its facing leg), and the formation knows the golem stands on its place
         var red = new Golem(body, "red");
         red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var redCopy = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), new Fleet("red"), "rank", "call-1");
+        var redCopy = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), new Fleet("red"), Policy.Rank, "call-1");
         var apex = redCopy.Figure.Places(1)[0];
         var born = redCopy.Convene(new Pose(apex.X + 0.01, apex.Y - 0.01, -Math.PI / 2 + 0.02), redCopy.Fleet.Member(red));
         Assert.AreEqual("completed", born.Status, born.AsPlan());
@@ -402,7 +402,7 @@ public class FormationTests
         var fleet = new Fleet("blue,red");
         var red = new Golem(body, "red");
         red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var copy = red.Choreography.Form("pair", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank", "call-1");
+        var copy = red.Choreography.Form("pair", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, Policy.Rank, "call-1");
         var blue = fleet.Member("blue");
         var me = fleet.Member("red");
         // blue said it stands on the north-east corner, its place (6.5, 6.5), near enough; red stands far away
@@ -415,7 +415,7 @@ public class FormationTests
         Assert.IsTrue(!route.Waiting, "blue is no mover — it stands on its place — so red's own line-up is the whole start: " + route.Order);
 
         // and a member heard as PLACED counts as lined up: a round where the other stood away but arrived before lining up (its word of being there)
-        var later = red.Choreography.Form("pair-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, "rank", "call-2");
+        var later = red.Choreography.Form("pair-2", "square", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), fleet, Policy.Rank, "call-2");
         Assert.IsNull(later.Stood(blue, new Position(9.0, 9.0)));
         var again = later.Convene(new Pose(2.0, 2.0, 0.0), me);
         again.Arrive(again.NextLeg);
@@ -433,7 +433,7 @@ public class FormationTests
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var formation = blue.Choreography.Form("tri-1", "triangle", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), new Fleet("blue"), "rank", "call-1");
+        var formation = blue.Choreography.Form("tri-1", "triangle", new Position(5.5, 5.5), new Meters(2.0), new Degrees(0.0), new Fleet("blue"), Policy.Rank, "call-1");
         var route = formation.Convene(new Pose(2.0, 2.0, 0.0), formation.Fleet.Member(blue));
         Assert.IsNotNull(route, "a fleet of one: the round is complete at once");
         Assert.IsFalse(formation.NeedsRetake, "underway: nothing ended short");
@@ -472,7 +472,7 @@ public class FormationTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var square = blue.Choreography.Form("sq", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "rank");
+        var square = blue.Choreography.Form("sq", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, Policy.Rank);
         var first = square.Join(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
         WalkToTheEnd(first);
         square.Placed(square.Me);
@@ -508,8 +508,8 @@ public class FormationTests
         var red = new Golem(body, "red");
         red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("green,red");
-        var greens = green.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "g1");
-        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "r1");
+        var greens = green.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Distance, "g1");
+        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Distance, "r1");
 
         greens.Convene(new Pose(5.5004, 8.0, 0.0), fleet.Member(green));
         greens.Stood(fleet.Member(red), new Position(5.5, 8.0));        // red's word, as the tell carries it
@@ -533,8 +533,8 @@ public class FormationTests
         var red = new Golem(body, "red");
         red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var blues = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "b1");
-        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "r1");
+        var blues = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Distance, "b1");
+        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Distance, "r1");
         Assert.AreEqual(0, blue.Choreography.Disputes().Count, "nobody spoke: nothing disputed yet");
 
         blues.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));    // 0.5 m from the east place
@@ -558,13 +558,13 @@ public class FormationTests
         Assert.AreEqual(0, blue.Choreography.Disputes().Count, "every dispute forgotten");
         blues.Stood(fleet.Member(red), new Position(6.25, 5.5));        // a corrected word re-tables the copy: still forgotten
         Assert.AreEqual(0, blue.Choreography.Disputes().Count);
-        var again = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "b3");
+        var again = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Distance, "b3");
         again.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));
         again.Stood(fleet.Member(red), new Position(6.2, 5.5));
         Assert.AreEqual(1, blue.Choreography.Disputes().Count, "the formation told again: a new copy, its dispute shown");
 
         // by rank nobody disputes: the names sorted take the places
-        var ranked = blue.Choreography.Form("ranked", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank", "b2");
+        var ranked = blue.Choreography.Form("ranked", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Rank, "b2");
         ranked.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));
         ranked.Stood(fleet.Member(red), new Position(6.2, 5.5));
         Assert.AreEqual(1, blue.Choreography.Disputes().Count, "still the one of the pair told again: by rank there are none");
@@ -588,9 +588,9 @@ public class FormationTests
         var red = new Golem(body, "red");
         red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var blues = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rps", "blue-1");
-        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rps", "red-7");
-        Assert.AreEqual("rps", blues.Policy);
+        var blues = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.RockPaperScissors, "blue-1");
+        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.RockPaperScissors, "red-7");
+        Assert.AreEqual(Policy.RockPaperScissors, blues.Policy);
 
         blues.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));    // both nearest the east place
         blues.Stood(fleet.Member(red), new Position(6.2, 5.5), "red-7");
@@ -627,7 +627,7 @@ public class FormationTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var call = blue.Choreography.Form("sq", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "rank");
+        var call = blue.Choreography.Form("sq", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, Policy.Rank);
         var first = call.Join(new Pose(5.8, 5.8, 0.0), fleet.Member(blue));
         WalkToTheEnd(first);
         call.Placed(call.Me);
@@ -665,7 +665,7 @@ public class FormationTests
         var blue = new Golem(body, "blue");
         blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var fleet = new Fleet("blue,red");
-        var call = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, "distance");
+        var call = blue.Choreography.Form("red-1", blue.Choreography.Figure("square", new Position(5.5, 5.5), new Meters(2.0)), fleet, Policy.Distance);
 
         Assert.IsNull(call.Stood(fleet.Member("red"), new Position(7.0, 7.0)), "blue has not convened: the word is only kept");
         Assert.IsFalse(call.Knows(fleet.Member(blue)));

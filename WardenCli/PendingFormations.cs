@@ -60,7 +60,7 @@ public static class PendingFormations
         double? measure = round ? Num("radius") : Num("side");
         if (measure is not > 0) return null;
         double angle = Num("angle") ?? 0.0;
-        string policy = opts.TryGetValue("by", out var by) ? by.ToLowerInvariant() : "rank";
+        Policy policy = opts.TryGetValue("by", out var by) ? Policies.Parse(by) ?? Policy.Rank : Policy.Rank;
         // the fleet as the golem resolves it: the names sorted (rank); left out, this golem and every peer — here, every golem of the workspace
         var outer = Names("fleet");
         if (outer.Count == 0) outer = everybody.ToList();
@@ -82,7 +82,7 @@ public static class PendingFormations
         catch (ArgumentException) { return null; }
         var spots = shape.Places(places).Select(s => (s.X, s.Y)).ToList();
         var holders = new List<HolderView>();
-        if (policy == "rank")
+        if (policy == Policy.Rank)
             for (int i = 0; i < Math.Min(places, spots.Count); i++)
                 holders.Add(new HolderView(crew[i], i, spots[i].X, spots[i].Y, rings && i >= outer.Count ? 1 : 0));
         return new FormationView(name, rings ? "double ring" : figure, cx, cy, measure.Value, angle, policy, string.Join(",", crew), rings ? outer.Count : 0,
