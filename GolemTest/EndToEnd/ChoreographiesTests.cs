@@ -46,7 +46,7 @@ public class ChoreographiesTests
 
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Find("pentagon-7")).Message, "the golem was told no formation named 'pentagon-7': form it first");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("h", "hexagon", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank")).Message, "knows no figure named 'hexagon'");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("s", "square", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "luck")).Message, "by 'rank' or by 'distance'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("s", "square", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "luck")).Message, "by 'rank', by 'distance' or by 'rps'");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("d", "double ring", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank")).Message, "two rings of golems: FormRings");
     }
 

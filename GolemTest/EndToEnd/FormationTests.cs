@@ -82,7 +82,7 @@ public class FormationTests
         Assert.AreSame(blueCall, blue.Choreography.Find("red-1"), "the formation by its name");
         Assert.AreNotSame(blueCall, blue.Choreography.Form("red-2", blue.Choreography.Figure("square", center, side), fleet, "distance"), "another name, another formation");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueCall.Stood(fleet.Member(blue), new Position(1.0, 1.0))).Message, "its own word is its Convene");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("red-3", blue.Choreography.Figure("square", center, side), fleet, "luck")).Message, "by 'rank' or by 'distance'");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("red-3", blue.Choreography.Figure("square", center, side), fleet, "luck")).Message, "by 'rank', by 'distance' or by 'rps'");
     }
 
     [TestMethod]
@@ -519,6 +519,94 @@ public class FormationTests
         string Table(Formation f) => string.Join(" ", f.Holders().OrderBy(h => h.Name).Select(h => $"{h.Name}@{h.Index}"));
         Assert.AreEqual(Table(greens), Table(reds), "both copies share the places alike");
         Assert.AreEqual("green@0 red@1", Table(greens), "a tie at the millimetre: by name, green first, the east place");
+    }
+
+    // THE DISPUTES BY DISTANCE (14-oct-2026; Juan: "las disputas que ha tenido el golem para resolver una posición con otro golem y el resultado de
+    // si éste cedió o la ganó él"): blue and red both stand nearest the east place; red is nearer, so the law gives it to red — in blue's copy blue
+    // YIELDED it to red, in red's copy red WON it against blue; by rank there is no dispute
+    [TestMethod]
+    public void ByDistance_TheGolemNearestWinsThePlace_AndEachCopySaysWhoYieldedAndWhoWon()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var red = new Golem(body, "red");
+        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red");
+        var blues = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "b1");
+        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "r1");
+        Assert.AreEqual(0, blue.Choreography.Disputes().Count, "nobody spoke: nothing disputed yet");
+
+        blues.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));    // 0.5 m from the east place
+        blues.Stood(fleet.Member(red), new Position(6.2, 5.5));         // red: 0.3 m from it
+        reds.Convene(new Pose(6.2, 5.5, 0.0), fleet.Member(red));
+        reds.Stood(fleet.Member(blue), new Position(6.0, 5.5));
+
+        var lost = blue.Choreography.Disputes().Single();
+        Assert.IsFalse(lost.Won, "blue yielded the east place");
+        Assert.AreEqual("red", lost.Rival);
+        Assert.AreEqual(0, lost.Place);
+        Assert.AreEqual(6.5, lost.At.X, 1e-9);
+        Assert.AreEqual(0.5, lost.Mine, 1e-9);
+        Assert.AreEqual(0.3, lost.Theirs, 1e-9);
+        var won = red.Choreography.Disputes().Single();
+        Assert.IsTrue(won.Won, "red won it");
+        Assert.AreEqual("blue", won.Rival);
+
+        // forgotten (14-oct-2026): this copy's disputes go and it settles no more; a formation told again brings its own
+        blue.Choreography.ForgetDisputes();
+        Assert.AreEqual(0, blue.Choreography.Disputes().Count, "every dispute forgotten");
+        blues.Stood(fleet.Member(red), new Position(6.25, 5.5));        // a corrected word re-tables the copy: still forgotten
+        Assert.AreEqual(0, blue.Choreography.Disputes().Count);
+        var again = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "distance", "b3");
+        again.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));
+        again.Stood(fleet.Member(red), new Position(6.2, 5.5));
+        Assert.AreEqual(1, blue.Choreography.Disputes().Count, "the formation told again: a new copy, its dispute shown");
+
+        // by rank nobody disputes: the names sorted take the places
+        var ranked = blue.Choreography.Form("ranked", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rank", "b2");
+        ranked.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));
+        ranked.Stood(fleet.Member(red), new Position(6.2, 5.5));
+        Assert.AreEqual(1, blue.Choreography.Disputes().Count, "still the one of the pair told again: by rank there are none");
+    }
+
+    // ROCK, PAPER, SCISSORS (propuesta 115, 14-oct-2026; Juan: "que jueguen rock scissors paper para ver quién se queda la posición"): both want the
+    // east place; whoever wins the game keeps it — every copy plays the same hands, drawn from each golem's stamp, so both copies agree on the
+    // winner, and the disputes say who won and how
+    [TestMethod]
+    public void ByTheGame_BothCopiesPlayTheSameHands_AndTheDisputesSayWhoWonAndHow()
+    {
+        var hand = Throws.Of("blue-1", "blue");
+        Assert.AreEqual(Throws.Length, hand.Length);
+        Assert.IsTrue(hand.All(c => c is 'R' or 'P' or 'S'));
+        Assert.AreEqual(hand, Throws.Of("blue-1", "blue"), "the same stamp and name, the same hand");
+        Assert.IsTrue(Throws.Beats('R', 'S') && Throws.Beats('S', 'P') && Throws.Beats('P', 'R') && !Throws.Beats('S', 'R'));
+
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var red = new Golem(body, "red");
+        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red");
+        var blues = blue.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rps", "blue-1");
+        var reds = red.Choreography.Form("pair", "circle", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, "rps", "red-7");
+        Assert.AreEqual("rps", blues.Policy);
+
+        blues.Convene(new Pose(6.0, 5.5, 0.0), fleet.Member(blue));    // both nearest the east place
+        blues.Stood(fleet.Member(red), new Position(6.2, 5.5), "red-7");
+        reds.Convene(new Pose(6.2, 5.5, 0.0), fleet.Member(red));
+        reds.Stood(fleet.Member(blue), new Position(6.0, 5.5), "blue-1");
+
+        string Table(Formation f) => string.Join(" ", f.Holders().OrderBy(h => h.Name).Select(h => $"{h.Name}@{h.Index}"));
+        Assert.AreEqual(Table(blues), Table(reds), "both copies played the same game");
+        var bluesGame = blue.Choreography.Disputes().Single();
+        var redsGame = red.Choreography.Disputes().Single();
+        Assert.AreEqual(0, bluesGame.Place, "the east place was played");
+        Assert.AreNotEqual(bluesGame.Won, redsGame.Won, "one won it, the other yielded it");
+        Assert.AreEqual(bluesGame.Game, redsGame.Game, "the same throws decided it in both copies");
+        StringAssert.Contains(bluesGame.Game, "beats");
+        string winner = bluesGame.Won ? "blue" : "red";
+        Assert.AreEqual($"{winner}@0", Table(blues).Split(' ').Single(t => t.StartsWith(winner)), "the winner holds the east place");
     }
 
     private static void WalkToTheEnd(GolemDomain.Routes.Route route)
