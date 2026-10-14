@@ -80,4 +80,17 @@ public class PendingFormationsTests
         Assert.AreEqual(3, figure.Orbits(6).Count, "the centre, and every rung an orbit");
         StringAssert.Contains(v.FormLine(figure), "propeller --center 5.5,5.5 --radius 3 --inner-radius 1 --blades 3");
     }
+
+    // THE SCRIPT AS WRITTEN (14-oct-2026): the queue takes its lines, the workspace keeps what the operator wrote — a show opened as a workspace and
+    // sent is saved back whole; a tab the operator clears is saved empty
+    [TestMethod]
+    public void TheQueueTakesLines_TheWorkspaceKeepsWhatWasWritten()
+    {
+        var g = new Golem { Name = "blue", Host = "localhost", Port = 8081, Script = "use map open-floor\ntake helix" };
+        Assert.AreEqual("use map open-floor", g.Dequeue());
+        Assert.AreEqual("take helix", g.Script.Trim(), "the queue took the first line off the tab");
+        Assert.AreEqual("use map open-floor\ntake helix", g.Written, "what the workspace saves: the script as written");
+        g.Script = "";
+        Assert.AreEqual("", g.Written, "cleared by the operator: saved empty");
+    }
 }
