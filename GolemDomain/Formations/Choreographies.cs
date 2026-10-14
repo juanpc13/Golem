@@ -19,7 +19,7 @@ internal sealed class Choreographies
     private static readonly string[] Known = { "square", "pentagon", "triangle", "circle", "double ring", "propeller" };
     private readonly Golem golem;                        // the golem it was born with: it opens the route to a place (refused off the map or without room)
     private readonly List<Formation> formations = new();   // the formations the golem was told, by name, the dissolved ones among them (history)
-    private readonly Dictionary<string, Dictionary<string, Position>> overheard = new();   // words of a round heard AHEAD of the formation they are about: name → who → where
+    private readonly Dictionary<string, Dictionary<string, (Position At, string Nonce)>> overheard = new();   // words of a round heard AHEAD of the formation they are about: name → who → where
 
     // born with its golem (like the strategies' switches, ajuste 63): objects that know each other, no delegate (ajuste 78)
     internal Choreographies(Golem golem)
@@ -123,17 +123,17 @@ internal sealed class Choreographies
     private Formation Keep(string name, Figure figure, Fleet fleet, string by, string stamp)
     {
         string policy = by.Trim().ToLowerInvariant();
-        if (policy is not ("rank" or "distance")) throw new GolemDomainException($"the places are shared by 'rank' or by 'distance', not by '{by}'");
+        if (policy is not ("rank" or "distance" or "rps")) throw new GolemDomainException($"the places are shared by 'rank', by 'distance' or by 'rps', not by '{by}'");
         string called = name.Trim().ToLowerInvariant();
         if (called == "") throw new GolemDomainException("a formation needs a name");
-        var formation = new Formation(called, figure, fleet, golem, policy == "distance", stamp);
+        var formation = new Formation(called, figure, fleet, golem, policy, stamp);
         var known = formations.FirstOrDefault(f => f.Name == called && !f.Dissolved);
         known?.Dissolve();                                  // told again: the old one goes, the new one takes its name
         formations.Add(formation);
         // the words of its round heard before this golem was told it (13-oct-2026): they are this telling's, and taken in now
         if (overheard.Remove(called, out var words))
-            foreach (var (who, at) in words)
-                if (who != golem.Name && fleet.Names.Contains(who)) formation.Stood(fleet.Member(who), at);
+            foreach (var (who, word) in words)
+                if (who != golem.Name && fleet.Names.Contains(who)) formation.Stood(fleet.Member(who), word.At, word.Nonce);
         return formation;
     }
 
@@ -156,14 +156,17 @@ internal sealed class Choreographies
     /// formation and were lost — red never completed its round, and blue and green waited for its line-up for ever): where a member said it stood,
     /// about a formation this golem was not told yet — or told again — KEPT by its name (the latest word of each member), and taken in by the
     /// <see cref="Form"/> of that name. A dissolution drops them.</summary>
-    internal void Overheard(string name, string teller, Position at)
+    internal void Overheard(string name, string teller, Position at) => Overheard(name, teller, at, "");
+
+    /// <summary>The same, with the stamp the word carried (propuesta 115: the teller's hand at the game).</summary>
+    internal void Overheard(string name, string teller, Position at, string nonce)
     {
         if (name == null) throw new GolemDomainException("Choreographies.Overheard: 'name' was not given");
         if (teller == null) throw new GolemDomainException("Choreographies.Overheard: 'teller' was not given");
         if (at == null) throw new GolemDomainException("Choreographies.Overheard: 'at' was not given");
         string called = name.Trim().ToLowerInvariant();
-        if (!overheard.TryGetValue(called, out var words)) overheard[called] = words = new Dictionary<string, Position>();
-        words[teller] = new Position(at.X, at.Y);
+        if (!overheard.TryGetValue(called, out var words)) overheard[called] = words = new Dictionary<string, (Position, string)>();
+        words[teller] = (new Position(at.X, at.Y), nonce ?? "");
     }
 
     /// <summary>How many words this golem keeps for the next telling of that name — a read for the lab and the tests.</summary>
@@ -202,6 +205,17 @@ internal sealed class Choreographies
     /// <summary>THE FORMATIONS THE GOLEM IS IN (propuesta 104: the warden's GET): every one it was told and not dissolved, in the order it
     /// was told them — each with its figure, its fleet, its policy and who holds what.</summary>
     internal IReadOnlyList<Formation> Formations() => formations.Where(f => !f.Dissolved).ToList();
+
+    /// <summary>THE DISPUTES this golem had (14-oct-2026): over the places of every formation it was told, the dissolved ones too (history), in the
+    /// order it was told them — won or yielded, against whom.</summary>
+    internal IReadOnlyList<Dispute> Disputes() => formations.SelectMany(f => f.Disputes).ToList();
+
+    /// <summary>EVERY DISPUTE FORGOTTEN (14-oct-2026): in every formation it was told, the dissolved ones too — <c>g.Choreography.ForgetDisputes();</c>.
+    /// The ones to come appear when a formation is told again and its round is played.</summary>
+    internal void ForgetDisputes()
+    {
+        foreach (var formation in formations) formation.ForgetDisputes();
+    }
 
     /// <summary>DISSOLVED (propuesta 104) — <c>g.Choreography.Dissolve(formation);</c>: it leaves the list; a route of this golem still pending
     /// is abandoned. Told to the fleet by the reaction on this act.</summary>

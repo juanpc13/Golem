@@ -42,9 +42,14 @@ internal sealed class Holder
 internal sealed class Formation
 {
     private readonly Golem golem;                                        // whose copy this is: it opens every route to a place (ajustes 70, 78)
-    private readonly bool byDistance;                                    // the policy, the formation's from birth (ajuste 80): rank, or who stands nearest
+    private readonly string policy;                                      // the policy, the formation's from birth (ajuste 80): rank, who stands nearest, or the game (propuesta 115)
+    private bool byDistance => policy != "rank";                         // shared BY THE WORDS — by distance or by the game: the table is the law over who spoke
+    private readonly Dictionary<string, string> nonces = new(StringComparer.Ordinal);   // the stamp each peer's word carried: its hand at the game (propuesta 115)
+    private readonly List<(int Place, string Winner, string Loser, string Game)> matches = new();   // the game's matches at the last table
     private Position convenedFrom;                                       // where this golem said it stood, to open its route from once the round completes
     private readonly Dictionary<string, Position> stood = new();         // where each member said it stood, by name
+    private readonly List<Dispute> disputes = new();                     // the places this golem disputed by distance, as the law settled them (derived)
+    private bool disputesForgotten;                                      // the warden cleared them (14-oct-2026): this copy settles no more
     private readonly Dictionary<string, int> indices = new(StringComparer.Ordinal);   // THE PLACE EVERY MEMBER HOLDS: by rank from birth, by distance once it spoke; shifted by every step
     private readonly HashSet<string> placed = new(StringComparer.Ordinal);   // who said it stands on its place, this round
     private readonly Dictionary<int, HashSet<string>> aligned = new();      // who said it is lined up, BY ROUND (propuesta 106): a word may come before this copy reached that round
@@ -59,10 +64,13 @@ internal sealed class Formation
 
     internal Formation(string name, Figure figure, Fleet fleet, Golem golem, bool byDistance) : this(name, figure, fleet, golem, byDistance, name) { }
 
+    internal Formation(string name, Figure figure, Fleet fleet, Golem golem, bool byDistance, string stamp) : this(name, figure, fleet, golem, byDistance ? "distance" : "rank", stamp) { }
+
     /// <param name="stamp">the ONCE of the formation (ajuste 71's call id, kept): the host mints it when the warden forms, every copy keeps the same, and
     /// every tell about the formation carries it, so a formation told again under the same name is a new round of words to the peers</param>
-    internal Formation(string name, Figure figure, Fleet fleet, Golem golem, bool byDistance, string stamp)
+    internal Formation(string name, Figure figure, Fleet fleet, Golem golem, string policy, string stamp)
     {
+        if (policy is not ("rank" or "distance" or "rps")) throw new GolemDomainException($"the places are shared by 'rank', 'distance' or 'rps', not by '{policy}'");
         if (string.IsNullOrWhiteSpace(stamp)) throw new GolemDomainException("a formation needs its stamp: the once of its call");
         if (string.IsNullOrWhiteSpace(name)) throw new GolemDomainException("a formation needs a name");
         if (figure == null) throw new GolemDomainException("Formation.Formation: 'figure' was not given");
@@ -73,7 +81,7 @@ internal sealed class Formation
         Figure = figure;
         Fleet = fleet;
         this.golem = golem;
-        this.byDistance = byDistance;
+        this.policy = policy;
         figure.Places(fleet.Count);   // a figure the fleet does not fit is refused at birth
         if (!byDistance) foreach (var member in fleet.Names) indices[member] = fleet.Member(member).Rank;   // by rank every place is known from birth
     }
@@ -82,8 +90,9 @@ internal sealed class Formation
     internal string Name { get; }
     /// <summary>The once of this formation's call, minted by the host: what every tell about it carries, so the peers take each word once.</summary>
     internal string Stamp { get; }
-    /// <summary>How the places are shared: <c>rank</c> (the names sorted) or <c>distance</c> (who stands nearest, the first law).</summary>
-    internal string Policy => byDistance ? "distance" : "rank";
+    /// <summary>How the places are shared: <c>rank</c> (the names sorted), <c>distance</c> (who stands nearest, the first law) or <c>rps</c>
+    /// (who stands nearest, and rock, paper, scissors between those who want the same place — propuesta 115).</summary>
+    internal string Policy => policy;
     internal Figure Figure { get; }
     internal Fleet Fleet { get; }
     /// <summary>Dissolved by the warden (propuesta 104): it stays in the journal's history and in no list.</summary>
@@ -238,7 +247,10 @@ internal sealed class Formation
     /// where it stood (<see cref="Halted"/>); with the route completed, the pose of its last arrival is the truth and the new route opens
     /// at once from there. A route that ended short is not revived by a word; a word after a step changes nothing (the round of words is
     /// the formation's start). Before this golem convened, the word is only kept (null).</summary>
-    internal Route Stood(Member peer, Position at)
+    internal Route Stood(Member peer, Position at) => Stood(peer, at, "");
+
+    /// <summary>The same, with the STAMP the peer's word carried (propuesta 115): its hand at the game is drawn from it.</summary>
+    internal Route Stood(Member peer, Position at, string nonce)
     {
         if (peer == null) throw new GolemDomainException("Formation.Stood: 'peer' was not given");
         if (at == null) throw new GolemDomainException("Formation.Stood: 'at' was not given");
@@ -246,6 +258,7 @@ internal sealed class Formation
         if (!Fleet.Names.Contains(peer.Name)) throw new GolemDomainException($"'{peer.Name}' is not a member of the fleet of {Name}");
         if (Round > 0) return route;
         stood[peer.Name] = Said(at);
+        nonces[peer.Name] = nonce ?? "";
         if (byDistance) Retable();
         if (me == null) return null;
         if (route == null) return IsComplete ? Open() : null;
@@ -453,6 +466,51 @@ internal sealed class Formation
     private void Retable()
     {
         foreach (var pair in Table()) indices[pair.Key] = pair.Value;
+        Settle();
+    }
+
+    /// <summary>THE DISPUTES of this golem in this formation (14-oct-2026), by distance, once every member spoke: derived from the words and the
+    /// law at every table, never written. By rank there are none.</summary>
+    internal IReadOnlyList<Dispute> Disputes => disputes;
+
+    /// <summary>THE DISPUTES FORGOTTEN (14-oct-2026; Juan: "algún botón para limpiar las disputas"): this copy's disputes go, and it settles no more —
+    /// a formation told again is a new copy and brings its own. Written, so a golem reborn forgets them too.</summary>
+    internal void ForgetDisputes()
+    {
+        disputes.Clear();
+        disputesForgotten = true;
+    }
+
+    // who disputed what: every member wants the place nearest to where it said it stood (a tie, the lower number); the law's table says who got it
+    private void Settle()
+    {
+        disputes.Clear();
+        if (disputesForgotten || !byDistance || me == null || !IsComplete || !indices.TryGetValue(me.Name, out int mine)) return;
+        var places = Figure.Places(Fleet.Count);
+        if (policy == "rps")
+        {
+            // the game's matches this golem played: won or lost, against whom, the throw that decided
+            foreach (var m in matches.Where(m => m.Winner == me.Name || m.Loser == me.Name))
+            {
+                bool won = m.Winner == me.Name;
+                string rival = won ? m.Loser : m.Winner;
+                disputes.Add(new Dispute(Name, m.Place, places[m.Place], rival, won, stood[me.Name].DistanceTo(places[m.Place]), stood[rival].DistanceTo(places[m.Place]), m.Game));
+            }
+            return;
+        }
+        int Nearest(string who)
+        {
+            int best = 0;
+            for (int i = 1; i < places.Count; i++) if (stood[who].DistanceTo(places[i]) < stood[who].DistanceTo(places[best])) best = i;
+            return best;
+        }
+        string HolderOf(int place) => indices.Where(kv => kv.Value == place).Select(kv => kv.Key).FirstOrDefault();
+        int wanted = Nearest(me.Name);
+        if (wanted != mine && HolderOf(wanted) is string winner)
+            disputes.Add(new Dispute(Name, wanted, places[wanted], winner, false, stood[me.Name].DistanceTo(places[wanted]), stood[winner].DistanceTo(places[wanted])));
+        foreach (var who in Fleet.Names)
+            if (who != me.Name && stood.ContainsKey(who) && Nearest(who) == mine)
+                disputes.Add(new Dispute(Name, mine, places[mine], who, true, stood[me.Name].DistanceTo(places[mine]), stood[who].DistanceTo(places[mine])));
     }
 
     private void MustBeFree(Member member)
@@ -462,7 +520,59 @@ internal sealed class Formation
             throw new GolemDomainException($"'{member.Name}' is not a member of the fleet of {Name}");
     }
 
-    private IReadOnlyDictionary<string, int> Table()
+    private IReadOnlyDictionary<string, int> Table() => policy == "rps" ? GameTable() : NearestTable();
+
+    // THE GAME (propuesta 115): every member who spoke wants the FREE place nearest to where it stood; a place wanted by one is its; a place
+    // wanted by several is played — the contenders by name, the first challenged by the next and the winner going on — and the losers want
+    // their next free place, until every member who spoke has one
+    private IReadOnlyDictionary<string, int> GameTable()
+    {
+        matches.Clear();
+        var places = Figure.Places(Fleet.Count);
+        var free = Enumerable.Range(0, places.Count).ToList();
+        var table = new Dictionary<string, int>();
+        var waiting = stood.Keys.OrderBy(n => n, StringComparer.Ordinal).ToList();
+        var cursor = waiting.ToDictionary(n => n, _ => 0, StringComparer.Ordinal);
+        while (waiting.Count > 0 && free.Count > 0)
+        {
+            var wants = waiting.ToDictionary(n => n, n => free.OrderBy(i => stood[n].DistanceTo(places[i])).ThenBy(i => i).First(), StringComparer.Ordinal);
+            foreach (var group in wants.GroupBy(w => w.Value).OrderBy(g => g.Key))
+            {
+                var contenders = group.Select(w => w.Key).OrderBy(n => n, StringComparer.Ordinal).ToList();
+                string champion = contenders[0];
+                foreach (var challenger in contenders.Skip(1)) champion = Play(champion, challenger, group.Key, places[group.Key], cursor);
+                table[champion] = group.Key;
+                free.Remove(group.Key);
+                waiting.Remove(champion);
+            }
+        }
+        return table;
+    }
+
+    // one match over a place: each throws its next throw until one beats the other; nine ties, the nearer wins, then the name
+    private string Play(string a, string b, int placeIndex, Position at, Dictionary<string, int> cursor)
+    {
+        string handA = HandOf(a), handB = HandOf(b);
+        int ties = 0;
+        for (int k = 0; k < Throws.Length; k++)
+        {
+            char ta = handA[cursor[a]++ % Throws.Length], tb = handB[cursor[b]++ % Throws.Length];
+            if (ta == tb) { ties++; continue; }
+            bool aWins = Throws.Beats(ta, tb);
+            string game = $"{Throws.Word(aWins ? ta : tb)} beats {Throws.Word(aWins ? tb : ta)}{(ties > 0 ? $" after {ties} tie{(ties > 1 ? "s" : "")}" : "")}";
+            matches.Add((placeIndex, aWins ? a : b, aWins ? b : a, game));
+            return aWins ? a : b;
+        }
+        double da = stood[a].DistanceTo(at), db = stood[b].DistanceTo(at);
+        string nearer = da < db || (da == db && string.CompareOrdinal(a, b) < 0) ? a : b;
+        matches.Add((placeIndex, nearer, nearer == a ? b : a, $"{Throws.Length} ties: the nearer keeps it"));
+        return nearer;
+    }
+
+    // a member's hand: this golem's from its own stamp, a peer's from the stamp its word carried
+    private string HandOf(string who) => Throws.Of(who == golem.Name ? Stamp : nonces.TryGetValue(who, out var nonce) ? nonce : "", who);
+
+    private IReadOnlyDictionary<string, int> NearestTable()
     {
         var places = Figure.Places(Fleet.Count);
         var pairs = new List<(double Distance, string Name, int Place)>();
