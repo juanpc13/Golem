@@ -1,0 +1,42 @@
+{
+ "Kind": "golem workspace",
+ "Version": 3,
+ "Golems": [
+  {
+   "Name": "blue",
+   "Host": "localhost",
+   "Port": 8081,
+   "Script": "use map open-floor\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nform breath circle --center 5.5,5.5 --radius 4 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath"
+  },
+  {
+   "Name": "red",
+   "Host": "localhost",
+   "Port": 8082,
+   "Script": "use map open-floor\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nform breath circle --center 5.5,5.5 --radius 4 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath"
+  },
+  {
+   "Name": "green",
+   "Host": "localhost",
+   "Port": 8083,
+   "Script": "use map open-floor\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nform breath circle --center 5.5,5.5 --radius 4 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath"
+  },
+  {
+   "Name": "yellow",
+   "Host": "localhost",
+   "Port": 8084,
+   "Script": "use map open-floor\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nform breath circle --center 5.5,5.5 --radius 4 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath"
+  },
+  {
+   "Name": "orange",
+   "Host": "localhost",
+   "Port": 8085,
+   "Script": "use map open-floor\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nform breath circle --center 5.5,5.5 --radius 4 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath"
+  },
+  {
+   "Name": "cyan",
+   "Host": "localhost",
+   "Port": 8086,
+   "Script": "use map open-floor\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nform breath circle --center 5.5,5.5 --radius 4 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nrotate breath clockwise\nform breath circle --center 5.5,5.5 --radius 1.75 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by distance\ntake breath"
+  }
+ ]
+}

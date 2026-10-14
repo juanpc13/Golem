@@ -1,0 +1,42 @@
+{
+ "Kind": "golem workspace",
+ "Version": 3,
+ "Golems": [
+  {
+   "Name": "blue",
+   "Host": "localhost",
+   "Port": 8081,
+   "Script": "use map open-floor\nform helix propeller --center 5.5,5.5 --radius 3.5 --inner-radius 1.2 --blades 5 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by rank\ntake helix\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise"
+  },
+  {
+   "Name": "red",
+   "Host": "localhost",
+   "Port": 8082,
+   "Script": "use map open-floor\nform helix propeller --center 5.5,5.5 --radius 3.5 --inner-radius 1.2 --blades 5 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by rank\ntake helix\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise"
+  },
+  {
+   "Name": "green",
+   "Host": "localhost",
+   "Port": 8083,
+   "Script": "use map open-floor\nform helix propeller --center 5.5,5.5 --radius 3.5 --inner-radius 1.2 --blades 5 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by rank\ntake helix\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise"
+  },
+  {
+   "Name": "yellow",
+   "Host": "localhost",
+   "Port": 8084,
+   "Script": "use map open-floor\nform helix propeller --center 5.5,5.5 --radius 3.5 --inner-radius 1.2 --blades 5 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by rank\ntake helix\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise"
+  },
+  {
+   "Name": "orange",
+   "Host": "localhost",
+   "Port": 8085,
+   "Script": "use map open-floor\nform helix propeller --center 5.5,5.5 --radius 3.5 --inner-radius 1.2 --blades 5 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by rank\ntake helix\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise"
+  },
+  {
+   "Name": "cyan",
+   "Host": "localhost",
+   "Port": 8086,
+   "Script": "use map open-floor\nform helix propeller --center 5.5,5.5 --radius 3.5 --inner-radius 1.2 --blades 5 --angle 0 --fleet blue,red,green,yellow,orange,cyan --by rank\ntake helix\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix clockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise\nrotate helix counterclockwise"
+  }
+ ]
+}
