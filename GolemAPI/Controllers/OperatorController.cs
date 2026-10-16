@@ -179,6 +179,14 @@ public class OperatorController : Controller
     [HttpGet("disputes")]
     public IActionResult Disputes() => Content(Readings.Disputes(golemEmbodiment.Actor), "application/json");
 
+    /// <summary>Every dispute forgotten (14-oct-2026; the line `forget disputes`): this copy's go, and it settles no more.</summary>
+    [HttpPost("forget-disputes")]
+    public IActionResult ForgetDisputes()
+    {
+        var answer = golemEmbodiment.ForgetDisputes();
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
     {

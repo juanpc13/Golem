@@ -131,6 +131,14 @@ public class GolemController : Controller
         return Answered(displacer.Release());
     }
 
+    /// <summary>The warden ends the play for the whole cast (propuesta 108, fase 4; the line `play over`).</summary>
+    [HttpPost("over")]
+    public IActionResult Over()
+    {
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Over());
+    }
+
     /// <summary>The play this golem is in (propuesta 108).</summary>
     [HttpGet("play")]
     public IActionResult PlayRead() => Content(Readings.Play(golemEmbodiment.Actor), "application/json");
@@ -208,6 +216,10 @@ public class GolemController : Controller
             }
         ")
         .PerformQuery(), "application/json");
+
+    /// <summary>The newest route: its status, what it asks now, its plan, why it ended short (16-oct-2026; the line `route`).</summary>
+    [HttpGet("route")]
+    public IActionResult Route() => Content(Readings.Route(golemEmbodiment.Actor), "application/json");
 
     // The obstacles the golem hypothesizes: one row per obstacle and, under it, one per vertex — the touches that outlined it.
     [HttpGet("obstacles")]

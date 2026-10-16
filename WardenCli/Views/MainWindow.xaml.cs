@@ -507,10 +507,11 @@ public partial class MainWindow : Window
     }
 
     // one line to the golem now, its answer in the log, its reads asked again
+    // a lever acted at once goes by its endpoint (16-oct-2026; Juan: "el CLI debería usar esos endpoints también"), the log saying which
     private async Task ActNowAsync(Golem g, string line)
     {
-        var reply = await GolemClient.SendAsync(g, line);
-        Log($"{g.Name} › {line} — {(reply.Ok ? "done" : reply.Kind)}: {OneLine(reply.Text)}");
+        var reply = await GolemClient.ActAsync(g, line);
+        Log($"{g.Name} › {line} [{GolemClient.Endpoint(line)?.Via ?? "POST /command"}] — {(reply.Ok ? "done" : reply.Kind)}: {OneLine(reply.Text)}");
         await GolemClient.RefreshReadingsAsync(g);
     }
 

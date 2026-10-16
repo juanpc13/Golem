@@ -10,12 +10,102 @@ public sealed record Reply(string Kind, string Text, JsonElement? Json)
     public bool Ok => Kind == "done";
 }
 
-/// <summary>The golem's HTTP surface, as the console uses it: a line to POST /command (JSON back for a program), the telemetry of
-/// GET /body to see whether it is there, the language of GET /commands. The console decides nothing: it carries lines and reads answers.</summary>
+/// <summary>An endpoint of the golem's program for one of the console's own lines (16-oct-2026): the method, the path and the JSON body.</summary>
+public sealed record Call(HttpMethod Method, string Path, object? Body)
+{
+    public string Via => $"{Method.Method} /{Path}";
+}
+
+/// <summary>The golem's HTTP surface, as the console uses it: the tabs' lines to POST /command (the language, JSON back for a program), and
+/// since 16-oct-2026 (Juan: "el CLI debería usar esos endpoints también") THE READS BY GET (`/where`, `/state`, `/route`, `/scenarios`,
+/// `/obstacles`, `/formations`, `/disputes`, `/play`) and THE LEVERS ACTED AT ONCE BY THEIR POSTS (`/enter`, `/optimize`, `/speed`, `/place`,
+/// `/anchor`, `/reset`, `/reset-everything`, `/head`, `/release`, `/over`, `/forget`, `/forget-disputes`, `/dissolve`) — the same documents
+/// and the same acts the lines reach, <see cref="Endpoint"/> saying which; a golem that does not know an endpoint yet (404) is asked by the
+/// line. The telemetry of GET /body says whether it is there, GET /commands its language. The console decides nothing: it carries lines and
+/// reads answers.</summary>
 public static class GolemClient
 {
     private static readonly HttpClient Wire = new() { Timeout = TimeSpan.FromSeconds(90) };
 
+    private static readonly HashSet<string> Reads = new(StringComparer.Ordinal) { "where", "state", "route", "scenarios", "obstacles", "formations", "disputes", "play" };
+
+    /// <summary>THE ENDPOINT OF A LINE the console writes by itself — a read, or a lever of the environment, the map, the play or a tab —
+    /// or null when the line is the language's (a tab's script goes by POST /command). Pure: tested as such.</summary>
+    public static Call? Endpoint(string line)
+    {
+        var words = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return null;
+        string verb = words[0].ToLowerInvariant();
+        string rest = string.Join(' ', words.Skip(1));
+        switch (verb)
+        {
+            case var read when words.Length == 1 && Reads.Contains(read): return new Call(HttpMethod.Get, read, null);
+            case "use" when words.Length == 3 && words[1].Equals("map", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "enter", new { scenario = words[2] });
+            case "optimize" when words.Length == 2: return new Call(HttpMethod.Post, "optimize", new { navigation = words[1] });
+            case "speed" when words.Length is 2 or 4 && TryNumber(words[1], out double speed):
+                if (words.Length == 2) return new Call(HttpMethod.Post, "speed", new { speed });
+                return words[2].Equals("--turn", StringComparison.OrdinalIgnoreCase) && TryNumber(words[3], out double turn) ? new Call(HttpMethod.Post, "speed", new { speed, turn }) : null;
+            case "anchor" when words.Length == 1: return new Call(HttpMethod.Post, "anchor", null);
+            case "reset" when words.Length == 1: return new Call(HttpMethod.Post, "reset", null);
+            case "reset" when words.Length == 2 && words[1] == "--all": return new Call(HttpMethod.Post, "reset-everything", new { cascade = true });
+            case "head" when words.Length == 2: return new Call(HttpMethod.Post, "head", new { direction = words[1] });
+            case "release" when words.Length == 1: return new Call(HttpMethod.Post, "release", null);
+            case "play" when words.Length == 2 && words[1].Equals("over", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "over", null);
+            case "forget" when words.Length == 2 && words[1].Equals("disputes", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "forget-disputes", null);
+            case "forget" when words.Length == 2 && TryPoint(words[1], out var at): return new Call(HttpMethod.Post, "forget", new { x = at.X, y = at.Y });
+            case "place" when words.Length == 2 && TryPoint(words[1], out var to): return new Call(HttpMethod.Post, "place", new { x = to.X, y = to.Y });
+            case "dissolve" when words.Length == 2: return new Call(HttpMethod.Post, "dissolve", new { name = rest });
+            default: return null;
+        }
+    }
+
+    private static bool TryNumber(string s, out double v) => double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v) && double.IsFinite(v);
+
+    private static bool TryPoint(string s, out (double X, double Y) point)
+    {
+        point = default;
+        var parts = s.Split(',');
+        if (parts.Length != 2 || !TryNumber(parts[0], out double x) || !TryNumber(parts[1], out double y)) return false;
+        point = (x, y);
+        return true;
+    }
+
+    /// <summary>A LINE ACTED AT ONCE by the console (a lever, a read, a tab's button): by its endpoint when it has one, else by POST /command.</summary>
+    public static Task<Reply> ActAsync(Golem golem, string line, CancellationToken ct = default) =>
+        Endpoint(line) is { } call ? CallAsync(golem, call, line, ct) : SendAsync(golem, line, ct);
+
+    /// <summary>A READ of the golem — GET /{path} — described for the log like the line of the same name.</summary>
+    public static Task<Reply> GetAsync(Golem golem, string path, CancellationToken ct = default) => CallAsync(golem, new Call(HttpMethod.Get, path, null), path, ct);
+
+    // the endpoint called; a golem that does not know it yet (404: an older program) is asked by the line
+    private static async Task<Reply> CallAsync(Golem golem, Call call, string line, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(call.Method, new Uri(golem.Url, call.Path));
+            if (call.Body != null) request.Content = JsonContent.Create(call.Body);
+            request.Headers.Accept.ParseAdd("application/json");
+            using var response = await Wire.SendAsync(request, ct);
+            string body = await response.Content.ReadAsStringAsync(ct);
+            if ((int)response.StatusCode == 404) return await SendAsync(golem, line, ct);
+            if (response.IsSuccessStatusCode)
+            {
+                JsonElement? json = null;
+                if (body.Length > 0 && response.Content.Headers.ContentType?.MediaType == "application/json")
+                {
+                    try { json = JsonDocument.Parse(body).RootElement.Clone(); } catch (JsonException) { }
+                }
+                return new Reply("done", json == null ? (body == "" ? "accepted" : body) : Describe(line, json.Value, body), json);
+            }
+            return new Reply((int)response.StatusCode == 409 ? "refused" : "syntax", body, null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return new Reply("unreachable", $"nobody answers at {golem.Url}: {ex.Message}", null);
+        }
+    }
+
+    /// <summary>A LINE OF THE LANGUAGE — POST /command, the tabs' way: what the golem answers, JSON back for the console's parsing.</summary>
     public static async Task<Reply> SendAsync(Golem golem, string line, CancellationToken ct = default)
     {
         try
@@ -77,7 +167,7 @@ public static class GolemClient
     /// <summary>Where the golem knows its body stands — the console asks `where` and keeps only this last answer.</summary>
     public static async Task<bool> RefreshWhereAsync(Golem golem, CancellationToken ct = default)
     {
-        var reply = await SendAsync(golem, "where", ct);
+        var reply = await GetAsync(golem, "where", ct);
         if (!reply.Ok || reply.Json == null) { golem.Status = reply.Kind == "unreachable" ? "unreachable" : reply.Text; return false; }
         golem.LastX = JsonWalk.Number(reply.Json.Value, "x");
         golem.LastY = JsonWalk.Number(reply.Json.Value, "y");
@@ -102,7 +192,7 @@ public static class GolemClient
     public static async Task<bool> RefreshFormationsAsync(Golem golem, CancellationToken ct = default)
     {
         if (!await RefreshWhereAsync(golem, ct)) return false;
-        var formations = await SendAsync(golem, "formations", ct);
+        var formations = await GetAsync(golem, "formations", ct);
         if (formations.Ok && formations.Json is { } fj)
             golem.Knowledge = golem.Knowledge with { Formations = FormationView.Parse(fj) };
         return true;
@@ -114,10 +204,10 @@ public static class GolemClient
     {
         if (!await RefreshWhereAsync(golem, ct)) return false;
         var k = golem.Knowledge;
-        var state = await SendAsync(golem, "state", ct);
+        var state = await GetAsync(golem, "state", ct);
         if (state.Ok && state.Json is { } s)
             k = k with { Pending = (int?)JsonWalk.Number(s, "pending"), Routes = (int?)JsonWalk.Number(s, "total") };
-        var route = await SendAsync(golem, "route", ct);
+        var route = await GetAsync(golem, "route", ct);
         if (route.Ok && route.Json is { } r)
             k = k with
             {
@@ -127,10 +217,10 @@ public static class GolemClient
                 RoutePlan = JsonWalk.String(r, "plan") ?? "",
                 RouteWhy = JsonWalk.String(r, "why") ?? "",
             };
-        var scenarios = await SendAsync(golem, "scenarios", ct);
+        var scenarios = await GetAsync(golem, "scenarios", ct);
         if (scenarios.Ok && scenarios.Json is { } sc)
             k = k with { Scenarios = Readings.ParseScenarios(sc) };
-        var obstacles = await SendAsync(golem, "obstacles", ct);
+        var obstacles = await GetAsync(golem, "obstacles", ct);
         if (obstacles.Ok && obstacles.Json is { } o)
             k = k with
             {
@@ -140,15 +230,15 @@ public static class GolemClient
                 Obstacles = Obstacle.Parse(o),
             };
         // THE FORMATIONS THE GOLEM IS IN (propuesta 104): the console's formations tab is this read of the selected golem
-        var formations = await SendAsync(golem, "formations", ct);
+        var formations = await GetAsync(golem, "formations", ct);
         if (formations.Ok && formations.Json is { } fj)
             k = k with { Formations = FormationView.Parse(fj) };
         // THE DISPUTES (14-oct-2026): the disputes tab is this read of the selected golem
-        var disputes = await SendAsync(golem, "disputes", ct);
+        var disputes = await GetAsync(golem, "disputes", ct);
         if (disputes.Ok && disputes.Json is { } dj)
             k = k with { Disputes = DisputeView.Parse(dj) };
         // THE PLAY (propuesta 108): the play tab is this read of the selected golem
-        var play = await SendAsync(golem, "play", ct);
+        var play = await GetAsync(golem, "play", ct);
         if (play.Ok && play.Json is { } pj)
             k = k with { Play = PlayView.Parse(pj) };
         golem.Knowledge = k;
@@ -171,7 +261,7 @@ public static class GolemClient
     /// short; the ACK the console says after a command that opened a route.</summary>
     public static async Task<(string Status, string Why)> LastRouteAsync(Golem golem, CancellationToken ct = default)
     {
-        var reply = await SendAsync(golem, "route", ct);
+        var reply = await GetAsync(golem, "route", ct);
         if (!reply.Ok || reply.Json == null) return ("", "");
         return (JsonWalk.String(reply.Json.Value, "status") ?? "", JsonWalk.String(reply.Json.Value, "why") ?? "");
     }
@@ -180,7 +270,7 @@ public static class GolemClient
     /// route that opened and ended at once (the body already there) from no route at all (a take waiting for the fleet, a step queued).</summary>
     public static async Task<int?> RouteTotalAsync(Golem golem, CancellationToken ct = default)
     {
-        var reply = await SendAsync(golem, "state", ct);
+        var reply = await GetAsync(golem, "state", ct);
         if (!reply.Ok || reply.Json == null) return null;
         double? total = JsonWalk.Number(reply.Json.Value, "total");
         return total == null ? null : (int)total.Value;
@@ -190,7 +280,7 @@ public static class GolemClient
     /// is stranded — `formations`, the formation of that name. Null when the golem does not answer or was told no such formation.</summary>
     public static async Task<FormationState?> FormationStateAsync(Golem golem, string name, CancellationToken ct = default)
     {
-        var reply = await SendAsync(golem, "formations", ct);
+        var reply = await GetAsync(golem, "formations", ct);
         if (!reply.Ok || reply.Json == null || JsonWalk.Find(reply.Json.Value, "told") is not { ValueKind: JsonValueKind.Array } told) return null;
         foreach (var f in told.EnumerateArray())
             if (f.TryGetProperty("called", out var called) && string.Equals(called.GetString(), name, StringComparison.OrdinalIgnoreCase))
@@ -204,7 +294,7 @@ public static class GolemClient
     /// <summary>How many routes the golem still has pending — `state`, read for the queue: the next command goes when it is zero.</summary>
     public static async Task<int?> PendingAsync(Golem golem, CancellationToken ct = default)
     {
-        var reply = await SendAsync(golem, "state", ct);
+        var reply = await GetAsync(golem, "state", ct);
         if (!reply.Ok || reply.Json == null) return null;
         double? pending = JsonWalk.Number(reply.Json.Value, "pending");
         return pending == null ? null : (int)pending.Value;
@@ -224,6 +314,16 @@ public static class GolemClient
             case "route":
                 var id = JsonWalk.Number(json, "route");
                 return id == null ? "no route yet" : $"route {id} {JsonWalk.String(json, "status")} · {JsonWalk.String(json, "plan")}";
+            case "use":   // POST /enter answers the where: the scenario entered
+                return $"using map {JsonWalk.String(json, "scenario")}";
+            case "optimize":
+                return $"navigating {JsonWalk.String(json, "navigation")}";
+            case "speed":
+                return $"pacing {JsonWalk.Number(json, "speed"):0.##} m/s, turning {JsonWalk.Number(json, "turn"):0.##} rad/s";
+            case "place":
+                return $"placed at ({JsonWalk.Number(json, "x"):0.##}, {JsonWalk.Number(json, "y"):0.##}), in {JsonWalk.String(json, "zone")} · scenario {JsonWalk.String(json, "scenario")}";
+            case "play" when JsonWalk.String(json, "state") is { } st:
+                return $"{JsonWalk.String(json, "play")} · {st.ToLowerInvariant()}{(JsonWalk.String(json, "catcher") is { Length: > 0 } c ? $" — ended by {c}" : "")}";
             default:
                 var action = JsonWalk.String(json, "action"); var rid = JsonWalk.Number(json, "route");
                 if (rid != null && action != null) return $"route {rid} · {action} {JsonWalk.Number(json, "amount"):0.###}";
