@@ -13,22 +13,22 @@ public class CapabilitiesTests
     {
         var motorsOnly = Capabilities.Parse("displacer");
         Assert.IsTrue(motorsOnly.Has(Capabilities.Displacer));
-        Assert.IsFalse(motorsOnly.Has(Capabilities.CollisionCaptor), "no bumper declared: no bumper");
+        Assert.IsFalse(motorsOnly.Has(Capabilities.Bumper), "no bumper declared: no bumper");
         Assert.AreEqual("displacer", motorsOnly.ToString());
 
-        var both = Capabilities.Parse("displacer,collision-captor");
+        var both = Capabilities.Parse("displacer,bumper");
         Assert.IsTrue(both.Has(Capabilities.Displacer));
-        Assert.IsTrue(both.Has(Capabilities.CollisionCaptor));
-        Assert.AreEqual("displacer, collision-captor", both.ToString());
+        Assert.IsTrue(both.Has(Capabilities.Bumper));
+        Assert.AreEqual("displacer, bumper", both.ToString());
     }
 
     [TestMethod]
     public void CaseSpacesAndUnderscores_AreForgiven_AndARepeatIsOne()
     {
-        var declared = Capabilities.Parse(" Displacer , COLLISION_CAPTOR, displacer ");
+        var declared = Capabilities.Parse(" Displacer , BUMPER, displacer ");
         Assert.IsTrue(declared.Has(Capabilities.Displacer));
-        Assert.IsTrue(declared.Has(Capabilities.CollisionCaptor));
-        Assert.AreEqual("displacer, collision-captor", declared.ToString());
+        Assert.IsTrue(declared.Has(Capabilities.Bumper));
+        Assert.AreEqual("displacer, bumper", declared.ToString());
     }
 
     [TestMethod]
@@ -38,7 +38,9 @@ public class CapabilitiesTests
         {
             var all = Capabilities.Parse(declared);
             Assert.IsTrue(all.Has(Capabilities.Displacer));
-            Assert.IsTrue(all.Has(Capabilities.CollisionCaptor));
+            Assert.IsTrue(all.Has(Capabilities.Bumper));
+            Assert.IsTrue(all.Has(Capabilities.Choreographer), "the formations' role (16-oct-2026)");
+            Assert.IsTrue(all.Has(Capabilities.Dynamics), "the plays' role");
         }
     }
 
@@ -47,6 +49,9 @@ public class CapabilitiesTests
     {
         var refusal = Assert.ThrowsException<ArgumentException>(() => Capabilities.Parse("displacer,lidar-scanner"));
         StringAssert.Contains(refusal.Message, "'lidar-scanner'");
-        StringAssert.Contains(refusal.Message, "displacer, collision-captor");
+        StringAssert.Contains(refusal.Message, "displacer, bumper, choreographer, dynamics");
+        // a role on the motors needs them (16-oct-2026)
+        StringAssert.Contains(Assert.ThrowsException<ArgumentException>(() => Capabilities.Parse("choreographer")).Message, "needs 'displacer' too");
+        Assert.IsTrue(Capabilities.Parse("displacer,dynamics").Has(Capabilities.Dynamics));
     }
 }

@@ -127,7 +127,8 @@ public class OperatorController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + NavigationRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.Optimize(request.Navigation);
+        if (golemEmbodiment.Displacer is not { } motors) return StatusCode(409, $"this body has no motors: the role '{Capabilities.Displacer}' is not among its capabilities ({golemEmbodiment.Capabilities})");
+        var answer = motors.Optimize(request.Navigation);
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 
@@ -138,7 +139,8 @@ public class OperatorController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PaceRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.Pace(request.Speed, request.Turn);
+        if (golemEmbodiment.Displacer is not { } pacing) return StatusCode(409, $"this body has no motors: the role '{Capabilities.Displacer}' is not among its capabilities ({golemEmbodiment.Capabilities})");
+        var answer = pacing.Pace(request.Speed, request.Turn);
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 
@@ -186,7 +188,8 @@ public class OperatorController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ForgetPlayRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        var answer = golemEmbodiment.ForgetPlay(request.Name);
+        if (golemEmbodiment.Dynamics is not { } dynamics) return StatusCode(409, $"this body plays no dynamics: the role '{Capabilities.Dynamics}' is not among its capabilities ({golemEmbodiment.Capabilities})");
+        var answer = dynamics.ForgetPlay(request.Name);
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 
@@ -194,7 +197,8 @@ public class OperatorController : Controller
     [HttpPost("forget-disputes")]
     public IActionResult ForgetDisputes()
     {
-        var answer = golemEmbodiment.ForgetDisputes();
+        if (golemEmbodiment.Choreographer is not { } choreographer) return StatusCode(409, $"this body plays no choreographer: the role '{Capabilities.Choreographer}' is not among its capabilities ({golemEmbodiment.Capabilities})");
+        var answer = choreographer.ForgetDisputes();
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 

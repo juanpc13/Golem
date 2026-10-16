@@ -19,7 +19,7 @@ namespace GolemAPI.Choreography;
 // THE ROBOT PLAYS ROLES, ONE PER CAPABILITY OF ITS BODY (Juan, 18-sep-2026: "en base a las capacidades del robot: los motores,
 // el botón del chasis que dice si tocamos algo… eventualmente un escáner con lidar, brazos mecánicos; si no tiene dicho rol no
 // podemos mandar a usarlo"): the Displacer — the motors: the errand, the hold, the turn and the move reported, the stall — and
-// the CollisionCaptor — the bumper: the bump, the operator's forget. Each role owns the scripts of its acts (Roles/); the
+// the BumperRol — the bumper: the bump, the operator's forget. Each role owns the scripts of its acts (Roles/); the
 // embodiment builds ONLY the roles the operator declared for this body (Capabilities, `ROLES` in the compose) and the
 // controllers ask the embodiment for the role, refusing the endpoint (409) when the body has none. What is the MIND's and no
 // capability's stays here: the waking (Wake: the golem wakes where its body stands — the first act of every boot), the letting
@@ -63,8 +63,10 @@ public sealed class GolemEmbodiment
         this.journalPath = journalPath;
         Capabilities = capabilities;
         Mechanics = new RobotMechanics(this, ros);
-        Displacer = capabilities.Has(Capabilities.Displacer) ? new Displacer(this) : null;
-        Captor = capabilities.Has(Capabilities.CollisionCaptor) ? new CollisionCaptor(this) : null;
+        Displacer = capabilities.Has(Capabilities.Displacer) ? new DisplacerRol(this) : null;
+        Bumper = capabilities.Has(Capabilities.Bumper) ? new BumperRol(this) : null;
+        Choreographer = capabilities.Has(Capabilities.Choreographer) ? new ChoreographerRol(this) : null;   // the formations (16-oct-2026: a role per module of the mind)
+        Dynamics = capabilities.Has(Capabilities.Dynamics) ? new DynamicsRol(this) : null;                       // the plays
     }
 
     /// <summary>The golem itself — the actor every script is performed on.</summary>
@@ -113,9 +115,13 @@ public sealed class GolemEmbodiment
     /// <summary>The roles the operator declared for this body.</summary>
     public Capabilities Capabilities { get; }
     /// <summary>The motors' role — null when the body declared none: the errand and the reports of a turn or a move have nobody to go to.</summary>
-    public Displacer Displacer { get; }
+    public DisplacerRol Displacer { get; }
     /// <summary>The bumper's role — null when the body declared none: a bump report has nobody to go to.</summary>
-    public CollisionCaptor Captor { get; }
+    public BumperRol Bumper { get; }
+    /// <summary>The formations' role (16-oct-2026) — null when the body declared none: form, take, rotate and the round's words have nobody to go to.</summary>
+    public ChoreographerRol Choreographer { get; }
+    /// <summary>The plays' role (16-oct-2026) — null when the body declared none: play, start, head and the cast's words have nobody to go to.</summary>
+    public DynamicsRol Dynamics { get; }
 
     // ==================================================================
     // What the route asks now, IN THE ROBOT'S WORDS — the print every act ends with, and what the next-order reactions
@@ -130,214 +136,8 @@ public sealed class GolemEmbodiment
     // estática"): a script reads whole where it stands.
     // ==================================================================
 
-    // ==================================================================
-    // What the peers' tells become in MY journal (the uptakes GolemSpeech binds) — the MIND's, whatever the body can do: a golem
-    // without a bumper still hears where a peer bumped. Only plain @params — a nested call as an argument faults the
-    // reaction matcher — the object built inside the block.
-    // ==================================================================
-    public const string UptakePointVisited = @"
-        {
-            point = Position(@x, @y);
-            route = g.Follow(point);
-            if (g.Strategy.OnTheWay.IsActive) {
-                route = g.Dash(route);
-            }
-        }
-        ";
-    public const string UptakeBumpedAt = @"
-        {
-            peer = Pose(@bodyX, @bodyY, @bodyHeading);
-            g.HearBump(@who, peer, @bearing);
-        }
-        ";
-    public const string UptakeObstacleGone = @"
-        {
-            at = Position(@x, @y);
-            g.LearnForget(at);
-        }
-        ";
-    // PACMAN RUNS (propuesta 108, fase 3): a peer in the cast hears which run pacman makes and to which cell — in the play it is in, by title and
-    // stamp — keeps it as where pacman was seen, and, a ghost released and idle, chases it from where it stands: its own route, pushed by
-    // next-order-chase. Pacman's own copy never hears its own word; a golem outside the cast lets it pass. The cell enters as @cx @cy: x and y
-    // are the print's labels.
-    public const string UptakeRanTo = @"
-        {
-            if (g.Dynamics.Told(@title)) {
-                play = g.Dynamics.PacmanNamed(@title);
-                at = Position(@cx, @cy);
-                play.Seen(at, @runs);
-                if (g.Dynamics.MayChase) {
-                    from = g.Destination;
-                    route = g.Dynamics.Chase(from, play);
-                    if (g.Strategy.OnTheWay.IsActive) {
-                        route = g.Dash(route);
-                    }
-                    print play.Chases 'chases', play.RunsSeen 'runsSeen';
-                    if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                        if (route.IsWalkable) {
-                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
-                    } else {
-                        print route.Id 'route', route.Status 'ended';
-                        if (route.EndedShort) {
-                            print route.Why 'why';
-                        }
-                    }
-                } else {
-                    print play.Name 'play', play.RunsSeen 'runsSeen', g.Dynamics.Released 'released';
-                }
-            }
-        }
-        ";
-    // GAME OVER (propuesta 108, fase 4): a peer announced the end of the play I am in — a ghost caught pacman, or the warden ended it — and my
-    // copy closes the same way: the run or chase underway abandoned, nothing to announce in turn (one hop); pushed by next-order-heard-over
-    public const string UptakeGameOver = @"
-        {
-            if (g.Dynamics.Told(@title)) {
-                play = g.Dynamics.Find(@title);
-                play.HeardOver(@who);
-                print play.Name 'play', play.State 'state', play.Catcher 'catcher', g.HasPendingMission() 'pending';
-            }
-        }
-        ";
-    // A PEER TOOK THE FORMATION and told me where it stood (ajustes 73, 80; propuesta 104): if I was told that formation and I am in its fleet —
-    // already convened, its word may complete my round or take my place and interrupt my route; not yet, I keep its word and convene myself,
-    // once, and my act tells everybody where I stand. The peer's position enters as @px @py: x and y are the print's labels.
-    public const string UptakeStoodFor = @"
-        {
-            if (g.Choreography.Awaits(@call, @teller)) {
-                formation = g.Choreography.Find(@call);
-                fleet = formation.Fleet;
-                if (fleet.Has(g)) {
-                    peer = fleet.Member(@teller);
-                    at = Position(@px, @py);
-                    me = fleet.Member(g);
-                    if (formation.Knows(me)) {
-                        formation.Stood(peer, at, @nonce);
-                        if (formation.IsComplete) {
-                            route = formation.Route;
-                            if (g.Strategy.OnTheWay.IsActive) {
-                                route = g.Dash(route);
-                            }
-                            if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                                if (route.IsWalkable) {
-                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                                }
-                            } else {
-                                print route.Id 'route', route.Status 'ended';
-                                if (route.EndedShort) {
-                                    print route.Why 'why';
-                                }
-                            }
-                        } else {
-                            print formation.StoodCount 'stood', fleet.Count 'of';
-                        }
-                    } else {
-                        formation.Stood(peer, at, @nonce);
-                        from = g.Destination;
-                        formation.Convene(from, me);
-                        if (formation.IsComplete) {
-                            route = formation.Route;
-                            if (g.Strategy.OnTheWay.IsActive) {
-                                route = g.Dash(route);
-                            }
-                            if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                                if (route.IsWalkable) {
-                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                                }
-                            } else {
-                                print route.Id 'route', route.Status 'ended';
-                                if (route.EndedShort) {
-                                    print route.Why 'why';
-                                }
-                            }
-                        } else {
-                            print formation.StoodCount 'stood', fleet.Count 'of';
-                        }
-                        expose @call call, formation.Stamp nonce, me.Name who, from.X stoodX, from.Y stoodY;
-                    }
-                }
-            } else {
-                said = Position(@px, @py);
-                g.Choreography.Overheard(@call, @teller, said, @nonce);
-            }
-        }
-        ";
-    // A PEER STANDS ON ITS PLACE (ajuste 77): its word, recorded in the formation of that name — if this golem has its place in it; when with
-    // it everybody is placed and a step is queued, the next step opens and its route is printed (next-order-heard pushes).
-    public const string UptakePlacedAt = @"
-        {
-            if (g.Choreography.Knows(@call)) {
-                formation = g.Choreography.Find(@call);
-                peer = formation.Fleet.Member(@who);
-                route = formation.Heard(peer);
-                if (g.Strategy.OnTheWay.IsActive) {
-                    route = g.Dash(route);
-                }
-                if (route.IsPending()) {
-                    print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                    if (route.IsWalkable) {
-                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                              route.Following 'following', route.StopsLeft 'stopsLeft';
-                    }
-                } else {
-                    print route.Id 'route', route.Status 'ended';
-                    if (route.EndedShort) {
-                        print route.Why 'why';
-                    }
-                }
-            }
-        }
-        ";
-    // A PEER IS LINED UP for a round (propuesta 106; the tell carries the round): its word is recorded in that round; with the last mover's word
-    // this copy lets its own route go and the print turns from stop to advance (next-order-heard-aligned pushes it). The word may come before
-    // this copy reached that round: it is kept there.
-    public const string UptakeAlignedAt = @"
-        {
-            if (g.Choreography.HasFormation(@call)) {
-                formation = g.Choreography.Find(@call);
-                peer = formation.Fleet.Member(@who);
-                route = formation.HeardAligned(peer, @round);
-                if (formation.HasRoute) {
-                    if (route.IsPending()) {
-                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                        if (route.IsWalkable) {
-                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                  route.Following 'following', route.StopsLeft 'stopsLeft';
-                        }
-                    } else {
-                        print route.Id 'route', route.Status 'ended';
-                        if (route.EndedShort) {
-                            print route.Why 'why';
-                        }
-                    }
-                } else {
-                    print formation.AlignedCount 'aligned';
-                }
-            }
-        }
-        ";
-    // A FORMATION DISSOLVED by a peer's warden (propuesta 104): mine goes too, a route of it pending let go (next-order-dissolve pushes the stop).
-    public const string UptakeDissolved = @"
-        {
-            if (g.Choreography.HasFormation(@call)) {
-                formation = g.Choreography.Find(@call);
-                g.Choreography.Dissolve(formation);
-                print formation.Name 'called';
-            }
-        }
-        ";
+    // What the peers' tells become in MY journal — the uptakes GolemSpeech binds — live in the ROLES since 16-oct-2026 (DisplacerRol.UptakePointVisited,
+    // BumperRol.UptakeBumpedAt/ObstacleGone, ChoreographerRol.UptakeStoodFor/PlacedAt/AlignedAt/Dissolved, DynamicsRol.UptakeRanTo/GameOver).
 
     // ==================================================================
     // THE WAKING: the golem wakes where its body stands — ONE act, the first of every boot, once the membrane brought the pose
@@ -442,8 +242,8 @@ public sealed class GolemEmbodiment
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(2000, ct);
-            Displacer?.PlacedIfStanding();   // a route to its place completed at birth inside a peer's word (13-oct-2026): no arrival will say it
-            Displacer?.AnnounceIfConcluded();   // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
+            Choreographer?.PlacedIfStanding();   // a route to its place completed at birth inside a peer's word (13-oct-2026): no arrival will say it
+            Dynamics?.AnnounceIfConcluded();         // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
             var now = AskOrder();
             var mine = Mechanics.Carrying;
             if (now == null) { if (mine != null) Mechanics.Stop(); continue; }
@@ -506,117 +306,9 @@ public sealed class GolemEmbodiment
         catch (Exception ex) { return Answer.Refusal($"enter {into}: " + Reason(ex)); }
     }
 
-    // THE STRATEGIES OF NAVIGATION (ajuste 63): the golem's own objects, one fixed template per strategy — a property, never a name,
-    // never a constructor (Juan: "if (g.Strategy.OnTheWay.IsActive), así déjalo, no como string")
-    private const string ActivateOnTheWay = @"
-                    {
-                        strategy = g.Strategy.OnTheWay;
-                        strategy.Activate();
-                        print strategy.Name 'navigation', strategy.IsActive 'active';
-                    }
-                ";
-    private const string ActivateDoorByDoor = @"
-                    {
-                        strategy = g.Strategy.DoorByDoor;
-                        strategy.Activate();
-                        print strategy.Name 'navigation', strategy.IsActive 'active';
-                    }
-                ";
-
-    /// <summary>The golem SWITCHES ON one of its strategies of navigation (ajuste 63; Juan: "más bien es como un toggle y esos objetos
-    /// ya existen dentro del golem"): `on-the-way` (the doors crossed on the way, fewer stops) or `door-by-door` (every door a leg of
-    /// its own, the direct way). The strategies live in the golem from birth — `g.Strategy.OnTheWay`, `g.Strategy.DoorByDoor` — and the
-    /// operator's word picks the template that activates one; nothing is built, nothing found by a name. Every route is born direct and
-    /// improved by the script while on-the-way is active (ajuste 62). The mind's own act, no role's. Named `optimize` since ajuste 82
-    /// (2-oct-2026; Juan: "más bien es como una estrategia de conversión para optimizar la route calculada"): the word says what happens to the
-    /// route computed, not that the golem changes its policy.</summary>
-    public Answer Optimize(string navigation)
-    {
-        string which = (navigation ?? "").Trim().ToLowerInvariant();
-        if (which is not ("on-the-way" or "door-by-door")) return Answer.Refusal($"a strategy of navigation is on-the-way or door-by-door, not '{navigation}'");
-        try
-        {
-            return Answer.Of(Actor.Using(which == "on-the-way" ? ActivateOnTheWay : ActivateDoorByDoor).PerformCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"optimize {which}: " + Reason(ex)); }
-    }
-
-    // THE PACE (propuesta 111, 12-oct-2026): the body's cruise, and how fast it turns, told again — the body's own act on the journal's
-    // `body` (the module the golem drives; the golem wraps nothing), its magnitudes built from the parameters, never named like a print label
-    private const string PaceCruise = @"
-                    {
-                        pace = MetersPerSecond(@cruise);
-                        body.CruiseAt(pace);
-                        print body.Speed.InMetersPerSecond 'speed', body.TurnRate.InRadiansPerSecond 'turn';
-                    }
-                ";
-    private const string PaceCruiseAndTurn = @"
-                    {
-                        pace = MetersPerSecond(@cruise);
-                        rate = RadiansPerSecond(@turning);
-                        body.CruiseAt(pace);
-                        body.TurnAt(rate);
-                        print body.Speed.InMetersPerSecond 'speed', body.TurnRate.InRadiansPerSecond 'turn';
-                    }
-                ";
-
-    /// <summary>The body's pace from here on: its cruise in m/s and, when given, its turn rate in rad/s (propuesta 111). Every order after
-    /// this carries them; a route underway keeps its way and goes on at the new pace from its next order.</summary>
-    public Answer Pace(double cruise, double? turning)
-    {
-        if (double.IsNaN(cruise) || double.IsInfinity(cruise) || cruise <= 0) return Answer.Refusal($"a cruise speed is metres per second above zero, not '{cruise}'");
-        if (turning is double t && (double.IsNaN(t) || double.IsInfinity(t) || t <= 0)) return Answer.Refusal($"a turn rate is radians per second above zero, not '{turning}'");
-        try
-        {
-            return Answer.Of(turning == null
-                ? Actor.Using(PaceCruise).WithParameters(p => { p["cruise", typeof(double)] = cruise; }).PerformCommand()
-                : Actor.Using(PaceCruiseAndTurn).WithParameters(p => { p["cruise", typeof(double)] = cruise; p["turning", typeof(double)] = turning.Value; }).PerformCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"speed {cruise}: " + Reason(ex)); }
-    }
-
     // ==================================================================
     // The operator's levers on the body.
     // ==================================================================
-
-    // THE DISPUTES FORGOTTEN (14-oct-2026): the mind's own act, how many it forgot printed
-    private const string ForgetDisputesScript = @"
-                    {
-                        forgotten = g.Choreography.Disputes().Count;
-                        g.Choreography.ForgetDisputes();
-                        print forgotten 'forgotten';
-                    }
-                ";
-
-    /// <summary>THE DISPUTES FORGOTTEN (14-oct-2026; Juan: "algún botón para limpiar las disputas"): every dispute this golem had, in every formation,
-    /// goes; the next ones come with the next rounds played. Written, so a golem reborn forgets them too.</summary>
-    public Answer ForgetDisputes()
-    {
-        try { return Answer.Of(Actor.Using(ForgetDisputesScript).PerformCommand()); }
-        catch (Exception ex) { return Answer.Refusal("forget disputes: " + Reason(ex)); }
-    }
-
-    // A PLAY FORGOTTEN (16-oct-2026; Juan: "se deberían poder eliminar también"): off the list once over or never set out; a running one is
-    // refused by the domain (play over first). The warden says it on every member's tab; nothing spreads.
-    private const string ForgetPlayScript = @"
-        {
-            play = g.Dynamics.Find(@playName);
-            g.Dynamics.Forget(play);
-            print play.Name 'play', g.Dynamics.Plays().Count 'left';
-        }
-        ";
-
-    public Answer ForgetPlay(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return Answer.Refusal("forget play: a play's name is needed, like forget play game-1");
-        try
-        {
-            return Answer.Of(Actor.Using(ForgetPlayScript)
-                .WithParameters(p => { p["playName", typeof(string)] = name.Trim().ToLowerInvariant(); })
-                .PerformCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"forget play {name}: " + Reason(ex)); }
-    }
 
     /// <summary>THE ANCHOR (13-oct-2026; Juan: "¿debo reiniciarlos para que vuelvan a tomar la posición?"): the golem takes WHERE ITS BODY REALLY
     /// STANDS, from telemetry, as where it stands — the scenario whose region holds it and a waking there, a plan underway decided again inside —
@@ -768,12 +460,12 @@ public sealed class GolemEmbodiment
                     Displacer.Arrived(order);
                     return;
                 case "bumped":
-                    if (Captor == null) { Note("the body says it bumped, but this body has no bumper"); return; }
+                    if (Bumper == null) { Note("the body says it bumped, but this body has no bumper"); return; }
                     double x = D("x"), y = D("y"), heading = D("heading"), bearing = D("bearing");
                     var stood = layout.ToMap(scenario, new Pose(x, y, heading));   // the body speaks in the world's frame; the golem reads its map's (propuesta 109)
                     x = stood.X; y = stood.Y;
                     if (double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(heading) || double.IsNaN(bearing)) { Note($"a bump without where the body stood or where it was pressed: {json}"); return; }
-                    Captor.Bumped(x, y, heading, bearing);
+                    Bumper.Bumped(x, y, heading, bearing);
                     return;
                 case "stuck":
                     if (Displacer == null) { Note("the body says it is stuck, but this body has no motors"); return; }

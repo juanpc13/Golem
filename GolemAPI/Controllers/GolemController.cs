@@ -9,7 +9,8 @@ namespace GolemAPI.Controllers;
 // (Requests.cs), and go to the ROLE of the capability they belong to (Juan, 18-sep-2026: "los roles los vamos a dejar en el
 // lado de los controllers… en base a las capacidades del robot; si no tiene dicho rol no podemos mandar a usarlo"): the
 // errand, the hold and the reports of a turn or a move to the Displacer (the motors); the bump and the forget to the
-// CollisionCaptor (the bumper). The embodiment plays only the roles the operator declared for this body (`ROLES` in the
+// BumperRol (the bumper); the formations to the ChoreographerRol and the plays to the DynamicsRol (16-oct-2026: a role per module
+// of the mind, each with every script of its acts). The embodiment plays only the roles the operator declared for this body (`ROLES` in the
 // compose); an endpoint whose role the body lacks answers 409 saying which capability is missing. The scripts live in the
 // roles, validate again in the domain's voice and run (Juan, 17-sep: "el controller recibe y valida los parámetros y llama").
 // Nothing here dispatches the next order: every act's print is pushed to the output target (RobotMechanics) by the engine's
@@ -25,18 +26,33 @@ public class GolemController : Controller
     }
 
     // The role an endpoint needs, or the refusal that says the body has no such capability.
-    private bool Motors(out Displacer displacer, out IActionResult refusal)
+    private bool Motors(out DisplacerRol displacer, out IActionResult refusal)
     {
         displacer = golemEmbodiment.Displacer;
         refusal = displacer == null ? Conflict($"this body has no motors: the role '{Capabilities.Displacer}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
         return displacer != null;
     }
 
-    private bool Bumper(out CollisionCaptor captor, out IActionResult refusal)
+    private bool Bumper(out BumperRol captor, out IActionResult refusal)
     {
-        captor = golemEmbodiment.Captor;
-        refusal = captor == null ? Conflict($"this body has no bumper: the role '{Capabilities.CollisionCaptor}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
+        captor = golemEmbodiment.Bumper;
+        refusal = captor == null ? Conflict($"this body has no bumper: the role '{Capabilities.Bumper}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
         return captor != null;
+    }
+
+    // the roles of the mind's modules (16-oct-2026): the formations and the plays, each with its own scripts
+    private bool Choreographer(out ChoreographerRol choreographer, out IActionResult refusal)
+    {
+        choreographer = golemEmbodiment.Choreographer;
+        refusal = choreographer == null ? Conflict($"this body plays no choreographer: the role '{Capabilities.Choreographer}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
+        return choreographer != null;
+    }
+
+    private bool Dynamics(out DynamicsRol dynamics, out IActionResult refusal)
+    {
+        dynamics = golemEmbodiment.Dynamics;
+        refusal = dynamics == null ? Conflict($"this body plays no dynamics: the role '{Capabilities.Dynamics}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
+        return dynamics != null;
     }
 
     // ==================================================================
@@ -73,17 +89,17 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + FormRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
         var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
                                                     : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
         var center = (request.Center.X.Value, request.Center.Y.Value);
         string name = request.Name.Trim().ToLowerInvariant();
         if (request.IsPropeller)
-            return Answered(displacer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy));
+            return Answered(choreographer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy));
         if (request.IsRings)
-            return Answered(displacer.FormRings(name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0,
+            return Answered(choreographer.FormRings(name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0,
                                                 fleet, request.InnerFleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList(), request.Policy));
-        return Answered(displacer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy));
+        return Answered(choreographer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy));
     }
 
     /// <summary>A FORMATION TAKEN (propuesta 104): this golem says where it stands; the fleet's words open the routes, each to its place by
@@ -94,8 +110,8 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + TakeRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Take(request.Name.Trim().ToLowerInvariant()));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        return Answered(choreographer.Take(request.Name.Trim().ToLowerInvariant()));
     }
 
     /// <summary>A PLAY STAGED (propuesta 108, fase 2): pacman by name, the ghosts by name (left out, every peer but pacman); it spreads by itself to the cast.</summary>
@@ -105,11 +121,11 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PlayRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
+        if (!Dynamics(out var player, out var refusal)) return refusal;
         string pacman = request.Pacman.Trim().ToLowerInvariant();
         var ghosts = request.Ghosts is { Count: > 0 } ? request.Ghosts.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
                                                       : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();
-        return Answered(displacer.Play(request.Name.Trim().ToLowerInvariant(), request.Kind ?? "pacman", pacman, ghosts, request.Steer ?? "guided", request.As));
+        return Answered(player.Play(request.Name.Trim().ToLowerInvariant(), request.Kind ?? "pacman", pacman, ghosts, request.Steer ?? "guided", request.As));
     }
 
     /// <summary>Every play this golem was told (16-oct-2026): the same document the line `plays` answers.</summary>
@@ -123,8 +139,8 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + SteerRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Drive(request.Steer.Trim().ToLowerInvariant()));
+        if (!Dynamics(out var player, out var refusal)) return refusal;
+        return Answered(player.Drive(request.Steer.Trim().ToLowerInvariant()));
     }
 
     /// <summary>The keyboard's wish (propuesta 108): the direction pacman takes at its next decision cell.</summary>
@@ -134,8 +150,8 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + HeadRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Head(request.Direction.Trim().ToLowerInvariant()));
+        if (!Dynamics(out var player, out var refusal)) return refusal;
+        return Answered(player.Head(request.Direction.Trim().ToLowerInvariant()));
     }
 
     /// <summary>The start of a play on this golem (16-oct-2026; the line `start <name>`): pacman's first run, a ghost's hunt.</summary>
@@ -145,16 +161,16 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ForgetPlayRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Start(request.Name));
+        if (!Dynamics(out var player, out var refusal)) return refusal;
+        return Answered(player.Start(request.Name));
     }
 
     /// <summary>The warden ends the play for the whole cast (propuesta 108, fase 4; the line `play over`).</summary>
     [HttpPost("over")]
     public IActionResult Over()
     {
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Over());
+        if (!Dynamics(out var player, out var refusal)) return refusal;
+        return Answered(player.Over());
     }
 
     /// <summary>The play this golem is in (propuesta 108).</summary>
@@ -169,8 +185,8 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + RotateRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Rotate(request.Name.Trim().ToLowerInvariant(), request.Sense.Trim().ToLowerInvariant(), request.Orbit));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        return Answered(choreographer.Rotate(request.Name.Trim().ToLowerInvariant(), request.Sense.Trim().ToLowerInvariant(), request.Orbit));
     }
 
     /// <summary>A FORMATION DISSOLVED (propuesta 104): it leaves every golem of the fleet.</summary>
@@ -180,8 +196,8 @@ public class GolemController : Controller
         if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + DissolveRequest.Shape);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Dissolve(request.Name.Trim().ToLowerInvariant()));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        return Answered(choreographer.Dissolve(request.Name.Trim().ToLowerInvariant()));
     }
 
     // The operator holds the golem where its body stands, or lets it go on.

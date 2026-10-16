@@ -136,10 +136,22 @@ whether it could or not, so the domain resolves what follows. Consequences:
   script — the errand with its way, an arrival, a touch, a hold, a resume, a way decided again, an ending, the uptake of a
   tell — is an action method or const of `Choreography/GolemEmbodiment.cs` (`Move`, `Cover`, `Pause`, `Resume`, `Forget`,
   `Arrived`, `Bumped`, `Stuck`, `Wake`, `Failed`, `LetGo`; `Uptake*`) — since 18-sep-2026 (ajuste 43) the scripts of a CAPABILITY
-  live in its ROLE, owned by the embodiment: `Choreography/Roles/Displacer.cs` (the motors: `Move`, `Cover`, `Pause`, `Resume`,
-  `Arrived`, `Stuck`) and `Roles/CollisionCaptor.cs` (the bumper: `Bumped`, `Forget`); the embodiment keeps what is the mind's
-  (`Wake`, `LetGo`, the uptakes, the print every act ends with, the clock) and builds only the roles the operator declared for the body
-  (`Capabilities`, `ROLES=displacer,collision-captor` in the compose; Juan: "si no tiene dicho rol no podemos mandar a usarlo") —
+  live in its ROLE, owned by the embodiment — and since 16-oct-2026 A ROLE PER MODULE OF THE DOMAIN, each owning EVERY `Using + script` of
+  its acts, the uptakes of its words included (Juan: "la combinación del golemActor.Using + el string del script debe ser parte del rol… que en
+  Roles/ se encuentren todos los scripts necesarios"), NAMED WITH THE SUFFIX `Rol` (Juan: "ponerle la palabra Rol al final a cada uno de los
+  roles"): `Choreography/Roles/DisplacerRol.cs` (the motors — `Golem`/`Routes`, `Body`: `Move`, `Cover`, `Then`, `Pause`, `Resume`, `Arrived`,
+  `Stuck`, `Pace`, `Optimize`; `UptakePointVisited`), **`BumperRol.cs`** (was `CollisionCaptor`; the bumper — `Collisions`: `Bumped`, `Forget`;
+  `UptakeBumpedAt`, `UptakeObstacleGone`), **`ChoreographerRol.cs`** (the formations — `Choreographies`: `Form`, `FormPropeller`, `FormRings`,
+  `Take`, `Rotate`, `Dissolve`, `ForgetDisputes`, the round's `Placed`/`Aligned`/`Halted`/`Retaken`, `PlacedIfStanding`; `UptakeStoodFor`,
+  `UptakePlacedAt`, `UptakeAlignedAt`, `UptakeDissolved`) and **`DynamicsRol.cs`** (the plays — `Dynamics`: `Play`, `Start`, `Head`, `Drive`,
+  `Over`, `ForgetPlay`, `Ran`, `Chased`, `AnnounceIfConcluded`; `UptakeRanTo`, `UptakeGameOver`); the embodiment's properties `Displacer`,
+  `Bumper`, `Choreographer`, `Dynamics`; the `DisplacerRol` asks the other two at an arrival what their module says next
+  (`robot.Choreographer?.Placed()`, `robot.Dynamics?.Ran()`); the embodiment keeps what is the mind's alone (`Wake`, `LetGo`, `Anchor`,
+  `EnterAsync`, the clock, the wire) and builds only the roles the operator declared for the body (`Capabilities`:
+  `ROLES=displacer,bumper,choreographer,dynamics` in the compose — a role on the motors needs `displacer`, refused otherwise; Juan: "si no tiene
+  dicho rol no podemos mandar a usarlo") — and EVERY SCRIPT IS SPOKEN WHOLE INSIDE ITS `robot.Actor.Using(…)` (Juan, 16-oct-2026: "quiero los
+  scripts completos en robot.Actor.Using(STRING COMPLETO), no quiero los private const string"): no template constants; a Check repeated by two
+  verbs is written in both; only the uptakes are `public const string`, because GolemSpeech binds them —
   the controller asks the embodiment for the role and answers 409 naming the missing capability — EVERY ONE THE SAME SHAPE (Juan, 18-sep-2026: "el
   método debería llamar a un script de golemActor.Using, registrar el acto en la global g y hacer un print con el nuevo lugar
   al que debe ir"): the validated parameters, one `golemActor.Using(check, script)` inline — no helper, no lambda, no

@@ -5,6 +5,8 @@ using GolemAPI.Membrane;
 using GolemAPI.Panel;
 using Puppeteer;
 
+using GolemAPI.Choreography.Roles;
+
 namespace GolemAPI.Choreography;
 
 // What the golem SAYS to its peers and what it takes up from them. Speech is a Reaction, never a command (paper 04):
@@ -183,23 +185,23 @@ public sealed class GolemSpeech
         toldListener = performance
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
-                .Command(GolemEmbodiment.UptakePointVisited)
+                .Command(DisplacerRol.UptakePointVisited)
             .Told("BumpedAt").With<double>("bodyX").With<double>("bodyY").With<double>("bodyHeading").With<double>("bearing").With<string>("who")
-                .Command(GolemEmbodiment.UptakeBumpedAt)
+                .Command(BumperRol.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
-                .Command(GolemEmbodiment.UptakeObstacleGone)
+                .Command(BumperRol.UptakeObstacleGone)
             .Told("RanTo").With<string>("title").With<string>("nonce").With<int>("runs").With<double>("cx").With<double>("cy")
-                .Command(GolemEmbodiment.UptakeRanTo)
+                .Command(DynamicsRol.UptakeRanTo)
             .Told("GameOver").With<string>("title").With<string>("nonce").With<string>("who")
-                .Command(GolemEmbodiment.UptakeGameOver)
+                .Command(DynamicsRol.UptakeGameOver)
             .Told("StoodFor").With<string>("call").With<string>("nonce").With<string>("teller").With<double>("px").With<double>("py")
-                .Command(GolemEmbodiment.UptakeStoodFor)
+                .Command(ChoreographerRol.UptakeStoodFor)
             .Told("PlacedAt").With<string>("call").With<string>("who")
-                .Command(GolemEmbodiment.UptakePlacedAt)
+                .Command(ChoreographerRol.UptakePlacedAt)
             .Told("AlignedAt").With<string>("call").With<string>("who").With<int>("round")
-                .Command(GolemEmbodiment.UptakeAlignedAt)
+                .Command(ChoreographerRol.UptakeAlignedAt)
             .Told("Dissolved").With<string>("call")
-                .Command(GolemEmbodiment.UptakeDissolved)
+                .Command(ChoreographerRol.UptakeDissolved)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
         Console.WriteLine($"[golem {golem}] listening for tells on topic 'tell-{golem}'");

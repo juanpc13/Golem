@@ -12,16 +12,21 @@ public sealed class Capabilities
     /// <summary>The motors: the body displaces itself — the errand, the hold, the turn and the move reported.</summary>
     public const string Displacer = "displacer";
     /// <summary>The bumper: the body says it touched something — the bump, and the operator's forget of what it learned.</summary>
-    public const string CollisionCaptor = "collision-captor";
+    public const string Bumper = "bumper";
+    /// <summary>The formations (16-oct-2026; Juan: "que el rol sea quien termine llamando al módulo que pertenece"): form, take, rotate, dissolve,
+    /// the round's words — on the motors.</summary>
+    public const string Choreographer = "choreographer";
+    /// <summary>The plays (16-oct-2026): play, start, head, steer, over, the cast's words — on the motors.</summary>
+    public const string Dynamics = "dynamics";
 
     /// <summary>Every role this host knows how to play, in the order they are listed.</summary>
-    public static readonly IReadOnlyList<string> Known = new[] { Displacer, CollisionCaptor };
+    public static readonly IReadOnlyList<string> Known = new[] { Displacer, Bumper, Choreographer, Dynamics };
 
     private readonly List<string> roles;
 
     private Capabilities(List<string> roles) => this.roles = roles;
 
-    /// <summary>The roles declared — <c>"displacer,collision-captor"</c>, case and spaces forgiven; null or empty declares them
+    /// <summary>The roles declared — <c>"displacer,bumper"</c>, case and spaces forgiven; null or empty declares them
     /// all. A role this host does not know is refused with the list it does.</summary>
     public static Capabilities Parse(string declared)
     {
@@ -33,6 +38,9 @@ public sealed class Capabilities
             if (!Known.Contains(role)) throw new ArgumentException($"ROLES names '{token}', a role this golem cannot play; it knows: {string.Join(", ", Known)}");
             if (!roles.Contains(role)) roles.Add(role);
         }
+        // a role that moves the body needs the motors (16-oct-2026)
+        foreach (var onTheMotors in new[] { Choreographer, Dynamics })
+            if (roles.Contains(onTheMotors) && !roles.Contains(Displacer)) throw new ArgumentException($"ROLES names '{onTheMotors}', which moves the body: it needs '{Displacer}' too");
         return new Capabilities(roles);
     }
 

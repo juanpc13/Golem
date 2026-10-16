@@ -94,18 +94,18 @@ public sealed class Commander
             "form" => Form(command),
             "take" => Take(command),
             "rotate" => Rotate(command),
-            "dissolve" => Motors(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
+            "dissolve" => Choreographer(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
             "formations" => Formations(),
             "disputes" => Disputes(),
-            "play" => command.Text == "" ? PlayRead() : command.Text == "over" ? (Motors(out var po, out var por) ? Answered(po.Over(), "the play is over — the cast is told") : por) : Play(command),
+            "play" => command.Text == "" ? PlayRead() : command.Text == "over" ? (Dynamics(out var po, out var por) ? Answered(po.Over(), "the play is over — the cast is told") : por) : Play(command),
             "plays" => PlaysRead(),
-            "head" => Motors(out var h, out var hr) ? Answered(h.Head(command.Text), $"heading {command.Text} at the next decision cell") : hr,
-            "steer" => Motors(out var st, out var str) ? Answered(st.Drive(command.Text), $"pacman driven {command.Text}") : str,
-            "start" => Motors(out var rl, out var rr) ? Answered(rl.Start(command.Text), $"{command.Text} started here") : rr,
+            "head" => Dynamics(out var h, out var hr) ? Answered(h.Head(command.Text), $"heading {command.Text} at the next decision cell") : hr,
+            "steer" => Dynamics(out var st, out var str) ? Answered(st.Drive(command.Text), $"pacman driven {command.Text}") : str,
+            "start" => Dynamics(out var rl, out var rr) ? Answered(rl.Start(command.Text), $"{command.Text} started here") : rr,
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
-            "forget" => command.Text == "disputes" ? ForgetDisputes() : command.Text == "play" ? Answered(golem.ForgetPlay(command.Values["play"]), $"play {command.Values["play"]} forgotten: off the list") : Forget(command),
+            "forget" => command.Text == "disputes" ? ForgetDisputes() : command.Text == "play" ? (Dynamics(out var fp, out var fpr) ? Answered(fp.ForgetPlay(command.Values["play"]), $"play {command.Values["play"]} forgotten: off the list") : fpr) : Forget(command),
             "anchor" => Answered(golem.Anchor(), "anchored: awake where the body really stands"),
             "reset" => await ResetAsync(command),
             "place" => await PlaceAsync(command),
@@ -114,7 +114,7 @@ public sealed class Commander
             "where" => Where(),
             "obstacles" => Obstacles(),
             "use" => Answered(await golem.EnterAsync(command.Text), $"using map {command.Text}"),
-            "optimize" => Answered(golem.Optimize(command.Text), $"navigating {command.Text.Replace('-', ' ')}"),
+            "optimize" => Motors(out var op, out var opr) ? Answered(op.Optimize(command.Text), $"navigating {command.Text.Replace('-', ' ')}") : opr,
             "speed" => Pace(command),
             "scenarios" => Scenarios(),
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),
@@ -145,13 +145,13 @@ public sealed class Commander
                                       command.Values.TryGetValue("blades", out var blades) ? int.Parse(blades, CultureInfo.InvariantCulture) : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
         var answer = request.IsPropeller
-            ? displacer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy)
+            ? choreographer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy)
             : request.IsRings
-            ? displacer.FormRings(request.Name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0, request.Fleet, request.InnerFleet, request.Policy)
-            : displacer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy);
+            ? choreographer.FormRings(request.Name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0, request.Fleet, request.InnerFleet, request.Policy)
+            : choreographer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var holders = new List<string>();
         try
@@ -170,8 +170,8 @@ public sealed class Commander
         var request = new TakeRequest(command.Text);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Called(displacer.Take(request.Name));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        return Called(choreographer.Take(request.Name));
     }
 
     // a step of a formation (ajuste 77; propuesta 104): opened at once when everybody already stands — the order, as any — or queued, said so
@@ -180,8 +180,8 @@ public sealed class Commander
         var request = new RotateRequest(command.Text, command.Values["sense"], command.Values.TryGetValue("ring", out var ring) ? ring : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
-        if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Stepped(displacer.Rotate(request.Name, request.Sense, request.Orbit), $"{request.Name} {request.Sense}{(request.Orbit == "whole" ? "" : " · " + request.Orbit + " ring")}");
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        return Stepped(choreographer.Rotate(request.Name, request.Sense, request.Orbit), $"{request.Name} {request.Sense}{(request.Orbit == "whole" ? "" : " · " + request.Orbit + " ring")}");
     }
 
     // the disputes by distance (14-oct-2026): one line each, won or yielded, against whom, both distances
@@ -239,7 +239,8 @@ public sealed class Commander
     // the disputes forgotten (14-oct-2026): how many went
     private Reply ForgetDisputes()
     {
-        var answer = golem.ForgetDisputes();
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        var answer = choreographer.ForgetDisputes();
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         int n = 0;
         try { n = JsonDocument.Parse(answer.Print ?? "{}").RootElement.TryGetProperty("forgotten", out var f) && f.ValueKind == JsonValueKind.Number ? f.GetInt32() : 0; }
@@ -252,8 +253,8 @@ public sealed class Commander
         var request = new PointRequest(command.Points[0].X, command.Points[0].Y);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
-        var captor = golem.Captor;
-        if (captor == null) return Reply.Refused($"this body has no bumper: the role '{Capabilities.CollisionCaptor}' is not among its capabilities ({golem.Capabilities})");
+        var captor = golem.Bumper;
+        if (captor == null) return Reply.Refused($"this body has no bumper: the role '{Capabilities.Bumper}' is not among its capabilities ({golem.Capabilities})");
         return Answered(captor.Forget(request.X.Value, request.Y.Value));
     }
 
@@ -364,7 +365,8 @@ public sealed class Commander
     {
         double cruise = double.Parse(command.Text, CultureInfo.InvariantCulture);
         double? turning = command.Values.TryGetValue("turn", out var t) ? double.Parse(t, CultureInfo.InvariantCulture) : null;
-        var answer = golem.Pace(cruise, turning);
+        if (!Motors(out var motors, out var noMotors)) return noMotors;
+        var answer = motors.Pace(cruise, turning);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var e = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
         return Reply.Done($"pacing at {Num(e, "speed")} m/s, turning {Num(e, "turn")} rad/s — every order from here on", answer.Print ?? "");
@@ -373,7 +375,7 @@ public sealed class Commander
     // a play staged (propuesta 108): pacman by name, the ghosts by name — left out, every peer but pacman
     private Reply Play(Command command)
     {
-        if (!Motors(out var displacer, out var refusal)) return refusal;
+        if (!Dynamics(out var player, out var refusal)) return refusal;
         string pacman = command.Values.TryGetValue("pacman", out var star) ? star.Trim().ToLowerInvariant() : golem.Name.ToLowerInvariant();
         var ghosts = command.Values.TryGetValue("ghosts", out var crew)
             ? crew.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList()
@@ -381,7 +383,7 @@ public sealed class Commander
         string steering = command.Values.TryGetValue("steer", out var drive) ? drive : "guided";   // how pacman is driven (ajuste 16-oct-2026)
         string kind = command.Values.TryGetValue("kind", out var k) ? k : "pacman";
         string role = command.Values.TryGetValue("as", out var part) ? part : null;
-        var answer = displacer.Play(command.Text, kind, pacman, ghosts, steering, role);
+        var answer = player.Play(command.Text, kind, pacman, ghosts, steering, role);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var e = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
         return Reply.Done($"staged {Str(e, "play")} ({Str(e, "kind")}) — {golem.Name} plays {Str(e, "part").ToLowerInvariant()}; pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}", answer.Print ?? "");
@@ -478,11 +480,26 @@ public sealed class Commander
     private static string Amount(string action, double amount) =>
         action is "advance" or "back" ? Fmt(amount, "0.000") + " m" : action is "turnLeft" or "turnRight" ? Fmt(amount, "0.000") + " rad" : Fmt(amount);
 
-    private bool Motors(out Displacer displacer, out Reply refusal)
+    private bool Motors(out DisplacerRol displacer, out Reply refusal)
     {
         displacer = golem.Displacer;
         refusal = displacer == null ? Reply.Refused($"this body has no motors: the role '{Capabilities.Displacer}' is not among its capabilities ({golem.Capabilities})") : null;
         return displacer != null;
+    }
+
+    // the roles of the mind's modules (16-oct-2026): the formations and the plays
+    private bool Choreographer(out ChoreographerRol choreographer, out Reply refusal)
+    {
+        choreographer = golem.Choreographer;
+        refusal = choreographer == null ? Reply.Refused($"this body plays no choreographer: the role '{Capabilities.Choreographer}' is not among its capabilities ({golem.Capabilities})") : null;
+        return choreographer != null;
+    }
+
+    private bool Dynamics(out DynamicsRol dynamics, out Reply refusal)
+    {
+        dynamics = golem.Dynamics;
+        refusal = dynamics == null ? Reply.Refused($"this body plays no dynamics: the role '{Capabilities.Dynamics}' is not among its capabilities ({golem.Capabilities})") : null;
+        return dynamics != null;
     }
 
     private static string FirstLine(string text) { int i = text.IndexOf('\n'); return i < 0 ? text : text[..i].TrimEnd('\r'); }

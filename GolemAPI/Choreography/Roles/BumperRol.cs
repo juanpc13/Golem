@@ -7,17 +7,17 @@ namespace GolemAPI.Choreography.Roles;
 // unit of the acts ONE capability of the body writes in the golem's journal; this one owns the touch — the bump the body
 // reports, and the operator's word that what was learned by touching is gone. It RECEIVES the robot (the golem with its body:
 // the actor, the golem's NAME that rides beside a touch so the peers know who bumped) and builds nothing. The embodiment plays
-// it only when the body declared it (Capabilities.CollisionCaptor, `ROLES` in the compose); a body without a bumper has no
+// it only when the body declared it (Capabilities.Bumper, `ROLES` in the compose); a body without a bumper has no
 // `bumped` result to take from `/golem/<body>/result`, and the embodiment says so (ajuste 55).
 //
 // WHAT THE CAPTOR DOES NOT DO: decide. What a touch WAS — a wall the map knows (a graze), a thing (marked, the way corrected
 // around it) — is the ROUTE's conclusion inside `g.Bump(me, bearing)`; FOR NOW EVERY TOUCH IS A BUMP (Juan, 18-sep-2026), the
 // meeting of two bodies comes back later. A touch while the body stands is refused by the domain, not filtered here.
-public sealed class CollisionCaptor
+public sealed class BumperRol
 {
     private readonly GolemEmbodiment robot;   // the golem with its body: every act is written to its actor
 
-    public CollisionCaptor(GolemEmbodiment robot)
+    public BumperRol(GolemEmbodiment robot)
     {
         if (robot == null) throw new ArgumentNullException(nameof(robot), "a collision captor needs the robot that does the touching");
         this.robot = robot;
@@ -86,4 +86,21 @@ public sealed class CollisionCaptor
             p["y", typeof(double)] = Resolution.Metres(y);
         })
         .PerformCheckThenCommand());
+
+    // ==================================================================
+    // THE WORDS OF THE PEERS (GolemSpeech binds them): a peer's bump, heard — the mark annulled when its touch landed on my body (ajuste 46) —
+    // and an obstacle a peer forgot; plain @params only, the object built inside
+    // ==================================================================
+    public const string UptakeBumpedAt = @"
+        {
+            peer = Pose(@bodyX, @bodyY, @bodyHeading);
+            g.HearBump(@who, peer, @bearing);
+        }
+        ";
+    public const string UptakeObstacleGone = @"
+        {
+            at = Position(@x, @y);
+            g.LearnForget(at);
+        }
+        ";
 }

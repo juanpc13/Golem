@@ -1,3 +1,4 @@
+using GolemAPI.Choreography.Roles;
 using System.Globalization;
 using Choreography.Theater;
 using GolemAPI.Choreography;
@@ -124,7 +125,7 @@ public class StepLabTests
         }
         sink.Pushed.Clear();
         // the peer's word first (an uptake: Placed without expose), then the own act (Placed with expose)
-        p2.Actor.Using(GolemEmbodiment.UptakePlacedAt).WithParameters(p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }).PerformCommand();
+        p2.Actor.Using(ChoreographerRol.UptakePlacedAt).WithParameters(p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }).PerformCommand();
         var afterUptake = sink.Pushed.Select(x => x.Reaction).ToList();
         sink.Pushed.Clear();
         string own = p2.Actor.Using(@"
@@ -182,7 +183,7 @@ public class StepLabTests
                 expose me.Name who, formation.Name call;
             }"));
         log.Add("reached after: " + Try("{ print g.Choreography.Current.Reached 'v'; }"));
-        log.Add("red's word (completes the round): " + Try(GolemEmbodiment.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
+        log.Add("red's word (completes the round): " + Try(ChoreographerRol.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
         log.Add("placed count: " + Try("{ print g.Choreography.Current.PlacedCount 'v', g.Choreography.Current.CanStep 'can'; }"));
         log.Add("rotate: " + Try("{ formation = g.Choreography.Current; move = formation.Figure.Rotate(@sense, @ring); formation.Queue(move, @stepId); print formation.Queued 'v'; }", p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s1"; p["call", typeof(string)] = "blue-1"; }));
         Console.WriteLine(string.Join("\n", log));
@@ -218,14 +219,14 @@ public class StepLabTests
                 print route.Id 'route', route.Order 'action';
             }
             expose @id rid, @stop reached, @sx x, @sy y;", p => { p["id", typeof(int)] = 1; p["stop", typeof(bool)] = false; p["sx", typeof(double)] = 6.5; p["sy", typeof(double)] = 6.5; }));
-        log.Add("uptake after @id: " + Try(GolemEmbodiment.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
+        log.Add("uptake after @id: " + Try(ChoreographerRol.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
         log.Add("knows: " + Try("{ print g.Choreography.Knows(@call) 'v'; }", p => p["call", typeof(string)] = "blue-1"));
         log.Add("find(call): " + Try("{ formation = g.Choreography.Find(@call); print formation.Name 'v'; }", p => p["call", typeof(string)] = "blue-1"));
         log.Add("fleet.member: " + Try("{ formation = g.Choreography.Find(@call); peer = formation.Fleet.Member(@who); print peer.Name 'v'; }",
             p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
         log.Add("heard: " + Try("{ formation = g.Choreography.Find(@call); peer = formation.Fleet.Member(@who); route = formation.Heard(peer); print route.Id 'v'; }",
             p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
-        log.Add("uptake whole: " + Try(GolemEmbodiment.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
+        log.Add("uptake whole: " + Try(ChoreographerRol.UptakePlacedAt, p => { p["call", typeof(string)] = "blue-1"; p["who", typeof(string)] = "red"; }));
         log.Add("rotate: " + Try("{ formation = g.Choreography.Current; move = formation.Figure.Rotate(@sense, @ring); formation.Queue(move, @stepId); print formation.Queued 'v'; }",
             p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s1"; }));
         log.Add("uptake rotate whole: " + Try("{ formation = g.Choreography.Current; move = formation.Figure.Rotate(@sense, @ring); formation.Queue(move, @stepId); print formation.Queued 'v'; }", p => { p["sense", typeof(string)] = "Clockwise"; p["ring", typeof(string)] = "Whole"; p["stepId", typeof(string)] = "s2"; p["call", typeof(string)] = "blue-1"; }));
