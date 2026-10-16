@@ -464,6 +464,29 @@ public partial class MainWindow : Window
         await ActNowAsync(Current, "release");
     }
 
+    // the warden ends the play (fase 4): said to the selected golem at once; it announces GameOver to the cast
+    private async void Over_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current == null) return;
+        if (MessageBox.Show(this, "End the play for the whole cast?", "play over", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        await ActNowAsync(Current, "play over");
+    }
+
+    // THE PLAY FROM THE RIBBON (15-oct-2026; Juan: "poner a los involucrados para enviarles el comando y el rol que tomarán"): the dialog picks
+    // pacman and the ghosts, and the console writes each member's lines on its own tab — the board and the pace, and the play on pacman's tab,
+    // which spreads to the cast by tell; nothing goes until SEND
+    private void Play_Click(object sender, RoutedEventArgs e)
+    {
+        if (golems.Count < 2) { Log("a play needs pacman and at least one ghost: add golems first"); return; }
+        var dialog = new PlayDialog(golems.Select(x => x.Name).ToList(), Current?.Name ?? "") { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        var members = Members(new[] { dialog.Pacman }.Concat(dialog.Ghosts));
+        foreach (var member in members)
+            foreach (var line in dialog.LinesFor(member.Name)) member.Enqueue(line);
+        PlayTab.IsSelected = true;
+        Log($"pacman {dialog.Pacman}, ghosts {string.Join(", ", dialog.Ghosts)}: the lines on {members.Count} tab(s){(dialog.LayTheBoard ? ", the board laid" : "")} — SEND to selected with every member checked, then release");
+    }
+
     // the anchor (13-oct-2026): the golem re-reads where its body really stands — the belief back on the truth, nothing moved
     private async void AnchorNow_Click(object sender, RoutedEventArgs e)
     {

@@ -1,0 +1,49 @@
+<Window x:Class="WardenCli.Views.PlayDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Play — pacman and its ghosts, written on every member's tab" SizeToContent="Height" Width="520" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- THE CAST (propuesta 108, fases 2–4; Juan, 15-oct-2026: "poner a los involucrados para enviarles el comando y el rol que tomarán, si
+             serán el pacman o el ghost"): one golem plays pacman, the checked ones the ghosts; every golem knows its part by its name -->
+        <TextBlock Text="pacman" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+        <ComboBox x:Name="PacmanBox" Grid.Column="1" Margin="2,4" SelectionChanged="Pacman_Selected" ToolTip="the golem the keyboard steers: the arrow keys and the play tab's buttons say head … to it"/>
+
+        <TextBlock Grid.Row="1" Text="ghosts" Foreground="{StaticResource Dim}" Margin="0,6,8,0" ToolTip="the golems that chase pacman; the rest of the workspace stays out of the play"/>
+        <ListBox x:Name="GhostsBox" Grid.Row="1" Grid.Column="1" SelectionMode="Multiple" Height="130" Margin="2,6"/>
+
+        <!-- THE BOARD (the lab of 15-oct-2026): pacman in the cradle, the ghosts in the den — the first under the east door, the second under
+             the west one, the rest behind — and the ghosts slowed, so the game is fair -->
+        <TextBlock Grid.Row="2" Text="the board" VerticalAlignment="Top" Foreground="{StaticResource Dim}" Margin="0,6,8,0"/>
+        <StackPanel Grid.Row="2" Grid.Column="1" Margin="2,6">
+            <CheckBox x:Name="LayBox" Content="lay the board: use map maze, pacman in the cradle, the ghosts in the den" IsChecked="True"
+                      ToolTip="written before the play on every member's tab: use map maze and place …; the ghosts leave the den staggered by pacman's runs"/>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <CheckBox x:Name="SlowBox" Content="ghosts at" IsChecked="True" VerticalAlignment="Center" ToolTip="speed … --turn 1.5 on every ghost's tab; pacman keeps its own pace"/>
+                <TextBox x:Name="SpeedBox" Width="50" Text="1.5" Margin="6,0,4,0"/>
+                <TextBlock Text="m/s" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+            </StackPanel>
+        </StackPanel>
+
+        <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
+                   Text="play pacman goes on pacman's tab and spreads to the cast by itself; SEND to selected with every member checked, then release pacman from the play tab and steer it with the arrows"/>
+
+        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="260"/>
+            <Button Content="write the tabs" Click="Ok_Click" Style="{StaticResource GoGreen}" ToolTip="the board and the play, written on every member's tab; nothing is sent until SEND"/>
+            <Button Content="cancel" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

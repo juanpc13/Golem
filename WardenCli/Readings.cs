@@ -37,19 +37,33 @@ public sealed record Choice(string Name, bool Current)
 
 /// <summary>THE PLAY the golem is in (propuesta 108, fase 2): its title, this golem's part, the state, pacman's heading and wish, the runs — the
 /// `play` read, shown in the play tab; with pacman selected the arrow keys say `head …`.</summary>
-public sealed record PlayView(string Name, string Part, string State, string Heading, string Wish, int Runs, string Pacman, string Ghosts)
+public sealed record PlayView(string Name, string Part, string State, string Heading, string Wish, int Runs, string Pacman, string Ghosts,
+                              bool Released = false, (double X, double Y)? Seen = null, int RunsSeen = 0, int Chases = 0, bool Caught = false, string Catcher = "")
 {
     public bool IsPacman => Part.Equals("pacman", StringComparison.OrdinalIgnoreCase);
-    public string Text => $"{Name} · {Part.ToLowerInvariant()} · {State.ToLowerInvariant()} · heading {Heading.ToLowerInvariant()}{(Wish == "" ? "" : $", wishing {Wish.ToLowerInvariant()}")} · {Runs} run(s)";
+    public bool IsOver => State.Equals("over", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Pacman's line: its heading, wish and runs; a ghost's (fase 3): whether it left the den, where pacman was last seen and on which run,
+    /// its chases; over (fase 4): who caught pacman, or the warden.</summary>
+    public string Text => IsOver
+        ? $"{Name} · {Part.ToLowerInvariant()} · over — {(Caught ? $"{Catcher} caught {Pacman}" : $"ended by the {Catcher}")}"
+        : IsPacman
+        ? $"{Name} · pacman · {State.ToLowerInvariant()} · heading {Heading.ToLowerInvariant()}{(Wish == "" ? "" : $", wishing {Wish.ToLowerInvariant()}")} · {Runs} run(s)"
+        : $"{Name} · ghost · {State.ToLowerInvariant()} · {(Released ? "out of the den" : "in the den")}{(Seen is { } s ? $" · pacman seen at ({N(s.X)}, {N(s.Y)}) on run {RunsSeen}" : " · pacman not seen yet")} · {Chases} chase(s)";
     public string CastText => $"pacman {Pacman} · ghosts {Ghosts}";
+    private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
     public static PlayView? Parse(JsonElement json)
     {
         if (JsonWalk.Find(json, "playing") is not { ValueKind: JsonValueKind.True }) return null;
         bool wishing = JsonWalk.Find(json, "wishing") is { ValueKind: JsonValueKind.True };
+        bool seen = JsonWalk.Find(json, "seen") is { ValueKind: JsonValueKind.True };
         return new PlayView(JsonWalk.String(json, "play") ?? "", JsonWalk.String(json, "part") ?? "", JsonWalk.String(json, "state") ?? "",
                             JsonWalk.String(json, "heading") ?? "", wishing ? JsonWalk.String(json, "wish") ?? "" : "", (int)(JsonWalk.Number(json, "runs") ?? 0),
-                            JsonWalk.String(json, "pacman") ?? "", JsonWalk.String(json, "ghosts") ?? "");
+                            JsonWalk.String(json, "pacman") ?? "", JsonWalk.String(json, "ghosts") ?? "",
+                            JsonWalk.Find(json, "released") is { ValueKind: JsonValueKind.True },
+                            seen ? (JsonWalk.Number(json, "seenX") ?? 0, JsonWalk.Number(json, "seenY") ?? 0) : null,
+                            (int)(JsonWalk.Number(json, "runsSeen") ?? 0), (int)(JsonWalk.Number(json, "chases") ?? 0),
+                            JsonWalk.Find(json, "caught") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "catcher") ?? "");
     }
 }
 
