@@ -142,6 +142,31 @@ public class OperatorController : Controller
         return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
     }
 
+    /// <summary>Where the golem stands and what is in force (16-oct-2026; the line `where`): whether it knows, held, its scenario and zone, the
+    /// navigation it optimizes by, the body's cruise and turn rate — the same document the console reads.</summary>
+    [HttpGet("where")]
+    public IActionResult Where() => Content(Readings.Where(golemEmbodiment.Actor), "application/json");
+
+    // THE BODY CARRIED (16-oct-2026; the line `place x,y`): {"x": 14.25, "y": 8.25} in the frame of the scenario the golem is in — every pending
+    // route let go, the body teleported there and the golem woken where it stands
+    [HttpPost("place")]
+    public async Task<IActionResult> Place([FromBody] PointRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + PointRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        await golemEmbodiment.PlaceAsync(request.X!.Value, request.Y!.Value);
+        return Content(Readings.Where(golemEmbodiment.Actor), "application/json");
+    }
+
+    // THE ANCHOR (13-oct-2026; the line `anchor`): the golem takes where its body really stands, from telemetry, as where it stands — nothing moved
+    [HttpPost("anchor")]
+    public IActionResult Anchor()
+    {
+        var answer = golemEmbodiment.Anchor();
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
     // The scenarios the golem knows, and the one it is in.
     [HttpGet("scenarios")]
     public IActionResult Scenarios() => Content(Readings.Scenarios(golemEmbodiment.Actor), "application/json");
@@ -149,6 +174,10 @@ public class OperatorController : Controller
     /// <summary>The formations the warden told this golem (propuesta 99).</summary>
     [HttpGet("formations")]
     public IActionResult Formations() => Content(Readings.Formations(golemEmbodiment.Actor), "application/json");
+
+    /// <summary>The disputes over the places of its formations (14-oct-2026): the same document the line `disputes` answers.</summary>
+    [HttpGet("disputes")]
+    public IActionResult Disputes() => Content(Readings.Disputes(golemEmbodiment.Actor), "application/json");
 
     [HttpPost("reset")]
     public async Task<IActionResult> LetGo()
