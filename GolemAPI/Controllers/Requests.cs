@@ -49,15 +49,41 @@ public sealed record PointRequest(double? X, double? Y)
 }
 
 /// <summary>The strategy the golem optimizes its routes by (ajuste 61; `optimize`, ajuste 82) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
-/// <summary>A play staged (propuesta 108): its title, pacman and the ghosts — <c>{"name": "pacman", "pacman": "blue", "ghosts": ["red", "green"]}</c>.</summary>
-public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts)
+/// <summary>A play staged (propuesta 108): its title, pacman and the ghosts — <c>{"name": "pacman", "pacman": "blue", "ghosts": ["red", "green"]}</c> —
+/// and, since 16-oct-2026, how pacman is driven: <c>"steer": "manual" | "autonomous" | "guided"</c> (guided when left out).</summary>
+public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts, string Steer = null, string Kind = null, string As = null)
 {
-    public const string Shape = "{\"name\": \"pacman\", \"pacman\": \"blue\", \"ghosts\": [\"red\", \"green\"]}";
+    public const string Shape = "{\"name\": \"game-1\", \"kind\": \"pacman\", \"pacman\": \"blue\", \"ghosts\": [\"red\", \"green\"], \"as\": \"ghost\", \"steer\": \"guided\"}";
 
     public IEnumerable<string> Problems()
     {
-        if (string.IsNullOrWhiteSpace(Name) || Name.Trim().ToLowerInvariant() != "pacman") yield return "the only play known is pacman: " + Shape;
+        if (string.IsNullOrWhiteSpace(Name)) yield return "the play needs a name, its identity across the fleet: " + Shape;
+        if (Kind != null && Kind.Trim().ToLowerInvariant() != "pacman") yield return "the only play known is pacman: " + Shape;
+        if (As != null && As.Trim().ToLowerInvariant() is not ("pacman" or "ghost")) yield return "as is pacman or ghost: " + Shape;
         if (string.IsNullOrWhiteSpace(Pacman)) yield return "the play needs a pacman: " + Shape;
+        if (Steer != null && Steer.Trim().ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) yield return "steer is manual, autonomous or guided: " + Shape;
+    }
+}
+
+/// <summary>A play by its name (16-oct-2026) — forgotten, or started: <c>{"name": "game-1"}</c>.</summary>
+public sealed record ForgetPlayRequest(string Name)
+{
+    public const string Shape = "{\"name\": \"game-1\"}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Name)) yield return "the play's name is needed: " + Shape;
+    }
+}
+
+/// <summary>How pacman is driven from here on (16-oct-2026): <c>{"steer": "manual"}</c>.</summary>
+public sealed record SteerRequest(string Steer)
+{
+    public const string Shape = "{\"steer\": \"manual\"}";
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Steer) || Steer.Trim().ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) yield return "steer is manual, autonomous or guided: " + Shape;
     }
 }
 

@@ -8,10 +8,13 @@ namespace WardenCli;
 public sealed record Readings(string Zone, string Scenario, string Navigation, double? Speed, double? Turn, bool Held, int? Pending, int? Routes,
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
                               int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios,
-                              IReadOnlyList<FormationView> Formations, PlayView? Play = null, IReadOnlyList<DisputeView>? Disputes = null)
+                              IReadOnlyList<FormationView> Formations, PlayView? Play = null, IReadOnlyList<DisputeView>? Disputes = null,
+                              IReadOnlyList<PlayView>? Plays = null)
 {
     /// <summary>The disputes by distance (14-oct-2026), none before the golem answered.</summary>
     public IReadOnlyList<DisputeView> DisputeList => Disputes ?? Array.Empty<DisputeView>();
+    /// <summary>Every play the golem was told (16-oct-2026), the ended ones among them; none before the golem answered.</summary>
+    public IReadOnlyList<PlayView> PlayList => Plays ?? Array.Empty<PlayView>();
 
     /// <summary>Before anything was asked.</summary>
     public static readonly Readings Nothing = new("", "", "", null, null, false, null, null, null, "", "", "", "", 0, 0, 0, Array.Empty<Obstacle>(), Array.Empty<string>(), Array.Empty<FormationView>());
@@ -38,16 +41,37 @@ public sealed record Choice(string Name, bool Current)
 /// <summary>THE PLAY the golem is in (propuesta 108, fase 2): its title, this golem's part, the state, pacman's heading and wish, the runs — the
 /// `play` read, shown in the play tab; with pacman selected the arrow keys say `head …`.</summary>
 public sealed record PlayView(string Name, string Part, string State, string Heading, string Wish, int Runs, string Pacman, string Ghosts,
-                              bool Released = false, (double X, double Y)? Seen = null, int RunsSeen = 0, int Chases = 0, bool Caught = false, string Catcher = "")
+                              bool Released = false, (double X, double Y)? Seen = null, int RunsSeen = 0, int Chases = 0, bool Caught = false, string Catcher = "",
+                              string Steering = "", string Kind = "pacman")
 {
+    /// <summary>The state as the list's chip says it: staged, running, or over with who ended it.</summary>
+    public string StateText => IsOver ? (Caught ? $"over — {Catcher} caught {Pacman}" : $"over — ended by the {Catcher}") : State.ToLowerInvariant();
+    /// <summary>A row of the `plays` list (16-oct-2026): the play's name, kind, state, cast and who ended it.</summary>
+    public string ListText => $"{Name} · {Kind} · {State.ToLowerInvariant()}{(IsOver ? (Caught ? $" — {Catcher} caught {Pacman}" : $" — ended by the {Catcher}") : "")} · pacman {Pacman}, ghosts {Ghosts}";
+
+    /// <summary>The `plays` read parsed: every play the golem was told, in the order told.</summary>
+    public static IReadOnlyList<PlayView> ParseList(JsonElement json)
+    {
+        var list = new List<PlayView>();
+        if (JsonWalk.Find(json, "told") is not { ValueKind: JsonValueKind.Array } told) return list;
+        foreach (var p in told.EnumerateArray())
+            list.Add(new PlayView(JsonWalk.String(p, "called") ?? "", "", JsonWalk.String(p, "state") ?? "", "", "", 0,
+                                  JsonWalk.String(p, "pacman") ?? "", JsonWalk.String(p, "ghosts") ?? "",
+                                  Caught: JsonWalk.Find(p, "caught") is { ValueKind: JsonValueKind.True }, Catcher: JsonWalk.String(p, "catcher") ?? "",
+                                  Kind: JsonWalk.String(p, "kind") ?? "pacman"));
+        return list;
+    }
+
     public bool IsPacman => Part.Equals("pacman", StringComparison.OrdinalIgnoreCase);
     public bool IsOver => State.Equals("over", StringComparison.OrdinalIgnoreCase);
-    /// <summary>Pacman's line: its heading, wish and runs; a ghost's (fase 3): whether it left the den, where pacman was last seen and on which run,
-    /// its chases; over (fase 4): who caught pacman, or the warden.</summary>
+    /// <summary>How pacman is driven (16-oct-2026): manual, autonomous or guided — lower case, "" when the golem does not say.</summary>
+    public string Drive => Steering.ToLowerInvariant();
+    /// <summary>Pacman's line: how it is driven, its heading, wish and runs; a ghost's (fase 3): whether it left the den, where pacman was last seen
+    /// and on which run, its chases; over (fase 4): who caught pacman, or the warden.</summary>
     public string Text => IsOver
         ? $"{Name} · {Part.ToLowerInvariant()} · over — {(Caught ? $"{Catcher} caught {Pacman}" : $"ended by the {Catcher}")}"
         : IsPacman
-        ? $"{Name} · pacman · {State.ToLowerInvariant()} · heading {Heading.ToLowerInvariant()}{(Wish == "" ? "" : $", wishing {Wish.ToLowerInvariant()}")} · {Runs} run(s)"
+        ? $"{Name} · pacman · {State.ToLowerInvariant()}{(Drive == "" ? "" : $" · driven {Drive}")} · heading {Heading.ToLowerInvariant()}{(Wish == "" ? "" : $", wishing {Wish.ToLowerInvariant()}")} · {Runs} run(s)"
         : $"{Name} · ghost · {State.ToLowerInvariant()} · {(Released ? "out of the den" : "in the den")}{(Seen is { } s ? $" · pacman seen at ({N(s.X)}, {N(s.Y)}) on run {RunsSeen}" : " · pacman not seen yet")} · {Chases} chase(s)";
     public string CastText => $"pacman {Pacman} · ghosts {Ghosts}";
     private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
@@ -63,7 +87,8 @@ public sealed record PlayView(string Name, string Part, string State, string Hea
                             JsonWalk.Find(json, "released") is { ValueKind: JsonValueKind.True },
                             seen ? (JsonWalk.Number(json, "seenX") ?? 0, JsonWalk.Number(json, "seenY") ?? 0) : null,
                             (int)(JsonWalk.Number(json, "runsSeen") ?? 0), (int)(JsonWalk.Number(json, "chases") ?? 0),
-                            JsonWalk.Find(json, "caught") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "catcher") ?? "");
+                            JsonWalk.Find(json, "caught") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "catcher") ?? "",
+                            JsonWalk.String(json, "steering") ?? "");
     }
 }
 

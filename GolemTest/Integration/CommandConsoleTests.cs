@@ -351,11 +351,11 @@ public class CommandConsoleTests
     public async Task APlay_SpreadsToItsCast_AndPacmansRun_ReleasesTheFirstGhost_WhoChasesTheCellHeard()
     {
         await using var world = new MockWorld();
-        await world.PlaceGolemAsync("red");
+        await world.PlaceGolemAsync("green");   // not red: in this world red tells blue every stop it reaches and blue follows (the leader–follower pair) — a ghost must have no routes but its chases
         await world.PlaceGolemAsync("blue");
-        var red = new Commander(world.HostOf("red").Embodiment);
+        var green = new Commander(world.HostOf("green").Embodiment);
         var blue = new Commander(world.HostOf("blue").Embodiment);
-        foreach (var (g, at) in new[] { (red, "14.25,8.25"), (blue, "12.75,18.75") })   // pacman in the cradle, the ghost in the den
+        foreach (var (g, at) in new[] { (green, "14.25,8.25"), (blue, "12.75,18.75") })   // pacman in the cradle, the ghost in the den
         {
             Assert.IsTrue((await g.ExecuteAsync("use map maze")).Ok);
             var placed = await g.ExecuteAsync($"place {at}");
@@ -363,31 +363,42 @@ public class CommandConsoleTests
         }
         await Task.Delay(1500);   // the carried bodies settle and the golems wake there
 
-        var staged = await red.ExecuteAsync("play pacman --pacman red --ghosts blue");
+        // the play on EVERY member's tab (16-oct-2026), each line saying what that golem plays
+        var staged = await green.ExecuteAsync("play game-1 pacman --pacman green --ghosts blue --as pacman");
         Assert.IsTrue(staged.Ok, staged.Text);
-        string bluePlay = "";
-        for (int i = 0; i < 50 && !bluePlay.Contains("ghost"); i++) { await Task.Delay(200); bluePlay = (await blue.ExecuteAsync("play")).Text; }
-        StringAssert.Contains(bluePlay, "ghost", "blue was told the play by tell and plays a ghost — " + bluePlay);
+        Assert.AreEqual("refused", (await blue.ExecuteAsync("play game-1 pacman --pacman green --ghosts blue --as pacman")).Kind, "blue is a ghost in the cast: the line must agree");
+        Assert.IsTrue((await blue.ExecuteAsync("play game-1 pacman --pacman green --ghosts blue --as ghost")).Ok);
+        string bluePlay = (await blue.ExecuteAsync("play")).Text;
+        StringAssert.Contains(bluePlay, "ghost", "blue was told the play on its own tab and plays a ghost — " + bluePlay);
         StringAssert.Contains(bluePlay, "in the den", bluePlay);
 
-        var released = await red.ExecuteAsync("release");
+        // the start on every member's tab (16-oct-2026): the ghost joins the hunt, pacman sets out
+        var hunting = await blue.ExecuteAsync("start game-1");
+        Assert.IsTrue(hunting.Ok, hunting.Text);
+        var released = await green.ExecuteAsync("start game-1");
         Assert.IsTrue(released.Ok, "the run's act carries the expose the tell needs — " + released.Text);
-        StringAssert.Contains((await red.ExecuteAsync("play")).Text, "1 run", (await red.ExecuteAsync("play")).Text);
-        string chase = await Until(blue, "cell-10-5@15.75,8.25");
-        StringAssert.Contains(chase, "cell-10-5@15.75,8.25", "blue heard pacman's run, left the den and chases the cell — " + chase);
-        var ghost = (await blue.ExecuteAsync("play")).Text;
-        StringAssert.Contains(ghost, "out of the den", ghost);
-        StringAssert.Contains(ghost, "pacman seen at (15.75, 8.25) on run 1", ghost);
-        StringAssert.Contains(ghost, "1 chase", ghost);
+        StringAssert.Contains((await green.ExecuteAsync("play")).Text, "1 run", (await green.ExecuteAsync("play")).Text);
+        // blue hears pacman's runs, leaves the den and chases the cell last heard (which one depends on how far the mock's pacman already ran)
+        string ghost = "";
+        for (int i = 0; i < 100 && !(ghost.Contains("out of the den") && !ghost.Contains("0 chase")); i++) { await Task.Delay(200); ghost = (await blue.ExecuteAsync("play")).Text; }
+        StringAssert.Contains(ghost, "out of the den", "blue heard pacman's run and left the den — " + ghost);
+        StringAssert.Contains(ghost, "pacman seen at (", "the cell of pacman's latest run heard — " + ghost);
+        StringAssert.Contains(ghost, "chase(s)", ghost);
 
-        // the warden ends the play on pacman (fase 4): concluded there, announced by the clock, heard by the ghost — both copies over, the chase abandoned
-        var over = await red.ExecuteAsync("play over");
+        // the play ends (fase 4): by the warden on pacman — concluded there, announced by the clock, heard by the ghost — or, when the mock's
+        // bodies met on the way (the ghost reached pacman's cell), by the law itself, blue having caught red; either way both copies are over
+        // and the chase let go
+        var over = await green.ExecuteAsync("play over");
         Assert.IsTrue(over.Ok, over.Text);
-        StringAssert.Contains((await red.ExecuteAsync("play")).Text, "over — ended by the warden");
+        StringAssert.Contains((await green.ExecuteAsync("play")).Text, "over — ", (await green.ExecuteAsync("play")).Text);
         string blueOver = "";
         for (int i = 0; i < 50 && !blueOver.Contains("over"); i++) { await Task.Delay(200); blueOver = (await blue.ExecuteAsync("play")).Text; }
-        StringAssert.Contains(blueOver, "over — ended by the warden", "blue heard GameOver — " + blueOver);
-        StringAssert.Contains((await blue.ExecuteAsync("route")).Text, "abandoned", "the chase let go — " + (await blue.ExecuteAsync("route")).Text);
+        StringAssert.Contains(blueOver, "over — ", "blue heard GameOver, or concluded the catch itself — " + blueOver);
+        StringAssert.Contains((await green.ExecuteAsync("plays")).Text, "game-1 · pacman · over", "the list, the ended play among it — " + (await green.ExecuteAsync("plays")).Text);
+        // the word travels and nothing stays pending on the ghost: its chase underway let go — or already ended by the touch that caught pacman
+        string blueState = "";
+        for (int i = 0; i < 50 && !blueState.StartsWith("0 of"); i++) { await Task.Delay(200); blueState = (await blue.ExecuteAsync("state")).Text; }
+        StringAssert.StartsWith(blueState, "0 of", $"nothing pending on the ghost once the play is over — state: {blueState} · route: {(await blue.ExecuteAsync("route")).Text} · blue play: {(await blue.ExecuteAsync("play")).Text}");
     }
 
     private static async Task<string> UntilFormations(Commander golem, string name)

@@ -156,25 +156,14 @@ public sealed class GolemEmbodiment
             g.LearnForget(at);
         }
         ";
-    // A PLAY TOLD TO THE CAST (propuesta 108, fase 2): a peer staged it and its act told me — if I am in the cast, I stage the same copy, by
-    // the same title and stamp. No expose: one hop.
-    public const string UptakeStagedAs = @"
-        {
-            cast = Cast(@star, @crew);
-            if (cast.Has(g)) {
-                play = g.Dynamics.Stage(@title, cast, @nonce);
-                print play.Name 'play', g.Dynamics.Me 'part';
-            }
-        }
-        ";
     // PACMAN RUNS (propuesta 108, fase 3): a peer in the cast hears which run pacman makes and to which cell — in the play it is in, by title and
     // stamp — keeps it as where pacman was seen, and, a ghost released and idle, chases it from where it stands: its own route, pushed by
     // next-order-chase. Pacman's own copy never hears its own word; a golem outside the cast lets it pass. The cell enters as @cx @cy: x and y
     // are the print's labels.
     public const string UptakeRanTo = @"
         {
-            if (g.Dynamics.Plays(@title, @nonce)) {
-                play = g.Dynamics.Current;
+            if (g.Dynamics.Told(@title)) {
+                play = g.Dynamics.PacmanNamed(@title);
                 at = Position(@cx, @cy);
                 play.Seen(at, @runs);
                 if (g.Dynamics.MayChase) {
@@ -207,8 +196,8 @@ public sealed class GolemEmbodiment
     // copy closes the same way: the run or chase underway abandoned, nothing to announce in turn (one hop); pushed by next-order-heard-over
     public const string UptakeGameOver = @"
         {
-            if (g.Dynamics.Plays(@title, @nonce)) {
-                play = g.Dynamics.Current;
+            if (g.Dynamics.Told(@title)) {
+                play = g.Dynamics.Find(@title);
                 play.HeardOver(@who);
                 print play.Name 'play', play.State 'state', play.Catcher 'catcher', g.HasPendingMission() 'pending';
             }
@@ -605,6 +594,28 @@ public sealed class GolemEmbodiment
     {
         try { return Answer.Of(Actor.Using(ForgetDisputesScript).PerformCommand()); }
         catch (Exception ex) { return Answer.Refusal("forget disputes: " + Reason(ex)); }
+    }
+
+    // A PLAY FORGOTTEN (16-oct-2026; Juan: "se deberían poder eliminar también"): off the list once over or never set out; a running one is
+    // refused by the domain (play over first). The warden says it on every member's tab; nothing spreads.
+    private const string ForgetPlayScript = @"
+        {
+            play = g.Dynamics.Find(@playName);
+            g.Dynamics.Forget(play);
+            print play.Name 'play', g.Dynamics.Plays().Count 'left';
+        }
+        ";
+
+    public Answer ForgetPlay(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return Answer.Refusal("forget play: a play's name is needed, like forget play game-1");
+        try
+        {
+            return Answer.Of(Actor.Using(ForgetPlayScript)
+                .WithParameters(p => { p["playName", typeof(string)] = name.Trim().ToLowerInvariant(); })
+                .PerformCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"forget play {name}: " + Reason(ex)); }
     }
 
     /// <summary>THE ANCHOR (13-oct-2026; Juan: "¿debo reiniciarlos para que vuelvan a tomar la posición?"): the golem takes WHERE ITS BODY REALLY

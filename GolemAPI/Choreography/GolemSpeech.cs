@@ -79,17 +79,9 @@ public sealed class GolemSpeech
             // coreografía: cuando se cree la formación todos los golems sabrán cuál es la formación a la que pertenecen porque se mandó a crear"): the
             // warden tells form, take and rotate to every golem of the fleet, one line on each tab; the words of the round (StoodFor, PlacedAt,
             // AlignedAt) and the dissolution stay: lived facts between the members, never an operator's order relayed
-            // A PLAY STAGED (propuesta 108, fase 2): the golem it was told stages it and every peer is told the title, the cast and the stamp;
-            // a peer in the cast stages the same copy (UptakeStagedAs, no expose: one hop)
-            string staged = string.Join("\n", peers.Select(p => $@"
-                tell StagedAs with @title, @star, @crew, @nonce
-                    to {p}
-                    once 'staged-' + @nonce + '-{p}';"));
-            golemActor.Reactions.DefineReaction("echo-staged")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Staged").One()
-                    .OnMatch("[_:Dynamics].Stage(_, _, _) expose $title title, $star star, $crew crew, $nonce nonce;")
-                .Causation.Continue(staged);
+            // A PLAY is no longer told by tell (16-oct-2026; Juan: "este comando también debería viajar a los otros tabs de los golems involucrados… la única
+            // cosa que pasa por el tell cuando está ejecutándose la dinámica de pacman es el bump"): the warden writes `play …` on every member's tab,
+            // each line naming that golem's part; StagedAs, echo-staged and its uptake are gone, like FormedAs (propuesta 112)
             // PACMAN RUNS (propuesta 108, fase 3): every run told to every peer — the play, its stamp, which run and the decision cell it goes to;
             // a ghost's copy keeps where pacman was seen and chases it (UptakeRanTo); the once is per run and peer. The act is the host's (Release,
             // Ran), never an uptake's, so its expose is read.
@@ -102,6 +94,12 @@ public sealed class GolemSpeech
                 .Seek("Ran").One()
                     .OnMatch("[_:Dynamics].Run(_, _) expose $title title, $nonce nonce, $runs runs, $cellX cellX, $cellY cellY;")
                 .Causation.Continue(ran);
+            // …and a run STEERED underway (ajuste 16-oct-2026) is a run told the same way: the same tell, the same once by the run's number
+            golemActor.Reactions.DefineReaction("echo-steer")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Steered").One()
+                    .OnMatch("[_:Dynamics].Steer(_, _) expose $title title, $nonce nonce, $runs runs, $cellX cellX, $cellY cellY;")
+                .Causation.Continue(ran);
             // GAME OVER (propuesta 108, fase 4): the end of the play, concluded in this copy (a ghost and pacman met; the warden's `play over`)
             // and announced by the clock's act — never the uptake's (an uptake-written act cannot be exposed): every peer is told who ended it
             string over = string.Join("\n", peers.Select(p => $@"
@@ -111,7 +109,7 @@ public sealed class GolemSpeech
             golemActor.Reactions.DefineReaction("echo-over")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Over").One()
-                    .OnMatch("[_:Pacman].Announce() expose $title title, $nonce nonce, $who who;")
+                    .OnMatch("[_:Play].Announce() expose $title title, $nonce nonce, $who who;")
                 .Causation.Continue(over);
             // THE TAKE (ajustes 73, 80, 81; propuesta 104): the golem said where it stands into the named formation — every peer is told the name,
             // the stamp, who and where, and convenes in its own copy
@@ -190,8 +188,6 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(GolemEmbodiment.UptakeObstacleGone)
-            .Told("StagedAs").With<string>("title").With<string>("star").With<string>("crew").With<string>("nonce")
-                .Command(GolemEmbodiment.UptakeStagedAs)
             .Told("RanTo").With<string>("title").With<string>("nonce").With<int>("runs").With<double>("cx").With<double>("cy")
                 .Command(GolemEmbodiment.UptakeRanTo)
             .Told("GameOver").With<string>("title").With<string>("nonce").With<string>("who")

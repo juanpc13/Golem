@@ -74,8 +74,9 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-dissolve", "[_:Choreographies].Dissolve(_)"),
             ("next-order-run",    "[_:Dynamics].Run(_, _)"),
             ("next-order-chase",  "[_:Dynamics].Chase(_, _)"),              // a ghost's chase opened: at pacman's word, or at its arrival (propuesta 108, fase 3)
-            ("next-order-over",   "[_:Pacman].Over(_)"),                    // the play ended here by the warden's line: the route abandoned, the body stops (fase 4)
-            ("next-order-heard-over", "[_:Pacman].HeardOver(_)"),           // …or by a peer's word that it is over
+            ("next-order-steer",  "[_:Dynamics].Steer(_, _)"),              // pacman steered underway: a new advance from where its body is (ajuste 16-oct-2026)
+            ("next-order-over",   "[_:Play].Over(_)"),                    // the play ended here by the warden's line: the route abandoned, the body stops (fase 4)
+            ("next-order-heard-over", "[_:Play].HeardOver(_)"),           // …or by a peer's word that it is over
             ("next-order-retake", "[_:Formation].Retake(_)"),               // a failed route to a place opened again from where the body stands (propuesta 113)               // pacman's run opened: released, or at a decision cell (propuesta 108)      // a formation dissolved: a route of it let go, the body stops (propuesta 104)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),

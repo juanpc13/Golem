@@ -179,6 +179,17 @@ public class OperatorController : Controller
     [HttpGet("disputes")]
     public IActionResult Disputes() => Content(Readings.Disputes(golemEmbodiment.Actor), "application/json");
 
+    /// <summary>A play forgotten (16-oct-2026; the line `forget play <name>`): off the list once over or never set out.</summary>
+    [HttpPost("forget-play")]
+    public IActionResult ForgetPlay([FromBody] ForgetPlayRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ForgetPlayRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        var answer = golemEmbodiment.ForgetPlay(request.Name);
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
     /// <summary>Every dispute forgotten (14-oct-2026; the line `forget disputes`): this copy's go, and it settles no more.</summary>
     [HttpPost("forget-disputes")]
     public IActionResult ForgetDisputes()

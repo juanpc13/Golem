@@ -15,18 +15,25 @@ public partial class PlayDialog : Window
     public const string Cradle = "14.25,8.25";
     public static readonly IReadOnlyList<string> Den = new[] { "15.75,18.75", "12.75,18.75", "14.25,17.25", "12.75,17.25", "15.75,17.25", "14.25,18.75" };
 
+    /// <summary>The play's name (16-oct-2026): its identity across the fleet, like a formation's — `game-<n>`, the next number no golem of the
+    /// workspace knows, given by the window.</summary>
+    public string Name { get; }
     public string Pacman { get; private set; } = "";
     public List<string> Ghosts { get; private set; } = new();
+    /// <summary>How pacman is driven (16-oct-2026): manual, guided or autonomous — `--steer` on the play line.</summary>
+    public string Steering { get; private set; } = "guided";
     public bool LayTheBoard { get; private set; } = true;
     /// <summary>The ghosts' cruise, or null to leave their pace alone.</summary>
     public double? GhostSpeed { get; private set; }
 
     private readonly IReadOnlyList<string> golems;
 
-    public PlayDialog(IReadOnlyList<string> golems, string selected)
+    public PlayDialog(IReadOnlyList<string> golems, string selected, string name)
     {
         this.golems = golems;
+        Name = name;
         InitializeComponent();
+        Title = $"Play {name} — pacman and its ghosts, written on every member's tab";
         PacmanBox.ItemsSource = golems;
         PacmanBox.SelectedItem = golems.FirstOrDefault(g => g.Equals(selected, StringComparison.OrdinalIgnoreCase)) ?? golems.FirstOrDefault();
     }
@@ -52,13 +59,19 @@ public partial class PlayDialog : Window
             lines.Add($"place {(star ? Cradle : Den[Math.Min(rank, Den.Count - 1)])}");
         }
         if (!star && GhostSpeed is { } speed) lines.Add($"speed {speed.ToString("0.##", CultureInfo.InvariantCulture)} --turn 1.5");
-        if (star) lines.Add($"play pacman --pacman {Pacman} --ghosts {string.Join(",", Ghosts)}");
+        // THE PLAY AND THE START ON EVERY MEMBER'S TAB (16-oct-2026; Juan: "este comando también debería viajar a los otros tabs… se le pasará qué
+        // rol tiene él… desde el momento que lo liberamos también se pone en los ghosts para que empiecen a buscarlo… no es necesario el @sync"):
+        // each line naming that golem's part, and `start <name>` — pacman's first run, a ghost's hunt; every tab independent, the game starts when
+        // the script is sent (a ghost that misses pacman's first word is released by a later one)
+        lines.Add($"play {Name} pacman --pacman {Pacman} --ghosts {string.Join(",", Ghosts)} --as {(star ? "pacman" : "ghost")}{(Steering == "guided" ? "" : $" --steer {Steering}")}");
+        lines.Add($"start {Name}");
         return lines;
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         Pacman = PacmanBox.SelectedItem as string ?? "";
+        Steering = ManualBox.IsChecked == true ? "manual" : AutonomousBox.IsChecked == true ? "autonomous" : "guided";
         Ghosts = GhostsBox.SelectedItems.Cast<string>().OrderBy(n => n, StringComparer.Ordinal).ToList();   // the names sorted: the order they leave the den in
         LayTheBoard = LayBox.IsChecked == true;
         if (Pacman == "") { Problem.Text = "pick who plays pacman"; return; }

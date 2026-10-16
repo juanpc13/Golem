@@ -121,14 +121,27 @@ public static class Readings
             {
                 print g.Dynamics.Knows 'playing';
                 if (g.Dynamics.Knows) {
-                    play = g.Dynamics.Current;
-                    print play.Name 'play', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Cast.Pacman 'pacman', play.Cast.Roster 'ghosts',
+                    play = g.Dynamics.Pacman;
+                    print play.Name 'play', play.Kind 'kind', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Steering 'steering', play.Cast.Pacman 'pacman', play.Cast.Roster 'ghosts',
                           play.Heading 'heading', play.HasWish 'wishing', play.Wish 'wish', play.Runs 'runs',
                           play.HasSeen 'seen', play.RunsSeen 'runsSeen', play.Chases 'chases', g.Dynamics.Released 'released',
-                          play.WasCaught 'caught', play.Catcher 'catcher';
+                          play.WasCaught 'caught', play.Catcher 'catcher', play.Started 'started';
                     if (play.HasSeen) {
                         print play.LastSeen.X 'seenX', play.LastSeen.Y 'seenY';
                     }
+                }
+            }
+        ")
+        .PerformQuery();
+
+    /// <summary>EVERY PLAY the golem was told (16-oct-2026): name, kind, state, cast, who ended it — the warden's list, the ended ones among them.</summary>
+    public static string Plays(ActorV2 actor) =>
+        actor.Using(@"
+            {
+                print g.Dynamics.Plays().Count 'count';
+                foreach (told in g.Dynamics.Plays()) {
+                    print told.Name 'called', told.Kind 'kind', told.Stamp 'nonce', told.State 'state', told.Cast.Pacman 'pacman', told.Cast.Roster 'ghosts',
+                          told.WasCaught 'caught', told.Catcher 'catcher';
                 }
             }
         ")

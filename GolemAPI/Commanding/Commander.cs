@@ -98,12 +98,14 @@ public sealed class Commander
             "formations" => Formations(),
             "disputes" => Disputes(),
             "play" => command.Text == "" ? PlayRead() : command.Text == "over" ? (Motors(out var po, out var por) ? Answered(po.Over(), "the play is over — the cast is told") : por) : Play(command),
+            "plays" => PlaysRead(),
             "head" => Motors(out var h, out var hr) ? Answered(h.Head(command.Text), $"heading {command.Text} at the next decision cell") : hr,
-            "release" => Motors(out var rl, out var rr) ? Answered(rl.Release()) : rr,
+            "steer" => Motors(out var st, out var str) ? Answered(st.Drive(command.Text), $"pacman driven {command.Text}") : str,
+            "start" => Motors(out var rl, out var rr) ? Answered(rl.Start(command.Text), $"{command.Text} started here") : rr,
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
-            "forget" => command.Text == "disputes" ? ForgetDisputes() : Forget(command),
+            "forget" => command.Text == "disputes" ? ForgetDisputes() : command.Text == "play" ? Answered(golem.ForgetPlay(command.Values["play"]), $"play {command.Values["play"]} forgotten: off the list") : Forget(command),
             "anchor" => Answered(golem.Anchor(), "anchored: awake where the body really stands"),
             "reset" => await ResetAsync(command),
             "place" => await PlaceAsync(command),
@@ -376,10 +378,28 @@ public sealed class Commander
         var ghosts = command.Values.TryGetValue("ghosts", out var crew)
             ? crew.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList()
             : new[] { golem.Name.ToLowerInvariant() }.Concat(golem.Peers.Select(x => x.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();
-        var answer = displacer.Play(command.Text, pacman, ghosts);
+        string steering = command.Values.TryGetValue("steer", out var drive) ? drive : "guided";   // how pacman is driven (ajuste 16-oct-2026)
+        string kind = command.Values.TryGetValue("kind", out var k) ? k : "pacman";
+        string role = command.Values.TryGetValue("as", out var part) ? part : null;
+        var answer = displacer.Play(command.Text, kind, pacman, ghosts, steering, role);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var e = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
-        return Reply.Done($"staged {Str(e, "play")} — {golem.Name} plays {Str(e, "part").ToLowerInvariant()}; pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}; every golem of the cast is told", answer.Print ?? "");
+        return Reply.Done($"staged {Str(e, "play")} ({Str(e, "kind")}) — {golem.Name} plays {Str(e, "part").ToLowerInvariant()}; pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}", answer.Print ?? "");
+    }
+
+    // EVERY PLAY TOLD (16-oct-2026): the list, the ended ones among them
+    private Reply PlaysRead()
+    {
+        string json = Readings.Plays(golem.Actor);
+        var e = JsonDocument.Parse(json).RootElement;
+        if (!e.TryGetProperty("told", out var told) || told.ValueKind != JsonValueKind.Array || told.GetArrayLength() == 0) return Reply.Done("told no play yet", json);
+        var lines = new List<string>();
+        foreach (var p in told.EnumerateArray())
+        {
+            string end = Str(p, "state") != "Over" ? "" : Bool(p, "caught") ? $" — {Str(p, "catcher")} caught {Str(p, "pacman")}" : $" — ended by the {Str(p, "catcher")}";
+            lines.Add($"{Str(p, "called")} · {Str(p, "kind")} · {Str(p, "state").ToLowerInvariant()}{end} · pacman {Str(p, "pacman")}, ghosts {Str(p, "ghosts")}");
+        }
+        return Reply.Done(string.Join("\n", lines), json);
     }
 
     private Reply PlayRead()

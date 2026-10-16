@@ -7,3 +7,5 @@ journal/
 journal-legacy-*/
 # each one's own wiring of the scenarios' world (propuesta 52)
 GolemTest/appsettings.local.json
+# the test runners' logs (dotnet test --logger trx)
+TestResults/

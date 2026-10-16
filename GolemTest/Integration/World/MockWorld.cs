@@ -96,6 +96,13 @@ public sealed class MockWorld : ILabWorld
     /// <summary>The golem's host — the same GolemHost the containers run — for a test that commands it directly (the console).</summary>
     public GolemHost HostOf(string golem) => Of(golem).Host;
 
+    /// <summary>A golem's feed so far, for a lab's eyes: every event's kind, entry, note and script, in order.</summary>
+    public IReadOnlyList<string> FeedOf(string golem)
+    {
+        var (replay, _, ticket) = Of(golem).Feed.Attach();
+        using (ticket) return replay.Select(e => $"#{e.Entry} {e.Kind}: {e.Note} {e.Script}".Trim()).ToList();
+    }
+
     public string Send(string golem, params (double X, double Y)[] stops)
     {
         var answer = Of(golem).Host.Embodiment.Displacer.Move(stops);

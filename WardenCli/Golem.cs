@@ -43,7 +43,7 @@ public sealed class Golem : INotifyPropertyChanged
     public Readings Knowledge
     {
         get => knowledge;
-        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); Raise(nameof(PaceOptions)); Raise(nameof(PacePrompt)); Raise(nameof(PlayText)); Raise(nameof(PlayCast)); Raise(nameof(IsPacman)); }
+        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); Raise(nameof(PaceOptions)); Raise(nameof(PacePrompt)); Raise(nameof(PlayText)); Raise(nameof(PlayCast)); Raise(nameof(IsPacman)); Raise(nameof(PlayList)); }
     }
 
     /// <summary>The scenarios it knows, for the environment's drop-down that enters one at once; the one it is in says so.</summary>
@@ -60,6 +60,8 @@ public sealed class Golem : INotifyPropertyChanged
     public string PlayText => Knowledge.Pending == null ? "not asked yet" : Knowledge.Play == null ? "in no play — play pacman --pacman … --ghosts … on a tab stages one" : Knowledge.Play.Text;
     public string PlayCast => Knowledge.Play?.CastText ?? "";
     public bool IsPacman => Knowledge.Play?.IsPacman == true;
+    /// <summary>Every play the golem was told (16-oct-2026), the ended ones among them — the play tab's list, newest first.</summary>
+    public IReadOnlyList<PlayView> PlayList => Knowledge.PlayList.Reverse().ToList();
 
     /// <summary>The paces the environment offers (propuesta 111): the presets, the one the golem has now marked.</summary>
     public IReadOnlyList<PaceChoice> PaceOptions => PaceChoice.Presets.Select(p => new PaceChoice(p.Name, p.Speed, p.Turn, HasPace(p.Speed, p.Turn))).ToList();

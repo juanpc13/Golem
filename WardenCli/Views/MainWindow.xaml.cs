@@ -458,10 +458,29 @@ public partial class MainWindow : Window
         await ActNowAsync(Current, $"head {direction}");
     }
 
-    private async void Release_Click(object sender, RoutedEventArgs e)
+    // the start of the current play on the selected golem (16-oct-2026): start <name> — on a ghost's tab too, so it joins the hunt
+    private async void Start_Click(object sender, RoutedEventArgs e)
     {
-        if (Current == null) return;
-        await ActNowAsync(Current, "release");
+        if (Current?.Knowledge.Play is not { } play) { Log("no play to start here: Workspace › Pacman writes one on the tabs"); return; }
+        await ActNowAsync(Current, $"start {play.Name}");
+    }
+
+    // A PLAY FORGOTTEN (16-oct-2026; Juan: "se deberían poder eliminar también"): forget play <name> said at once to every member of its cast
+    // present in the workspace — the warden's word on each, nothing spreads — after asking; a running play is refused by the domain (over first)
+    private async void ForgetPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not PlayView play) return;
+        var members = Members(new[] { play.Pacman }.Concat(play.Ghosts.Split(',', StringSplitOptions.RemoveEmptyEntries)));
+        if (members.Count == 0) return;
+        if (MessageBox.Show(this, $"Forget the play {play.Name} on {string.Join(", ", members.Select(m => m.Name))}?\n\nIt is taken off each one's list; a running play has to be over first.", "forget play", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        foreach (var g in members) await ActNowAsync(g, $"forget play {play.Name}");
+    }
+
+    // how pacman is driven (16-oct-2026): said to the selected golem at once — steer manual|guided|autonomous
+    private async void Steer_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current == null || (sender as Button)?.Tag is not string steering) return;
+        await ActNowAsync(Current, $"steer {steering}");
     }
 
     // the warden ends the play (fase 4): said to the selected golem at once; it announces GameOver to the cast
@@ -478,7 +497,14 @@ public partial class MainWindow : Window
     private void Play_Click(object sender, RoutedEventArgs e)
     {
         if (golems.Count < 2) { Log("a play needs pacman and at least one ghost: add golems first"); return; }
-        var dialog = new PlayDialog(golems.Select(x => x.Name).ToList(), Current?.Name ?? "") { Owner = this };
+        // THE PLAY'S NAME (16-oct-2026; Juan: "generar un id del juego"): game-<n>, the next number no golem of the workspace knows — told or
+        // written on a tab and not sent yet — like square-<n> for a formation
+        var known = golems.SelectMany(g => g.Knowledge.PlayList.Select(p => p.Name))
+                          .Concat(golems.SelectMany(g => g.Lines()).Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).Where(w => w.Length >= 3 && w[0].Equals("play", StringComparison.OrdinalIgnoreCase)).Select(w => w[1].ToLowerInvariant()))
+                          .ToHashSet(StringComparer.Ordinal);
+        int n = 1;
+        while (known.Contains($"game-{n}")) n++;
+        var dialog = new PlayDialog(golems.Select(x => x.Name).ToList(), Current?.Name ?? "", $"game-{n}") { Owner = this };
         if (dialog.ShowDialog() != true) return;
         var members = Members(new[] { dialog.Pacman }.Concat(dialog.Ghosts));
         foreach (var member in members)

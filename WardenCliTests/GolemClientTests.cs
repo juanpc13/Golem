@@ -13,7 +13,7 @@ public class GolemClientTests
     [TestMethod]
     public void TheReads_GoByGet_AndTheLevers_ByTheirPosts_WithTheBodyTheEndpointExpects()
     {
-        foreach (var read in new[] { "where", "state", "route", "scenarios", "obstacles", "formations", "disputes", "play" })
+        foreach (var read in new[] { "where", "state", "route", "scenarios", "obstacles", "formations", "disputes", "play", "plays" })
         {
             var call = GolemClient.Endpoint(read);
             Assert.IsNotNull(call, read);
@@ -31,9 +31,11 @@ public class GolemClientTests
         AssertPost("reset", "reset", null);
         AssertPost("reset --all", "reset-everything", "{\"cascade\":true}");
         AssertPost("head north", "head", "{\"direction\":\"north\"}");
-        AssertPost("release", "release", null);
+        AssertPost("steer manual", "steer", "{\"steer\":\"manual\"}");
+        AssertPost("start game-1", "start", "{\"name\":\"game-1\"}");
         AssertPost("play over", "over", null);
         AssertPost("forget disputes", "forget-disputes", null);
+        AssertPost("forget play game-1", "forget-play", "{\"name\":\"game-1\"}");
         AssertPost("forget 6.38,5.34", "forget", "{\"x\":6.38,\"y\":5.34}");
         AssertPost("place 14.25,8.25", "place", "{\"x\":14.25,\"y\":8.25}");
         AssertPost("dissolve tri-left", "dissolve", "{\"name\":\"tri-left\"}");

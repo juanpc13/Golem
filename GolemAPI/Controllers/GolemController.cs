@@ -109,7 +109,22 @@ public class GolemController : Controller
         string pacman = request.Pacman.Trim().ToLowerInvariant();
         var ghosts = request.Ghosts is { Count: > 0 } ? request.Ghosts.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
                                                       : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();
-        return Answered(displacer.Play(request.Name.Trim().ToLowerInvariant(), pacman, ghosts));
+        return Answered(displacer.Play(request.Name.Trim().ToLowerInvariant(), request.Kind ?? "pacman", pacman, ghosts, request.Steer ?? "guided", request.As));
+    }
+
+    /// <summary>Every play this golem was told (16-oct-2026): the same document the line `plays` answers.</summary>
+    [HttpGet("plays")]
+    public IActionResult Plays() => Content(Readings.Plays(golemEmbodiment.Actor), "application/json");
+
+    /// <summary>How pacman is driven from here on (ajuste 16-oct-2026): manual, autonomous or guided — the line `steer …`.</summary>
+    [HttpPost("steer")]
+    public IActionResult Steer([FromBody] SteerRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + SteerRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Motors(out var displacer, out var refusal)) return refusal;
+        return Answered(displacer.Drive(request.Steer.Trim().ToLowerInvariant()));
     }
 
     /// <summary>The keyboard's wish (propuesta 108): the direction pacman takes at its next decision cell.</summary>
@@ -123,12 +138,15 @@ public class GolemController : Controller
         return Answered(displacer.Head(request.Direction.Trim().ToLowerInvariant()));
     }
 
-    /// <summary>Pacman released (propuesta 108): its first run.</summary>
-    [HttpPost("release")]
-    public IActionResult Release()
+    /// <summary>The start of a play on this golem (16-oct-2026; the line `start <name>`): pacman's first run, a ghost's hunt.</summary>
+    [HttpPost("start")]
+    public IActionResult Start([FromBody] ForgetPlayRequest request)
     {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ForgetPlayRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Motors(out var displacer, out var refusal)) return refusal;
-        return Answered(displacer.Release());
+        return Answered(displacer.Start(request.Name));
     }
 
     /// <summary>The warden ends the play for the whole cast (propuesta 108, fase 4; the line `play over`).</summary>

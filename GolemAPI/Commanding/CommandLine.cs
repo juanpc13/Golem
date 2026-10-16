@@ -45,13 +45,15 @@ public static class CommandLine
         new CommandHelp("dissolve", "dissolve <name>", "the formation leaves every golem of its fleet; a route of it still pending is let go", "dissolve square-2"),
         new CommandHelp("disputes", "disputes", "the places this golem disputed with another by distance, formation by formation: whether it won the place or yielded it, to whom, and both distances (a golem disputes the place nearest to where it stood)", "disputes"),
         new CommandHelp("formations", "formations", "the formations this golem is in: each one's figure, centre, size, orientation, policy, fleet and who holds which place", "formations"),
-        new CommandHelp("play", "play pacman --pacman <golem> --ghosts a,b | play | play over", "the play of pacman staged on this golem (propuesta 108): who plays pacman and who the ghosts (left out, this golem and every peer but pacman); it spreads by itself to the cast, never --with; alone, play says the play this golem is in — its part, state, heading, wish, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play pacman --pacman blue --ghosts red,green,yellow"),
-        new CommandHelp("head", "head north|south|east|west", "the keyboard's wish: the direction pacman takes at its next decision cell (an intersection, or where straight on is closed); closed there, kept for the next; without one, straight on, else right, else left, else back", "head north"),
-        new CommandHelp("release", "release", "pacman set out: its first run, from where it stands to the next decision cell; every run that reaches one opens the next by the rule", "release"),
+        new CommandHelp("play", "play <name> pacman --pacman <golem> --ghosts a,b [--as pacman|ghost] [--steer manual|autonomous|guided] | play | play over", "a play staged on this golem by its name (its identity across the fleet, like a formation's) and its kind — pacman: who plays pacman and who the ghosts (left out, this golem and every peer but pacman), how pacman is driven; written on every member's tab by the warden, each line saying with --as what that golem plays (left out, what the cast says of its name), never --with; alone, play says the current play — its part, state, heading, wish, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play game-1 pacman --pacman blue --ghosts red,green,yellow"),
+        new CommandHelp("plays", "plays", "every play this golem was told, the ended ones among them: name, kind, state, cast, who ended it", "plays"),
+        new CommandHelp("head", "head north|south|east|west", "the keyboard's wish: running and guided, pacman turns at the intersection ahead where it opens (or round, for the opposite direction) without stopping; closed ahead, kept for the next decision; without one, straight on through the intersections, else right, else left, else back", "head north"),
+        new CommandHelp("steer", "steer manual|autonomous|guided", "how pacman is driven (16-oct-2026): manual — the keyboard decides at every decision cell and pacman waits for it; autonomous — the rule decides, the keyboard is refused; guided — the rule decides and the wish rules where it opens (at birth)", "steer manual"),
+        new CommandHelp("start", "start <name>", "the start of a play on this golem, written on every member's tab (16-oct-2026): pacman sets out — its first run, straight down the corridor — and a ghost joins the hunt, chasing from then on as pacman's runs release it from the den", "start game-1"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
-        new CommandHelp("forget", "forget x,y  ·  forget disputes", "what stood there is gone: the golem forgets it, marks and all, and tells the peers — or, with disputes, it forgets the disputes it had over places (the next ones come with the next rounds played)", "forget 10.13,5.5"),
+        new CommandHelp("forget", "forget x,y  ·  forget disputes | forget play <name>", "what stood there is gone: the golem forgets it, marks and all, and tells the peers — or, with disputes, it forgets the disputes it had over places (the next ones come with the next rounds played); forget play <name> takes a play off the list once it is over (a running one: play over first)", "forget 10.13,5.5"),
         new CommandHelp("anchor", "anchor", "the golem takes where its body REALLY stands (telemetry) as where it stands — the scenario whose region holds it, a waking there, a plan underway decided again — without a reset and without moving anything; for when its belief drifted from the truth (13-oct-2026)", "anchor"),
         new CommandHelp("reset", "reset [--all]", "let go: every pending route abandoned, the body back on its mark; --all wipes the journal — the peers' too — and reboots reborn", "reset"),
         new CommandHelp("state", "state", "the board: the routes pending, the one underway and its next point, how the last one ended", "state"),
@@ -116,6 +118,11 @@ public static class CommandLine
             case "forget":
                 if (args.Count == 1 && args[0].Equals("disputes", StringComparison.OrdinalIgnoreCase))
                     return new Command(named, with, verb, none, noOptions, "disputes");   // the disputes over places forgotten (14-oct-2026)
+                if (args.Count >= 1 && args[0].Equals("play", StringComparison.OrdinalIgnoreCase))   // a play forgotten (16-oct-2026): off the list
+                {
+                    if (args.Count != 2 || !Name.IsMatch(args[1])) throw new CommandSyntaxException("forget play: expected the play's name, like forget play game-1");
+                    return new Command(named, with, verb, none, noOptions, "play", new Dictionary<string, string> { ["play"] = args[1].ToLowerInvariant() });
+                }
                 return new Command(named, with, verb, Points(verb, args, exactly: 1), noOptions, "");
             case "form":
             {
@@ -210,18 +217,38 @@ public static class CommandLine
                         values[a[2..]] = args[++i].ToLowerInvariant();
                         continue;
                     }
-                    if (a.StartsWith("--")) throw new CommandSyntaxException($"play: '{Head(a)}' is no option; the options are --pacman <golem> and --ghosts a,b");
+                    if (a == "--as")   // the part this golem plays, the warden's word on each tab (16-oct-2026)
+                    {
+                        if (i + 1 >= args.Count || args[i + 1].ToLowerInvariant() is not ("pacman" or "ghost")) throw new CommandSyntaxException("play: --as needs pacman or ghost");
+                        values["as"] = args[++i].ToLowerInvariant();
+                        continue;
+                    }
+                    if (a == "--steer")   // how pacman is driven (ajuste 16-oct-2026)
+                    {
+                        if (i + 1 >= args.Count || args[i + 1].ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) throw new CommandSyntaxException("play: --steer needs manual, autonomous or guided");
+                        values["steer"] = args[++i].ToLowerInvariant();
+                        continue;
+                    }
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"play: '{Head(a)}' is no option; the options are --pacman <golem>, --ghosts a,b, --as pacman|ghost and --steer manual|autonomous|guided");
                     rest.Add(args[i]);
                 }
-                if (rest.Count != 1 || rest[0].ToLowerInvariant() != "pacman") throw new CommandSyntaxException("play: expected the play's title, pacman, like play pacman --pacman blue --ghosts red,green");
-                return new Command(named, with, verb, none, noOptions, "pacman", values);
+                // the play by NAME and KIND (16-oct-2026; Juan: "generar un id del juego"): play game-1 pacman …
+                if (rest.Count != 2 || !Name.IsMatch(rest[0]) || rest[1].ToLowerInvariant() != "pacman") throw new CommandSyntaxException("play: expected the play's name and its kind, like play game-1 pacman --pacman blue --ghosts red,green");
+                values["kind"] = rest[1].ToLowerInvariant();
+                return new Command(named, with, verb, none, noOptions, rest[0].ToLowerInvariant(), values);
             }
             case "head":
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("north" or "south" or "east" or "west")) throw new CommandSyntaxException("head: expected a direction, north, south, east or west");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
-            case "release":
-                if (args.Count > 0) throw new CommandSyntaxException($"release takes nothing more; found '{Head(string.Join(' ', args))}'");
+            case "plays":   // every play told (16-oct-2026)
+                if (args.Count > 0) throw new CommandSyntaxException($"plays takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");
+            case "steer":   // how pacman is driven (ajuste 16-oct-2026)
+                if (args.Count != 1 || args[0].ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) throw new CommandSyntaxException("steer: expected manual, autonomous or guided");
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+            case "start":   // the start of a play, this golem's own (16-oct-2026): start <name>
+                if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("start: expected the play's name, like start game-1");
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
             case "optimize":
                 if (args.Count != 1 || args[0].ToLowerInvariant() is not ("on-the-way" or "door-by-door")) throw new CommandSyntaxException("optimize: expected the strategy, on-the-way or door-by-door");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());

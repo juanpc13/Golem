@@ -597,11 +597,66 @@
                                 <Button Content="▼ south" Tag="south" Click="Head_Click" Margin="0,0,4,0"/>
                                 <Button Content="◀ west" Tag="west" Click="Head_Click" Margin="0,0,4,0"/>
                                 <Button Content="▶ east" Tag="east" Click="Head_Click" Margin="0,0,12,0"/>
-                                <Button Content="release" Click="Release_Click" Margin="0,0,12,0" ToolTip="release — pacman sets out: its first run to the next decision cell; every run that reaches one opens the next"/>
+                                <Button Content="start" Click="Start_Click" Margin="0,0,12,0" ToolTip="start &lt;name&gt; — this golem's own start of the current play: pacman sets out, a ghost joins the hunt (the Pacman dialog writes it on every member's tab)"/>
                                 <Button Content="over" Click="Over_Click" ToolTip="play over — the warden ends the play for the whole cast, at once (fase 4); a ghost touching pacman ends it by itself"/>
                             </StackPanel>
-                            <TextBlock Margin="6,0,6,4" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
-                                       Text="Workspace › Pacman writes the board and the play on every member's tab (or stage it by hand: play pacman --pacman blue --ghosts red,green); SEND, then release pacman and steer it with the arrows"/>
+                            <!-- HOW PACMAN IS DRIVEN (16-oct-2026; Juan: "por los botones del teclado… autónoma… autónoma + teclado"): steer …, at once -->
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,6,4">
+                                <TextBlock Text="driven" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <Button Content="manual" Tag="manual" Click="Steer_Click" Margin="0,0,4,0" ToolTip="steer manual — the keyboard decides at every decision cell; without a wish pacman stands and waits"/>
+                                <Button Content="guided" Tag="guided" Click="Steer_Click" Margin="0,0,4,0" ToolTip="steer guided — the rule drives it through the intersections and the wish rules where it opens (at birth)"/>
+                                <Button Content="autonomous" Tag="autonomous" Click="Steer_Click" ToolTip="steer autonomous — the rule alone; the keyboard is refused"/>
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Top" Margin="6,0,6,4" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
+                                       Text="Workspace › Pacman writes the board, the play and the start on every member's tab, each with its part; SEND and the game starts — steer pacman with the arrows"/>
+                            <!-- EVERY PLAY TOLD (16-oct-2026; Juan: "la lista de las dinámicas de juegos de pacman u otros"): the golem's `plays` read, newest first -->
+                            <TextBlock DockPanel.Dock="Top" Margin="6,2,6,2" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Dim}" Text="PLAYS TOLD"/>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding SelectedItem.PlayList, ElementName=GolemList, Mode=OneWay}" Margin="6,0,6,4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- a play of the list (16-oct-2026; Juan: "no se ve muy claro la lista… se deberían poder eliminar"): its name, kind and state as chips, who
+                                                 ended it, the cast, and ✕ — forget play <name> on every member of the cast present here, after asking -->
+                                            <Border BorderThickness="0,0,0,1" BorderBrush="#22ffffff" Padding="0,3">
+                                                <DockPanel>
+                                                    <Button DockPanel.Dock="Right" Content="✕" Tag="{Binding}" Click="ForgetPlay_Click" Padding="6,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                            ToolTip="forget play — taken off every member's list, after asking (a running play: over first)"/>
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Name, Mode=OneWay}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                            <Border Style="{StaticResource Chip}"><TextBlock Text="{Binding Kind, Mode=OneWay}" FontSize="11"/></Border>
+                                                            <Border>
+                                                                <TextBlock Text="{Binding Drive, Mode=OneWay}" FontSize="11"/>
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border" BasedOn="{StaticResource Chip}">
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Drive}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                            </Border>
+                                                            <Border Style="{StaticResource Chip}">
+                                                                <TextBlock Text="{Binding StateText, Mode=OneWay}" FontSize="11" FontWeight="Bold">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding State}" Value="Running"><Setter Property="Foreground" Value="{StaticResource Green}"/></DataTrigger>
+                                                                                <DataTrigger Binding="{Binding IsOver}" Value="True"><Setter Property="Foreground" Value="{StaticResource Dim}"/></DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,1,0,0" Text="{Binding CastText, Mode=OneWay}"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                         </DockPanel>
                     </TabItem>
 </TabControl>
