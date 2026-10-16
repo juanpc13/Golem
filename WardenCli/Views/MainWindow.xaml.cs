@@ -570,6 +570,25 @@ public partial class MainWindow : Window
         if (Current is { } g) { Clipboard.SetText(g.Script); Log($"{g.Name} › script copied"); }
     }
 
+    // THE LINE UNDER THE CURSOR (16-oct-2026; Juan: "del botón copy script también quisiera copy current line"): the script box lives in the
+    // golems' template, so the caret's line is kept as the selection moves — the ribbon's button takes the focus away before it is clicked
+    private int caretLine;
+
+    private void Script_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box) caretLine = box.GetLineIndexFromCharacterIndex(Math.Min(box.CaretIndex, box.Text.Length));
+    }
+
+    private void CopyLine_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current is not { } g) return;
+        var lines = g.Script.Replace("\r\n", "\n").Split('\n');
+        string line = lines.Length == 0 ? "" : lines[Math.Clamp(caretLine, 0, lines.Length - 1)].TrimEnd();
+        if (line == "") { Log($"{g.Name} › no line under the cursor to copy"); return; }
+        Clipboard.SetText(line);
+        Log($"{g.Name} › line copied: {line}");
+    }
+
     private void Paste_Click(object sender, RoutedEventArgs e)
     {
         if (Current is not { } g) return;
@@ -889,7 +908,7 @@ public partial class MainWindow : Window
     }
 
     // ==================================================================
-    // Workspaces and routines: files
+    // Workspaces and shows: files
     // ==================================================================
 
     // A workspace is one file (.golemws): the golems and the script each was left with. Switching is opening another; what is open is
@@ -907,7 +926,7 @@ public partial class MainWindow : Window
 
     private void OpenWorkspace_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Open a workspace", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}|all files|*.*", InitialDirectory = Workspace.RoutinesFolder(workspace) };
+        var dialog = new OpenFileDialog { Title = "Open a workspace", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}|all files|*.*", InitialDirectory = Workspace.FilesFolder(workspace) };
         if (dialog.ShowDialog(this) != true) return;
         OpenWorkspace(dialog.FileName);
     }
@@ -916,7 +935,7 @@ public partial class MainWindow : Window
     // running the show (the queues consume its lines) and closing never rewrite the show's file; saved from the tabs the same way
     private void LoadShow_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Load a show into the tabs", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}|all files|*.*", InitialDirectory = Workspace.RoutinesFolder(workspace) };
+        var dialog = new OpenFileDialog { Title = "Load a show into the tabs", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}|all files|*.*", InitialDirectory = Workspace.FilesFolder(workspace) };
         if (dialog.ShowDialog(this) != true) return;
         try
         {
@@ -935,7 +954,7 @@ public partial class MainWindow : Window
 
     private void SaveShow_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog { Title = "Save the tabs as a show", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}", DefaultExt = Workspace.Extension.TrimStart('.'), InitialDirectory = Workspace.RoutinesFolder(workspace) };
+        var dialog = new SaveFileDialog { Title = "Save the tabs as a show", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}", DefaultExt = Workspace.Extension.TrimStart('.'), InitialDirectory = Workspace.FilesFolder(workspace) };
         if (dialog.ShowDialog(this) != true) return;
         try { Workspace.Save(dialog.FileName, golems); Log($"show saved: {dialog.FileName} — every tab's script, {golems.Count} golem(s); the workspace stays {System.IO.Path.GetFileName(workspace ?? "none")}"); }
         catch (Exception ex) { Log($"the show could not be saved: {ex.Message}"); }
@@ -970,7 +989,7 @@ public partial class MainWindow : Window
 
     private void SaveWorkspaceAs_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog { Title = "Save the workspace as", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}", DefaultExt = Workspace.Extension.TrimStart('.'), InitialDirectory = Workspace.RoutinesFolder(workspace), FileName = "fleet" };
+        var dialog = new SaveFileDialog { Title = "Save the workspace as", Filter = $"golem workspace (*{Workspace.Extension})|*{Workspace.Extension}", DefaultExt = Workspace.Extension.TrimStart('.'), InitialDirectory = Workspace.FilesFolder(workspace), FileName = "fleet" };
         if (dialog.ShowDialog(this) != true) return;
         workspace = dialog.FileName;
         Workspace.Save(workspace, golems);
@@ -1000,37 +1019,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SaveRoutine_Click(object sender, RoutedEventArgs e)
-    {
-        if (Current is not { } g) return;
-        var dialog = new SaveFileDialog { Title = "Save this tab as a routine", Filter = "routine (*.routine)|*.routine|all files|*.*", DefaultExt = "routine", InitialDirectory = Workspace.RoutinesFolder(workspace), FileName = g.Name };
-        if (dialog.ShowDialog(this) != true) return;
-        File.WriteAllText(dialog.FileName, g.Script);
-        Log($"routine saved: {dialog.FileName}");
-    }
-
-    private void LoadRoutine_Click(object sender, RoutedEventArgs e)
-    {
-        if (Current is not { } g) return;
-        string? text = PickRoutine();
-        if (text == null) return;
-        foreach (var line in Lines(text)) g.Enqueue(line);
-    }
-
-    private void LoadRoutineSelected_Click(object sender, RoutedEventArgs e)
-    {
-        string? text = PickRoutine();
-        if (text == null) return;
-        foreach (var g in SelectedGolems) foreach (var line in Lines(text)) g.Enqueue(line);
-    }
-
-    private string? PickRoutine()
-    {
-        var dialog = new OpenFileDialog { Title = "Load a routine", Filter = "routine (*.routine)|*.routine|all files|*.*", InitialDirectory = Workspace.RoutinesFolder(workspace) };
-        if (dialog.ShowDialog(this) != true) return null;
-        Log($"routine loaded: {dialog.FileName}");
-        return File.ReadAllText(dialog.FileName);
-    }
+    // the routine files (one command per line, saved from a tab) are gone since 16-oct-2026 (Juan: "los routine files ya no me suenan tanto, los
+    // files de workspace sí me parecen mejor"): a script worth keeping is a show or a workspace, every tab at once
 
     private static IEnumerable<string> Lines(string text) => text.Replace("\r\n", "\n").Split('\n').Select(l => l.TrimEnd()).Where(l => l != "");
 
@@ -1723,7 +1713,7 @@ public partial class MainWindow : Window
     }
 
     private void About_Click(object sender, RoutedEventArgs e) =>
-        MessageBox.Show(this, "WardenCli — the operator's console for the golems.\n\nThe ribbon composes commands on each golem's tab; a tab's script is its queue, sent one command at a time, the next when the golem finished the one before. Check golems to address them together. Workspaces and routines are files. Formations laid out here are queues of visits; the golem's own choreography module stays apart.", "About WardenCli");
+        MessageBox.Show(this, "WardenCli — the operator's console for the golems.\n\nThe ribbon composes commands on each golem's tab; a tab's script is its queue, sent one command at a time, the next when the golem finished the one before. Check golems to address them together. Workspaces and shows are files. Formations laid out here are queues of visits; the golem's own choreography module stays apart.", "About WardenCli");
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 

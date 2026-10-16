@@ -7,8 +7,8 @@ namespace WardenCli;
 /// trabajando y el último script de cada golem, para hacer switch entre workspaces"): the golems in operation — name, host, port — and the
 /// script each one was left with — and, since 7-oct-2026, THE ACTIVE FORMATIONS (Juan: "guardar las formaciones en el workspace"): each one's
 /// figure, centre, measure and orientation, its fleet, who holds which vertex, the steps it turned, its eye and its draft. One file, so a
-/// workspace travels and switching is opening another. The routines stay files of their own
-/// (<c>*.routine</c>, one command per line), looked for next to the workspace. The console remembers the workspaces opened lately and the
+/// workspace travels and switching is opening another. A SHOW is the same file loaded into the tabs without becoming the workspace
+/// (13-oct-2026); the routine files (<c>*.routine</c>, one tab's script) are gone since 16-oct-2026. The console remembers the workspaces opened lately and the
 /// last one, in the user's profile, and reopens the last at start.</summary>
 public static class Workspace
 {
@@ -38,8 +38,8 @@ public static class Workspace
         return file.Golems.Select(s => new Golem { Name = s.Name, Host = s.Host, Port = s.Port, Script = s.Script ?? "" }).ToList();
     }
 
-    /// <summary>Where the routines of a workspace are looked for: next to its file; the documents folder when there is none.</summary>
-    public static string RoutinesFolder(string? workspacePath) =>
+    /// <summary>Where the files of a workspace are looked for — the shows, another workspace: next to its file; the documents folder when there is none.</summary>
+    public static string FilesFolder(string? workspacePath) =>
         workspacePath == null ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) : Path.GetDirectoryName(Path.GetFullPath(workspacePath))!;
 
     // ---- the console's memory of workspaces: %AppData%\WardenCli\settings.json ----

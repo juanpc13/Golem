@@ -59,7 +59,7 @@
                 </Border>
                 <Border BorderThickness="3,0,0,0" BorderBrush="{Binding Name, Converter={x:Static local:GolemColor.Brush}}">
                     <TextBox Text="{Binding Script, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" AcceptsTab="True" Margin="0"
-                             VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="14" TextWrapping="NoWrap"/>
+                             VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="14" TextWrapping="NoWrap" SelectionChanged="Script_SelectionChanged"/>
                 </Border>
             </DockPanel>
         </DataTemplate>
@@ -79,7 +79,7 @@
                     <GroupBox Header="workspace" Style="{StaticResource RibbonGroup}">
                         <StackPanel Orientation="Horizontal">
                             <Button Style="{StaticResource Big}" Content="New" local:Look.Glyph="✧" Click="NewWorkspace_Click" ToolTip="a clean window: no golems, no scripts"/>
-                            <Button Style="{StaticResource Big}" Content="Open…" local:Look.Glyph="📂" Click="OpenWorkspace_Click" ToolTip="a workspace folder: the golems, their queues, the routines"/>
+                            <Button Style="{StaticResource Big}" Content="Open…" local:Look.Glyph="📂" Click="OpenWorkspace_Click" ToolTip="a workspace file: the golems and their scripts"/>
                             <Button Style="{StaticResource Big}" Content="Save" local:Look.Glyph="💾" Click="SaveWorkspace_Click"/>
                             <!-- A SHOW (13-oct-2026; Juan: "cuando vuelvo a cargar el mismo workspace ya no tiene nada… ¿el ambiente reescribe el archivo?"): the queues
                                  consume the lines as they go and the workspace autosaves them as they are, so a workspace used as a show was emptied by its own run.
@@ -108,14 +108,8 @@
                         <StackPanel Orientation="Horizontal">
                             <Button Style="{StaticResource Big}" Content="Paste" local:Look.Glyph="📋" Click="Paste_Click" ToolTip="appends the clipboard's lines to this tab's script"/>
                             <Button Style="{StaticResource Big}" Content="Copy script" local:Look.Glyph="⎘" Click="Copy_Click" ToolTip="this tab's script to the clipboard"/>
+                            <Button Style="{StaticResource Big}" Content="Copy line" local:Look.Glyph="⎘" Click="CopyLine_Click" ToolTip="the line under the cursor of this tab's script to the clipboard (16-oct-2026)"/>
                             <Button Style="{StaticResource Big}" Content="To selected" local:Look.Glyph="⇶" local:Look.Tint="{StaticResource Blue}" Click="CopyToSelected_Click" ToolTip="appends this tab's script to every checked golem's tab"/>
-                        </StackPanel>
-                    </GroupBox>
-                    <GroupBox Header="routine files" Style="{StaticResource RibbonGroup}">
-                        <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource Big}" Content="Save routine" local:Look.Glyph="💾" Click="SaveRoutine_Click" ToolTip="this tab's script as a .routine file"/>
-                            <Button Style="{StaticResource Big}" Content="Load here" local:Look.Glyph="📂" Click="LoadRoutine_Click" ToolTip="a routine file appended to this tab"/>
-                            <Button Style="{StaticResource Big}" Content="Load in selected" local:Look.Glyph="📂" local:Look.Tint="{StaticResource Blue}" Click="LoadRoutineSelected_Click" ToolTip="a routine file appended to every checked golem's tab"/>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="scripts" Style="{StaticResource RibbonGroup}">
