@@ -97,7 +97,7 @@ public sealed class Commander
             "dissolve" => Motors(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
             "formations" => Formations(),
             "disputes" => Disputes(),
-            "play" => command.Text == "" ? PlayRead() : Play(command),
+            "play" => command.Text == "" ? PlayRead() : command.Text == "over" ? (Motors(out var po, out var por) ? Answered(po.Over(), "the play is over — the cast is told") : por) : Play(command),
             "head" => Motors(out var h, out var hr) ? Answered(h.Head(command.Text), $"heading {command.Text} at the next decision cell") : hr,
             "release" => Motors(out var rl, out var rr) ? Answered(rl.Release()) : rr,
             "then" => Then(command),
@@ -387,8 +387,16 @@ public sealed class Commander
         string json = Readings.Play(golem.Actor);
         var e = JsonDocument.Parse(json).RootElement;
         if (!Bool(e, "playing")) return Reply.Done("in no play", json);
+        string cast = $"pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}";
+        if (Str(e, "state") == "Over")   // the end (fase 4): who caught pacman, or the warden
+            return Reply.Done($"{Str(e, "play")} · {Str(e, "part").ToLowerInvariant()} · over — {(Bool(e, "caught") ? $"{Str(e, "catcher")} caught {Str(e, "pacman")}" : $"ended by the {Str(e, "catcher")}")} · {cast}", json);
+        if (Str(e, "part") == "Ghost")   // a ghost's copy (fase 3): whether it left the den, where pacman was last seen and on which run, its chases
+        {
+            string seen = Bool(e, "seen") ? $"pacman seen at ({Num(e, "seenX"):0.##}, {Num(e, "seenY"):0.##}) on run {Num(e, "runsSeen")}" : "pacman not seen yet";
+            return Reply.Done($"{Str(e, "play")} · ghost · {Str(e, "state").ToLowerInvariant()} · {(Bool(e, "released") ? "out of the den" : "in the den")} · {seen} · {Num(e, "chases")} chase(s) · {cast}", json);
+        }
         string wish = Bool(e, "wishing") ? $", wishing {Str(e, "wish").ToLowerInvariant()}" : "";
-        return Reply.Done($"{Str(e, "play")} · {Str(e, "part").ToLowerInvariant()} · {Str(e, "state").ToLowerInvariant()} · heading {Str(e, "heading").ToLowerInvariant()}{wish} · {Num(e, "runs")} run(s) · pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}", json);
+        return Reply.Done($"{Str(e, "play")} · pacman · {Str(e, "state").ToLowerInvariant()} · heading {Str(e, "heading").ToLowerInvariant()}{wish} · {Num(e, "runs")} run(s) · {cast}", json);
     }
 
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);

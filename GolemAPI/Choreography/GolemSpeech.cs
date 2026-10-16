@@ -90,6 +90,29 @@ public sealed class GolemSpeech
                 .Seek("Staged").One()
                     .OnMatch("[_:Dynamics].Stage(_, _, _) expose $title title, $star star, $crew crew, $nonce nonce;")
                 .Causation.Continue(staged);
+            // PACMAN RUNS (propuesta 108, fase 3): every run told to every peer — the play, its stamp, which run and the decision cell it goes to;
+            // a ghost's copy keeps where pacman was seen and chases it (UptakeRanTo); the once is per run and peer. The act is the host's (Release,
+            // Ran), never an uptake's, so its expose is read.
+            string ran = string.Join("\n", peers.Select(p => $@"
+                tell RanTo with @title, @nonce, @runs, @cellX, @cellY
+                    to {p}
+                    once 'ran-' + @nonce + '-' + @runs + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-ran")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Ran").One()
+                    .OnMatch("[_:Dynamics].Run(_, _) expose $title title, $nonce nonce, $runs runs, $cellX cellX, $cellY cellY;")
+                .Causation.Continue(ran);
+            // GAME OVER (propuesta 108, fase 4): the end of the play, concluded in this copy (a ghost and pacman met; the warden's `play over`)
+            // and announced by the clock's act — never the uptake's (an uptake-written act cannot be exposed): every peer is told who ended it
+            string over = string.Join("\n", peers.Select(p => $@"
+                tell GameOver with @title, @nonce, @who
+                    to {p}
+                    once 'over-' + @nonce + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-over")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Over").One()
+                    .OnMatch("[_:Pacman].Announce() expose $title title, $nonce nonce, $who who;")
+                .Causation.Continue(over);
             // THE TAKE (ajustes 73, 80, 81; propuesta 104): the golem said where it stands into the named formation — every peer is told the name,
             // the stamp, who and where, and convenes in its own copy
             string stood = string.Join("\n", peers.Select(p => $@"
@@ -169,6 +192,10 @@ public sealed class GolemSpeech
                 .Command(GolemEmbodiment.UptakeObstacleGone)
             .Told("StagedAs").With<string>("title").With<string>("star").With<string>("crew").With<string>("nonce")
                 .Command(GolemEmbodiment.UptakeStagedAs)
+            .Told("RanTo").With<string>("title").With<string>("nonce").With<int>("runs").With<double>("cx").With<double>("cy")
+                .Command(GolemEmbodiment.UptakeRanTo)
+            .Told("GameOver").With<string>("title").With<string>("nonce").With<string>("who")
+                .Command(GolemEmbodiment.UptakeGameOver)
             .Told("StoodFor").With<string>("call").With<string>("nonce").With<string>("teller").With<double>("px").With<double>("py")
                 .Command(GolemEmbodiment.UptakeStoodFor)
             .Told("PlacedAt").With<string>("call").With<string>("who")

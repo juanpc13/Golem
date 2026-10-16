@@ -37,4 +37,23 @@ internal sealed class Cast
         if (!Has(golem)) throw new GolemDomainException($"'{golem.Name}' is not in the cast: pacman is {Pacman}, the ghosts {Roster}");
         return golem.Name == Pacman ? Part.Pacman : Part.Ghost;
     }
+
+    /// <summary>Whether that name is in the cast — a peer's word is about a member or about nobody of the play (fase 4).</summary>
+    internal bool Knows(string name) => !string.IsNullOrWhiteSpace(name) && (name.Trim().ToLowerInvariant() == Pacman || ghosts.Contains(name.Trim().ToLowerInvariant()));
+
+    /// <summary>The part a member plays, by its name (fase 4: who touched whom is said by name). Refused for a name outside the cast.</summary>
+    internal Part PartOf(string name)
+    {
+        if (!Knows(name)) throw new GolemDomainException($"'{name}' is not in the cast: pacman is {Pacman}, the ghosts {Roster}");
+        return name.Trim().ToLowerInvariant() == Pacman ? Part.Pacman : Part.Ghost;
+    }
+
+    /// <summary>A ghost's RANK in the cast (fase 3): its place in the ghosts' names sorted, 0 the first — the order they leave the den in.
+    /// Refused for pacman or a golem outside the cast.</summary>
+    internal int RankOf(Golem golem)
+    {
+        if (golem == null) throw new GolemDomainException("Cast.RankOf: 'golem' was not given");
+        if (PartOf(golem) != Part.Ghost) throw new GolemDomainException($"'{golem.Name}' is pacman: the ghosts are ranked, not pacman");
+        return ghosts.IndexOf(golem.Name);
+    }
 }

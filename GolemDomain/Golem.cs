@@ -415,6 +415,7 @@ internal sealed class Golem
         if (lastBumpTouch != null && touch.DistanceTo(lastBumpBody) <= MeetingTolerance())
         {
             collisions.Meet(who, peerAt);                                                 // the peer's touch landed on my body: we met — it stands THERE, in my way while my route lasts…
+            dynamics.Met(who);                                                           // …and in a play, a ghost meeting pacman ends it (propuesta 108, fase 4)
             if (lastBumpRoute != null)
             {
                 collisions.Unmark(lastBumpTouch);                                         // …the mark my bump left is taken back — that one alone…

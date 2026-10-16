@@ -654,6 +654,9 @@ public sealed class Displacer
             // …or the run of a play (propuesta 108): pacman stands at a decision cell and the rule opens its next run
             var ran = Ran();
             if (ran.Ok) { robot.Report(ran, $"route {was.Route}: at a decision cell — the next run opens"); return ran; }
+            // …or a ghost's chase (fase 3): it arrived where pacman was seen, and pacman was seen somewhere new since
+            var chased = Chased();
+            if (chased.Ok) { robot.Report(chased, $"route {was.Route}: where pacman was seen — the chase goes on"); return chased; }
         }
         if (answer.Ok && answer.Order is { Action: "stop", Waiting: true })
         {
@@ -829,6 +832,54 @@ public sealed class Displacer
                                 print route.Why 'why';
                             }
                         }
+                        expose play.Name title, play.Stamp nonce, play.Runs runs, play.TargetX cellX, play.TargetY cellY;
+                    }
+                ";
+
+    // A GHOST CHASES (fase 3): from where it stands to the cell pacman was last seen running to — at its arrival (ChaseScript, fired like
+    // RanScript) or at pacman's word (UptakeRanTo writes the same act); the first chase is the way out of the den
+    private const string ChasePlay = @"
+                    {
+                        play = g.Dynamics.Current;
+                        from = g.Destination;
+                        route = g.Dynamics.Chase(from, play);
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        print play.Chases 'chases', play.RunsSeen 'runsSeen';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ";
+
+    // THE END ANNOUNCED (fase 4): this copy concluded the end — a ghost and pacman met, or the warden said so — and the clock writes the act
+    // whose expose the tell needs (echo-over → GameOver); nothing for the body: the route was abandoned at the conclusion
+    private const string AnnouncePlay = @"
+                    {
+                        play = g.Dynamics.Current;
+                        play.Announce();
+                        print play.Name 'play', play.State 'state', play.Catcher 'catcher';
+                        expose play.Name title, play.Stamp nonce, play.Catcher who;
+                    }
+                ";
+
+    // THE WARDEN ENDS THE PLAY (fase 4): `play over` — concluded here, announced by the clock like a catch
+    private const string EndPlay = @"
+                    {
+                        play = g.Dynamics.Current;
+                        play.Over(@ender);
+                        print play.Name 'play', play.State 'state', play.Catcher 'catcher', g.HasPendingMission() 'pending';
                     }
                 ";
 
@@ -892,6 +943,52 @@ public sealed class Displacer
                 @"
                     Check(g.Dynamics.Reached) Error 'the golem is not pacman standing at a decision cell of its run';
                 ", RunPlay)
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>THE WARDEN ENDS THE PLAY (fase 4): `play over` — this copy is over, its route abandoned, and the clock announces it to the cast.</summary>
+    public Answer Over()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.Knows) Error 'no play is staged';
+                ", EndPlay)
+                .WithParameters(p => { p["ender", typeof(string)] = "warden"; })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal("play over: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The clock's question (fase 4): this copy concluded the end of the play — a ghost and pacman met, in a word heard, or the warden
+    /// ended it — and has not announced it: the act is written and the reaction tells GameOver to every peer.</summary>
+    public void AnnounceIfConcluded()
+    {
+        try
+        {
+            var announced = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.Concluded) Error 'no end of a play to announce here';
+                ", AnnouncePlay)
+                .PerformCheckThenCommand());
+            if (announced.Ok) robot.Report(announced, "the play is over here — the cast is told");
+        }
+        catch { /* the clock asks again */ }
+    }
+
+    // a ghost's chase ended and pacman was seen somewhere new: the next chase opens — refused (nothing written) when this golem is not a
+    // released ghost standing idle with somewhere new to go (fase 3)
+    private Answer Chased()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.MayChase) Error 'the golem is not a released ghost with pacman seen anywhere new';
+                ", ChasePlay)
                 .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }

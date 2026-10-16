@@ -167,6 +167,53 @@ public sealed class GolemEmbodiment
             }
         }
         ";
+    // PACMAN RUNS (propuesta 108, fase 3): a peer in the cast hears which run pacman makes and to which cell — in the play it is in, by title and
+    // stamp — keeps it as where pacman was seen, and, a ghost released and idle, chases it from where it stands: its own route, pushed by
+    // next-order-chase. Pacman's own copy never hears its own word; a golem outside the cast lets it pass. The cell enters as @cx @cy: x and y
+    // are the print's labels.
+    public const string UptakeRanTo = @"
+        {
+            if (g.Dynamics.Plays(@title, @nonce)) {
+                play = g.Dynamics.Current;
+                at = Position(@cx, @cy);
+                play.Seen(at, @runs);
+                if (g.Dynamics.MayChase) {
+                    from = g.Destination;
+                    route = g.Dynamics.Chase(from, play);
+                    if (g.Strategy.OnTheWay.IsActive) {
+                        route = g.Dash(route);
+                    }
+                    print play.Chases 'chases', play.RunsSeen 'runsSeen';
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
+                    }
+                } else {
+                    print play.Name 'play', play.RunsSeen 'runsSeen', g.Dynamics.Released 'released';
+                }
+            }
+        }
+        ";
+    // GAME OVER (propuesta 108, fase 4): a peer announced the end of the play I am in — a ghost caught pacman, or the warden ended it — and my
+    // copy closes the same way: the run or chase underway abandoned, nothing to announce in turn (one hop); pushed by next-order-heard-over
+    public const string UptakeGameOver = @"
+        {
+            if (g.Dynamics.Plays(@title, @nonce)) {
+                play = g.Dynamics.Current;
+                play.HeardOver(@who);
+                print play.Name 'play', play.State 'state', play.Catcher 'catcher', g.HasPendingMission() 'pending';
+            }
+        }
+        ";
     // A PEER TOOK THE FORMATION and told me where it stood (ajustes 73, 80; propuesta 104): if I was told that formation and I am in its fleet —
     // already convened, its word may complete my round or take my place and interrupt my route; not yet, I keep its word and convene myself,
     // once, and my act tells everybody where I stand. The peer's position enters as @px @py: x and y are the print's labels.
@@ -407,6 +454,7 @@ public sealed class GolemEmbodiment
         {
             await Task.Delay(2000, ct);
             Displacer?.PlacedIfStanding();   // a route to its place completed at birth inside a peer's word (13-oct-2026): no arrival will say it
+            Displacer?.AnnounceIfConcluded();   // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
             var now = AskOrder();
             var mine = Mechanics.Carrying;
             if (now == null) { if (mine != null) Mechanics.Stop(); continue; }

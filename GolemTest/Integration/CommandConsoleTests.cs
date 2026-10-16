@@ -344,6 +344,52 @@ public class CommandConsoleTests
     }
 
     // A golem's formations, read until the one named is among them (a tell is delivered, not instant).
+    // THE PLAY (propuesta 108, fases 2 and 3): staged on pacman and spread by tell to its cast; every run of pacman's is told (RanTo) and the
+    // first ghost, released at run 1, chases the cell it heard — out of the den, by the planner. The mock knows no map regions: `use map`
+    // enters the scenario and `place` carries the body in the maze's own frame.
+    [TestMethod]
+    public async Task APlay_SpreadsToItsCast_AndPacmansRun_ReleasesTheFirstGhost_WhoChasesTheCellHeard()
+    {
+        await using var world = new MockWorld();
+        await world.PlaceGolemAsync("red");
+        await world.PlaceGolemAsync("blue");
+        var red = new Commander(world.HostOf("red").Embodiment);
+        var blue = new Commander(world.HostOf("blue").Embodiment);
+        foreach (var (g, at) in new[] { (red, "14.25,8.25"), (blue, "12.75,18.75") })   // pacman in the cradle, the ghost in the den
+        {
+            Assert.IsTrue((await g.ExecuteAsync("use map maze")).Ok);
+            var placed = await g.ExecuteAsync($"place {at}");
+            Assert.IsTrue(placed.Ok, placed.Text);
+        }
+        await Task.Delay(1500);   // the carried bodies settle and the golems wake there
+
+        var staged = await red.ExecuteAsync("play pacman --pacman red --ghosts blue");
+        Assert.IsTrue(staged.Ok, staged.Text);
+        string bluePlay = "";
+        for (int i = 0; i < 50 && !bluePlay.Contains("ghost"); i++) { await Task.Delay(200); bluePlay = (await blue.ExecuteAsync("play")).Text; }
+        StringAssert.Contains(bluePlay, "ghost", "blue was told the play by tell and plays a ghost — " + bluePlay);
+        StringAssert.Contains(bluePlay, "in the den", bluePlay);
+
+        var released = await red.ExecuteAsync("release");
+        Assert.IsTrue(released.Ok, "the run's act carries the expose the tell needs — " + released.Text);
+        StringAssert.Contains((await red.ExecuteAsync("play")).Text, "1 run", (await red.ExecuteAsync("play")).Text);
+        string chase = await Until(blue, "cell-10-5@15.75,8.25");
+        StringAssert.Contains(chase, "cell-10-5@15.75,8.25", "blue heard pacman's run, left the den and chases the cell — " + chase);
+        var ghost = (await blue.ExecuteAsync("play")).Text;
+        StringAssert.Contains(ghost, "out of the den", ghost);
+        StringAssert.Contains(ghost, "pacman seen at (15.75, 8.25) on run 1", ghost);
+        StringAssert.Contains(ghost, "1 chase", ghost);
+
+        // the warden ends the play on pacman (fase 4): concluded there, announced by the clock, heard by the ghost — both copies over, the chase abandoned
+        var over = await red.ExecuteAsync("play over");
+        Assert.IsTrue(over.Ok, over.Text);
+        StringAssert.Contains((await red.ExecuteAsync("play")).Text, "over — ended by the warden");
+        string blueOver = "";
+        for (int i = 0; i < 50 && !blueOver.Contains("over"); i++) { await Task.Delay(200); blueOver = (await blue.ExecuteAsync("play")).Text; }
+        StringAssert.Contains(blueOver, "over — ended by the warden", "blue heard GameOver — " + blueOver);
+        StringAssert.Contains((await blue.ExecuteAsync("route")).Text, "abandoned", "the chase let go — " + (await blue.ExecuteAsync("route")).Text);
+    }
+
     private static async Task<string> UntilFormations(Commander golem, string name)
     {
         string text = "";

@@ -123,7 +123,12 @@ public static class Readings
                 if (g.Dynamics.Knows) {
                     play = g.Dynamics.Current;
                     print play.Name 'play', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Cast.Pacman 'pacman', play.Cast.Roster 'ghosts',
-                          play.Heading 'heading', play.HasWish 'wishing', play.Wish 'wish', play.Runs 'runs';
+                          play.Heading 'heading', play.HasWish 'wishing', play.Wish 'wish', play.Runs 'runs',
+                          play.HasSeen 'seen', play.RunsSeen 'runsSeen', play.Chases 'chases', g.Dynamics.Released 'released',
+                          play.WasCaught 'caught', play.Catcher 'catcher';
+                    if (play.HasSeen) {
+                        print play.LastSeen.X 'seenX', play.LastSeen.Y 'seenY';
+                    }
                 }
             }
         ")

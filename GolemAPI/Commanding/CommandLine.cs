@@ -45,7 +45,7 @@ public static class CommandLine
         new CommandHelp("dissolve", "dissolve <name>", "the formation leaves every golem of its fleet; a route of it still pending is let go", "dissolve square-2"),
         new CommandHelp("disputes", "disputes", "the places this golem disputed with another by distance, formation by formation: whether it won the place or yielded it, to whom, and both distances (a golem disputes the place nearest to where it stood)", "disputes"),
         new CommandHelp("formations", "formations", "the formations this golem is in: each one's figure, centre, size, orientation, policy, fleet and who holds which place", "formations"),
-        new CommandHelp("play", "play pacman --pacman <golem> --ghosts a,b | play", "the play of pacman staged on this golem (propuesta 108): who plays pacman and who the ghosts (left out, this golem and every peer but pacman); it spreads by itself to the cast, never --with; alone, play says the play this golem is in — its part, state, heading, wish, runs", "play pacman --pacman blue --ghosts red,green,yellow"),
+        new CommandHelp("play", "play pacman --pacman <golem> --ghosts a,b | play | play over", "the play of pacman staged on this golem (propuesta 108): who plays pacman and who the ghosts (left out, this golem and every peer but pacman); it spreads by itself to the cast, never --with; alone, play says the play this golem is in — its part, state, heading, wish, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play pacman --pacman blue --ghosts red,green,yellow"),
         new CommandHelp("head", "head north|south|east|west", "the keyboard's wish: the direction pacman takes at its next decision cell (an intersection, or where straight on is closed); closed there, kept for the next; without one, straight on, else right, else left, else back", "head north"),
         new CommandHelp("release", "release", "pacman set out: its first run, from where it stands to the next decision cell; every run that reaches one opens the next by the rule", "release"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
@@ -198,6 +198,7 @@ public static class CommandLine
             {
                 // the play of pacman (propuesta 108): alone, the read; else its title and --pacman <golem>, --ghosts a,b
                 if (args.Count == 0) return new Command(named, with, verb, none, noOptions, "");
+                if (args.Count == 1 && args[0].ToLowerInvariant() == "over") return new Command(named, with, verb, none, noOptions, "over");   // the warden ends it (fase 4)
                 var values = new Dictionary<string, string>();
                 var rest = new List<string>();
                 for (int i = 0; i < args.Count; i++)

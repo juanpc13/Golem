@@ -112,6 +112,159 @@ public class PlaysTests
         Assert.AreEqual(Direction.West, Pacman.Right(Direction.South));
     }
 
+    // THE GHOSTS (fase 3, 15-oct-2026): a ghost's copy hears where pacman runs, leaves the den staggered by pacman's runs — the k-th ghost at run
+    // 1 + 2k, no word of its own — and chases the cell pacman was last seen running to, one chase at a time, the next decided when it is idle
+    [TestMethod]
+    public void TheGhosts_HearWherePacmanRuns_LeaveTheDenStaggered_AndChaseTheCellLastSeen()
+    {
+        var map = Catalog.Maze();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var cast = new Cast("blue", "red,green");
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(map, new Collisions()));
+        var pacman = blue.Dynamics.Stage("pacman", cast, "call-1");
+        var green = new Golem(body, "green");   // the first ghost of the cast's order (the names sorted)
+        green.Enter(new Scenario(map, new Collisions()));
+        var greens = green.Dynamics.Stage("pacman", cast, "call-1");
+        var red = new Golem(body, "red");       // the second
+        red.Enter(new Scenario(map, new Collisions()));
+        var reds = red.Dynamics.Stage("pacman", cast, "call-1");
+        Assert.AreEqual(0, cast.RankOf(green)); Assert.AreEqual(1, cast.RankOf(red));
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cast.RankOf(blue)).Message, "is pacman");
+        Assert.IsTrue(green.Dynamics.Plays("pacman", "call-1"), "the same play, by its title and stamp");
+        Assert.IsFalse(green.Dynamics.Plays("pacman", "call-9"));
+
+        // pacman runs from the cradle: its copy keeps the cell the run goes to — what the tell carries
+        blue.Dynamics.Run(new Pose(14.25, 8.25, 0.0), pacman);
+        Assert.AreEqual(15.75, pacman.TargetX, 1e-9); Assert.AreEqual(8.25, pacman.TargetY, 1e-9);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Dynamics.Chase(new Pose(14.25, 8.25, 0.0), pacman)).Message, "plays pacman");
+
+        // nothing heard yet: no ghost chases
+        Assert.IsFalse(greens.HasSeen);
+        Assert.IsFalse(green.Dynamics.MayChase);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => green.Dynamics.Chase(new Pose(12.75, 18.75, 0.0), greens)).Message, "not been seen");
+
+        // pacman's first run heard: the first ghost is released, the second waits for run 3
+        var den = new Pose(12.75, 18.75, 0.0);   // cell-8-12, in the den
+        greens.Seen(new Position(15.75, 8.25), 1);
+        reds.Seen(new Position(15.75, 8.25), 1);
+        Assert.IsTrue(greens.IsRunning, "a ghost's copy runs with pacman's first word");
+        Assert.AreEqual(1, greens.RunsSeen);
+        Assert.IsTrue(green.Dynamics.Released); Assert.IsFalse(red.Dynamics.Released);
+        Assert.IsTrue(green.Dynamics.MayChase); Assert.IsFalse(red.Dynamics.MayChase);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Dynamics.Chase(new Pose(14.25, 18.75, 0.0), reds)).Message, "still in the den: it leaves at pacman's run 3, 1 heard");
+
+        // the first chase is the way out of the den, found by the planner: north through a door, round to cell-10-5
+        var chase = green.Dynamics.Chase(den, greens);
+        Assert.AreEqual("pending", chase.Status);
+        StringAssert.EndsWith(chase.AsPlan().Trim(), "cell-10-5@15.75,8.25", "to the cell pacman was seen running to");
+        Assert.IsTrue(chase.AsPlan().Split('>').Length >= 6, "out of the den by a north door and round the block: the doors open to the north alone — " + chase.AsPlan());
+        Assert.AreEqual(1, greens.Chases);
+        Assert.IsFalse(green.Dynamics.MayChase, "underway: the next word is kept for the arrival");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => green.Dynamics.Chase(den, greens)).Message, "already chasing");
+
+        // a word heard underway is kept; at the arrival the ghost wants the new cell
+        greens.Seen(new Position(15.75, 11.25), 2);
+        Assert.IsFalse(green.Dynamics.MayChase);
+        WalkToTheEnd(chase);
+        Assert.AreEqual("completed", chase.Status);
+        Assert.IsTrue(green.Dynamics.MayChase, "arrived, and pacman seen elsewhere since");
+        var second = green.Dynamics.Chase(new Pose(15.75, 8.25, 1.5708), greens);
+        Assert.AreEqual("cell-10-7@15.75,11.25", second.AsPlan().Trim(), "straight up column 10 after pacman");
+        Assert.AreEqual(2, greens.Chases);
+        WalkToTheEnd(second);
+        Assert.IsFalse(green.Dynamics.MayChase, "pacman not seen anywhere new: the ghost stands and waits for the next word");
+        greens.Seen(new Position(15.75, 11.25), 2);
+        Assert.IsFalse(green.Dynamics.MayChase, "the same word again changes nothing");
+        greens.Seen(new Position(15.75, 8.25), 1);
+        Assert.AreEqual(2, greens.RunsSeen, "an older word arrived late is ignored");
+
+        // pacman's third run releases the second ghost
+        reds.Seen(new Position(18.75, 11.25), 3);
+        Assert.IsTrue(red.Dynamics.Released);
+        var redsChase = red.Dynamics.Chase(new Pose(14.25, 18.75, 0.0), reds);
+        Assert.AreEqual("pending", redsChase.Status);
+        StringAssert.EndsWith(redsChase.AsPlan().Trim(), "cell-12-7@18.75,11.25");
+        Assert.AreEqual(1, reds.Chases);
+    }
+
+    // THE LAW (fase 4, 15-oct-2026; Juan: "cuando un fantasma toque al golem principal… deben decir que un golem fantasma tocó al golem pacman y
+    // terminó el juego"): the golem concludes inside HearBump that a peer's touch landed on its body — met — and, in a play, a ghost meeting
+    // pacman ENDS it, on whichever side hears it: the route underway abandoned, the end to be announced once; a peer's word closes the other
+    // copies the same way; a ghost meeting a ghost is nothing; the warden may end it too.
+    [TestMethod]
+    public void AGhostMeetingPacman_EndsThePlay_OnEitherSide_AnnouncedOnce_AndHeardByTheRest()
+    {
+        var map = Catalog.Maze();
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var cast = new Cast("blue", "red,green");
+        Assert.AreEqual(Part.Ghost, cast.PartOf("green")); Assert.AreEqual(Part.Pacman, cast.PartOf("blue"));
+        Assert.IsTrue(cast.Knows("red")); Assert.IsFalse(cast.Knows("orange"));
+        var blue = new Golem(body, "blue"); blue.Enter(new Scenario(map, new Collisions()));
+        var green = new Golem(body, "green"); green.Enter(new Scenario(map, new Collisions()));
+        var red = new Golem(body, "red"); red.Enter(new Scenario(map, new Collisions()));
+        var pacman = blue.Dynamics.Stage("pacman", cast, "call-1");
+        var greens = green.Dynamics.Stage("pacman", cast, "call-1");
+        var reds = red.Dynamics.Stage("pacman", cast, "call-1");
+        Assert.AreEqual("", pacman.Catcher); Assert.IsFalse(pacman.WasCaught); Assert.IsFalse(blue.Dynamics.Concluded);
+
+        // pacman runs, green chases it along row 5; nose to nose in the corridor, green bumps and blue bumps back
+        var run = blue.Dynamics.Run(new Pose(14.25, 8.25, 0.0), pacman);
+        greens.Seen(new Position(15.75, 8.25), 1);
+        var chase = green.Dynamics.Chase(new Pose(18.75, 8.25, 3.1416), greens);   // from cell-12-5, heading west toward pacman
+        Assert.IsTrue(chase.IsPending());
+        green.Bump(new Pose(16.0, 8.25, 3.1416), 0.0);                              // green's nose pressed at (15.75, 8.25)
+        Assert.IsTrue(greens.IsRunning, "a bump alone is a thing, as far as green knows");
+        green.HearBump("blue", new Pose(15.5, 8.25, 0.0), 0.0);                     // blue's word: its nose pressed at (15.75, 8.25) — on green's body: they met
+        Assert.IsTrue(greens.IsOver, "a ghost met pacman: the play is over in green's copy");
+        Assert.AreEqual("green", greens.Catcher, "the ghost that caught pacman — green itself");
+        Assert.IsTrue(greens.WasCaught);
+        Assert.AreEqual("abandoned", chase.Status, "the chase underway is abandoned: the body stops");
+        StringAssert.Contains(chase.Why, "game over: green caught blue");
+        Assert.IsTrue(green.Dynamics.Concluded, "concluded here, to be announced by the clock");
+        Assert.IsFalse(green.Dynamics.MayChase);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => green.Dynamics.Chase(new Pose(16.0, 8.25, 3.1416), greens)).Message, "is over");
+        greens.Announce();
+        Assert.IsFalse(green.Dynamics.Concluded, "announced once");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => greens.Announce()).Message, "announced already");
+
+        // blue's side: its own bump and green's word conclude the same — whichever word arrives first, the end is the same
+        blue.Bump(new Pose(15.5, 8.25, 0.0), 0.0);
+        Assert.IsTrue(pacman.IsRunning);
+        blue.HearBump("green", new Pose(16.0, 8.25, 3.1416), 0.0);
+        Assert.IsTrue(pacman.IsOver); Assert.AreEqual("green", pacman.Catcher); Assert.IsTrue(pacman.WasCaught);
+        Assert.IsFalse(run.IsPending(), "pacman's run abandoned");
+        Assert.IsTrue(blue.Dynamics.Concluded, "blue concluded it too: a lost word does not keep the game alive");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Dynamics.Run(new Pose(15.5, 8.25, 0.0), pacman)).Message, "is over");
+        Assert.IsFalse(blue.Dynamics.Reached);
+
+        // red, the other ghost, hears the word: its copy closes the same way, nothing to announce; heard again, nothing changes
+        reds.Seen(new Position(15.75, 8.25), 1);
+        reds.HeardOver("green");
+        Assert.IsTrue(reds.IsOver); Assert.AreEqual("green", reds.Catcher); Assert.IsTrue(reds.WasCaught);
+        Assert.IsFalse(red.Dynamics.Concluded, "told, not concluded here: nothing to announce");
+        reds.HeardOver("red");
+        Assert.AreEqual("green", reds.Catcher, "the first word stands");
+        reds.Over("warden");
+        Assert.AreEqual("green", reds.Catcher, "over already: nothing more");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => reds.Seen(new Position(1.0, 1.0), 9)).Message, "is over");
+
+        // a ghost meeting a ghost is an encounter and nothing more; a golem outside the cast too; and the warden may end the play
+        var yellow = new Golem(body, "yellow"); yellow.Enter(new Scenario(map, new Collisions()));
+        var cast2 = new Cast("blue", "red,yellow");
+        var yellows = yellow.Dynamics.Stage("pacman", cast2, "call-2");
+        yellows.Seen(new Position(15.75, 8.25), 1);
+        yellow.Bump(new Pose(16.0, 8.25, 3.1416), 0.0);
+        yellow.HearBump("red", new Pose(15.5, 8.25, 0.0), 0.0);
+        Assert.IsTrue(yellows.IsRunning, "red and yellow, two ghosts, met: the play goes on");
+        yellow.Bump(new Pose(16.0, 8.25, 3.1416), 0.0);
+        yellow.HearBump("orange", new Pose(15.5, 8.25, 0.0), 0.0);
+        Assert.IsTrue(yellows.IsRunning, "orange is in no play");
+        yellows.Over("warden");
+        Assert.IsTrue(yellows.IsOver); Assert.AreEqual("warden", yellows.Catcher); Assert.IsFalse(yellows.WasCaught, "the warden's end is no catch");
+        Assert.IsTrue(yellow.Dynamics.Concluded, "the warden's end is announced like a catch");
+    }
+
     private static void WalkToTheEnd(GolemDomain.Routes.Route route)
     {
         for (int i = 0; i < 50 && route.IsPending(); i++)
