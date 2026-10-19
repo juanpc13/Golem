@@ -27,6 +27,17 @@ public partial class FormationDialog : Window
     public string CueTo { get; private set; } = "";
     /// <summary>Whether the formation starts on a cue: no take is written for it.</summary>
     public bool OnCue { get; private set; }
+    /// <summary>THE PULL (propuesta 118): the formation this one starts after and the golem asked; "" none.</summary>
+    public string After { get; private set; } = "";
+    public string AskTo { get; private set; } = "";
+    private const string None = "— none —";
+    /// <summary>The formations the console knows (told, or on the tabs), to pick the one waited for.</summary>
+    public void KnowsFormations(IEnumerable<string> names)
+    {
+        var kept = AfterBox.SelectedItem as string;
+        AfterBox.ItemsSource = new[] { None }.Concat(names.Distinct().OrderBy(n => n, StringComparer.Ordinal)).ToList();
+        AfterBox.SelectedItem = kept != null && kept != None && AfterBox.Items.Contains(kept) ? kept : None;
+    }
 
     private readonly IReadOnlyList<string> golems;
 
@@ -52,6 +63,11 @@ public partial class FormationDialog : Window
         var kept = CueBox.SelectedItem as string;
         CueBox.ItemsSource = new[] { Nobody }.Concat(golems.Where(g => !chosen.Contains(g))).ToList();
         CueBox.SelectedItem = kept != null && kept != Nobody && !chosen.Contains(kept) ? kept : Nobody;
+        var keptAsk = AskBox.SelectedItem as string;
+        AskBox.ItemsSource = new[] { Nobody }.Concat(golems.Where(g => !chosen.Contains(g))).ToList();
+        AskBox.SelectedItem = keptAsk != null && keptAsk != Nobody && !chosen.Contains(keptAsk) ? keptAsk : Nobody;
+        if (AfterBox.ItemsSource == null) AfterBox.ItemsSource = new[] { None };
+        if (AfterBox.SelectedItem == null) AfterBox.SelectedItem = None;
     }
 
     /// <summary>THE DIALOG SEEDED with a formation told already (13-oct-2026; Juan: "¿podríamos reeditar la formación para que tome otros valores de
@@ -71,12 +87,14 @@ public partial class FormationDialog : Window
         ByRankBox.IsChecked = formation.Policy == Policy.Rank;
         ByDistanceBox.IsChecked = formation.Policy == Policy.Distance;
         ByGameBox.IsChecked = formation.Policy == Policy.RockPaperScissors;
-        OnCueBox.IsChecked = formation.OnCue;
+        OnCueBox.IsChecked = formation.OnCue && formation.After == "";
         var names = formation.CrewNames;
         GolemsBox.SelectedItems.Clear();
         foreach (var n in golems) if (names.Contains(n)) GolemsBox.SelectedItems.Add(n);
         RefreshCue();
         CueBox.SelectedItem = formation.CueTo != "" && golems.Contains(formation.CueTo) && !names.Contains(formation.CueTo) ? formation.CueTo : Nobody;
+        if (formation.After != "") { KnowsFormations(new[] { formation.After }); AfterBox.SelectedItem = formation.After; }
+        AskBox.SelectedItem = formation.AskTo != "" && golems.Contains(formation.AskTo) && !names.Contains(formation.AskTo) ? formation.AskTo : Nobody;
     }
 
     // the figure changes what the dialog asks: a side, a radius, or a propeller's radius with its hub and its blades
@@ -114,7 +132,11 @@ public partial class FormationDialog : Window
         string cue = CueBox.SelectedItem as string is { } picked && picked != Nobody ? picked.Trim().ToLowerInvariant() : "";
         if (cue != "" && GolemsBox.SelectedItems.Contains(cue)) { Problem.Text = $"the cue goes to the next group: {cue} is of this fleet"; return; }
         CueTo = cue;
-        OnCue = OnCueBox.IsChecked == true;
+        string after = AfterBox.SelectedItem as string is { } pickedAfter && pickedAfter != None ? pickedAfter.Trim().ToLowerInvariant() : "";
+        string ask = AskBox.SelectedItem as string is { } pickedAsk && pickedAsk != Nobody ? pickedAsk.Trim().ToLowerInvariant() : "";
+        if ((after == "") != (ask == "")) { Problem.Text = "the pull needs both: the formation waited for, and the golem asked"; return; }
+        After = after; AskTo = ask;
+        OnCue = OnCueBox.IsChecked == true || after != "";
         CenterX = cx; CenterY = cy; Measure = measure;
         Chosen = GolemsBox.SelectedItems.Cast<string>().ToList();
         DialogResult = true;

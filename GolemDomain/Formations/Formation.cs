@@ -66,6 +66,11 @@ internal sealed class Formation
     private string cueTo;                                               // the golem the last of this fleet cues when everybody finished; null: nobody
     private bool onCue;                                                 // born waiting: its take IS the cue (or a member's word, once the cued one spoke)
     private bool cued;                                                  // the cue came, or a member spoke: the formation may be convened
+    // THE PULL (propuesta 118, 20-oct-2026): the formation this one starts after and the golem its asker asks whether that one finished
+    private string after;                                               // the formation this one starts after; null: none (a push, or none)
+    private string askTo;                                               // the golem the asker asks
+    private int asked;                                                  // how many questions the asker sent
+    private int notYet;                                                 // how many answers said "not yet"
     private bool finishing;                                             // this golem asked to finish: counted the moment its part is done (the clock asks)
     private readonly HashSet<string> finished = new(StringComparer.Ordinal);   // who said it finished its part
     private bool cueGiven;                                              // this copy gave the cue: the one that counted the fleet's last finish
@@ -139,6 +144,53 @@ internal sealed class Formation
         onCue = true;
     }
 
+    /// <summary>THIS FORMATION STARTS AFTER ANOTHER, BY ASKING (propuesta 118, 20-oct-2026; Juan: "quiero ver que yellow esté pendiente de consultarle
+    /// a alguno si ya terminó… por ask me suena bien"): the warden's <c>--after tri-left --ask red</c> — <c>formation.Follows(@after, @askTo);</c>
+    /// right after the <c>Form</c>. Born waiting like one on cue (a take refused, the steps queued), and its ASKER — the first of the fleet's
+    /// order — asks the golem named, on every tick of its clock, whether that formation finished (<see cref="Ask"/>); the answer "yes" is its cue
+    /// (<see cref="TakeCue"/>), "not yet" is counted (<see cref="HeardNotYet"/>) and the next tick asks again. Refused once this golem convened,
+    /// for its own name, and for a golem of its own fleet (it would ask itself).</summary>
+    internal void Follows(string formationName, string golemName)
+    {
+        if (formationName == null) throw new GolemDomainException("Formation.Follows: 'formationName' was not given");
+        if (golemName == null) throw new GolemDomainException("Formation.Follows: 'golemName' was not given");
+        string called = formationName.Trim().ToLowerInvariant();
+        string who = golemName.Trim().ToLowerInvariant();
+        if (called == "" || who == "") throw new GolemDomainException($"{Name} starts after a formation by its name, asking a golem by its name");
+        if (called == Name) throw new GolemDomainException($"{Name} cannot start after itself");
+        if (Fleet.Names.Contains(who)) throw new GolemDomainException($"{Name} cannot ask '{who}': it is of this very fleet");
+        if (me != null) throw new GolemDomainException($"{Name} was already taken: it starts after nothing now");
+        after = called;
+        askTo = who;
+        onCue = true;
+    }
+
+    /// <summary>The formation this one starts after ("" none), the golem asked ("" none), who asks (the first by rank), how many times, how many "not yet".</summary>
+    internal string After => after ?? "";
+    internal string AskTo => askTo ?? "";
+    internal string Asker => Fleet.Names[0];
+    internal int Asked => asked;
+    internal int NotYet => notYet;
+    /// <summary>Whether THIS golem has a question to ask now: it is the asker of a formation that starts after another, not cued yet, not taken —
+    /// the clock's question (<c>AskIfWaiting</c>).</summary>
+    internal bool MayAsk => after != null && !Dissolved && !cued && me == null && golem.Name != null && golem.Name == Asker;
+
+    /// <summary>THE QUESTION (propuesta 118): "did tri-left finish?" — <c>formation.Ask();</c>, written by the asker's clock; the reaction on this act
+    /// tells <c>DidYouFinish</c> to the golem named. A lived fact: this golem asked. Refused when there is nothing to ask.</summary>
+    internal void Ask()
+    {
+        if (!MayAsk) throw new GolemDomainException($"{Name}: nothing to ask — {(after == null ? "it starts after no formation" : cued ? "the answer came" : golem.Name == Asker ? "it was taken" : $"{Asker} asks, not {golem.Name}")}");
+        asked++;
+    }
+
+    /// <summary>THE ANSWER "NOT YET" (propuesta 118): <c>formation.HeardNotYet();</c> — counted; the next tick asks again. The answer "yes" is
+    /// <see cref="TakeCue"/>.</summary>
+    internal void HeardNotYet()
+    {
+        if (after == null) throw new GolemDomainException($"{Name} starts after no formation: no answer to hear");
+        notYet++;
+    }
+
     /// <summary>Whether this formation starts on a cue, and whether that cue came (or a member spoke).</summary>
     internal bool OnCue => onCue;
     internal bool IsCued => !onCue || cued;
@@ -164,7 +216,7 @@ internal sealed class Formation
 
     /// <summary>THIS GOLEM FINISHES ITS PART (propuesta 117): the last line of its script about the formation, <c>finish tri-left</c> — queued like
     /// everything else: <c>route = formation.Finish(me);</c> written with steps still to walk means "when what is queued is done, I finished"
-    /// (<see cref="Finishing"/>); written — or written again by the clock (<see cref="FinishDue"/>) — once its part is done (<see cref="IsDone"/>:
+    /// (<see cref="Finishing"/>; a step queued after it is walked first — the fleet may always move, 19-oct-2026); written — or written again by the clock (<see cref="FinishDue"/>) — once its part is done (<see cref="IsDone"/>:
     /// the route to its place complete, no step queued, placed), it COUNTS: its own word, <see cref="JustFinished"/> true for the act's expose, and
     /// the reaction on this act tells <c>FinishedAt</c> to the fleet. A peer's word is <see cref="HeardFinished"/>. The formation stays: a peer
     /// may still be walking its last step. Refused by a golem that is not of the fleet.</summary>
@@ -546,7 +598,8 @@ internal sealed class Formation
         if (string.IsNullOrWhiteSpace(stepId)) throw new GolemDomainException("Formation.Queue: 'stepId' was not given");
         if (Dissolved) throw new GolemDomainException($"{Name} was dissolved");
         if (!stepIds.Add(stepId)) throw new GolemDomainException($"the step {stepId} is already queued in {Name}");
-        if (finishing) throw new GolemDomainException($"{Name}: this golem already said it finishes after what is queued — no step comes after finish");
+        // a step AFTER the finish is allowed (19-oct-2026; Juan: "siempre debería permitir moverse"): a finish not counted yet counts when the queue
+        // empties, this step included; a finish already counted stays counted — the cue given, the pull answered — and the fleet keeps dancing
         steps.Enqueue((move, stepId));
         return steps.Count;
     }

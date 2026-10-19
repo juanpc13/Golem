@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Choreography.Input;
 using Choreography.Theater;
 using GolemAPI.Choreography.Roles;
 using GolemAPI.Membrane;
@@ -239,21 +240,37 @@ public sealed class GolemEmbodiment
             catch (Exception ex) { Note($"waking refused: {Reason(ex)}"); }
         }
         Mechanics.Dispatch(AskOrder());
-        while (!ct.IsCancellationRequested)
+        // THE CLOCK AS AN INPUT SOURCE (propuesta 118, 20-oct-2026; the training-lab's input-surfaces guide: "the clock is an input source — an actor is
+        // the MERGE of N sources"): a ClockSource ticks every 2 s, the golem's Dispatch routes every tick to the Tick message and runs the clock's
+        // questions on it — one worker, so no two ticks overlap; the Task.Delay loop of the host is gone. The tick itself is not journaled (one every
+        // 2 s): the questions are Check-then-command, written only when the domain says yes.
+        using var dispatch = performance.CreateDispatch(o => o.MaxParallelism = 1);
+        dispatch.On<Tick>((actor, tick) => OnTick());
+        dispatch.ConsumeFrom(new ClockSource(TimeSpan.FromSeconds(2)), signal => new DispatchCommand(signal.Id, (char)Tick.TypeId + signal.Value));
+        Note($"the clock ticks every 2 s through the dispatch (alive: {performance.IsAlive})");
+        try { await Task.Delay(Timeout.Infinite, ct); } catch (OperationCanceledException) { }
+    }
+
+    // The clock's questions, on every tick: the acts no arrival will write, then the order the journal wants now
+    private void OnTick()
+    {
+        try
         {
-            await Task.Delay(2000, ct);
             Choreographer?.PlacedIfStanding();   // a route to its place completed at birth inside a peer's word (13-oct-2026): no arrival will say it
             Choreographer?.RetakeIfEndedShort(); // a route to its place born failed inside a peer's word (19-oct-2026): no arrival will say that either
             Choreographer?.FinishIfDone();       // a finish queued and the part done (propuesta 117): the word counts now and the fleet is told
             Choreographer?.CueIfFinished();      // this copy counted the fleet's last finish (propuesta 117): the cue to the next group
             Choreographer?.TakeIfCued();         // cued before its formation was told (propuesta 117): it takes it now
-            Dynamics?.AnnounceIfConcluded();         // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
+            Choreographer?.AskIfWaiting();       // the pull (propuesta 118): the asker of a formation waiting asks the golem named whether the other finished
+            Choreographer?.AnswerIfAsked();      // …and the one asked answers from its copy
+            Dynamics?.AnnounceIfConcluded();     // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
             var now = AskOrder();
             var mine = Mechanics.Carrying;
-            if (now == null) { if (mine != null) Mechanics.Stop(); continue; }
-            if (mine != null && mine.SameAs(now)) continue;
+            if (now == null) { if (mine != null) Mechanics.Stop(); return; }
+            if (mine != null && mine.SameAs(now)) return;
             Mechanics.Dispatch(now);
         }
+        catch (Exception ex) { Note($"the clock's tick failed: {Reason(ex)}"); }
     }
 
     // ==================================================================

@@ -145,14 +145,16 @@ public sealed class Commander
                                       command.Values.TryGetValue("by", out var by) ? by : null,
                                       command.Values.TryGetValue("blades", out var blades) ? int.Parse(blades, CultureInfo.InvariantCulture) : null,
                                       command.Values.TryGetValue("cue", out var cue) ? cue : null,
-                                      command.Values.ContainsKey("on-cue"));
+                                      command.Values.ContainsKey("on-cue"),
+                                      command.Values.TryGetValue("after", out var after) ? after : null,
+                                      command.Values.TryGetValue("ask", out var ask) ? ask : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Choreographer(out var choreographer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
         var answer = request.IsPropeller
-            ? choreographer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue)
-            : choreographer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue);
+            ? choreographer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem)
+            : choreographer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var holders = new List<string>();
         try

@@ -180,6 +180,27 @@ public sealed class GolemSpeech
                 .Seek("Cue").One()
                     .OnMatch("[_:Formation].Cue() expose $call call, $nonce nonce, $to to;")
                 .Causation.Continue(yourTurn);
+            // THE PULL (propuesta 118, 20-oct-2026): the asker's question and the asked one's answer, two tells — both acts written by the clock
+            // (AskIfWaiting, AnswerIfAsked), so no uptake stands between the fact and the word; both to every peer with the name inside, the
+            // named one taking it
+            string ask = string.Join("\n", peers.Select(p => $@"
+                tell DidYouFinish with @call, @to, @who
+                    to {p}
+                    once 'ask-' + @nonce + '-' + @asked + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-ask")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Asked").One()
+                    .OnMatch("[_:Formation].Ask() expose $call call, $nonce nonce, $to to, $who who, $asked asked;")
+                .Causation.Continue(ask);
+            string answer = string.Join("\n", peers.Select(p => $@"
+                tell FinishedState with @call, @to, @done
+                    to {p}
+                    once 'answer-' + @call + '-' + @to + '-' + @number + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-answer")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Answered").One()
+                    .OnMatch("[_:Choreographies].Answer() expose $call call, $to to, $done done, $number number;")
+                .Causation.Continue(answer);
             golemActor.Reactions.DefineReaction("echo-dissolved")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Dissolved").One()
@@ -234,6 +255,10 @@ public sealed class GolemSpeech
                 .Command(ChoreographerRol.UptakeDissolved)
             .Told("FinishedAt").With<string>("call").With<string>("who")
                 .Command(ChoreographerRol.UptakeFinishedAt)
+            .Told("DidYouFinish").With<string>("about").With<string>("asked").With<string>("asker")
+                .Command(ChoreographerRol.UptakeDidYouFinish)
+            .Told("FinishedState").With<string>("about").With<string>("asked").With<bool>("finished")
+                .Command(ChoreographerRol.UptakeFinishedState)
             .Told("YourTurn").With<string>("to")
                 .Command(ChoreographerRol.UptakeYourTurn)
             .Start();

@@ -140,8 +140,11 @@ public sealed record ScenarioRequest(string Scenario)
 /// may be left out (this golem and every peer it can reach); the policy too (rank).</summary>
 public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side = null, double? Radius = null, double? InnerRadius = null,
                                  double? Angle = null, List<string> Fleet = null, string By = null, int? Blades = null,
-                                 string Cue = null, bool OnCue = false)
+                                 string Cue = null, bool OnCue = false, string After = null, string Ask = null)
 {
+    /// <summary>THE PULL (propuesta 118): the formation this one starts after, and the golem its asker asks whether it finished — lower case; null: none.</summary>
+    public string StartsAfter => string.IsNullOrWhiteSpace(After) ? null : After.Trim().ToLowerInvariant();
+    public string AskedGolem => string.IsNullOrWhiteSpace(Ask) ? null : Ask.Trim().ToLowerInvariant();
     /// <summary>The golem the last of this fleet to finish cues (propuesta 117), lower case; null when nobody.</summary>
     public string CuedGolem => string.IsNullOrWhiteSpace(Cue) ? null : Cue.Trim().ToLowerInvariant();
 
@@ -191,6 +194,9 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
         if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
         if (Policy is not ("rank" or "distance" or "rps")) yield return "the policy is \"rank\", \"distance\" or \"rps\"";
         if (CuedGolem != null && !System.Text.RegularExpressions.Regex.IsMatch(CuedGolem, @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "\"cue\" names one golem, like cyan";
+        if ((StartsAfter == null) != (AskedGolem == null)) yield return "\"after\" (the formation waited for) and \"ask\" (the golem asked) go together";
+        if (StartsAfter != null && Name != null && StartsAfter == Name.Trim().ToLowerInvariant()) yield return "a formation cannot start after itself";
+        if (AskedGolem != null && !System.Text.RegularExpressions.Regex.IsMatch(AskedGolem, @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "\"ask\" names one golem, like red";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
     }
 }

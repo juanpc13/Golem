@@ -49,6 +49,13 @@ public class PendingFormationsTests
         Assert.IsTrue(r.OnCue); Assert.IsFalse(r.Cued); Assert.AreEqual("", r.CueTo);
         StringAssert.Contains(r.RoundText, "on cue — waiting");
 
+        // the pull (propuesta 118): --after and --ask on the line — born waiting, the row says whom it asks
+        var puller = new Golem { Name = "cyan", Host = "localhost", Port = 8086, Script = "form tri-right triangle --center 8,5.5 --side 3 --fleet cyan,orange,yellow --after tri-left --ask red\nrotate tri-right clockwise" };
+        var pv = PendingFormations.Parse(new[] { puller }).Single();
+        Assert.AreEqual("tri-left", pv.After); Assert.AreEqual("red", pv.AskTo); Assert.IsTrue(pv.OnCue); Assert.IsFalse(pv.Cued);
+        StringAssert.Contains(pv.RoundText, "after tri-left, asks red");
+        StringAssert.EndsWith(pv.FormLine(pv.AsFigure()!), "--after tri-left --ask red");
+
         // a line without a centre or a size is no formation
         var bad = new Golem { Name = "x", Host = "localhost", Port = 8090, Script = "form nope square --fleet a,b" };
         Assert.AreEqual(0, PendingFormations.Parse(new[] { bad }).Count);

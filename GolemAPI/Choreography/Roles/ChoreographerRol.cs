@@ -37,7 +37,7 @@ public sealed class ChoreographerRol
     /// <summary>A FORMATION TOLD (propuesta 104): its name, figure, centre, measure (a polygon's side, a circle's radius), orientation, the
     /// fleet's names and the policy — made, or made again when the name is known. Its print is the places as this golem resolved them and who
     /// holds each by rank, so the warden draws what the golem knows. The fleet is told (echo-formed). No route: nothing for the body to do.</summary>
-    public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, IReadOnlyList<string> fleet, string policy, string cueTo = null, bool onCue = false)
+    public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, IReadOnlyList<string> fleet, string policy, string cueTo = null, bool onCue = false, string after = null, string askTo = null)
     {
         if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
@@ -73,13 +73,13 @@ public sealed class ChoreographerRol
                     p["stamp", typeof(string)] = stamp;
                 })
                 .PerformCheckThenCommand());
-            return Sequenced(name, cueTo, onCue, formed);
+            return Sequenced(name, cueTo, onCue, after, askTo, formed);
         }
         catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
     }
 
     /// <summary>A PROPELLER TOLD (propuesta 114): its tip, its hub and its blades; the fleet along them, a step turns it one blade.</summary>
-    public Answer FormPropeller(string name, (double X, double Y) center, double radius, double hub, int blades, double angle, IReadOnlyList<string> fleet, string policy, string cueTo = null, bool onCue = false)
+    public Answer FormPropeller(string name, (double X, double Y) center, double radius, double hub, int blades, double angle, IReadOnlyList<string> fleet, string policy, string cueTo = null, bool onCue = false, string after = null, string askTo = null)
     {
         if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
@@ -116,7 +116,7 @@ public sealed class ChoreographerRol
                     p["stamp", typeof(string)] = stamp;
                 })
                 .PerformCheckThenCommand());
-            return Sequenced(name, cueTo, onCue, formed);
+            return Sequenced(name, cueTo, onCue, after, askTo, formed);
         }
         catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
     }
@@ -206,7 +206,7 @@ public sealed class ChoreographerRol
     // dice el nombre del golem… a él sólo le dicen 'continúas tú' y éste le avisa a su equipo"): a formation told `--cue <golem>` cues that golem when
     // every member finished — its own act right after the Form; one told `--on-cue` is born waiting, its take IS the cue — its own act too. The
     // Form templates stay untouched.
-    private Answer Sequenced(string name, string cueTo, bool onCue, Answer formed)
+    private Answer Sequenced(string name, string cueTo, bool onCue, string after, string askTo, Answer formed)
     {
         if (!formed.Ok) return formed;
         try
@@ -243,9 +243,76 @@ public sealed class ChoreographerRol
                 if (!waits.Ok) return Answer.Refusal($"form {name} --on-cue: " + waits.Refused);
                 robot.Note($"form {name}: starts on cue — its take is the word 'your turn' to one of its members");
             }
+            if (after != null)
+            {
+                // THE PULL (propuesta 118): the formation starts after another, and its asker asks the golem named whether that one finished
+                var follows = Answer.Of(robot.Actor.Using(@"
+                        Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name';
+                    ", @"
+                        {
+                            formation = g.Choreography.Find(@formationName);
+                            formation.Follows(@after, @askTo);
+                            print formation.Name 'called', formation.After 'after', formation.AskTo 'askTo', formation.Asker 'asker';
+                        }
+                    ")
+                    .WithParameters(p => { p["formationName", typeof(string)] = name; p["after", typeof(string)] = after; p["askTo", typeof(string)] = askTo; })
+                    .PerformCheckThenCommand());
+                if (!follows.Ok) return Answer.Refusal($"form {name} --after {after} --ask {askTo}: " + follows.Refused);
+                robot.Note($"form {name}: starts after {after} — its asker asks {askTo} every tick whether that formation finished");
+            }
             return formed;
         }
         catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The clock's question (propuesta 118, the pull): is this golem the asker of a formation that starts after another, not cued yet? Then it
+    /// asks — <c>formation.Ask()</c> — and echo-ask tells <c>DidYouFinish</c> to the golem named; every tick until the answer is "yes".</summary>
+    public void AskIfWaiting()
+    {
+        try
+        {
+            var asked = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Asking) Error 'this golem has nothing to ask';
+                ", @"
+                    {
+                        formation = g.Choreography.AskingFormation;
+                        formation.Ask();
+                        print formation.Name 'called', formation.After 'after', formation.AskTo 'askTo', formation.Asked 'asked';
+                        expose formation.After call, formation.Stamp nonce, formation.AskTo to, formation.Asker who, formation.Asked asked;
+                    }
+                ")
+                .PerformCheckThenCommand());
+            if (asked.Ok) robot.Note($"the pull: asked whether the formation before finished (question {Read(asked, "asked")})");
+        }
+        catch { /* the clock asks again */ }
+    }
+
+    /// <summary>The clock's question (propuesta 118, the pull): did somebody ask this golem whether a formation finished? Then it answers from its own
+    /// copy — <c>response = g.Choreography.Answer()</c> — and echo-answer tells <c>FinishedState</c> to the one who asked.</summary>
+    public void AnswerIfAsked()
+    {
+        try
+        {
+            var answered = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Answering) Error 'nobody asked this golem anything';
+                ", @"
+                    {
+                        response = g.Choreography.Answer();
+                        print response.Call 'called', response.To 'to', response.Done 'done';
+                        expose response.Call call, response.To to, response.Done done, response.Number number;
+                    }
+                ")
+                .PerformCheckThenCommand());
+            if (answered.Ok) robot.Note($"the pull: answered {Read(answered, "to")} about {Read(answered, "called")} — finished: {Read(answered, "done")}");
+        }
+        catch { /* the clock asks again */ }
+    }
+
+    private static string Read(Answer answer, string field)
+    {
+        try { return JsonDocument.Parse(answer.Print ?? "{}").RootElement.TryGetProperty(field, out var v) ? v.ToString() : ""; } catch { return ""; }
     }
 
     /// <summary>THIS GOLEM FINISHES ITS PART of the formation (propuesta 117): the last line of its script about it, <c>finish tri-left</c> — queued
@@ -844,6 +911,55 @@ public sealed class ChoreographerRol
     // YOUR TURN (propuesta 117): the last of a fleet that finished cues ONE golem by name; the named one, waiting in a formation that starts on cue,
     // takes it — TakeCue, the take by cue, which echo-stood and next-order-convene observe like a Convene, so its team hears its word and convenes in turn (ajuste 80).
     // Named before its formation was told, it keeps the cue for the clock (TakeIfCued); a cue to another golem is nobody's here.
+    // A QUESTION (propuesta 118, the pull): somebody asks THIS golem — named — whether a formation finished; kept, and this golem's clock answers.
+    public const string UptakeDidYouFinish = @"
+        {
+            if (g.Choreography.AskedOf(@asked)) {
+                g.Choreography.AskedAbout(@about, @asker);
+                print @about 'called', @asker 'who';
+            }
+        }
+        ";
+    // AN ANSWER (propuesta 118, the pull): the golem asked says whether the formation finished; this golem — the asker, named — takes 'yes' as its
+    // cue (TakeCue, the take by cue: its team hears its word) and counts 'not yet' (the next tick asks again).
+    public const string UptakeFinishedState = @"
+        {
+            if (g.Choreography.AwaitsAnswer(@asked, @about)) {
+                formation = g.Choreography.FormationAfter(@about);
+                if (@finished) {
+                    fleet = formation.Fleet;
+                    me = fleet.Member(g);
+                    from = g.Destination;
+                    formation.TakeCue(from, me);
+                    if (formation.IsComplete) {
+                        route = formation.Route;
+                        if (g.Strategy.OnTheWay.IsActive) {
+                            route = g.Dash(route);
+                        }
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    } else {
+                        print formation.StoodCount 'stood', fleet.Count 'of';
+                    }
+                    expose formation.Name call, formation.Stamp nonce, me.Name who, from.X stoodX, from.Y stoodY;
+                } else {
+                    formation.HeardNotYet();
+                    print formation.Name 'called', formation.NotYet 'notYet';
+                }
+            }
+        }
+        ";
     public const string UptakeYourTurn = @"
         {
             if (g.Choreography.AwaitsCue(@to)) {

@@ -134,7 +134,7 @@ public partial class MainWindow : Window
         string size = dialog.Figure == "propeller" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)} --blades {dialog.Blades}"
                     : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
         string fleet = $"--fleet {string.Join(",", dialog.Chosen)}";
-        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}{(dialog.CueTo != "" ? $" --cue {dialog.CueTo}" : "")}{(dialog.OnCue ? " --on-cue" : "")}";
+        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}{(dialog.CueTo != "" ? $" --cue {dialog.CueTo}" : "")}{(dialog.After != "" ? $" --after {dialog.After} --ask {dialog.AskTo}" : dialog.OnCue ? " --on-cue" : "")}";
     }
 
     private static bool LineOf(string line, string name) =>
@@ -175,6 +175,7 @@ public partial class MainWindow : Window
     {
         if ((sender as Button)?.Tag is not FormationView formation) return;
         var dialog = new FormationDialog(golems.Select(x => x.Name).ToList(), Point) { Owner = this };
+        dialog.KnowsFormations(Views().Select(v => v.Name));   // the pull picks a formation waited for (propuesta 118)
         dialog.Seed(formation);
         if (dialog.ShowDialog() != true) return;
         string name = formation.Name;
@@ -1118,6 +1119,7 @@ public partial class MainWindow : Window
     private void Formation_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new FormationDialog(golems.Select(x => x.Name).ToList(), Point) { Owner = this };
+        dialog.KnowsFormations(Views().Select(v => v.Name));   // the pull picks a formation waited for (propuesta 118)
         if (dialog.ShowDialog() != true) return;
         // THE FORMATION IS THE GOLEM'S (propuesta 104; Juan: "el CLI sólo servirá como interfaz"): two lines on the selected golem's tab — the
         // form, which the golem spreads to its fleet, and the take, which moves the whole fleet by the formation's policy; the name is the

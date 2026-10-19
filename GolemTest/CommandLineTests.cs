@@ -170,6 +170,12 @@ public class CommandLineTests
         Assert.IsFalse(waits.Values.ContainsKey("cue"));
         StringAssert.Contains(Refused("form tri-left triangle --center 3,5.5 --side 3 --cue cyan,orange"), "--cue expects one golem's name");
         StringAssert.Contains(Refused("form tri-left triangle --center 3,5.5 --side 3 --cue"), "--cue needs a value");
+        // the pull (propuesta 118): the formation waited for and the golem asked, both or neither
+        var pull = CommandLine.Parse("form tri-right triangle --center 8,5.5 --side 3 --fleet cyan,orange,yellow --after Tri-Left --ask Red");
+        Assert.AreEqual("tri-left", pull.Values["after"]); Assert.AreEqual("red", pull.Values["ask"]);
+        StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --after tri-left"), "--after <formation> and --ask <golem> go together");
+        StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --after tri-right --ask red"), "cannot start after itself");
+        StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --after tri-left --ask red,blue"), "--ask expects one golem's name");
         Assert.AreEqual("tri-left", CommandLine.Parse("finish Tri-Left").Text);
         StringAssert.Contains(Refused("finish"), "finish: expected the formation's name");
         Assert.AreEqual("formations", CommandLine.Parse("formations").Verb);

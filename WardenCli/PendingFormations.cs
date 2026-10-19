@@ -93,6 +93,7 @@ public static class PendingFormations
         return new FormationView(name, figure, cx, cy, measure.Value, angle, policy, string.Join(",", crew),
                                  spots.Count, 0, 0, 0, -1, holders, spots,
                                  inner: shape is Propeller p ? p.Hub : 0, arms: shape is Propeller q ? q.Blades : 0,
-                                 cueTo: opts.TryGetValue("cue", out var cue) ? cue.Trim().ToLowerInvariant() : "", onCue: onCue, cued: !onCue);
+                                 cueTo: opts.TryGetValue("cue", out var cue) ? cue.Trim().ToLowerInvariant() : "", onCue: onCue || opts.ContainsKey("after"), cued: !onCue && !opts.ContainsKey("after"),
+                                 after: opts.TryGetValue("after", out var after) ? after.Trim().ToLowerInvariant() : "", askTo: opts.TryGetValue("ask", out var ask) ? ask.Trim().ToLowerInvariant() : "");
     }
 }

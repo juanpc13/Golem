@@ -95,8 +95,8 @@ public class GolemController : Controller
         var center = (request.Center.X.Value, request.Center.Y.Value);
         string name = request.Name.Trim().ToLowerInvariant();
         if (request.IsPropeller)
-            return Answered(choreographer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue));
-        return Answered(choreographer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue));
+            return Answered(choreographer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem));
+        return Answered(choreographer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem));
     }
 
     /// <summary>A FORMATION TAKEN (propuesta 104): this golem says where it stands; the fleet's words open the routes, each to its place by

@@ -17,6 +17,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <TextBlock Text="figure" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
@@ -64,10 +65,19 @@
             <ComboBox x:Name="CueBox" Width="130" HorizontalAlignment="Left" ToolTip="--cue &lt;golem&gt;: the last of this fleet to finish tells that golem 'your turn' — a golem of the next group, chosen here"/>
         </DockPanel>
 
+        <!-- THE PULL (propuesta 118): the formation starts after another, and its first golem by rank asks a golem of that group every tick whether it finished -->
+        <TextBlock Grid.Row="7" Text="or ask" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+        <DockPanel Grid.Row="7" Grid.Column="1" Margin="2,4">
+            <TextBlock DockPanel.Dock="Left" Text="starts after" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox x:Name="AfterBox" DockPanel.Dock="Left" Width="130" HorizontalAlignment="Left" Margin="0,0,14,0" ToolTip="--after &lt;formation&gt;: the formation waited for; no take — the pull: the first golem of this fleet asks every tick whether it finished"/>
+            <TextBlock DockPanel.Dock="Left" Text="asking" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox x:Name="AskBox" Width="130" HorizontalAlignment="Left" ToolTip="--ask &lt;golem&gt;: the golem asked, one of the other group"/>
+        </DockPanel>
+
         <TextBlock x:Name="GolemsLabel" Grid.Row="5" Text="golems of the fleet" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,6,8,0"/>
         <ListBox x:Name="GolemsBox" Grid.Row="5" Grid.Column="1" Margin="2,6" SelectionMode="Multiple" Height="150"/>
 
-        <StackPanel Grid.Row="7" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+        <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
             <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="300"/>
             <Button Content="form in the selected golem" Click="Ok_Click" Style="{StaticResource GoGreen}" ToolTip="the form and take lines go on the selected golem's tab; the golem tells its fleet"/>
             <Button Content="cancel" IsCancel="True"/>

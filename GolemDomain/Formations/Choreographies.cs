@@ -21,6 +21,8 @@ internal sealed class Choreographies
     private readonly List<Formation> formations = new();   // the formations the golem was told, by name, the dissolved ones among them (history)
     private readonly Dictionary<string, Dictionary<string, (Position At, string Nonce)>> overheard = new();   // words of a round heard AHEAD of the formation they are about: name → who → where
     private bool pendingCue;                                            // a cue to THIS golem heard before the formation it waits in was told (propuesta 117)
+    private readonly Queue<(string Call, string Who)> questions = new();   // THE PULL (propuesta 118): who asked whether which formation finished, to be answered on the tick
+    private int answers;                                                // how many answers this golem gave: the once of each
 
     // born with its golem (like the strategies' switches, ajuste 63): objects that know each other, no delegate (ajuste 78)
     internal Choreographies(Golem golem)
@@ -178,6 +180,63 @@ internal sealed class Choreographies
     /// <summary>Whether a cue kept ahead has its formation now: the clock's question.</summary>
     internal bool HasPendingCue => pendingCue && formations.Any(WaitsForTheCue);
 
+    // ---- THE PULL (propuesta 118, 20-oct-2026; Juan: "que yellow esté pendiente de consultarle a alguno si ya terminó"): a question and an answer, two
+    // tells; the asker's clock asks, the asked one's clock answers from its own copy ----
+
+    /// <summary>Whether this golem has a question to ask on this tick: it is the asker of a formation that starts after another, not cued yet.</summary>
+    internal bool Asking => formations.Any(f => f.MayAsk);
+    /// <summary>The formation this golem asks for — <c>formation = g.Choreography.AskingFormation; formation.Ask();</c>. Refused when none.</summary>
+    internal Formation AskingFormation => formations.LastOrDefault(f => f.MayAsk) ?? throw new GolemDomainException("this golem has nothing to ask");
+
+    /// <summary>Whether a word addressed to a golem by name is for THIS golem — the uptakes of the pull ask it first.</summary>
+    internal bool AskedOf(string golemName)
+    {
+        if (golemName == null) throw new GolemDomainException("Choreographies.AskedOf: 'golemName' was not given");
+        return golem.Name != null && golem.Name == golemName.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>A QUESTION HEARD (by tell, <c>DidYouFinish</c>): who asked whether which formation finished — kept until this golem's clock answers
+    /// (<see cref="Answer"/>): <c>g.Choreography.AskedAbout(@about, @asker);</c>.</summary>
+    internal void AskedAbout(string formationName, string who)
+    {
+        if (formationName == null) throw new GolemDomainException("Choreographies.AskedAbout: 'formationName' was not given");
+        if (who == null) throw new GolemDomainException("Choreographies.AskedAbout: 'who' was not given");
+        questions.Enqueue((formationName.Trim().ToLowerInvariant(), who.Trim().ToLowerInvariant()));
+    }
+
+    /// <summary>Whether a question waits for this golem's answer: the clock's question (<c>AnswerIfAsked</c>).</summary>
+    internal bool Answering => questions.Count > 0;
+
+    /// <summary>THE ANSWER (propuesta 118): the oldest question answered from this copy — <c>response = g.Choreography.Answer();</c>: the formation
+    /// finished as this golem knows it (told, not dissolved, every member finished), or not; the reaction on this act tells <c>FinishedState</c>
+    /// to the one who asked. Refused when nobody asked.</summary>
+    internal Response Answer()
+    {
+        if (questions.Count == 0) throw new GolemDomainException("nobody asked this golem anything");
+        var (call, who) = questions.Dequeue();
+        answers++;
+        bool done = formations.Any(f => f.Name == call && !f.Dissolved && f.IsFinished);
+        return new Response(call, who, done, answers);
+    }
+
+    /// <summary>Whether this golem waits for an answer about that formation — named by the answer, the asker of a formation that starts after it and
+    /// is not cued yet: what the uptake of <c>FinishedState</c> asks.</summary>
+    internal bool AwaitsAnswer(string golemName, string formationName)
+    {
+        if (golemName == null) throw new GolemDomainException("Choreographies.AwaitsAnswer: 'golemName' was not given");
+        if (formationName == null) throw new GolemDomainException("Choreographies.AwaitsAnswer: 'formationName' was not given");
+        return AskedOf(golemName) && formations.Any(f => IsWaitingAfter(f, formationName));
+    }
+
+    private bool IsWaitingAfter(Formation f, string formationName) => !f.Dissolved && f.After == formationName.Trim().ToLowerInvariant() && !f.IsCued && f.Fleet.Has(golem);
+
+    /// <summary>The formation of this golem that starts after the one named — the latest told. Refused when none waits.</summary>
+    internal Formation FormationAfter(string formationName)
+    {
+        if (formationName == null) throw new GolemDomainException("Choreographies.FormationAfter: 'formationName' was not given");
+        return formations.LastOrDefault(f => IsWaitingAfter(f, formationName)) ?? throw new GolemDomainException($"no formation of this golem starts after '{formationName}'");
+    }
+
     /// <summary>Whether a formation of this golem has its cue to give — every member finished as this copy knows it, somebody to cue, nothing given
     /// yet: the clock's question (<c>Check(g.Choreography.Cueing)</c>).</summary>
     internal bool Cueing => formations.Any(f => f.Cueing);
@@ -197,13 +256,18 @@ internal sealed class Choreographies
         return overheard.TryGetValue(name.Trim().ToLowerInvariant(), out var words) ? words.Count : 0;
     }
 
-    /// <summary>The formation of that name, told before and not dissolved — <c>formation = g.Choreography.Find(@formationName);</c>, the one
+    /// <summary>IN FORCE: told and not dissolved. A formation whose fleet FINISHED stays (19-oct-2026; Juan, after a try at dropping it from the
+    /// list: "creo que quizás no debería borrarse, pero creo que siempre debería permitir moverse"): it is still listed, found and stepped —
+    /// the finish was a point of its script, the cue given and the pull answered from it; only a dissolution takes it off the list.</summary>
+    private static bool InForce(Formation f) => !f.Dissolved;
+
+    /// <summary>The formation of that name, told before and in force — <c>formation = g.Choreography.Find(@formationName);</c>, the one
     /// place its name enters after it is made, like a route's id. Refused when the golem was told no formation by that name.</summary>
     internal Formation Find(string name)
     {
         if (name == null) throw new GolemDomainException("Choreographies.Find: 'name' was not given");
         string called = name.Trim().ToLowerInvariant();
-        return formations.LastOrDefault(f => f.Name == called && !f.Dissolved) ?? throw new GolemDomainException($"the golem was told no formation named '{called}': form it first");
+        return formations.LastOrDefault(f => f.Name == called && InForce(f)) ?? throw new GolemDomainException($"the golem was told no formation named '{called}': form it first");
     }
 
     /// <summary>Whether the golem was told a formation by that name, still in force — what a script asks before it finds it.</summary>
@@ -211,7 +275,7 @@ internal sealed class Choreographies
     {
         if (name == null) throw new GolemDomainException("Choreographies.HasFormation: 'name' was not given");
         string called = name.Trim().ToLowerInvariant();
-        return formations.Any(f => f.Name == called && !f.Dissolved);
+        return formations.Any(f => f.Name == called && InForce(f));
     }
 
     /// <summary>Whether this golem has its place in the formation of that name — so a word about it (a member placed, a step) is its
@@ -220,12 +284,12 @@ internal sealed class Choreographies
     {
         if (name == null) throw new GolemDomainException("Choreographies.Knows: 'name' was not given");
         string called = name.Trim().ToLowerInvariant();
-        return formations.Any(f => f.Name == called && !f.Dissolved && f.Route != null);
+        return formations.Any(f => f.Name == called && InForce(f) && f.Route != null);
     }
 
-    /// <summary>THE FORMATIONS THE GOLEM IS IN (propuesta 104: the warden's GET): every one it was told and not dissolved, in the order it
-    /// was told them — each with its figure, its fleet, its policy and who holds what.</summary>
-    internal IReadOnlyList<Formation> Formations() => formations.Where(f => !f.Dissolved).ToList();
+    /// <summary>THE FORMATIONS THE GOLEM IS IN (propuesta 104: the warden's GET): every one it was told and not dissolved — a finished one
+    /// among them — in the order it was told them, each with its figure, its fleet, its policy and who holds what.</summary>
+    internal IReadOnlyList<Formation> Formations() => formations.Where(InForce).ToList();
 
     /// <summary>THE DISPUTES this golem had (14-oct-2026): over the places of every formation it was told, the dissolved ones too (history), in the
     /// order it was told them — won or yielded, against whom.</summary>
@@ -251,7 +315,7 @@ internal sealed class Choreographies
     /// <summary>The FORMATION IN PLACE (ajuste 77): the one of the latest route this golem took a place by — what the arrival's word is
     /// about. Refused when the golem stands in no formation.</summary>
     internal Formation Current =>
-        formations.Where(f => f.Route != null && !f.Dissolved).OrderByDescending(f => f.Route.Id).FirstOrDefault()
+        formations.Where(f => f.Route != null && InForce(f)).OrderByDescending(f => f.Route.Id).FirstOrDefault()
         ?? throw new GolemDomainException("the golem stands in no formation: form one and take it first");
 
     /// <summary>Whether that route was this golem's route to its place in a formation, and reached it — the arrival asks it to say the
@@ -259,7 +323,7 @@ internal sealed class Choreographies
     internal bool Reached(Route route)
     {
         if (route == null) throw new GolemDomainException("Choreographies.Reached: 'route' was not given");
-        return formations.Any(f => !f.Dissolved && f.IsReached(route));
+        return formations.Any(f => InForce(f) && f.IsReached(route));
     }
 
     /// <summary>The formation a route of this golem belongs to (propuesta 74): the one that holds it now —
