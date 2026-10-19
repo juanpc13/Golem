@@ -28,7 +28,7 @@ public sealed class ChoreographerRol
     // exposes it and echo-formed tells every peer, whose uptake forms the same if it is in the fleet (one hop: the uptake exposes nothing).
     // TAKE: this golem says where it stands (Convene) and the round of words opens the routes — by rank or by distance (ajuste 80); the
     // warden never says who goes where (Juan: "lo que teníamos malo era --place 0… los que resuelven todo es el dominio del golem"). ROTATE
-    // queues a step of the named formation — of one ring of a double ring, or whole. DISSOLVE lets it go, in every copy. Every value enters
+    // queues a step of the named formation. DISSOLVE lets it go, in every copy. Every value enters
     // as a parameter named unlike every print label (@formationName, never @name; @measureLength, never @measure: a local named like a
     // parameter resolves to it); the STAMP is the once of the call, minted here and kept by every copy, so the tells about a formation
     // told again under the same name are new words.
@@ -37,14 +37,14 @@ public sealed class ChoreographerRol
     /// <summary>A FORMATION TOLD (propuesta 104): its name, figure, centre, measure (a polygon's side, a circle's radius), orientation, the
     /// fleet's names and the policy — made, or made again when the name is known. Its print is the places as this golem resolved them and who
     /// holds each by rank, so the warden draws what the golem knows. The fleet is told (echo-formed). No route: nothing for the body to do.</summary>
-    public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, IReadOnlyList<string> fleet, string policy)
+    public Answer Form(string name, string figure, (double X, double Y) center, double measure, double angle, IReadOnlyList<string> fleet, string policy, string cueTo = null, bool onCue = false)
     {
         if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a formation needs a fleet: at least this golem");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // the once of the call, frozen as a parameter
         try
         {
-            return Answer.Of(robot.Actor.Using(@"
+            var formed = Answer.Of(robot.Actor.Using(@"
                     Check(g.Current.Map.IsOnMap(Position(@cx, @cy))) Error 'the centre is nowhere on the map';
                 ", @"
                     {
@@ -73,18 +73,19 @@ public sealed class ChoreographerRol
                     p["stamp", typeof(string)] = stamp;
                 })
                 .PerformCheckThenCommand());
+            return Sequenced(name, cueTo, onCue, formed);
         }
         catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
     }
 
     /// <summary>A PROPELLER TOLD (propuesta 114): its tip, its hub and its blades; the fleet along them, a step turns it one blade.</summary>
-    public Answer FormPropeller(string name, (double X, double Y) center, double radius, double hub, int blades, double angle, IReadOnlyList<string> fleet, string policy)
+    public Answer FormPropeller(string name, (double X, double Y) center, double radius, double hub, int blades, double angle, IReadOnlyList<string> fleet, string policy, string cueTo = null, bool onCue = false)
     {
         if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         try
         {
-            return Answer.Of(robot.Actor.Using(@"
+            var formed = Answer.Of(robot.Actor.Using(@"
                     Check(g.Current.Map.IsOnMap(Position(@cx, @cy))) Error 'the centre is nowhere on the map';
                 ", @"
                     {
@@ -115,50 +116,7 @@ public sealed class ChoreographerRol
                     p["stamp", typeof(string)] = stamp;
                 })
                 .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
-    }
-
-    /// <summary>A DOUBLE RING TOLD (propuesta 104): the outer ring's radius and golems, the inner ring's radius and golems.</summary>
-    public Answer FormRings(string name, (double X, double Y) center, double outerRadius, double innerRadius, double angle, IReadOnlyList<string> outer, IReadOnlyList<string> inner, string policy)
-    {
-        if (PolicyWords.Member(policy) == null) return Answer.Refusal($"the places are shared by rank, distance or rps, not by '{policy}'");
-        if (outer == null || outer.Count == 0) return Answer.Refusal("the outer ring needs at least one golem");
-        if (inner == null || inner.Count == 0) return Answer.Refusal("the inner ring needs at least one golem");
-        string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        try
-        {
-            return Answer.Of(robot.Actor.Using(@"
-                    Check(g.Current.Map.IsOnMap(Position(@cx, @cy))) Error 'the centre is nowhere on the map';
-                ", @"
-                    {
-                        center = Position(@cx, @cy);
-                        outer = Meters(@outerRadius);
-                        inner = Meters(@innerRadius);
-                        turn = Degrees(@angle);
-                        fleet = Fleet(@names, @innerNames);
-                        formation = g.Choreography.FormRings(@formationName, center, outer, inner, turn, fleet, @by, @stamp);
-                        print formation.Name 'called', formation.Figure.Name 'shape', formation.Figure.Center.X 'atX', formation.Figure.Center.Y 'atY',
-                              formation.Figure.Measure.InMeters 'length', formation.Figure.Turn.InDegrees 'degrees', formation.Policy 'policy',
-                              fleet.Count 'crew', formation.PlaceCount 'count';
-                        foreach (holders in formation.Holders()) {
-                            print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
-                        }
-                    }
-                ")
-                .WithParameters(p => {
-                    p["formationName", typeof(string)] = name;
-                    p["cx", typeof(double)] = Resolution.Metres(center.X);
-                    p["cy", typeof(double)] = Resolution.Metres(center.Y);
-                    p["outerRadius", typeof(double)] = Resolution.Metres(outerRadius);   // never @outer / @inner: the script's locals are named so
-                    p["innerRadius", typeof(double)] = Resolution.Metres(innerRadius);
-                    p["angle", typeof(double)] = Math.Round(angle, Resolution.Digits, MidpointRounding.AwayFromZero);
-                    p["names", typeof(string)] = string.Join(",", outer);
-                    p["innerNames", typeof(string)] = string.Join(",", inner);
-                    p["by", typeof(string)] = PolicyWords.Member(policy);   // the member's name: the engine resolves the domain's Policy by it (ajuste 90)
-                    p["stamp", typeof(string)] = stamp;
-                })
-                .PerformCheckThenCommand());
+            return Sequenced(name, cueTo, onCue, formed);
         }
         catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
     }
@@ -244,21 +202,185 @@ public sealed class ChoreographerRol
         catch (Exception ex) { return Answer.Refusal($"take {name}: " + GolemEmbodiment.Reason(ex)); }
     }
 
+    // THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026; Juan: "el último del primer grupo le hace la seña a alguno del otro grupo… uno sólo le
+    // dice el nombre del golem… a él sólo le dicen 'continúas tú' y éste le avisa a su equipo"): a formation told `--cue <golem>` cues that golem when
+    // every member finished — its own act right after the Form; one told `--on-cue` is born waiting, its take IS the cue — its own act too. The
+    // Form templates stay untouched.
+    private Answer Sequenced(string name, string cueTo, bool onCue, Answer formed)
+    {
+        if (!formed.Ok) return formed;
+        try
+        {
+            if (cueTo != null)
+            {
+                var cues = Answer.Of(robot.Actor.Using(@"
+                        Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name';
+                    ", @"
+                        {
+                            formation = g.Choreography.Find(@formationName);
+                            formation.Cues(@cueTo);
+                            print formation.Name 'called', formation.CueTo 'cueTo';
+                        }
+                    ")
+                    .WithParameters(p => { p["formationName", typeof(string)] = name; p["cueTo", typeof(string)] = cueTo; })
+                    .PerformCheckThenCommand());
+                if (!cues.Ok) return Answer.Refusal($"form {name} --cue {cueTo}: " + cues.Refused);
+                robot.Note($"form {name}: cues {cueTo} when every member finished");
+            }
+            if (onCue)
+            {
+                var waits = Answer.Of(robot.Actor.Using(@"
+                        Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name';
+                    ", @"
+                        {
+                            formation = g.Choreography.Find(@formationName);
+                            formation.StartsOnCue();
+                            print formation.Name 'called', formation.OnCue 'onCue';
+                        }
+                    ")
+                    .WithParameters(p => { p["formationName", typeof(string)] = name; })
+                    .PerformCheckThenCommand());
+                if (!waits.Ok) return Answer.Refusal($"form {name} --on-cue: " + waits.Refused);
+                robot.Note($"form {name}: starts on cue — its take is the word 'your turn' to one of its members");
+            }
+            return formed;
+        }
+        catch (Exception ex) { return Answer.Refusal($"form {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>THIS GOLEM FINISHES ITS PART of the formation (propuesta 117): the last line of its script about it, <c>finish tri-left</c> — queued
+    /// like the steps: with steps still to walk it means "when what is queued is done, I finished", and the clock writes it again when the part is
+    /// done (<see cref="FinishIfDone"/>); the act that counts exposes <c>finishedNow</c> true and echo-finished tells the fleet. Refused for a
+    /// formation the golem was not told, or is not of.</summary>
+    public Answer Finish(string name)
+    {
+        try
+        {
+            var answer = Answer.Of(robot.Actor.Using(@"
+                    Check(g.Choreography.HasFormation(@formationName)) Error 'the golem was told no formation by that name';
+                ", @"
+                    {
+                        formation = g.Choreography.Find(@formationName);
+                        me = formation.Fleet.Member(g);
+                        route = formation.Finish(me);
+                        print formation.Name 'called', formation.Finishing 'finishing', formation.FinishedCount 'finished', formation.Fleet.Count 'of', formation.IsFinished 'done';
+                        expose formation.Name call, formation.Stamp nonce, me.Name who, formation.JustFinished finishedNow;
+                    }
+                ")
+                .WithParameters(p => { p["formationName", typeof(string)] = name; })
+                .PerformCheckThenCommand());
+            return answer.Ok ? answer : Answer.Refusal($"finish {name}: " + answer.Refused);
+        }
+        catch (Exception ex) { return Answer.Refusal($"finish {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The clock's question (propuesta 117): is a finish this golem asked DUE — its part done (the last step walked, placed) and its word not
+    /// counted yet? Then <c>Finish(me)</c> is written again, and this time it counts and tells the fleet.</summary>
+    public void FinishIfDone()
+    {
+        try
+        {
+            var finished = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Finishing) Error 'no finish of this golem is due';
+                ", @"
+                    {
+                        formation = g.Choreography.FinishingFormation;
+                        me = formation.Fleet.Member(g);
+                        route = formation.Finish(me);
+                        print formation.Name 'called', formation.FinishedCount 'finished', formation.Fleet.Count 'of', formation.IsFinished 'done';
+                        expose formation.Name call, formation.Stamp nonce, me.Name who, formation.JustFinished finishedNow;
+                    }
+                ")
+                .PerformCheckThenCommand());
+            if (finished.Ok) robot.Report(finished, "its part of the formation is done: it says it finished — the fleet is told");
+        }
+        catch { /* the clock asks again */ }
+    }
+
+    /// <summary>The clock's question (propuesta 117; Juan: "que el último en salir de la coreografía sea el que diga realmente a yellow"): did this
+    /// copy count the fleet's LAST finish, with somebody to cue? Then it gives the cue — <c>formation.Cue()</c> — and echo-cue tells <c>YourTurn</c>
+    /// with the cued golem's name to every peer; only the named one takes it, the first word standing.</summary>
+    public void CueIfFinished()
+    {
+        try
+        {
+            var cued = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.Cueing) Error 'no formation of this golem has a cue to give';
+                ", @"
+                    {
+                        formation = g.Choreography.CueingFormation;
+                        formation.Cue();
+                        print formation.Name 'called', formation.CueTo 'cueTo';
+                        expose formation.Name call, formation.Stamp nonce, formation.CueTo to;
+                    }
+                ")
+                .PerformCheckThenCommand());
+            if (cued.Ok) robot.Report(cued, "every member finished the formation — the last to leave cues the next group: 'your turn'");
+        }
+        catch { /* the clock asks again */ }
+    }
+
+    /// <summary>The clock's question (propuesta 117): was this golem cued before the formation it waits in was told? Then the cue kept ahead takes it now:
+    /// the same take the uptake of <c>YourTurn</c> writes.</summary>
+    public void TakeIfCued()
+    {
+        try
+        {
+            var taken = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Choreography.HasPendingCue) Error 'no cue waits for a formation of this golem';
+                ", @"
+                    {
+                        formation = g.Choreography.CuedFormation;
+                        fleet = formation.Fleet;
+                        me = fleet.Member(g);
+                        from = g.Destination;
+                        formation.TakeCue(from, me);
+                        if (formation.IsComplete) {
+                            route = formation.Route;
+                            if (g.Strategy.OnTheWay.IsActive) {
+                                route = g.Dash(route);
+                            }
+                            if (route.IsPending()) {
+                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                                if (route.IsWalkable) {
+                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                                }
+                            } else {
+                                print route.Id 'route', route.Status 'ended';
+                                if (route.EndedShort) {
+                                    print route.Why 'why';
+                                }
+                            }
+                        } else {
+                            print formation.StoodCount 'stood', fleet.Count 'of';
+                        }
+                        expose formation.Name call, formation.Stamp nonce, me.Name who, from.X stoodX, from.Y stoodY;
+                    }
+                ")
+                .PerformCheckThenCommand());
+            if (taken.Ok) robot.Report(taken, "cued before its formation was told: it takes it now — the fleet hears its word");
+        }
+        catch { /* the clock asks again */ }
+    }
+
     // THE STEP (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj y antihorario… se pueden
     // encolar"): a step is queued on the named formation — nothing moves here unless everybody already stands on its place, then the step
     // opens at once. The move is the FIGURE's (ajuste 84), of one ring or whole (propuesta 104). The act exposes what the peers need to queue
     // the same step (echo-rotate); the labels never a parameter's name.
-    /// <summary>A STEP of the named formation (ajuste 77; propuesta 104): every body of the ring — <c>whole</c>, <c>outer</c> or <c>inner</c> —
+    /// <summary>A STEP of the named formation (ajuste 77; propuesta 104): every body
     /// takes the next place in that sense, <c>clockwise</c> or <c>counterclockwise</c>, once everybody stands on its place; steps queue. The
     /// step's id, minted here, is the once of the tell that spreads it. The sense and the ring travel as the MEMBER'S NAME of the domain's
     /// closed sets (ajuste 90): declared <c>typeof(string)</c> because the script exposes them (the engine refuses to expose an Enum).</summary>
-    public Answer Rotate(string name, string sense, string ring)
+    public Answer Rotate(string name, string sense)
     {
         if (string.IsNullOrWhiteSpace(sense)) return Answer.Refusal("a step needs its sense: clockwise or counterclockwise");
         string turning = sense.Trim().ToLowerInvariant() switch { "clockwise" => "Clockwise", "counterclockwise" => "Counterclockwise", _ => null };
         if (turning == null) return Answer.Refusal($"a step turns clockwise or counterclockwise, not '{sense}'");
-        string orbit = (ring ?? "whole").Trim().ToLowerInvariant() switch { "whole" => "Whole", "outer" => "Outer", "inner" => "Inner", _ => null };
-        if (orbit == null) return Answer.Refusal($"a step turns the whole figure, its outer ring or its inner ring, not '{ring}'");
         string stepId = $"{robot.Name}-step-{DateTime.UtcNow.Ticks}";   // ticks, not milliseconds: two steps asked in one millisecond are two steps
         try
         {
@@ -268,7 +390,7 @@ public sealed class ChoreographerRol
                 ", @"
                     {
                         formation = g.Choreography.Find(@formationName);
-                        move = formation.Figure.Rotate(@sense, @ring);
+                        move = formation.Figure.Rotate(@sense);
                         formation.Queue(move, @stepId);
                         if (formation.CanStep) {
                             route = formation.Step();
@@ -296,7 +418,6 @@ public sealed class ChoreographerRol
                 .WithParameters(p => {
                     p["formationName", typeof(string)] = name;
                     p["sense", typeof(string)] = turning;
-                    p["ring", typeof(string)] = orbit;
                     p["stepId", typeof(string)] = stepId;
                 })
                 .PerformCheckThenCommand());
@@ -492,6 +613,25 @@ public sealed class ChoreographerRol
         catch { /* the clock asks again */ }
     }
 
+    /// <summary>The clock's other question (19-oct-2026): did this golem's route to its place end short with no arrival to say so? A route to a
+    /// place is BORN FAILED inside the uptake of a peer's word that closed the round when no road fits past the marks and the berths
+    /// (<c>Golem.FailToTake</c>; lab 14-oct: the march by rps, orange without a route and the fleet waiting for ever) — no arrival and no stuck
+    /// follow it, so the clock asks the domain, and only its yes (the same Check as an arrival's) takes the place again from where the body
+    /// stands, once; the second refusal strands the formation for this golem, said in its read.</summary>
+    public void RetakeIfEndedShort()
+    {
+        try
+        {
+            var retaken = Retake();
+            if (!retaken.Ok) return;
+            bool stranded = false;
+            try { stranded = JsonDocument.Parse(retaken.Print ?? "{}").RootElement.TryGetProperty("stranded", out var v) && v.ValueKind == JsonValueKind.True; } catch { }
+            robot.Report(retaken, stranded ? "the route to its place could not be opened twice: the formation is stranded for this golem — take it again, move it or dissolve it"
+                                           : "the route to its place ended short with no arrival to say it: its place is taken again from where the body stands");
+        }
+        catch { /* the clock asks again */ }
+    }
+
     // THE GOLEM STANDS ON ITS PLACE (ajuste 77): the route to its place in the formation in place completed — the formation records its
     // word and, when with it everybody is placed and a step is queued, opens the next step; the act exposes who and which call, so
     // echo-placed tells every peer (the stamp in the once). No parameter: the formation in place is the domain's to know (`g.Choreography.Current`), and the Check
@@ -683,6 +823,59 @@ public sealed class ChoreographerRol
                 formation = g.Choreography.Find(@call);
                 g.Choreography.Dissolve(formation);
                 print formation.Name 'called';
+            }
+        }
+        ";
+    // A PEER FINISHED ITS PART of a formation this golem is in (propuesta 117): its word counted in this copy; with every member's, this copy has the
+    // cue to give (the clock asks). A word about a formation this golem was not told, or is not in, is nobody's here.
+    public const string UptakeFinishedAt = @"
+        {
+            if (g.Choreography.Knows(@call)) {
+                formation = g.Choreography.Find(@call);
+                fleet = formation.Fleet;
+                if (fleet.Has(g)) {
+                    peer = fleet.Member(@who);
+                    formation.HeardFinished(peer);
+                    print formation.Name 'called', formation.FinishedCount 'finished', fleet.Count 'of', formation.IsFinished 'done';
+                }
+            }
+        }
+        ";
+    // YOUR TURN (propuesta 117): the last of a fleet that finished cues ONE golem by name; the named one, waiting in a formation that starts on cue,
+    // takes it — TakeCue, the take by cue, which echo-stood and next-order-convene observe like a Convene, so its team hears its word and convenes in turn (ajuste 80).
+    // Named before its formation was told, it keeps the cue for the clock (TakeIfCued); a cue to another golem is nobody's here.
+    public const string UptakeYourTurn = @"
+        {
+            if (g.Choreography.AwaitsCue(@to)) {
+                formation = g.Choreography.CuedFormation;
+                fleet = formation.Fleet;
+                me = fleet.Member(g);
+                from = g.Destination;
+                formation.TakeCue(from, me);
+                if (formation.IsComplete) {
+                    route = formation.Route;
+                    if (g.Strategy.OnTheWay.IsActive) {
+                        route = g.Dash(route);
+                    }
+                    if (route.IsPending()) {
+                        print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                        if (route.IsWalkable) {
+                            print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                  route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                  route.Following 'following', route.StopsLeft 'stopsLeft';
+                        }
+                    } else {
+                        print route.Id 'route', route.Status 'ended';
+                        if (route.EndedShort) {
+                            print route.Why 'why';
+                        }
+                    }
+                } else {
+                    print formation.StoodCount 'stood', fleet.Count 'of';
+                }
+                expose formation.Name call, formation.Stamp nonce, me.Name who, from.X stoodX, from.Y stoodY;
+            } else {
+                g.Choreography.OverheardCue(@to);
             }
         }
         ";

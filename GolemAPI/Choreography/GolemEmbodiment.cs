@@ -243,6 +243,10 @@ public sealed class GolemEmbodiment
         {
             await Task.Delay(2000, ct);
             Choreographer?.PlacedIfStanding();   // a route to its place completed at birth inside a peer's word (13-oct-2026): no arrival will say it
+            Choreographer?.RetakeIfEndedShort(); // a route to its place born failed inside a peer's word (19-oct-2026): no arrival will say that either
+            Choreographer?.FinishIfDone();       // a finish queued and the part done (propuesta 117): the word counts now and the fleet is told
+            Choreographer?.CueIfFinished();      // this copy counted the fleet's last finish (propuesta 117): the cue to the next group
+            Choreographer?.TakeIfCued();         // cued before its formation was told (propuesta 117): it takes it now
             Dynamics?.AnnounceIfConcluded();         // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
             var now = AskOrder();
             var mine = Mechanics.Carrying;

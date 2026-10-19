@@ -8,7 +8,7 @@ namespace GolemDomain.Formations;
 /// y ese creará el objeto de la variable formación, que puede ser cualquier forma al final"): born with the golem, like its strategies,
 /// and reached as <c>g.Choreography</c>. Since propuesta 104 (8-oct-2026; Juan: "las formaciones le pertenecerán al golem… el CLI sólo
 /// servirá como interfaz para administrar esas formaciones") it KEEPS THE FORMATIONS BY NAME — each a figure WITH its fleet, its policy and
-/// the place every member holds — made here (<see cref="Form"/>, <see cref="FormRings"/>: told again, made again — moved, turned, resized),
+/// the place every member holds — made here (<see cref="Form"/>, <see cref="FormPropeller"/>: told again, made again — moved, turned, resized),
 /// found by name (<see cref="Find"/>, the one place the name enters after it is made), listed for the warden (<see cref="Formations"/>) and
 /// dissolved (<see cref="Dissolve"/>). The formation takes the words (<c>formation.Convene(from, me)</c>, ajuste 81: the act on the object
 /// that keeps it), gives the routes through the golem it was born with, and takes the fleet's steps. The concrete figures stay constructible
@@ -16,10 +16,11 @@ namespace GolemDomain.Formations;
 /// </summary>
 internal sealed class Choreographies
 {
-    private static readonly string[] Known = { "square", "pentagon", "triangle", "circle", "double ring", "propeller" };
+    private static readonly string[] Known = { "square", "pentagon", "triangle", "circle", "propeller" };
     private readonly Golem golem;                        // the golem it was born with: it opens the route to a place (refused off the map or without room)
     private readonly List<Formation> formations = new();   // the formations the golem was told, by name, the dissolved ones among them (history)
     private readonly Dictionary<string, Dictionary<string, (Position At, string Nonce)>> overheard = new();   // words of a round heard AHEAD of the formation they are about: name → who → where
+    private bool pendingCue;                                            // a cue to THIS golem heard before the formation it waits in was told (propuesta 117)
 
     // born with its golem (like the strategies' switches, ajuste 63): objects that know each other, no delegate (ajuste 78)
     internal Choreographies(Golem golem)
@@ -29,8 +30,8 @@ internal sealed class Choreographies
     }
 
     /// <summary>A figure by its name — <c>square</c>, <c>pentagon</c>, <c>triangle</c> or <c>circle</c>, any case — at that centre, with its natural
-    /// measure: a polygon's SIDE (ajuste 65), a circle's RADIUS. A name that is none of them is refused; the double ring is made by
-    /// <see cref="FormRings"/>, with its two radii.</summary>
+    /// measure: a polygon's SIDE (ajuste 65), a circle's RADIUS. A name that is none of them is refused; the propeller is made by
+    /// <see cref="FormPropeller"/>, with its hub and its blades.</summary>
     internal Figure Figure(string name, Position center, Units.Length measure) => Figure(name, center, measure, new Units.Degrees(0.0));
 
     internal Figure Figure(string name, Position center, Units.Length measure, Units.Angle turn)
@@ -45,7 +46,6 @@ internal sealed class Choreographies
             "pentagon" => new Pentagon(center, measure, turn),
             "triangle" => new Triangle(center, measure, turn),
             "circle" => new Circle(center, measure, turn),
-            "double ring" or "double-ring" => throw new GolemDomainException("a double ring is said by its two radii and its two rings of golems: FormRings"),
             "propeller" => throw new GolemDomainException("a propeller is said by its radius, its hub and its blades: FormPropeller"),
             _ => throw new GolemDomainException($"the golem knows no figure named '{name}': {string.Join(", ", Known)}")
         };
@@ -69,7 +69,6 @@ internal sealed class Choreographies
         if (measure == null) throw new GolemDomainException("Choreographies.Form: 'measure' was not given");
         if (turn == null) throw new GolemDomainException("Choreographies.Form: 'turn' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.Form: 'fleet' was not given");
-        if (fleet.IsDivided) throw new GolemDomainException("a fleet in two rings takes a double ring: FormRings");
         return Keep(name, Figure(figure, center, measure, turn), fleet, by, stamp);
     }
 
@@ -80,24 +79,6 @@ internal sealed class Choreographies
         if (figure == null) throw new GolemDomainException("Choreographies.Form: 'figure' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.Form: 'fleet' was not given");
         return Keep(name, figure, fleet, by, name);
-    }
-
-    /// <summary>THE DOUBLE RING TOLD (propuesta 104; Juan: "que pregunte por los diámetros de los dos anillos… seleccionar cuáles serían los
-    /// golems del anillo inferior y superior") — <c>formation = g.Choreography.FormRings(@formationName, center, outer, inner, turn, fleet, @by);</c>:
-    /// the fleet DIVIDED in two (<c>Fleet(@names, @innerNames)</c>) rides the two rings, the outer radius and the inner one as given.</summary>
-    internal Formation FormRings(string name, Position center, Units.Length outerRadius, Units.Length innerRadius, Units.Angle turn, Fleet fleet, Policy by) => FormRings(name, center, outerRadius, innerRadius, turn, fleet, by, name);
-
-    internal Formation FormRings(string name, Position center, Units.Length outerRadius, Units.Length innerRadius, Units.Angle turn, Fleet fleet, Policy by, string stamp)
-    {
-        if (name == null) throw new GolemDomainException("Choreographies.FormRings: 'name' was not given");
-        if (center == null) throw new GolemDomainException("Choreographies.FormRings: 'center' was not given");
-        if (outerRadius == null) throw new GolemDomainException("Choreographies.FormRings: 'outerRadius' was not given");
-        if (innerRadius == null) throw new GolemDomainException("Choreographies.FormRings: 'innerRadius' was not given");
-        if (turn == null) throw new GolemDomainException("Choreographies.FormRings: 'turn' was not given");
-        if (fleet == null) throw new GolemDomainException("Choreographies.FormRings: 'fleet' was not given");
-        if (!fleet.IsDivided) throw new GolemDomainException("a double ring needs its fleet in two rings: Fleet(outer, inner)");
-        var rings = new DoubleRing(center, outerRadius, innerRadius, fleet.Division, fleet.Count - fleet.Division, turn);
-        return Keep(name, rings, fleet, by, stamp);
     }
 
     /// <summary>THE PROPELLER TOLD (propuesta 114) — <c>formation = g.Choreography.FormPropeller(@formationName, center, tip, hub, @blades, turn, fleet, @by, @stamp);</c>:
@@ -112,7 +93,6 @@ internal sealed class Choreographies
         if (hub == null) throw new GolemDomainException("Choreographies.FormPropeller: 'hub' was not given");
         if (turn == null) throw new GolemDomainException("Choreographies.FormPropeller: 'turn' was not given");
         if (fleet == null) throw new GolemDomainException("Choreographies.FormPropeller: 'fleet' was not given");
-        if (fleet.IsDivided) throw new GolemDomainException("a fleet in two rings takes a double ring: FormRings");
         return Keep(name, new Propeller(center, radius, hub, blades, turn), fleet, by, stamp);
     }
 
@@ -162,6 +142,53 @@ internal sealed class Choreographies
         if (!overheard.TryGetValue(called, out var words)) overheard[called] = words = new Dictionary<string, (Position, string)>();
         words[teller] = (new Position(at.X, at.Y), nonce ?? "");
     }
+
+    // ---- THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026): the word "continúas tú" names a golem; the named one knows which formation it waits in ----
+
+    /// <summary>Whether THIS golem is the one named by a cue and has a formation that starts on cue, of its fleet, not taken yet — what the uptake of
+    /// <c>YourTurn</c> asks: <c>if (g.Choreography.AwaitsCue(@to)) { formation = g.Choreography.CuedFormation; formation.Cued(); formation.Convene(from, me); … }</c>.</summary>
+    internal bool AwaitsCue(string golemName)
+    {
+        if (golemName == null) throw new GolemDomainException("Choreographies.AwaitsCue: 'golemName' was not given");
+        if (golem.Name == null || golem.Name != golemName.Trim().ToLowerInvariant()) return false;
+        return formations.Any(WaitsForTheCue);
+    }
+
+    private bool WaitsForTheCue(Formation f) => !f.Dissolved && f.OnCue && !f.IsCued && f.Fleet.Has(golem) && !f.Knows(f.Fleet.Member(golem));
+
+    /// <summary>The formation this golem waits in for the cue — the latest told, when several do. Taking it ends a cue kept ahead. Refused when none waits.</summary>
+    internal Formation CuedFormation
+    {
+        get
+        {
+            var formation = formations.LastOrDefault(WaitsForTheCue) ?? throw new GolemDomainException("this golem waits in no formation for a cue");
+            pendingCue = false;
+            return formation;
+        }
+    }
+
+    /// <summary>A CUE HEARD AHEAD (propuesta 117): the word named this golem and it waits in no formation yet (its `form … --on-cue` comes late, a slow
+    /// `use map` on its tab): kept, and the clock takes it once the formation is told (<c>TakeIfCued</c>). A cue to another golem is nobody's here.</summary>
+    internal void OverheardCue(string golemName)
+    {
+        if (golemName == null) throw new GolemDomainException("Choreographies.OverheardCue: 'golemName' was not given");
+        if (golem.Name != null && golem.Name == golemName.Trim().ToLowerInvariant()) pendingCue = true;
+    }
+
+    /// <summary>Whether a cue kept ahead has its formation now: the clock's question.</summary>
+    internal bool HasPendingCue => pendingCue && formations.Any(WaitsForTheCue);
+
+    /// <summary>Whether a formation of this golem has its cue to give — every member finished as this copy knows it, somebody to cue, nothing given
+    /// yet: the clock's question (<c>Check(g.Choreography.Cueing)</c>).</summary>
+    internal bool Cueing => formations.Any(f => f.Cueing);
+
+    /// <summary>The formation whose cue this golem gives now — <c>formation = g.Choreography.CueingFormation; formation.Cue();</c>. Refused when none.</summary>
+    internal Formation CueingFormation => formations.FirstOrDefault(f => f.Cueing) ?? throw new GolemDomainException("no formation of this golem has a cue to give");
+
+    /// <summary>Whether a finish this golem asked is due in some formation — its part done, its word not counted: the clock's question
+    /// (<c>Check(g.Choreography.Finishing)</c>), answered by writing <c>Finish(me)</c> again on <see cref="FinishingFormation"/>.</summary>
+    internal bool Finishing => formations.Any(f => f.FinishDue);
+    internal Formation FinishingFormation => formations.FirstOrDefault(f => f.FinishDue) ?? throw new GolemDomainException("no finish of this golem is due");
 
     /// <summary>How many words this golem keeps for the next telling of that name — a read for the lab and the tests.</summary>
     internal int OverheardCount(string name)

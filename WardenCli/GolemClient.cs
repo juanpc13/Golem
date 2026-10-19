@@ -293,7 +293,12 @@ public static class GolemClient
                 return new FormationState(f.TryGetProperty("routed", out var r) && r.ValueKind == JsonValueKind.True,
                                           f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True,
                                           (int)(JsonWalk.Number(f, "queued") ?? 0), (int)(JsonWalk.Number(f, "placed") ?? 0),
-                                          (JsonWalk.String(f, "crew") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Length);
+                                          (JsonWalk.String(f, "crew") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Length,
+                                          (int)(JsonWalk.Number(f, "round") ?? 0),
+                                          f.TryGetProperty("onCue", out var oc) && oc.ValueKind == JsonValueKind.True,
+                                          !f.TryGetProperty("cued", out var cu) || cu.ValueKind != JsonValueKind.False,
+                                          f.TryGetProperty("finishing", out var fi) && fi.ValueKind == JsonValueKind.True,
+                                          (int)(JsonWalk.Number(f, "finished") ?? 0));
         return null;
     }
 
@@ -386,4 +391,6 @@ public static class JsonWalk
 
 /// <summary>A formation as the queue waits on it (13/14-oct-2026): whether this golem's round opened its route, whether it is stranded, how many steps
 /// wait in its queue, how many members stand on their places this round, and how many the fleet has.</summary>
-public sealed record FormationState(bool Routed, bool Stranded, int Queued, int Placed, int Crew);
+/// <summary>What the queue waits on for a formation (propuesta 117): routed, stranded, steps queued, placed of the crew, the round, whether it
+/// starts on cue and was cued, whether this golem's finish is queued and not counted yet, how many finished.</summary>
+public sealed record FormationState(bool Routed, bool Stranded, int Queued, int Placed, int Crew, int Round = 0, bool OnCue = false, bool Cued = true, bool Finishing = false, int Finished = 0);

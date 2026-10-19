@@ -95,11 +95,8 @@ public class GolemController : Controller
         var center = (request.Center.X.Value, request.Center.Y.Value);
         string name = request.Name.Trim().ToLowerInvariant();
         if (request.IsPropeller)
-            return Answered(choreographer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy));
-        if (request.IsRings)
-            return Answered(choreographer.FormRings(name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0,
-                                                fleet, request.InnerFleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList(), request.Policy));
-        return Answered(choreographer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy));
+            return Answered(choreographer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue));
+        return Answered(choreographer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue));
     }
 
     /// <summary>A FORMATION TAKEN (propuesta 104): this golem says where it stands; the fleet's words open the routes, each to its place by
@@ -186,7 +183,19 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Choreographer(out var choreographer, out var refusal)) return refusal;
-        return Answered(choreographer.Rotate(request.Name.Trim().ToLowerInvariant(), request.Sense.Trim().ToLowerInvariant(), request.Orbit));
+        return Answered(choreographer.Rotate(request.Name.Trim().ToLowerInvariant(), request.Sense.Trim().ToLowerInvariant()));
+    }
+
+    /// <summary>THIS GOLEM FINISHES ITS PART of a formation (propuesta 117): queued like the steps, counted when its part is done; the fleet is told,
+    /// and when every member finished the last of the fleet cues the next group.</summary>
+    [HttpPost("finish")]
+    public IActionResult Finish([FromBody] FinishRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + FinishRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        return Answered(choreographer.Finish(request.Name.Trim().ToLowerInvariant()));
     }
 
     /// <summary>A FORMATION DISSOLVED (propuesta 104): it leaves every golem of the fleet.</summary>

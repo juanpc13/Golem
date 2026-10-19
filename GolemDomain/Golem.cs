@@ -228,6 +228,25 @@ internal sealed class Golem
         return Entrust(from, place, following: false, choosesOrder: false, facing: facing, berths: berths);   // facing the centre (79), around the peers (80)
     }
 
+    /// <summary>THE PLACE THAT COULD NOT BE TAKEN (19-oct-2026; lab 14-oct, the march by rps: a peer's word completed orange's round, its
+    /// <see cref="TakePlace"/> found "no road … past 1 marks" — a mark of a body touched and the berths of the other five in between — and the
+    /// exception refused the whole uptake: orange without a route and not stranded, the five others waiting for its line-up for ever, and the
+    /// word kept in memory but not in the journal): the route to a place of a formation is BORN FAILED with the reason the take was refused —
+    /// minted, held and journaled like any other, pending no more — so the refusal is a FACT the print says (<c>ended</c>, <c>why</c>) and the
+    /// formation's retake answers (propuesta 113), from where the body really stands. Asked by the formation alone, once <see cref="TakePlace"/>
+    /// refused; a place off the map stays refused (there is nothing to take again from anywhere).</summary>
+    internal Route FailToTake(Position place, string why)
+    {
+        if (place == null) throw new GolemDomainException("Golem.FailToTake: 'place' was not given");
+        if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException("Golem.FailToTake: 'why' was not given");
+        if (!layout.IsOnMap(place)) throw new GolemDomainException(why);
+        var route = new Route(lastHandle + 1, place, false, false, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, this);
+        route.Fail(why);
+        routes.Add(route);
+        lastHandle = route.Id;
+        return route;
+    }
+
     /// <summary>A RUN of a play (propuesta 108): the route to the decision cell the play decided — the cell must be on the map with room for
     /// the body — square down the corridor, no facing, no berths; the module asks it, never the journal.</summary>
     internal Route RunTo(Position from, Position stop, string where)

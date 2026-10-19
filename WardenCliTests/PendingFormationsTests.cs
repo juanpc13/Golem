@@ -39,6 +39,16 @@ public class PendingFormationsTests
         Assert.AreEqual(2, ring.Spots.Count);
         StringAssert.Contains(ring.HoldersText, "nobody placed yet (by distance)");
 
+        // the cue between dancers (propuesta 117): the lines' --cue and --on-cue are read, and the row says it
+        var left = new Golem { Name = "blue", Host = "localhost", Port = 8081, Script = "form tri-left triangle --center 3,5.5 --side 3 --fleet blue,red,green --by rank --cue cyan\ntake tri-left\nfinish tri-left" };
+        var right = new Golem { Name = "cyan", Host = "localhost", Port = 8086, Script = "form tri-right triangle --center 8,5.5 --side 3 --fleet cyan,orange,yellow --by rank --on-cue\nrotate tri-right clockwise" };
+        var both = PendingFormations.Parse(new[] { left, right });
+        var l = both.Single(v => v.Name == "tri-left"); var r = both.Single(v => v.Name == "tri-right");
+        Assert.AreEqual("cyan", l.CueTo); Assert.IsFalse(l.OnCue);
+        StringAssert.Contains(l.RoundText, "cue → cyan");
+        Assert.IsTrue(r.OnCue); Assert.IsFalse(r.Cued); Assert.AreEqual("", r.CueTo);
+        StringAssert.Contains(r.RoundText, "on cue — waiting");
+
         // a line without a centre or a size is no formation
         var bad = new Golem { Name = "x", Host = "localhost", Port = 8090, Script = "form nope square --fleet a,b" };
         Assert.AreEqual(0, PendingFormations.Parse(new[] { bad }).Count);

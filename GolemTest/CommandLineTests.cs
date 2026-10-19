@@ -86,7 +86,7 @@ public class CommandLineTests
     {
         Assert.AreEqual("", CommandLine.Parse("help").Text);
         Assert.AreEqual("visit", CommandLine.Parse("help VISIT").Text);
-        CollectionAssert.AreEqual(new[] { "visit", "cover", "form", "take", "rotate", "dissolve", "disputes", "formations", "play", "plays", "head", "steer", "start", "then", "pause", "resume", "forget", "anchor", "reset", "state", "route", "where", "obstacles", "place", "optimize", "speed", "use", "scenarios", "set", "show", "help", "--with" },
+        CollectionAssert.AreEqual(new[] { "visit", "cover", "form", "take", "rotate", "dissolve", "finish", "disputes", "formations", "play", "plays", "head", "steer", "start", "then", "pause", "resume", "forget", "anchor", "reset", "state", "route", "where", "obstacles", "place", "optimize", "speed", "use", "scenarios", "set", "show", "help", "--with" },
                                   CommandLine.Help.Select(h => h.Verb).ToList(), "every command the language has, in the help's order — no script of the actor's among them");
         Assert.IsTrue(CommandLine.Help.All(h => h.Usage != "" && h.What != "" && h.Example != ""), "each with how it is written, what it does and an example");
         StringAssert.Contains(Refused("help fly"), "help: 'fly' is no command; the commands are visit, cover, form");
@@ -130,7 +130,7 @@ public class CommandLineTests
         Assert.AreEqual("disputes", forgetDisputes.Text, "the disputes forgotten, no point");
         Assert.AreEqual(1, CommandLine.Parse("forget 10.13,5.5").Points.Count, "forget x,y still forgets what stood there");
         StringAssert.Contains(Refused("form game-1 square --center 5.5,5.5 --side 2 --by dice"), "--by is rank, distance or rps");
-        StringAssert.Contains(Refused("form square-1 hexagon --center 5,5 --side 1"), "form: the figure is square, pentagon, triangle, circle, double-ring or propeller");
+        StringAssert.Contains(Refused("form square-1 hexagon --center 5,5 --side 1"), "form: the figure is square, pentagon, triangle, circle or propeller");
         // the propeller (propuesta 114): its tips by --radius, its hub and its blades told or left to their defaults
         var propeller = CommandLine.Parse("form prop-1 propeller --center 5.5,5.5 --radius 3 --inner-radius 1 --blades 3 --fleet blue,red,green,yellow,orange,cyan");
         Assert.AreEqual("propeller", propeller.Values["figure"]); Assert.AreEqual("1", propeller.Values["inner-radius"]); Assert.AreEqual("3", propeller.Values["blades"]);
@@ -147,11 +147,8 @@ public class CommandLineTests
         Assert.AreEqual("circle", ring.Values["figure"]); Assert.AreEqual("1", ring.Values["radius"], "a ring said by its radius");
         StringAssert.Contains(Refused("form r circle --center 5,5 --side 1"), "a circle is said by its --radius");
         StringAssert.Contains(Refused("form s square --center 5,5 --radius 1"), "a square is said by its --side");
-        var rings = CommandLine.Parse("form rings-1 double-ring --center 5.5,5.5 --radius 3 --inner-radius 1.2 --fleet blue,cyan,green --inner-fleet orange,red,yellow");
-        Assert.AreEqual("double-ring", rings.Values["figure"]); Assert.AreEqual("1.2", rings.Values["inner-radius"]); Assert.AreEqual("orange,red,yellow", rings.Values["inner-fleet"]);
-        StringAssert.Contains(Refused("form rings-1 double-ring --center 5.5,5.5 --radius 3 --fleet blue --inner-fleet red"), "a double ring needs --inner-radius r");
-        StringAssert.Contains(Refused("form rings-1 double-ring --center 5.5,5.5 --radius 3 --inner-radius 1"), "needs --fleet a,b (the outer ring's golems) and --inner-fleet");
-        StringAssert.Contains(Refused("form s square --center 5,5 --side 2 --inner-fleet red"), "only a double ring or a propeller has an inner radius");
+        StringAssert.Contains(Refused("form rings-1 double-ring --center 5.5,5.5 --radius 3 --inner-radius 1.2 --fleet blue,cyan,green"), "the figure is square, pentagon, triangle, circle or propeller");   // the double ring went (19-oct-2026)
+        StringAssert.Contains(Refused("form s square --center 5,5 --side 2 --inner-radius 1"), "only a propeller has an inner radius");
         // the formation taken: its name alone — who goes where is the golem's (Juan: "lo que teníamos malo era --place 0")
         var take = CommandLine.Parse("take Square-2");
         Assert.AreEqual("take", take.Verb); Assert.AreEqual("square-2", take.Text);
@@ -160,11 +157,21 @@ public class CommandLineTests
         // a step of a formation, whole or of one ring
         var step = CommandLine.Parse("rotate square-2 Clockwise");
         Assert.AreEqual("rotate", step.Verb); Assert.AreEqual("square-2", step.Text); Assert.AreEqual("clockwise", step.Values["sense"]); Assert.IsFalse(step.Values.ContainsKey("ring"));
-        Assert.AreEqual("inner", CommandLine.Parse("rotate rings-1 counterclockwise --ring Inner").Values["ring"]);
         StringAssert.Contains(Refused("rotate clockwise"), "rotate: expected the formation's name and the sense");
-        StringAssert.Contains(Refused("rotate rings-1 clockwise --ring middle"), "after the sense comes --ring outer|inner");
+        StringAssert.Contains(Refused("rotate rings-1 clockwise --ring inner"), "--ring is gone with the double ring");
         Assert.AreEqual("square-2", CommandLine.Parse("dissolve square-2").Text);
         StringAssert.Contains(Refused("dissolve"), "dissolve: expected the formation's name");
+        // the cue between dancers (propuesta 117): whom the fleet cues when finished, a formation that starts on cue, the word that a member finished
+        var cued = CommandLine.Parse("form tri-left triangle --center 3,5.5 --side 3 --fleet blue,red,green --cue Cyan");
+        Assert.AreEqual("cyan", cued.Values["cue"]);
+        Assert.IsFalse(cued.Values.ContainsKey("on-cue"));
+        var waits = CommandLine.Parse("form tri-right triangle --center 8,5.5 --side 3 --fleet cyan,orange,yellow --on-cue");
+        Assert.IsTrue(waits.Values.ContainsKey("on-cue"));
+        Assert.IsFalse(waits.Values.ContainsKey("cue"));
+        StringAssert.Contains(Refused("form tri-left triangle --center 3,5.5 --side 3 --cue cyan,orange"), "--cue expects one golem's name");
+        StringAssert.Contains(Refused("form tri-left triangle --center 3,5.5 --side 3 --cue"), "--cue needs a value");
+        Assert.AreEqual("tri-left", CommandLine.Parse("finish Tri-Left").Text);
+        StringAssert.Contains(Refused("finish"), "finish: expected the formation's name");
         Assert.AreEqual("formations", CommandLine.Parse("formations").Verb);
         // the map the golem uses (7-oct-2026, was enter): use map <scenario>
         var use = CommandLine.Parse("use Map Open-Floor");
@@ -184,7 +191,7 @@ public class CommandLineTests
         StringAssert.Contains(Refused("place blue@1,1 blue@2,2"), "blue's mark was given twice");
         StringAssert.Contains(Refused("place @spots"), "a name the console resolves");
         StringAssert.Contains(Refused("dash 9,1.5"), "'dash' is no command", "the dash is a strategy now, not a verb");
-        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, form, take, rotate, dissolve, disputes, formations, play, plays, head, steer, start, then, pause, resume, forget, anchor, reset, state, route, where, obstacles, place, optimize, speed, use, scenarios, set, show, help, --with — help tells each");
+        StringAssert.Contains(Refused("fly 2,9.5"), "'fly' is no command; the commands are visit, cover, form, take, rotate, dissolve, finish, disputes, formations, play, plays, head, steer, start, then, pause, resume, forget, anchor, reset, state, route, where, obstacles, place, optimize, speed, use, scenarios, set, show, help, --with — help tells each");
         StringAssert.Contains(Refused("query { print g.Standing.X 'x'; }"), "'query' is no command", "the actor's scripts never travel on a line");
         StringAssert.Contains(Refused(""), "nothing to do: write a command, or help");
         StringAssert.Contains(Refused("golem"), "nothing to do");

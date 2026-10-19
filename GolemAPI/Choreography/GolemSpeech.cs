@@ -124,6 +124,11 @@ public sealed class GolemSpeech
                 .Seek("Stood").One()
                     .OnMatch("[_:Formation].Convene(_, _) expose $call call, $nonce nonce, $who who, $stoodX stoodX, $stoodY stoodY;")   // the act on the formation (ajuste 81)
                 .Causation.Continue(stood);
+            golemActor.Reactions.DefineReaction("echo-stood-cued")   // the take by cue (propuesta 117): the same word to the fleet
+                .Cue().Company().WithSharedHydration()
+                .Seek("Stood").One()
+                    .OnMatch("[_:Formation].TakeCue(_, _) expose $call call, $nonce nonce, $who who, $stoodX stoodX, $stoodY stoodY;")
+                .Causation.Continue(stood);
             // THE FORMATION IN PLACE (ajuste 77): a golem that reached its place says so to every peer — the arrival's act exposes who and
             // which formation (the peer's own Placed, written by its uptake, carries no expose: one hop) — and a step asked of one golem is told
             // to every peer, who queues the same step; the once is per step and peer.
@@ -150,6 +155,31 @@ public sealed class GolemSpeech
                 tell Dissolved with @call
                     to {p}
                     once 'dissolved-' + @nonce + '-{p}';"));
+            // THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026): a member whose part is done says it finished (the act that COUNTS exposes
+            // finishedNow true; the one that only queued the finish does not) — the fleet hears it; and the LAST OF THE FLEET, every member finished,
+            // gives the cue to ONE golem by name — the act the clock writes (CueIfFinished: the count completes inside an uptake, which no expose may
+            // observe) — told to every peer with that name inside, since a tell goes to a fixed route (the name as a literal, ajuste 71): only the
+            // named one takes it, as the take of the formation it waits in
+            string finished = string.Join("\n", peers.Select(p => $@"
+                tell FinishedAt with @call, @who
+                    to {p}
+                    once 'finished-' + @nonce + '-' + @who + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-finished")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Finished").One()
+                    .OnMatch("[_:Formation].Finish(_) expose $call call, $nonce nonce, $who who, true finishedNow;")
+                .Causation.Continue(finished);
+            // the cue: the copy that counted the fleet's last finish (Juan: "el último en salir") — the act the clock writes (CueIfFinished), told to
+            // every peer with the cued golem's name inside; only the named one takes it, the first word standing
+            string yourTurn = string.Join("\n", peers.Select(p => $@"
+                tell YourTurn with @to
+                    to {p}
+                    once 'cue-' + @nonce + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-cue")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Cue").One()
+                    .OnMatch("[_:Formation].Cue() expose $call call, $nonce nonce, $to to;")
+                .Causation.Continue(yourTurn);
             golemActor.Reactions.DefineReaction("echo-dissolved")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Dissolved").One()
@@ -202,6 +232,10 @@ public sealed class GolemSpeech
                 .Command(ChoreographerRol.UptakeAlignedAt)
             .Told("Dissolved").With<string>("call")
                 .Command(ChoreographerRol.UptakeDissolved)
+            .Told("FinishedAt").With<string>("call").With<string>("who")
+                .Command(ChoreographerRol.UptakeFinishedAt)
+            .Told("YourTurn").With<string>("to")
+                .Command(ChoreographerRol.UptakeYourTurn)
             .Start();
         feed.Broadcast(new PanelEvent(performance.CurrentEntryId, "runtime", "", $"listening for tells as '{golem}' on topic 'tell-{golem}'", DateTime.UtcNow));
         Console.WriteLine($"[golem {golem}] listening for tells on topic 'tell-{golem}'");

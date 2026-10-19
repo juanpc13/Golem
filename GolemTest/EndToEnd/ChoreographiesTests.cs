@@ -47,7 +47,7 @@ public class ChoreographiesTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Find("pentagon-7")).Message, "the golem was told no formation named 'pentagon-7': form it first");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("h", "hexagon", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Rank)).Message, "knows no figure named 'hexagon'");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("s", "square", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, (Policy)7)).Message, "by Rank, Distance or RockPaperScissors");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("d", "double ring", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Rank)).Message, "two rings of golems: FormRings");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Choreography.Form("d", "double ring", new Position(5.5, 5.5), new Meters(1.0), new Degrees(0.0), fleet, Policy.Rank)).Message, "knows no figure named 'double ring'");
     }
 
     [TestMethod]
@@ -73,76 +73,6 @@ public class ChoreographiesTests
         Assert.AreEqual("abandoned", route.Status, "the route to the old figure was let go with it");
         StringAssert.Contains(route.Why, "square-1 was dissolved");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => turned.Convene(new Pose(5.5, 9.0, -1.5708), fleet.Member(blue))).Message, "was dissolved");
-    }
-
-    [TestMethod]
-    public void ADoubleRing_IsToldWithItsTwoRingsOfGolems_AndEachRingTurnsAlone_OrBoth()
-    {
-        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
-        var red = new Golem(body, "red");
-        red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
-        var fleet = new Fleet("blue,cyan,green", "orange,red,yellow");
-        Assert.IsTrue(fleet.IsDivided);
-        Assert.AreEqual(3, fleet.Division);
-        CollectionAssert.AreEqual(new[] { "blue", "cyan", "green", "orange", "red", "yellow" }, fleet.Names.ToList(), "the outer ring's names sorted, then the inner ring's");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Fleet("blue,red", "red,yellow")).Message, "a golem rides one ring: red on both");
-
-        var rings = red.Choreography.FormRings("double-ring-1", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), fleet, Policy.Rank);
-        Assert.AreEqual("double ring", rings.Figure.Name);
-        Assert.AreEqual(6, rings.PlaceCount);
-        var holders = rings.Holders();
-        Assert.AreEqual(0, holders.Single(h => h.Name == "blue").Orbit, "blue on the outer ring");
-        Assert.AreEqual(1, holders.Single(h => h.Name == "red").Orbit, "red on the inner one");
-        Assert.AreEqual(8.5, holders.Single(h => h.Name == "blue").X, 1e-9, "the outer ring's first place due east, radius 3");
-        Assert.AreEqual(6.7, holders.Single(h => h.Name == "orange").X, 1e-9, "the inner ring's first place due east, radius 1.2");
-        Assert.AreEqual(4, holders.Single(h => h.Name == "red").Index, "red: the second place of the inner ring");
-
-        // red takes its place; everybody placed; a step of the INNER ring alone moves the inner golems and leaves the outer ones standing
-        var route = rings.Join(new Pose(2.5, 2.5, 0.0), fleet.Member(red));
-        StringAssert.Contains(route.AsPlan(), "floor@4.9,6.54", "red's place: 120° round the inner ring — " + route.AsPlan());
-        WalkToTheEnd(route);   // on its place: the berths of the others have moved on (ajuste 80)
-        rings.Placed(rings.Me); foreach (var name in new[] { "blue", "cyan", "green", "orange", "yellow" }) rings.Heard(fleet.Member(name));
-        var inner = rings.Figure.Rotate(Sense.Clockwise, Ring.Inner);
-        Assert.AreEqual(1, inner.Orbit);
-        Assert.IsTrue(inner.Moves(1)); Assert.IsFalse(inner.Moves(0));
-        rings.Queue(inner, "s1");
-        var step = rings.Step();
-        Assert.AreNotSame(route, step, "red moves: the inner ring turned");
-        Assert.AreEqual(3, rings.PlaceIndex, "clockwise is down the order: from the second place of the inner ring to its first");
-        Assert.AreEqual(0, rings.Holders().Single(h => h.Name == "blue").Index, "blue did not move");
-        Assert.AreEqual(3, rings.PlacedCount, "the outer ring is still in place; the inner one walks");
-
-        // the inner ring STARTS TOGETHER (propuesta 106): red turns to face its next place and waits for orange and yellow to be lined up too
-        step.Arrive(step.NextLeg);
-        Assert.IsTrue(step.Waiting, "the turn done, the route waits for the fleet's start");
-        Assert.AreEqual("stop", step.Order);
-        rings.Aligned(rings.Me);
-        rings.HeardAligned(fleet.Member("orange"));
-        Assert.IsTrue(step.Waiting, "yellow is not lined up yet");
-        Assert.AreSame(step, rings.HeardAligned(fleet.Member("blue")), "a word of the outer ring, which does not move, changes nothing");
-        rings.HeardAligned(fleet.Member("yellow"));
-        Assert.IsFalse(step.Waiting, "the three movers lined up: the inner ring sets out at once");
-        Assert.AreEqual("advance", step.Order);
-        // the outer ring alone: red stays, its route in place stands
-        WalkToTheEnd(step);
-        rings.Placed(rings.Me); rings.Heard(fleet.Member("orange")); rings.Heard(fleet.Member("yellow"));
-        rings.Queue(rings.Figure.Rotate(Sense.Counterclockwise, Ring.Outer), "s2");
-        var same = rings.Step();
-        Assert.AreSame(step, same, "red does not move on the outer ring's step");
-        Assert.AreEqual(1, rings.Holders().Single(h => h.Name == "blue").Index, "blue went counter-clockwise, one place up the order");
-        Assert.AreEqual(3, rings.PlacedCount, "now the inner ring is the one still in place");
-
-        // both rings at once; a figure of one orbit refuses a ring
-        rings.Placed(rings.Me); foreach (var name in new[] { "blue", "cyan", "green", "orange", "yellow" }) rings.Heard(fleet.Member(name));
-        rings.Queue(rings.Figure.Rotate(Sense.Clockwise, Ring.Whole), "s3");
-        var both = rings.Step();
-        Assert.AreNotSame(same, both);
-        Assert.AreEqual(0, rings.Holders().Single(h => h.Name == "blue").Index, "everybody one place down the order");
-        Assert.AreEqual(5, rings.PlaceIndex);
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Square(new Position(5.5, 5.5), new Meters(2.0)).Rotate(Sense.Clockwise, Ring.Inner)).Message, "has no rings: it turns whole");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(3.0), new Meters(1.2), new Degrees(0.0), new Fleet("blue,red"), Policy.Rank)).Message, "needs its fleet in two rings");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.Form("r", "circle", new Position(5.5, 5.5), new Meters(3.0), new Degrees(0.0), fleet, Policy.Rank)).Message, "a fleet in two rings takes a double ring");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => red.Choreography.FormRings("r", new Position(5.5, 5.5), new Meters(1.0), new Meters(1.2), new Degrees(0.0), fleet, Policy.Rank)).Message, "wider than the inner one");
     }
 
     [TestMethod]

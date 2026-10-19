@@ -6,8 +6,8 @@ namespace GolemDomain.Formations;
 /// A MOVE of a figure (ajuste 84, 2-oct-2026; Juan: "que la figura como tal tenga la coreografía… cada figura lo hará de forma
 /// distinta"): what the figure says every body does on a step — a DATUM, nothing else: its name for the journal, how many places each
 /// body passes along the figure's FIXED ORDER of places (<see cref="Shift"/>: negative down the order), and WHICH ORBIT it moves
-/// (<see cref="Orbit"/>: −1 every orbit; 0 or 1 one ring of a double ring, propuesta 104). The figure hands it out
-/// (<see cref="Figure.Rotate(Sense, Ring)"/>); the formation queues it and, when everybody stands, applies it (<see cref="Formation.Queue"/>,
+/// (<see cref="Orbit"/>: −1 every orbit — the one every figure's rotation moves since the double ring went, 19-oct-2026). The figure hands it out
+/// (<see cref="Figure.Rotate(Sense)"/>); the formation queues it and, when everybody stands, applies it (<see cref="Formation.Queue"/>,
 /// <see cref="Formation.Step"/>): WHAT a move is, is the figure's; WHEN it happens is the fleet's.
 /// </summary>
 internal sealed class Move

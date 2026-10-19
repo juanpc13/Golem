@@ -39,10 +39,11 @@ public static class CommandLine
     {
         new CommandHelp("visit", "visit x,y [x,y …]", "an errand through those points, in that order", "visit 2,9.5 9,8"),
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
-        new CommandHelp("form", "form <name> square|pentagon|triangle --center x,y --side s [--angle a] [--fleet a,b] [--by rank|distance]  ·  form <name> circle --center x,y --radius r …  ·  form <name> double-ring --center x,y --radius R --inner-radius r --fleet a,b --inner-fleet c,d …  ·  form <name> propeller --center x,y --radius R [--inner-radius hub] [--blades n] …", "a formation of the golem's (propuesta 104): its name, its figure, its centre, its size (a polygon's side, a circle's radius, a double ring's two radii, a propeller's tips — its hub a third of it and three blades unless told; a step turns it one blade, every golem to the next blade at its own distance), its orientation (counter-clockwise, 0 as laid out), its FLEET (left out: this golem and every peer) and the POLICY that shares the places — by rank, the names sorted, the default; by distance, who stands nearest (ajuste 73); by rps, who stands nearest and, when several want the same place, rock, paper, scissors between them (propuesta 115); told again under the same name, it is made again (moved, turned, resized, re-crewed); every golem of the fleet is told the same (--with is refused); it answers the places it resolved and who holds each", "form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red,green,yellow"),
+        new CommandHelp("form", "form <name> square|pentagon|triangle --center x,y --side s [--angle a] [--fleet a,b] [--by rank|distance|rps] [--cue <golem>] [--on-cue]  ·  form <name> circle --center x,y --radius r …  ·  form <name> propeller --center x,y --radius R [--inner-radius hub] [--blades n] …", "a formation of the golem's (propuesta 104): its name, its figure, its centre, its size (a polygon's side, a circle's radius, a propeller's tips — its hub a third of it and three blades unless told; a step turns it one blade, every golem to the next blade at its own distance), its orientation (counter-clockwise, 0 as laid out), its FLEET (left out: this golem and every peer) and the POLICY that shares the places — by rank, the names sorted, the default; by distance, who stands nearest (ajuste 73); by rps, who stands nearest and, when several want the same place, rock, paper, scissors between them (propuesta 115); told again under the same name, it is made again (moved, turned, resized, re-crewed); every golem of the fleet is told the same (--with is refused); with --cue <golem> the last of the fleet to finish tells that golem 'your turn' once every member said finish (propuesta 117); with --on-cue the formation starts on that word — no take: it waits, its steps queued, and dances when one of its members is cued; it answers the places it resolved and who holds each", "form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red,green,yellow"),
         new CommandHelp("take", "take <name>", "the fleet takes that formation: this golem says where it stands, every peer of the fleet is told and says where it stands, and the routes open when everybody spoke — each to the place the policy gives it, ending facing the centre; it spreads by itself (--with is refused)", "take square-2"),
-        new CommandHelp("rotate", "rotate <name> clockwise|counterclockwise [--ring outer|inner]", "one step of that formation: every body — of one ring of a double ring, or of the whole figure — takes the next place in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused)", "rotate square-2 clockwise"),
+        new CommandHelp("rotate", "rotate <name> clockwise|counterclockwise", "one step of that formation: every body takes the next place in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused)", "rotate square-2 clockwise"),
         new CommandHelp("dissolve", "dissolve <name>", "the formation leaves every golem of its fleet; a route of it still pending is let go", "dissolve square-2"),
+        new CommandHelp("finish", "finish <name>", "this golem finishes its part of the formation (propuesta 117): the last line of its script about it, queued like the steps — it counts when the last step is walked; the fleet is told, and the one that counts the fleet's last finish cues the golem the formation names (--cue); the formation stays (dissolve lets it go)", "finish tri-left"),
         new CommandHelp("disputes", "disputes", "the places this golem disputed with another by distance, formation by formation: whether it won the place or yielded it, to whom, and both distances (a golem disputes the place nearest to where it stood)", "disputes"),
         new CommandHelp("formations", "formations", "the formations this golem is in: each one's figure, centre, size, orientation, policy, fleet and who holds which place", "formations"),
         new CommandHelp("play", "play <name> pacman --pacman <golem> --ghosts a,b [--as pacman|ghost] [--steer manual|autonomous|guided] | play | play over", "a play staged on this golem by its name (its identity across the fleet, like a formation's) and its kind — pacman: who plays pacman and who the ghosts (left out, this golem and every peer but pacman), how pacman is driven; written on every member's tab by the warden, each line saying with --as what that golem plays (left out, what the cast says of its name), never --with; alone, play says the current play — its part, state, heading, wish, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play game-1 pacman --pacman blue --ghosts red,green,yellow"),
@@ -126,49 +127,43 @@ public static class CommandLine
                 return new Command(named, with, verb, Points(verb, args, exactly: 1), noOptions, "");
             case "form":
             {
-                // a formation of the golem's (propuesta 104): its name, its figure, then --center x,y, --side s | --radius r [--inner-radius r],
-                // --angle degrees, --fleet a,b [--inner-fleet c,d], --by rank|distance
+                // a formation of the golem's (propuesta 104): its name, its figure, then --center x,y, --side s | --radius r [--inner-radius hub],
+                // --angle degrees, --fleet a,b, --by rank|distance|rps, --cue <golem>, --on-cue
                 var values = new Dictionary<string, string>();
                 var rest = new List<string>();
                 for (int i = 0; i < args.Count; i++)
                 {
                     string a = args[i].ToLowerInvariant();
-                    if (a is "--center" or "--side" or "--radius" or "--inner-radius" or "--angle" or "--fleet" or "--inner-fleet" or "--by" or "--blades")
+                    if (a == "--on-cue") { values["on-cue"] = "true"; continue; }   // a flag: the formation starts on cue (propuesta 117)
+                    if (a is "--center" or "--side" or "--radius" or "--inner-radius" or "--angle" or "--fleet" or "--by" or "--blades" or "--cue")
                     {
-                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"form: {a} needs a value, like {a switch { "--center" => "--center 5.5,5.5", "--side" => "--side 2.0", "--radius" => "--radius 1.5", "--inner-radius" => "--inner-radius 0.8", "--fleet" => "--fleet blue,red", "--inner-fleet" => "--inner-fleet green,yellow", "--by" => "--by rank", "--blades" => "--blades 3", _ => "--angle 45" }}");
+                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"form: {a} needs a value, like {a switch { "--center" => "--center 5.5,5.5", "--side" => "--side 2.0", "--radius" => "--radius 1.5", "--inner-radius" => "--inner-radius 0.8", "--fleet" => "--fleet blue,red", "--by" => "--by rank", "--blades" => "--blades 3", "--cue" => "--cue cyan", _ => "--angle 45" }}");
                         values[a[2..]] = args[++i];
                         continue;
                     }
                     if (a == "--places") throw new CommandSyntaxException("form: --places is gone (propuesta 104) — the places are as many as the fleet: --fleet a,b");
-                    if (a.StartsWith("--")) throw new CommandSyntaxException($"form: '{Head(a)}' is no option; the options are --center x,y, --side s | --radius r [--inner-radius r] [--blades n], --angle degrees, --fleet a,b [--inner-fleet c,d] and --by rank|distance");
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"form: '{Head(a)}' is no option; the options are --center x,y, --side s | --radius r [--inner-radius hub] [--blades n], --angle degrees, --fleet a,b, --by rank|distance|rps, --cue <golem>, --on-cue");
                     rest.Add(args[i]);
                 }
                 if (rest.Count != 2 || !Name.IsMatch(rest[0])) throw new CommandSyntaxException("form: expected the formation's name and its figure, like form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red");
                 string figure = rest[1].ToLowerInvariant();
-                if (figure is not ("square" or "pentagon" or "triangle" or "circle" or "double-ring" or "propeller")) throw new CommandSyntaxException($"form: the figure is square, pentagon, triangle, circle, double-ring or propeller; found '{Head(rest[1])}'");
-                bool round = figure is "circle" or "double-ring" or "propeller";
+                if (figure is not ("square" or "pentagon" or "triangle" or "circle" or "propeller")) throw new CommandSyntaxException($"form: the figure is square, pentagon, triangle, circle or propeller; found '{Head(rest[1])}'");
+                bool round = figure is "circle" or "propeller";
                 string size = round ? "radius" : "side";
-                if (values.ContainsKey(round ? "side" : "radius")) throw new CommandSyntaxException(round ? $"form: a {figure.Replace('-', ' ')} is said by its --radius, not a side" : $"form: a {figure} is said by its --side, not a radius");
+                if (values.ContainsKey(round ? "side" : "radius")) throw new CommandSyntaxException(round ? $"form: a {figure} is said by its --radius, not a side" : $"form: a {figure} is said by its --side, not a radius");
                 if (!values.ContainsKey("center") || !values.ContainsKey(size)) throw new CommandSyntaxException($"form {rest[0]}: expected --center x,y and --{size} {(size == "side" ? "s" : "r")}");
                 var centre = Points(verb, new[] { values["center"] }, exactly: 1);
                 if (!double.TryParse(values[size], NumberStyles.Float, CultureInfo.InvariantCulture, out double measure) || measure <= 0)
                     throw new CommandSyntaxException($"form: --{size} expects metres greater than zero, like --{size} {(size == "side" ? "2.0" : "1.5")}; found '{Head(values[size])}'");
-                if (figure == "double-ring")
-                {
-                    if (!values.TryGetValue("inner-radius", out var innerRadius) || !double.TryParse(innerRadius, NumberStyles.Float, CultureInfo.InvariantCulture, out double inner) || inner <= 0 || inner >= measure)
-                        throw new CommandSyntaxException("form: a double ring needs --inner-radius r, metres greater than zero and smaller than --radius");
-                    if (!values.ContainsKey("fleet") || !values.ContainsKey("inner-fleet")) throw new CommandSyntaxException("form: a double ring needs --fleet a,b (the outer ring's golems) and --inner-fleet c,d (the inner ring's)");
-                }
-                else if (figure == "propeller")
+                if (figure == "propeller")
                 {
                     // the propeller (propuesta 114): its hub (--inner-radius, a third of the radius unless told) and its blades (three unless told)
                     if (values.TryGetValue("inner-radius", out var hub) && (!double.TryParse(hub, NumberStyles.Float, CultureInfo.InvariantCulture, out double h) || h <= 0 || h >= measure))
                         throw new CommandSyntaxException("form: a propeller's --inner-radius (its hub) is metres greater than zero and smaller than --radius");
                     if (values.TryGetValue("blades", out var bladeText) && (!int.TryParse(bladeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int b) || b < 2 || b > 12))
                         throw new CommandSyntaxException($"form: --blades expects a whole number from 2 to 12, like --blades 3; found '{Head(bladeText)}'");
-                    if (values.ContainsKey("inner-fleet")) throw new CommandSyntaxException("form: only a double ring has an inner fleet; a propeller takes --fleet alone");
                 }
-                else if (values.ContainsKey("inner-radius") || values.ContainsKey("inner-fleet")) throw new CommandSyntaxException($"form: only a double ring or a propeller has an inner radius; a {figure} takes --fleet alone");
+                else if (values.ContainsKey("inner-radius")) throw new CommandSyntaxException($"form: only a propeller has an inner radius (its hub); a {figure} has none");
                 if (values.ContainsKey("blades") && figure != "propeller") throw new CommandSyntaxException($"form: only a propeller has --blades; a {figure} has none");
                 if (values.TryGetValue("angle", out var angle) && !double.TryParse(angle, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
                     throw new CommandSyntaxException($"form: --angle expects degrees, like --angle 45; found '{Head(angle)}'");
@@ -177,8 +172,13 @@ public static class CommandLine
                     values["by"] = by.ToLowerInvariant();
                     if (values["by"] is not ("rank" or "distance" or "rps")) throw new CommandSyntaxException($"form: --by is rank, distance or rps; found '{Head(by)}'");
                 }
-                foreach (var key in new[] { "fleet", "inner-fleet" })
-                    if (values.TryGetValue(key, out var crew) && !Names.IsMatch(crew)) throw new CommandSyntaxException($"form: --{key} expects names like blue,red; found '{Head(crew)}'");
+                if (values.TryGetValue("fleet", out var crew) && !Names.IsMatch(crew)) throw new CommandSyntaxException($"form: --fleet expects names like blue,red; found '{Head(crew)}'");
+                if (values.TryGetValue("cue", out var cue))
+                {
+                    // the golem the last of this fleet to finish cues (propuesta 117): one name
+                    if (!Name.IsMatch(cue) || cue.Contains(',')) throw new CommandSyntaxException($"form: --cue expects one golem's name, like --cue cyan; found '{Head(cue)}'");
+                    values["cue"] = cue.ToLowerInvariant();
+                }
                 values["figure"] = figure;
                 return new Command(named, with, verb, centre, noOptions, rest[0].ToLowerInvariant(), values);
             }
@@ -190,16 +190,19 @@ public static class CommandLine
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
             case "rotate":
             {
-                // one step of a formation, in that sense (ajuste 77), of one ring or the whole figure (propuesta 104)
+                // one step of a formation, in that sense (ajuste 77); the whole figure — the rings turned apart went with the double ring (19-oct-2026)
                 if (args.Count < 2 || !Name.IsMatch(args[0]) || args[1].ToLowerInvariant() is not ("clockwise" or "counterclockwise"))
                     throw new CommandSyntaxException("rotate: expected the formation's name and the sense, clockwise or counterclockwise, like rotate square-2 clockwise");
                 var values = new Dictionary<string, string> { ["sense"] = args[1].ToLowerInvariant() };
-                if (args.Count == 4 && args[2].ToLowerInvariant() == "--ring" && args[3].ToLowerInvariant() is "outer" or "inner") values["ring"] = args[3].ToLowerInvariant();
-                else if (args.Count != 2) throw new CommandSyntaxException($"rotate: after the sense comes --ring outer|inner, or nothing; found '{Head(string.Join(' ', args.Skip(2)))}'");
+                if (args.Count != 2) throw new CommandSyntaxException(args[2].ToLowerInvariant() == "--ring" ? "rotate: --ring is gone with the double ring (19-oct-2026) — a step turns the whole figure" : $"rotate: nothing comes after the sense; found '{Head(string.Join(' ', args.Skip(2)))}'");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant(), values);
             }
             case "dissolve":
                 if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("dissolve: expected the formation's name, like dissolve square-2");
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+            case "finish":
+                // this golem finishes its part of the formation (propuesta 117): its name
+                if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("finish: expected the formation's name, like finish tri-left");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
             case "play":
             {

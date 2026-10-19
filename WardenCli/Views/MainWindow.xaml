@@ -419,17 +419,9 @@
                                                     <Button Content="↻" Tag="{Binding}" Click="RotateClockwise_Click" ToolTip="write rotate … clockwise on the selected golem's tab; sent, every body takes one place down the figure's order once all stand on theirs — the golem tells its fleet, and who holds what is read back from it"/>
                                                     <Button Content="↺" Tag="{Binding}" Click="RotateCounter_Click" ToolTip="write rotate … counterclockwise on the selected golem's tab"/>
                                                 </StackPanel>
+                                                <Button Content="■" Tag="{Binding}" Click="Finish_Click" ToolTip="write finish … on every member's tab, after its take and steps (propuesta 117): each golem says its part is done — counted when its last step is walked — and when all did, the last of the fleet cues the golem the formation names (--cue)"/>
                                                 <Button Content="✎" Tag="{Binding}" Click="Edit_Click" ToolTip="edit it: the figure, centre, size, policy and fleet told again under the same name — its form (and take) lines rewritten on the tabs, a golem added gets them, one dropped loses them; SEND when ready"/>
                                                 <Button Content="✕" Tag="{Binding}" Click="Dissolve_Click" ToolTip="dissolve …, asked of the golem now: the formation leaves every golem of its fleet; the bodies stay where they are"/>
-                                            </StackPanel>
-                                            <!-- a double ring turns ring by ring (8-oct-2026; Juan: "que se pueda rotar el superior y el inferior"): rotate with the ring named, outer or inner -->
-                                            <StackPanel x:Name="RingTurns" DockPanel.Dock="Bottom" Orientation="Horizontal" Visibility="Collapsed" Margin="0,2,0,0">
-                                                <TextBlock Text="outer" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,3,0"/>
-                                                <Button Content="↻" Tag="{Binding}" Click="RotateOuterClockwise_Click" ToolTip="write rotate … clockwise --ring outer on the tab"/>
-                                                <Button Content="↺" Tag="{Binding}" Click="RotateOuterCounter_Click" ToolTip="write rotate … counterclockwise --ring outer on the tab"/>
-                                                <TextBlock Text="inner" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="6,0,3,0"/>
-                                                <Button Content="↻" Tag="{Binding}" Click="RotateInnerClockwise_Click" ToolTip="write rotate … clockwise --ring inner on the tab"/>
-                                                <Button Content="↺" Tag="{Binding}" Click="RotateInnerCounter_Click" ToolTip="write rotate … counterclockwise --ring inner on the tab"/>
                                             </StackPanel>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock FontWeight="Bold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="{Binding OwnerText, Mode=OneWay}" FontWeight="Normal" Foreground="{StaticResource Dim}"/><Run Text="  "/><Run Text="{Binding Shape, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text=" at "/><Run Text="{Binding CenterText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding RoundText, Mode=OneWay}" Foreground="{StaticResource Dim}" FontWeight="Normal" FontSize="11"/><Run Text="{Binding DraftText, Mode=OneWay}" Foreground="{StaticResource Accent}" FontWeight="Normal" FontSize="11"/></TextBlock>
@@ -438,10 +430,6 @@
                                             </StackPanel>
                                         </DockPanel>
                                         <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsDoubleRing}" Value="True">
-                                                <Setter TargetName="WholeTurn" Property="Visibility" Value="Collapsed"/>
-                                                <Setter TargetName="RingTurns" Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
                                             <DataTrigger Binding="{Binding HasDraft}" Value="True">
                                                 <Setter TargetName="DraftButtons" Property="Visibility" Value="Visible"/>
                                             </DataTrigger>

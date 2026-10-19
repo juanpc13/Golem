@@ -14,7 +14,7 @@ namespace WardenCli;
 /// </summary>
 public static class PendingFormations
 {
-    private static readonly Regex FormLine = new(@"^\s*form\s+(?<name>[A-Za-z_][A-Za-z0-9_-]*)\s+(?<figure>square|pentagon|triangle|circle|double-ring|propeller)\b(?<opts>.*)$",
+    private static readonly Regex FormLine = new(@"^\s*form\s+(?<name>[A-Za-z_][A-Za-z0-9_-]*)\s+(?<figure>square|pentagon|triangle|circle|propeller)\b(?<opts>.*)$",
                                                  RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex Option = new(@"--(?<key>[a-z-]+)\s+(?<value>\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -43,20 +43,29 @@ public static class PendingFormations
         return views;
     }
 
+    // which orbit of the figure the place of that index lies in: 0 for every figure but the propeller (its centre, then every rung)
+    private static int OrbitOf(Figure shape, int index, int count)
+    {
+        var orbits = shape.Orbits(count);
+        for (int o = 0; o < orbits.Count; o++)
+            if (index >= orbits[o].Start && index < orbits[o].Start + orbits[o].Count) return o;
+        return 0;
+    }
+
     /// <summary>The view of one `form` line: figure, centre, measure, orientation, fleet and policy as the line says; the places by the
     /// console's geometry; the holders by rank. Null when the line lacks what a figure needs.</summary>
     public static FormationView? FromLine(string name, string figure, string options, string teller, IReadOnlyList<string> everybody)
     {
         var opts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (Match o in Option.Matches(options)) opts[o.Groups["key"].Value] = o.Groups["value"].Value;
+        bool onCue = Regex.IsMatch(options, @"(^|\s)--on-cue(\s|$)", RegexOptions.IgnoreCase);   // a flag without a value (propuesta 117)
         double? Num(string key) => opts.TryGetValue(key, out var v) && double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
         List<string> Names(string key) => opts.TryGetValue(key, out var v) ? v.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList() : new List<string>();
         if (!opts.TryGetValue("center", out var centre)) return null;
         var xy = centre.Split(',');
         if (xy.Length != 2 || !double.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double cx) || !double.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double cy)) return null;
-        bool rings = figure == "double-ring";
         bool propeller = figure == "propeller";
-        bool round = rings || propeller || figure == "circle";
+        bool round = propeller || figure == "circle";
         double? measure = round ? Num("radius") : Num("side");
         if (measure is not > 0) return null;
         double angle = Num("angle") ?? 0.0;
@@ -65,17 +74,13 @@ public static class PendingFormations
         var outer = Names("fleet");
         if (outer.Count == 0) outer = everybody.ToList();
         outer.Sort(StringComparer.Ordinal);
-        var inner = rings ? Names("inner-fleet") : new List<string>();
-        inner.Sort(StringComparer.Ordinal);
-        var crew = outer.Concat(inner).ToList();
+        var crew = outer.ToList();
         int places = crew.Count;
         if (places == 0) return null;
         Figure shape;
         try
         {
-            shape = rings
-                ? new DoubleRing(new Spot(cx, cy), measure.Value, Num("inner-radius") ?? measure.Value / 2, outer.Count, Math.Max(1, inner.Count), angle)
-                : propeller
+            shape = propeller
                 ? new Propeller(new Spot(cx, cy), measure.Value, Num("inner-radius") ?? measure.Value / 3, (int)(Num("blades") ?? 3), angle)
                 : Figure.Named(figure, new Spot(cx, cy), measure.Value).Oriented(angle);
         }
@@ -84,9 +89,10 @@ public static class PendingFormations
         var holders = new List<HolderView>();
         if (policy == Policy.Rank)
             for (int i = 0; i < Math.Min(places, spots.Count); i++)
-                holders.Add(new HolderView(crew[i], i, spots[i].X, spots[i].Y, rings && i >= outer.Count ? 1 : 0));
-        return new FormationView(name, rings ? "double ring" : figure, cx, cy, measure.Value, angle, policy, string.Join(",", crew), rings ? outer.Count : 0,
+                holders.Add(new HolderView(crew[i], i, spots[i].X, spots[i].Y, OrbitOf(shape, i, spots.Count)));
+        return new FormationView(name, figure, cx, cy, measure.Value, angle, policy, string.Join(",", crew),
                                  spots.Count, 0, 0, 0, -1, holders, spots,
-                                 inner: shape is Propeller p ? p.Hub : shape is DoubleRing d ? d.InnerRadius : 0, arms: shape is Propeller q ? q.Blades : 0);
+                                 inner: shape is Propeller p ? p.Hub : 0, arms: shape is Propeller q ? q.Blades : 0,
+                                 cueTo: opts.TryGetValue("cue", out var cue) ? cue.Trim().ToLowerInvariant() : "", onCue: onCue, cued: !onCue);
     }
 }

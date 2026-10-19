@@ -462,6 +462,146 @@ public class FormationTests
         Assert.AreEqual("", formation.StrandedWhy);
     }
 
+    // THE ROUTE BORN FAILED (19-oct-2026; lab 14-oct, the march by rps: green's word completed orange's round, the take found "no road … past 1
+    // marks" and the exception refused the whole uptake — orange without a route and not stranded, the five others waiting for its line-up for
+    // ever): a peer's word that completes the round and finds no take possible is not refused — the route is born failed with the reason, so the
+    // word is journaled, the print says it ended short, and the retake answers it once before the formation is stranded. A place off the map
+    // stays a refusal: nothing to take again from anywhere.
+    [TestMethod]
+    public void AWordThatCompletesTheRound_WithNoTakePossible_IsNotRefused_TheRouteIsBornFailed_AndTheRetakeAnswersIt()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        var blue = new Golem(body, "blue");
+        blue.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
+        var fleet = new Fleet("blue,red");
+        // a square against the north wall: its north corners (y 10.8) are on the map but leave no room for the body (the inset is 0.35 m)
+        var formation = blue.Choreography.Form("sq-1", blue.Choreography.Figure("square", new Position(5.5, 9.8), new Meters(2.0)), fleet, Policy.Distance);
+        Assert.IsNull(formation.Convene(new Pose(6.5, 10.0, 0.0), fleet.Member(blue)), "one of two spoke: the round is open");
+
+        var route = formation.Stood(fleet.Member("red"), new Position(4.0, 8.5));   // red nearest the south-west corner: blue gets the north-east one
+        Assert.IsNotNull(route, "the word completed the round and was not refused");
+        Assert.AreSame(route, formation.Route);
+        Assert.IsFalse(route.IsPending(), "born failed");
+        Assert.IsTrue(route.EndedShort);
+        StringAssert.Contains(route.Why, "leaves no room for a body");
+        Assert.AreEqual(1, blue.Routes().Count, "minted and held like any other route: the journal keeps the fact");
+        Assert.IsTrue(formation.NeedsRetake, "the retake answers it — the clock asks, since no arrival will");
+        Assert.IsFalse(formation.Stranded);
+
+        var again = formation.Retake(new Pose(6.5, 10.0, 0.0));
+        Assert.AreSame(route, again, "no take possible from there either: no new route");
+        Assert.IsTrue(formation.Stranded, "once: the formation says it, the warden decides");
+        StringAssert.Contains(formation.StrandedWhy, "blue could not reach (6.5, 10.8) again");
+        Assert.IsFalse(formation.NeedsRetake);
+
+        // a place off the map is refused as ever: the word is not taken
+        var off = blue.Choreography.Form("sq-2", blue.Choreography.Figure("square", new Position(5.5, 10.5), new Meters(2.0)), fleet, Policy.Distance);
+        off.Convene(new Pose(6.5, 10.9, 0.0), fleet.Member(blue));   // nearest the north-east corner (6.5, 11.5), off the floor
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => off.Stood(fleet.Member("red"), new Position(4.0, 8.5))).Message, "nowhere on the map");
+    }
+
+    // THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026; Juan: "dos grupos van a bailar… ya conocen su coreografía completa… no habrá un director…
+    // el último del primer grupo le hace la seña a alguno del otro grupo… uno sólo le dice el nombre del golem… a él sólo le dicen 'continúas tú' y
+    // éste le avisa a su equipo"; evening: "que el último en salir de la coreografía sea el que diga realmente a yellow"): every member finishes its
+    // own part — a finish asked before the part is done waits for it — and THE COPY THAT COUNTS THE FLEET'S LAST FINISH cues ONE golem by name; the
+    // right formation, born on cue, refuses a take, keeps its steps queued, and is taken by the cued one — whose word lets its team convene; a cue
+    // heard before the formation is kept for it
+    [TestMethod]
+    public void TheLastToLeaveAFinishedFleet_CuesOneGolemByName_WhoTakesTheFormationHeWaitsIn_AndHisTeamFollows()
+    {
+        var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
+        Golem Born(string name) { var g = new Golem(body, name); g.Enter(new Scenario(Catalog.OpenFloor(), new Collisions())); return g; }
+        var blue = Born("blue"); var red = Born("red");
+        var left = new Fleet("blue,red,green");
+        var centre = new Position(3.0, 5.5);
+        var blueLeft = blue.Choreography.Form("tri-left", blue.Choreography.Figure("triangle", centre, new Meters(2.0)), left, Policy.Rank);
+        var redLeft = red.Choreography.Form("tri-left", red.Choreography.Figure("triangle", centre, new Meters(2.0)), left, Policy.Rank);
+        Assert.AreEqual("", blueLeft.CueTo); Assert.IsFalse(blueLeft.OnCue); Assert.IsTrue(blueLeft.IsCued, "a formation that does not start on cue is as good as cued");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueLeft.Cues("green")).Message, "it is of this very fleet");
+        blueLeft.Cues("Cyan"); redLeft.Cues("cyan");
+        Assert.AreEqual("cyan", redLeft.CueTo);
+
+        // blue asks to finish BEFORE its part is done: the word waits (finishing), nothing counted, no step may come after it
+        var places = blueLeft.Figure.Places(3);
+        Pose OnPlace(int index) { var at = places[index]; return new Pose(at.X, at.Y, Math.Atan2(centre.Y - at.Y, centre.X - at.X)); }
+        Assert.IsNull(blueLeft.Convene(OnPlace(0), left.Member(blue)), "one of three spoke");
+        Assert.AreSame(blueLeft.Route, blueLeft.Finish(left.Member(blue)));
+        Assert.IsTrue(blueLeft.Finishing); Assert.IsFalse(blueLeft.JustFinished); Assert.IsFalse(blueLeft.FinishDue); Assert.AreEqual(0, blueLeft.FinishedCount);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueLeft.Queue(blueLeft.Figure.Rotate(Sense.Clockwise), "late")).Message, "no step comes after finish");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueLeft.Finish(left.Member("red"))).Message, "a peer's word is HeardFinished");
+        // the round completes, blue's route is complete at birth (on its place, facing the centre), it is placed: the finish is due, and counts
+        blueLeft.Stood(left.Member("green"), places[1]);
+        Assert.IsNotNull(blueLeft.Stood(left.Member("red"), places[2]));
+        Assert.AreEqual("completed", blueLeft.Route.Status);
+        blueLeft.Placed(left.Member(blue));
+        Assert.IsTrue(blueLeft.IsDone); Assert.IsTrue(blueLeft.FinishDue); Assert.IsTrue(blue.Choreography.Finishing); Assert.AreSame(blueLeft, blue.Choreography.FinishingFormation);
+        blueLeft.Finish(left.Member(blue));
+        Assert.IsTrue(blueLeft.JustFinished); Assert.AreEqual(1, blueLeft.FinishedCount); Assert.IsFalse(blueLeft.Finishing); Assert.IsFalse(blue.Choreography.Finishing);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueLeft.Finish(left.Member(blue))).Message, "already finished");
+        Assert.IsFalse(blueLeft.Cueing, "two still dancing");
+        // the last to leave, as blue's copy hears it: with the fleet's last finish counted, blue has the cue to give — whoever that last one was
+        blueLeft.HeardFinished(left.Member("green")); blueLeft.HeardFinished(left.Member("red"));
+        Assert.IsTrue(blueLeft.IsFinished); Assert.IsTrue(blueLeft.Cueing); Assert.IsTrue(blue.Choreography.Cueing); Assert.AreSame(blueLeft, blue.Choreography.CueingFormation);
+        blueLeft.Cue();
+        Assert.IsTrue(blueLeft.CueGiven); Assert.IsFalse(blueLeft.Cueing, "given once"); Assert.IsFalse(blue.Choreography.Cueing);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueLeft.Cue()).Message, "no cue to give here");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueLeft.Cues("orange")).Message, "already gave its cue");
+
+        // red's copy counts the same words in its own order: the words carry no clock, so every copy that hears the last one may cue — the cued
+        // golem takes the first word and drops the rest
+        redLeft.Stood(left.Member("blue"), places[0]); redLeft.Stood(left.Member("green"), places[1]);
+        Assert.IsNotNull(redLeft.Convene(OnPlace(2), left.Member(red)));
+        redLeft.Placed(left.Member(red));
+        redLeft.HeardFinished(left.Member("blue")); redLeft.HeardFinished(left.Member("green"));
+        Assert.IsFalse(redLeft.Cueing, "red has not finished itself");
+        redLeft.Finish(left.Member(red));
+        Assert.IsTrue(redLeft.JustFinished); Assert.IsTrue(redLeft.IsFinished); Assert.IsTrue(redLeft.Cueing);
+
+        // THE RIGHT, born on cue: a take is refused, the steps queue meanwhile, and the cued one takes it
+        var cyan = Born("cyan"); var orange = Born("orange");
+        var right = new Fleet("cyan,orange,yellow");
+        var cyanRight = cyan.Choreography.Form("tri-right", cyan.Choreography.Figure("triangle", new Position(8.0, 5.5), new Meters(2.0)), right, Policy.Rank);
+        cyanRight.StartsOnCue();
+        Assert.IsTrue(cyanRight.OnCue); Assert.IsFalse(cyanRight.IsCued);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyanRight.Convene(new Pose(7.0, 5.5, 0.0), right.Member(cyan))).Message, "starts on cue");
+        Assert.AreEqual(1, cyanRight.Queue(cyanRight.Figure.Rotate(Sense.Clockwise), "step-1"), "its choreography is known before it dances: the step waits");
+        Assert.IsFalse(cyan.Choreography.AwaitsCue("orange"), "the cue names another golem: nobody's here");
+        Assert.IsTrue(cyan.Choreography.AwaitsCue("Cyan"));
+        Assert.AreSame(cyanRight, cyan.Choreography.CuedFormation);
+        Assert.IsNull(cyanRight.TakeCue(new Pose(7.0, 5.5, 0.0), right.Member(cyan)), "taken by the cue: one of three spoke");
+        Assert.IsTrue(cyanRight.IsCued);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyanRight.TakeCue(new Pose(7.0, 5.5, 0.0), right.Member(cyan))).Message, "was cued already");
+        Assert.IsFalse(cyan.Choreography.AwaitsCue("cyan"), "taken: it waits no more");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyanRight.StartsOnCue()).Message, "starts on cue no more");
+        Assert.AreEqual(1, cyanRight.Queued, "the step still waits for the round");
+        // orange hears cyan's word: the team follows — its own take is no longer refused
+        var orangeRight = orange.Choreography.Form("tri-right", orange.Choreography.Figure("triangle", new Position(8.0, 5.5), new Meters(2.0)), right, Policy.Rank);
+        orangeRight.StartsOnCue();
+        orangeRight.Stood(right.Member("cyan"), new Position(7.0, 5.5));
+        Assert.IsTrue(orangeRight.IsCued, "a member spoke: the cued one took it");
+        Assert.IsNull(orangeRight.Convene(new Pose(9.0, 5.5, 0.0), right.Member(orange)));
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blueLeft.TakeCue(new Pose(1.0, 1.0, 0.0), left.Member(blue))).Message, "does not start on cue");
+        // a cued take whose place is off the map is refused BEFORE anything is marked (lab 19-oct: cyan in another scenario): the cue stays takeable
+        var far = Born("purple");
+        var farFleet = new Fleet("purple,pink,lime");
+        var farRight = far.Choreography.Form("far", far.Choreography.Figure("triangle", new Position(10.9, 10.9), new Meters(2.0)), farFleet, Policy.Rank);
+        farRight.StartsOnCue();
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => farRight.TakeCue(new Pose(9.0, 9.0, 0.0), farFleet.Member(far))).Message, "nowhere on the map");
+        Assert.IsFalse(farRight.IsCued, "nothing marked: the cue may be taken once the golem stands on the right map");
+
+        // A CUE HEARD AHEAD: yellow is named before its form came — kept, and the formation told later is cued by the clock's take
+        var yellow = Born("yellow");
+        yellow.Choreography.OverheardCue("orange");
+        Assert.IsFalse(yellow.Choreography.HasPendingCue, "a cue to another golem is nobody's here");
+        yellow.Choreography.OverheardCue("yellow");
+        Assert.IsFalse(yellow.Choreography.HasPendingCue, "named, but it waits in no formation yet");
+        var yellowRight = yellow.Choreography.Form("tri-right", yellow.Choreography.Figure("triangle", new Position(8.0, 5.5), new Meters(2.0)), right, Policy.Rank);
+        yellowRight.StartsOnCue();
+        Assert.IsTrue(yellow.Choreography.HasPendingCue, "now it does: the clock takes it");
+        Assert.AreSame(yellowRight, yellow.Choreography.CuedFormation);
+        Assert.IsFalse(yellow.Choreography.HasPendingCue, "taken once");
+    }
+
     // A GOLEM SENT ELSEWHERE, THEN THE STEP (13-oct-2026; Juan: "si le digo visit a blue estando en una posición de formación, cuando le doy
     // rotate no se posiciona donde tiene que estar… me parece un error que no vuelva a su posición"): the step is planned from where the body IS,
     // not from the vertex the formation had left it on — so the golem comes back to the figure, to the place the step gives it

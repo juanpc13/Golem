@@ -129,17 +129,44 @@ public partial class MainWindow : Window
     // the `form` line a dialog describes, under a name and with an orientation (the dialog asks none: a new formation lies at 0°, an edited one keeps its own)
     private static string FormLineOf(FormationDialog dialog, string name, double angle)
     {
-        string shape = dialog.Figure == "double ring" ? "double-ring" : dialog.Figure;
+        string shape = dialog.Figure;
         string centre = $"{Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}";
-        string size = dialog.Figure == "double ring" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)}"
-                    : dialog.Figure == "propeller" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)} --blades {dialog.Blades}"
+        string size = dialog.Figure == "propeller" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)} --blades {dialog.Blades}"
                     : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
-        string fleet = $"--fleet {string.Join(",", dialog.Chosen)}" + (dialog.Figure == "double ring" ? $" --inner-fleet {string.Join(",", dialog.InnerChosen)}" : "");
-        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}";
+        string fleet = $"--fleet {string.Join(",", dialog.Chosen)}";
+        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}{(dialog.CueTo != "" ? $" --cue {dialog.CueTo}" : "")}{(dialog.OnCue ? " --on-cue" : "")}";
     }
 
     private static bool LineOf(string line, string name) =>
-        System.Text.RegularExpressions.Regex.IsMatch(line, $@"^(form|take|rotate)\s+{System.Text.RegularExpressions.Regex.Escape(name)}(\s|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        System.Text.RegularExpressions.Regex.IsMatch(line, $@"^(form|take|rotate|finish)\s+{System.Text.RegularExpressions.Regex.Escape(name)}(\s|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    // the formation a tab's line is about — form, take, rotate or finish <name> — or null for any other line (propuesta 117: the lines of one
+    // formation flow into the golem together; the queue waits only at the boundary)
+    private static string? FormationOf(string line)
+    {
+        var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.Length >= 2 && words[0].ToLowerInvariant() is "form" or "take" or "rotate" or "finish" ? words[1].ToLowerInvariant() : null;
+    }
+
+    // THE FINISH (propuesta 117; Juan: "cuando todos los elementos de la formación terminan su script, le dicen a los otros que terminaron"): `finish <name>`
+    // on every member's tab, after that formation's take and its last step — queued in the golem like the steps and counted when its part is done;
+    // with every member's word the last of the fleet cues the golem the formation names
+    private void Finish_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not FormationView formation) return;
+        string name = formation.Name;
+        string line = $"finish {name}";
+        var members = Members(formation.CrewNames);
+        int written = 0;
+        foreach (var member in members)
+        {
+            if (member.Lines().Any(l => l.Trim().Equals(line, StringComparison.OrdinalIgnoreCase))) continue;   // once per tab
+            member.EnqueueAfter(l => l.StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase) || l.StartsWith($"rotate {name} ", StringComparison.OrdinalIgnoreCase) || l.StartsWith($"form {name} ", StringComparison.OrdinalIgnoreCase), line);
+            written++;
+        }
+        Log($"{line} on {written} tab(s): {string.Join(", ", members.Select(m => m.Name))}, after the take and the steps — SEND to selected when ready; counted when each golem's last step is walked");
+        if (Current is { } c) SyncFormations(c);
+    }
 
     // A FORMATION EDITED (13-oct-2026; Juan: "¿podríamos reeditar la formación para que tome otros valores de la creación?"): the dialog seeded with
     // its values; accepted, the same name is told again — the form line rewritten in place on every member's tab (added where a member is new,
@@ -152,12 +179,16 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true) return;
         string name = formation.Name;
         string line = FormLineOf(dialog, name, formation.Degrees);
-        var members = Members(dialog.Chosen.Concat(dialog.Figure == "double ring" ? dialog.InnerChosen : Array.Empty<string>()));
+        var members = Members(dialog.Chosen);
         int rewritten = 0, added = 0, dropped = 0;
         foreach (var member in members)
         {
             if (member.Replace(l => l.StartsWith($"form {name} ", StringComparison.OrdinalIgnoreCase), line)) rewritten++; else added++;
-            if (!member.Lines().Any(l => l.Trim().StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {name}");
+            if (dialog.OnCue) member.RemoveLines(l => l.Trim().StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase));   // on cue: no take (propuesta 117)
+            else if (!member.Lines().Any(l => l.Trim().StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {name}");
+            // a cue chosen: every member's finish, after the take and the steps; none: no finish line
+            if (dialog.CueTo == "") member.RemoveLines(l => l.Trim().Equals($"finish {name}", StringComparison.OrdinalIgnoreCase));
+            else if (!member.Lines().Any(l => l.Trim().Equals($"finish {name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"finish {name}");
         }
         foreach (var other in golems.Where(x => !members.Contains(x))) if (other.RemoveLines(l => LineOf(l, name)) > 0) dropped++;
         drafts.Remove(name);
@@ -665,21 +696,51 @@ public partial class MainWindow : Window
         runners[golem.Name] = cts;
         golem.Running = true;
         int done = 0, total = golem.Script.Replace("\r\n", "\n").Split('\n').Count(l => l.Trim() != "" && !l.TrimStart().StartsWith('#'));
+        // THE WHOLE CHOREOGRAPHY AT ONCE (propuesta 117, revised 19-oct-2026; Juan: "él tiene que saber toda su coreografía ya… hagámoslo simétrico"):
+        // the lines of ONE formation — form, take, rotates, finish — flow into the golem without waiting (the domain queues the steps and the
+        // finish), and the queue waits AT THE BOUNDARY: the first line of anything else (another formation, a visit, @sync, the end of the tab) waits
+        // until the formation underway is done — placed after its last step, nothing queued, nothing pending — or stranded
+        string? underway = null;
+        var underwaySince = DateTime.UtcNow;
         try
         {
             while (!cts.IsCancellationRequested)
             {
                 string? line = golem.Dequeue();
-                if (line == null) { Log($"{golem.Name} › queue done ({done} command(s))"); break; }
+                if (line == null)
+                {
+                    if (underway != null)
+                    {
+                        if (await WaitForTheFormationAsync(golem, underway, underwaySince, cts.Token) is Walk.Unreachable or Walk.Cancelled) break;
+                        underway = null;
+                        if (golem.Dequeue() is { } late) { line = late; goto Sent; }   // written while the formation danced (a finish, a step): it goes before the queue relays
+                    }
+                    Log($"{golem.Name} › queue done ({done} command(s))"); break;
+                }
+                Sent:
                 if (line == Sync)
                 {
+                    if (underway != null)
+                    {
+                        if (await WaitForTheFormationAsync(golem, underway, underwaySince, cts.Token) is Walk.Unreachable or Walk.Cancelled) break;
+                        underway = null;
+                    }
                     golem.Status = "waiting for the others…";
                     await batch.ArriveAsync().WaitAsync(cts.Token);
                     continue;
                 }
-                var started = DateTime.UtcNow;
                 string verbSent = line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-                int? routesBefore = Movers.Contains(verbSent) ? await GolemClient.RouteTotalAsync(golem, cts.Token) : null;
+                string? ofFormation = FormationOf(line);
+                if (underway != null && ofFormation != underway)
+                {
+                    // the boundary: whatever comes next waits for the formation underway
+                    var ended = await WaitForTheFormationAsync(golem, underway, underwaySince, cts.Token);
+                    if (ended == Walk.Unreachable) { Log($"{golem.Name} › stopped: the golem does not answer; the rest of the queue stays"); break; }
+                    if (ended == Walk.Cancelled) break;
+                    underway = null;
+                }
+                var started = DateTime.UtcNow;
+                int? routesBefore = Movers.Contains(verbSent) && ofFormation == null ? await GolemClient.RouteTotalAsync(golem, cts.Token) : null;
                 var reply = await GolemClient.SendAsync(golem, line, cts.Token);
                 golem.Sent++;
                 if (!reply.Ok)
@@ -688,14 +749,17 @@ public partial class MainWindow : Window
                     if (reply.Kind == "unreachable") { golem.Status = "unreachable"; Log($"{golem.Name} › stopped: the golem does not answer; the rest of the queue stays"); break; }
                     continue;   // refused or no command: the golem said why; the queue goes on
                 }
-                string verb = line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-                if (Movers.Contains(verb))
+                if (ofFormation != null)
+                {
+                    // a line of a formation: into the golem, no wait — the boundary waits for all of them
+                    done++;
+                    if (underway == null) { underway = ofFormation; underwaySince = DateTime.UtcNow; }
+                    Log($"{golem.Name} › {line} — {OneLine(reply.Text)} ({done} of {total})");
+                }
+                else if (Movers.Contains(verbSent))
                 {
                     Log($"{golem.Name} › {line} — sent: {OneLine(reply.Text)}");
-                    string formationName = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "";
-                    var walk = verbSent == "take" ? await WaitForTheRoundAsync(golem, formationName, cts.Token)
-                             : verbSent == "rotate" ? await WaitForTheStepsAsync(golem, formationName, cts.Token)
-                             : await WaitUntilDoneAsync(golem, cts.Token);
+                    var walk = await WaitUntilDoneAsync(golem, cts.Token);
                     done++;
                     if (walk == Walk.Unreachable) { Log($"{golem.Name} › stopped: the golem does not answer; the rest of the queue stays"); break; }
                     if (walk == Walk.Cancelled) break;
@@ -705,14 +769,8 @@ public partial class MainWindow : Window
                         // NO ROUTE OPENED (13-oct-2026; Juan, on a routine loaded on blue's tab alone: "se ven que sí se van consumiendo los comandos, pero no
                         // se nota nada reflejado en el simulador" — the log said "rotate … completed in 8.1 s", the golem's OLD route read as this line's):
                         // the line was taken, but nothing moves yet — say what it waits for, never a route that is not this line's
-                        string waits = verbSent switch
-                        {
-                            "take" => "still waiting for the fleet's words after three minutes: the route opens when every member of the formation took it — each needs its own form and take on its tab",
-                            "rotate" => "still waiting for the fleet's steps after three minutes: a step opens when every member of the formation stands on its place",
-                            _ => "nothing to walk"
-                        };
-                        Log($"{golem.Name} › … {line} — no route opened in {(DateTime.UtcNow - started).TotalSeconds:0.0} s: {waits} ({done} of {total})");
-                        golem.Status = verbSent is "take" or "rotate" ? "waiting for the fleet" : "nothing to walk";
+                        Log($"{golem.Name} › … {line} — no route opened in {(DateTime.UtcNow - started).TotalSeconds:0.0} s: nothing to walk ({done} of {total})");
+                        golem.Status = "nothing to walk";
                     }
                     else
                     {
@@ -746,46 +804,37 @@ public partial class MainWindow : Window
     // or the queue was stopped
     private enum Walk { Walked, NoRoute, Unreachable, Cancelled }
 
-    // A TAKE WAITS FOR ITS ROUND (13-oct-2026; lab, the marching hexagon: red's `use map` carried its body for 13 s, blue's take opened no route
-    // within the 8 s grace, and blue's queue ran on through the next two `form`s before the fleet had set out): the take is done when this golem's
-    // copy of the formation opened its route (the read's `routed`, the round complete) and nothing is pending — or when it is stranded; three
-    // minutes without the fleet's words, and the queue says so and goes on.
-    private async Task<Walk> WaitForTheRoundAsync(Golem golem, string name, CancellationToken ct)
+    // A FORMATION IS WAITED FOR AT THE BOUNDARY (propuesta 117, revised; before it, 13/14-oct-2026: a take waited for its round and every rotate for its
+    // step, because the next `form` ran on and made the formation again under the fleet's feet): the lines of a formation went into the golem
+    // together, and the first line of anything else waits here until the formation is done — this golem routed, no step queued, nothing pending,
+    // every member on its place, and its finish counted if it asked one — or stranded. A formation on cue waits for the cue first. Three minutes
+    // without change and the log says so, and keeps waiting (STOP ends it): running on is what broke the marches.
+    private async Task<Walk> WaitForTheFormationAsync(Golem golem, string name, DateTime since, CancellationToken ct)
     {
-        var started = DateTime.UtcNow;
+        var lastNotice = DateTime.UtcNow;
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(1000, ct);
             int? pending = await GolemClient.PendingAsync(golem, ct);
             if (pending == null) { golem.Status = "unreachable"; return Walk.Unreachable; }
             var state = await GolemClient.FormationStateAsync(golem, name, ct);
-            if (state is { Stranded: true }) return Walk.Walked;   // its route ended short twice: the log says how it ended
-            if (state is { Routed: true } && pending == 0) return Walk.Walked;
-            golem.Status = pending > 0 ? $"busy: {pending} route(s) pending" : $"waiting for the fleet's words in {name}";
-            if ((DateTime.UtcNow - started).TotalMinutes > 3) return Walk.NoRoute;
-        }
-        return Walk.Cancelled;
-    }
-
-    // A ROTATE WAITS FOR THE FLEET'S STEPS (14-oct-2026; Juan, on by-distance/breathing-hexagon: "en el gazebo está más grande y en el CLI está más
-    // corto"): a rotate only queues a step in the golem, which opens when every member stands on its place; the queue gave it 8 s and ran on to the
-    // next `form`, which made the formation again while the steps were still being walked — yellow was left behind in the old one, the others
-    // waited for its word for ever. The rotate is done when no step waits, every member stands on its place and nothing is pending — or stranded;
-    // three minutes, and the log says so.
-    private async Task<Walk> WaitForTheStepsAsync(Golem golem, string name, CancellationToken ct)
-    {
-        var started = DateTime.UtcNow;
-        while (!ct.IsCancellationRequested)
-        {
-            await Task.Delay(1000, ct);
-            int? pending = await GolemClient.PendingAsync(golem, ct);
-            if (pending == null) { golem.Status = "unreachable"; return Walk.Unreachable; }
-            var state = await GolemClient.FormationStateAsync(golem, name, ct);
-            if (state == null) return Walk.NoRoute;                  // no such formation: the golem refused the rotate, the log said why
-            if (state.Stranded) return Walk.Walked;
-            if (state.Queued == 0 && pending == 0 && state.Placed >= state.Crew) return Walk.Walked;
-            golem.Status = pending > 0 ? $"busy: {pending} route(s) pending" : $"waiting for the fleet's steps in {name} — {state.Placed} of {state.Crew} placed";
-            if ((DateTime.UtcNow - started).TotalMinutes > 3) return Walk.NoRoute;
+            if (state == null) { Log($"{golem.Name} › {name}: the golem has no such formation — nothing to wait for"); return Walk.NoRoute; }
+            double secs = (DateTime.UtcNow - since).TotalSeconds;
+            if (state.Stranded) { Log($"{golem.Name} › ✗ {name} stranded after {secs:0.0} s — take it again, move it or dissolve it"); golem.Status = $"{name} stranded"; return Walk.Walked; }
+            if (state.Routed && state.Queued == 0 && pending == 0 && state.Placed >= state.Crew && !state.Finishing)
+            {
+                Log($"{golem.Name} › ✓ {name} done in {secs:0.0} s — round {state.Round}, {state.Placed}/{state.Crew} placed{(state.Finished > 0 ? $", {state.Finished}/{state.Crew} finished" : "")}");
+                return Walk.Walked;
+            }
+            golem.Status = state.OnCue && !state.Cued ? $"waiting for the cue in {name}"
+                         : pending > 0 ? $"dancing {name}: round {state.Round}, {pending} route(s) pending"
+                         : !state.Routed ? $"waiting for the fleet's words in {name}"
+                         : $"dancing {name}: round {state.Round}, {state.Placed} of {state.Crew} placed, {state.Queued} step(s) queued";
+            if ((DateTime.UtcNow - lastNotice).TotalMinutes >= 3)
+            {
+                lastNotice = DateTime.UtcNow;
+                Log($"{golem.Name} › … still waiting for {name} after {secs / 60:0.0} min: {golem.Status} — STOP ends the wait");
+            }
         }
         return Walk.Cancelled;
     }
@@ -1073,21 +1122,23 @@ public partial class MainWindow : Window
         // THE FORMATION IS THE GOLEM'S (propuesta 104; Juan: "el CLI sólo servirá como interfaz"): two lines on the selected golem's tab — the
         // form, which the golem spreads to its fleet, and the take, which moves the whole fleet by the formation's policy; the name is the
         // figure's with the next number the golem does not know yet
-        string shape = dialog.Figure == "double ring" ? "double-ring" : dialog.Figure;
+        string shape = dialog.Figure;
         var known = Views().Select(v => v.Name).ToHashSet(StringComparer.Ordinal);
         int n = 1;
         while (known.Contains($"{shape}-{n}")) n++;
         string name = $"{shape}-{n}";
         // THE FORMATION ON EVERY MEMBER'S TAB (propuesta 112, 13-oct-2026; Juan: "cuando se cree la formación todos los golems sabrán cuál es la
         // formación a la que pertenecen porque se mandó a crear"): the warden tells form and take to every golem of the fleet, each on its own tab
-        var members = Members(dialog.Chosen.Concat(dialog.Figure == "double ring" ? dialog.InnerChosen : Array.Empty<string>()));
+        var members = Members(dialog.Chosen);
         foreach (var member in members)
         {
             member.Enqueue(FormLineOf(dialog, name, 0.0));
-            member.Enqueue($"take {name}");
+            if (!dialog.OnCue) member.Enqueue($"take {name}");   // on cue: its take is the word 'your turn' from the group before (propuesta 117)
+            // a cue to give: every member's finish closes its part (19-oct-2026: without it the fleet never finished and the next group never formed); the steps go in before it
+            if (dialog.CueTo != "") member.Enqueue($"finish {name}");
         }
         FormationsTab.IsSelected = true;
-        Log($"form {name} and take {name} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))} — SEND to selected when ready");
+        Log($"form {name}{(dialog.OnCue ? "" : $" and take {name}")} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))}{(dialog.CueTo != "" ? $" and finish {name}" : "")} — SEND to selected when ready");
     }
 
     // A STEP OF A FORMATION (propuesta 104; ajuste 77): the line `rotate <name> <sense> [--ring …]` WRITTEN on the selected golem's tab, sent
@@ -1095,17 +1146,13 @@ public partial class MainWindow : Window
     // get de la formación para ver cómo están distribuidos — no es el CLI quien dicta eso, lo dicta el objeto de la formación del golem"): the
     // console shows nothing of its own — the holders are the golem's `formations` read, asked again every 3 s and once the step's routes end;
     // the golem spreads the step and every copy queues it, which opens when everybody stands on its place. The whole figure, or one ring.
-    private void RotateClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Whole);
-    private void RotateCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Whole);
-    private void RotateOuterClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Outer);
-    private void RotateOuterCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Outer);
-    private void RotateInnerClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise, Ring.Inner);
-    private void RotateInnerCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise, Ring.Inner);
+    private void RotateClockwise_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Clockwise);
+    private void RotateCounter_Click(object sender, RoutedEventArgs e) => Rotate(sender, Sense.Counterclockwise);
 
-    private void Rotate(object sender, Sense sense, Ring ring)
+    private void Rotate(object sender, Sense sense)
     {
         if ((sender as Button)?.Tag is not FormationView formation) return;
-        string line = $"rotate {formation.Name} {(sense == Sense.Clockwise ? "clockwise" : "counterclockwise")}{(ring == Ring.Whole ? "" : $" --ring {ring.ToString().ToLowerInvariant()}")}";
+        string line = $"rotate {formation.Name} {(sense == Sense.Clockwise ? "clockwise" : "counterclockwise")}";
         // on every member's tab (propuesta 112): each golem queues the step in its own copy and resolves its next place from where it stands
         var members = Members(formation.CrewNames);
         // right after that formation's take, or its last step, on each tab (13-oct-2026: the whole choreography composed before one SEND)
@@ -1378,9 +1425,7 @@ public partial class MainWindow : Window
     }
 
     // what the figure became, in the operator's words: its centre, its measure, its orientation
-    private static string Shape(Figure figure) => figure is DoubleRing rings
-        ? $"at {figure.Center}, diameters {Spot.Fmt(rings.OuterDiameter)} and {Spot.Fmt(rings.InnerDiameter)} m, {Spot.Fmt(figure.Angle)}°"
-        : figure is Propeller propeller
+    private static string Shape(Figure figure) => figure is Propeller propeller
         ? $"at {figure.Center}, {propeller.Blades} blades of {Spot.Fmt(propeller.Radius)} m, hub {Spot.Fmt(propeller.Hub)} m, {Spot.Fmt(figure.Angle)}°"
         : $"at {figure.Center}, {(figure is Circle ? "radius" : "side")} {Spot.Fmt(figure.Measure)} m, {Spot.Fmt(figure.Angle)}°";
 
@@ -1430,7 +1475,9 @@ public partial class MainWindow : Window
         {
             // a form line of it already on the tab (a formation to send, or one told again): rewritten in its place; else form and take added
             if (member.Replace(l => l.StartsWith($"form {formation.Name} ", StringComparison.OrdinalIgnoreCase), formation.FormLine(next))) rewritten++;
-            if (!member.Lines().Any(l => l.Trim().StartsWith($"take {formation.Name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {formation.Name}");
+            if (!formation.OnCue && !member.Lines().Any(l => l.Trim().StartsWith($"take {formation.Name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {formation.Name}");   // on cue: its take is the cue (propuesta 117)
+            // a cue to give: every member's finish, last (19-oct-2026: a figure moved on the map and shot went out without it, and the next group never started)
+            if (formation.CueTo != "" && !member.Lines().Any(l => l.Trim().Equals($"finish {formation.Name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"finish {formation.Name}");
         }
         Log($"shot: form {formation.Name} {Shape(next)} and take {formation.Name} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))}{(rewritten > 0 ? $" ({rewritten} form line(s) rewritten in place)" : "")} — SEND to selected when ready");
         Draw();
@@ -1664,16 +1711,6 @@ public partial class MainWindow : Window
             double r = circle.Radius * scale;
             var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = fill };
             Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); layer.Children.Add(ring);
-        }
-        else if (figure is DoubleRing rings)
-        {
-            // the two rings: the outer one filled faintly, the inner one drawn over it
-            foreach (var (radius, filled) in new[] { (rings.OuterRadius, true), (rings.InnerRadius, false) })
-            {
-                double r = radius * scale;
-                var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = line, StrokeThickness = strong ? 2 : 1, StrokeDashArray = dash, Fill = filled ? fill : Brushes.Transparent };
-                Canvas.SetLeft(ring, centre.X - r); Canvas.SetTop(ring, centre.Y - r); layer.Children.Add(ring);
-            }
         }
         else if (figure is Propeller propeller)
         {

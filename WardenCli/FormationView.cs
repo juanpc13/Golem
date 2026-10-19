@@ -18,20 +18,35 @@ public sealed record HolderView(string Name, int Index, double X, double Y, int 
 /// </summary>
 public sealed class FormationView : INotifyPropertyChanged
 {
-    public FormationView(string name, string shape, double centerX, double centerY, double measure, double degrees, Policy policy, string crew, int division,
+    public FormationView(string name, string shape, double centerX, double centerY, double measure, double degrees, Policy policy, string crew,
                          int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots, int aligned = 0,
-                         bool stranded = false, string strandedWhy = "", double inner = 0, int arms = 0)
+                         bool stranded = false, string strandedWhy = "", double inner = 0, int arms = 0,
+                         string cueTo = "", bool onCue = false, bool cued = true, int finished = 0, bool done = false, bool cueGiven = false)
     {
         Inner = inner; Arms = arms;
-        Name = name; Shape = shape; CenterX = centerX; CenterY = centerY; Measure = measure; Degrees = degrees; Policy = policy; Crew = crew; Division = division;
+        CueTo = cueTo ?? ""; OnCue = onCue; Cued = cued; Finished = finished; Done = done; CueGiven = cueGiven;
+        Name = name; Shape = shape; CenterX = centerX; CenterY = centerY; Measure = measure; Degrees = degrees; Policy = policy; Crew = crew;
         Places = places; Placed = placed; Queued = queued; Round = round; Mine = mine; Holders = holders; Spots = spots; Aligned = aligned;
         Stranded = stranded; StrandedWhy = strandedWhy;
     }
 
-    /// <summary>The figure's inner measure as the golem says it (propuesta 114): a propeller's hub, a double ring's inner radius; 0 otherwise.</summary>
+    /// <summary>The figure's inner measure as the golem says it (propuesta 114): a propeller's hub; 0 otherwise.</summary>
     public double Inner { get; }
     /// <summary>A propeller's blades as the golem says them; 0 otherwise.</summary>
     public int Arms { get; }
+
+    /// <summary>THE CUE BETWEEN DANCERS (propuesta 117): whom the last of this fleet to finish cues ("" nobody); whether the formation starts on
+    /// a cue and whether the cue came; how many members finished; whether every one did; whether the cue was given.</summary>
+    public string CueTo { get; }
+    public bool OnCue { get; }
+    public bool Cued { get; }
+    public int Finished { get; }
+    public bool Done { get; }
+    public bool CueGiven { get; }
+    public string SequenceText =>
+        (OnCue ? (Cued ? " · cued" : " · on cue — waiting") : "")
+        + (CueTo != "" ? $" · cue → {CueTo}{(CueGiven ? " (given)" : "")}" : "")
+        + (Finished > 0 ? $" · {Finished}/{CrewCount} finished{(Done ? " — done" : "")}" : "");
 
     /// <summary>This golem could not reach its place twice (propuesta 113): the formation waits for the warden — take again, move, dissolve.</summary>
     public bool Stranded { get; }
@@ -47,11 +62,11 @@ public sealed class FormationView : INotifyPropertyChanged
     public bool IsPending { get; set; }
     public string PendingOn { get; set; } = "";
     public string OwnerText => IsPending ? $"  to send · on {PendingOn}" : IsOthers ? $"  {Owner}'s" : "";
-    /// <summary>square, pentagon, triangle, circle, double ring — the golem's word.</summary>
+    /// <summary>square, pentagon, triangle, circle, propeller — the golem's word.</summary>
     public string Shape { get; }
     public double CenterX { get; }
     public double CenterY { get; }
-    /// <summary>A polygon's side, a circle's radius, a double ring's outer radius.</summary>
+    /// <summary>A polygon's side, a circle's radius, a propeller's tips.</summary>
     public double Measure { get; }
     public double Degrees { get; }
     public Policy Policy { get; }
@@ -59,8 +74,6 @@ public sealed class FormationView : INotifyPropertyChanged
     public string PolicyWord => Policies.Word(Policy);
     /// <summary>The fleet's names as the golem lists them, in rank order, comma-separated.</summary>
     public string Crew { get; }
-    /// <summary>Where the inner ring begins in the crew (0: one ring).</summary>
-    public int Division { get; }
     public int Places { get; }
     public int Placed { get; }
     public int Queued { get; }
@@ -101,7 +114,6 @@ public sealed class FormationView : INotifyPropertyChanged
     /// <summary>What the console projects and grips: the draft while there is one, else the figure as the golem told it.</summary>
     public Figure? Projected => draft ?? AsFigure();
 
-    public bool IsDoubleRing => Shape == "double ring";
     public bool IsPropeller => Shape == "propeller";
     public IReadOnlyList<string> CrewNames => Crew.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(n => n.Trim()).ToList();
     public int CrewCount => CrewNames.Count;
@@ -110,7 +122,7 @@ public sealed class FormationView : INotifyPropertyChanged
     // ---- the list's words ----
     private static string N(double v) => Math.Round(v, 3).ToString("0.###", CultureInfo.InvariantCulture);
     public string CenterText => $"{N(CenterX)},{N(CenterY)}";
-    public string RoundText => $"  by {PolicyWord} · round {Round} · {Placed}/{CrewCount} placed{(Aligned > 0 ? $" · {Aligned} lined up" : "")}{(Queued > 0 ? $" · {Queued} step(s) queued" : "")}";
+    public string RoundText => $"  by {PolicyWord} · round {Round} · {Placed}/{CrewCount} placed{(Aligned > 0 ? $" · {Aligned} lined up" : "")}{(Queued > 0 ? $" · {Queued} step(s) queued" : "")}{SequenceText}";
     public string HoldersText
     {
         get
@@ -119,24 +131,17 @@ public sealed class FormationView : INotifyPropertyChanged
             if (figure == null) return Crew;
             string Of(int start, int count) => string.Join(" · ", Enumerable.Range(start, count).Select(i => HolderOf(i) is { } who ? $"{who} {figure.Label(i, Places)}" : $"{figure.Label(i, Places)} free"));
             if (Holders.Count == 0) return $"{Crew} — nobody placed yet (by {PolicyWord})";
-            return IsDoubleRing ? $"outer: {Of(0, Division)} — inner: {Of(Division, Places - Division)}" : Of(0, Places);
+            return Of(0, Places);
         }
     }
-    public string Describe() => $"{Name} · {Shape} at {CenterText}, {(IsDoubleRing || IsPropeller || Shape == "circle" ? "radius" : "side")} {N(Measure)} m, {N(Degrees)}°, by {PolicyWord}: {HoldersText}";
+    public string Describe() => $"{Name} · {Shape} at {CenterText}, {(IsPropeller || Shape == "circle" ? "radius" : "side")} {N(Measure)} m, {N(Degrees)}°, by {PolicyWord}: {HoldersText}";
 
     /// <summary>The geometry the console draws and grips — built from what the golem said: the figure of that kind, centre, size and
-    /// orientation; a double ring with its inner radius read from its spots. Null when the shape is unknown to the console.</summary>
+    /// orientation; a propeller with its hub and its blades. Null when the shape is unknown to the console.</summary>
     public Figure? AsFigure()
     {
         try
         {
-            if (IsDoubleRing)
-            {
-                var centre = new Spot(CenterX, CenterY);
-                int outer = Division > 0 ? Division : Math.Max(1, Places / 2);
-                double inner = Spots.Count > outer ? new Spot(Spots[outer].X, Spots[outer].Y).DistanceTo(centre) : Measure / 2;
-                return new DoubleRing(centre, Measure, Math.Max(0.1, Math.Round(inner, 3)), outer, Math.Max(1, Places - outer), Degrees);
-            }
             if (IsPropeller)
                 return new Propeller(new Spot(CenterX, CenterY), Measure, Inner > 0 && Inner < Measure ? Inner : Measure / 3, Arms >= 2 ? Arms : 3, Degrees);
             return Figure.Named(Shape, new Spot(CenterX, CenterY), Measure).Oriented(Degrees);
@@ -144,24 +149,17 @@ public sealed class FormationView : INotifyPropertyChanged
         catch (ArgumentException) { return null; }
     }
 
-    /// <summary>The name on the wire: a `--fleet` of the crew, and for a double ring the outer ring's names and `--inner-fleet` the inner's.</summary>
-    public string FleetOptions()
-    {
-        var names = CrewNames;
-        if (!IsDoubleRing || Division <= 0) return $"--fleet {string.Join(",", names)}";
-        return $"--fleet {string.Join(",", names.Take(Division))} --inner-fleet {string.Join(",", names.Skip(Division))}";
-    }
+    /// <summary>The fleet on the wire: a `--fleet` of the crew.</summary>
+    public string FleetOptions() => $"--fleet {string.Join(",", CrewNames)}";
 
     /// <summary>The `form` line that tells the golem this formation AGAIN with that figure — moved, turned or resized on the map (propuesta 104:
     /// saying it again is making it again); the same name, fleet and policy.</summary>
     public string FormLine(Figure figure)
     {
-        string size = figure is DoubleRing rings
-            ? $"--radius {N(rings.OuterRadius)} --inner-radius {N(rings.InnerRadius)}"
-            : figure is Propeller propeller ? $"--radius {N(propeller.Radius)} --inner-radius {N(propeller.Hub)} --blades {propeller.Blades}"
+        string size = figure is Propeller propeller ? $"--radius {N(propeller.Radius)} --inner-radius {N(propeller.Hub)} --blades {propeller.Blades}"
             : figure is Circle ? $"--radius {N(figure.Measure)}" : $"--side {N(figure.Measure)}";
-        string shape = figure is DoubleRing ? "double-ring" : figure.Name;
-        return $"form {Name} {shape} --center {figure.Center} {size} --angle {N(figure.Angle)} {FleetOptions()} --by {PolicyWord}";
+        string shape = figure.Name;
+        return $"form {Name} {shape} --center {figure.Center} {size} --angle {N(figure.Angle)} {FleetOptions()} --by {PolicyWord}{(CueTo != "" ? $" --cue {CueTo}" : "")}{(OnCue ? " --on-cue" : "")}";
     }
 
     public static IReadOnlyList<FormationView> Parse(JsonElement json)
@@ -177,12 +175,14 @@ public sealed class FormationView : INotifyPropertyChanged
             if (f.TryGetProperty("spots", out var ss) && ss.ValueKind == JsonValueKind.Array)
                 foreach (var sp in ss.EnumerateArray()) spots.Add((Num(sp, "x"), Num(sp, "y")));
             list.Add(new FormationView(Str(f, "called"), Str(f, "shape"), Num(f, "atX"), Num(f, "atY"), Num(f, "length"), Num(f, "degrees"), Policies.Parse(Str(f, "policy")) ?? Policy.Rank, Str(f, "crew"),
-                                       (int)Num(f, "division"), (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned"),
-                                       f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True, Str(f, "strandedWhy"), Num(f, "inner"), (int)Num(f, "arms")));
+                                       (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned"),
+                                       f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True, Str(f, "strandedWhy"), Num(f, "inner"), (int)Num(f, "arms"),
+                                       Str(f, "cueTo"), Flag(f, "onCue"), !f.TryGetProperty("cued", out var cu) || cu.ValueKind != JsonValueKind.False, (int)Num(f, "finished"), Flag(f, "done"), Flag(f, "cueGiven")));
         }
         return list;
     }
 
+    private static bool Flag(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
     private static double Num(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
     private static string Str(JsonElement e, string name) => e.TryGetProperty(name, out var v) ? (v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.ToString()) : "";
 

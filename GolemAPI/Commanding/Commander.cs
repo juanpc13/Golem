@@ -45,7 +45,7 @@ public sealed class Commander
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
         // a formation is the warden's to tell to every golem of its fleet, one line on each tab (propuesta 112, 13-oct-2026; the words of the round
         // still cross between the members by tell); a play spreads by itself (propuesta 108) — never a line carried by --with
-        if (command.Verb is "form" or "take" or "rotate" or "dissolve" or "play" && command.With.Count > 0)
+        if (command.Verb is "form" or "take" or "rotate" or "dissolve" or "finish" or "play" && command.With.Count > 0)
             return Reply.Syntax($"{command.Verb}: told to every golem involved on its own tab — never --with, which carries single orders (visit, reset, use, optimize, speed)");
         // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
         if (command.Verb == "place" && command.With.Count > 0)
@@ -95,6 +95,7 @@ public sealed class Commander
             "take" => Take(command),
             "rotate" => Rotate(command),
             "dissolve" => Choreographer(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
+            "finish" => Choreographer(out var fm, out var fnm) ? Answered(fm.Finish(command.Text), $"finish {command.Text} — counted when its part is done; the fleet is told") : fnm,
             "formations" => Formations(),
             "disputes" => Disputes(),
             "play" => command.Text == "" ? PlayRead() : command.Text == "over" ? (Dynamics(out var po, out var por) ? Answered(po.Over(), "the play is over — the cast is told") : por) : Play(command),
@@ -140,18 +141,18 @@ public sealed class Commander
         double? Metres(string key) => command.Values.TryGetValue(key, out var v) ? double.Parse(v, CultureInfo.InvariantCulture) : null;
         var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
                                       Metres("side"), Metres("radius"), Metres("inner-radius"), Metres("angle") ?? 0.0,
-                                      FleetOf(command).ToList(), command.Values.ContainsKey("inner-fleet") ? FleetOf(command, "inner-fleet").ToList() : null,
+                                      FleetOf(command).ToList(),
                                       command.Values.TryGetValue("by", out var by) ? by : null,
-                                      command.Values.TryGetValue("blades", out var blades) ? int.Parse(blades, CultureInfo.InvariantCulture) : null);
+                                      command.Values.TryGetValue("blades", out var blades) ? int.Parse(blades, CultureInfo.InvariantCulture) : null,
+                                      command.Values.TryGetValue("cue", out var cue) ? cue : null,
+                                      command.Values.ContainsKey("on-cue"));
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Choreographer(out var choreographer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
         var answer = request.IsPropeller
-            ? choreographer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy)
-            : request.IsRings
-            ? choreographer.FormRings(request.Name, center, request.Radius.Value, request.InnerRadius.Value, request.Angle ?? 0.0, request.Fleet, request.InnerFleet, request.Policy)
-            : choreographer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy);
+            ? choreographer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue)
+            : choreographer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var holders = new List<string>();
         try
@@ -161,7 +162,7 @@ public sealed class Commander
                 foreach (var h in v.EnumerateArray()) holders.Add($"{Str(h, "who")} {Num(h, "x")},{Num(h, "y")}");
         }
         catch (JsonException) { }
-        return Reply.Done($"formed {request.Name} for {request.Fleet.Count + (request.InnerFleet?.Count ?? 0)} by {request.Policy} — every golem of the fleet is told" + (holders.Count > 0 ? $"; places: {string.Join(" · ", holders)}" : ""), answer.Print ?? "");
+        return Reply.Done($"formed {request.Name} for {request.Fleet.Count} by {request.Policy} — every golem of the fleet is told" + (holders.Count > 0 ? $"; places: {string.Join(" · ", holders)}" : ""), answer.Print ?? "");
     }
 
     // the formation taken (propuesta 104): the same validation as POST /take; the route opens when the whole fleet said where it stands
@@ -177,11 +178,11 @@ public sealed class Commander
     // a step of a formation (ajuste 77; propuesta 104): opened at once when everybody already stands — the order, as any — or queued, said so
     private Reply Rotate(Command command)
     {
-        var request = new RotateRequest(command.Text, command.Values["sense"], command.Values.TryGetValue("ring", out var ring) ? ring : null);
+        var request = new RotateRequest(command.Text, command.Values["sense"]);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Choreographer(out var choreographer, out var refusal)) return refusal;
-        return Stepped(choreographer.Rotate(request.Name, request.Sense, request.Orbit), $"{request.Name} {request.Sense}{(request.Orbit == "whole" ? "" : " · " + request.Orbit + " ring")}");
+        return Stepped(choreographer.Rotate(request.Name, request.Sense), $"{request.Name} {request.Sense}");
     }
 
     // the disputes by distance (14-oct-2026): one line each, won or yielded, against whom, both distances

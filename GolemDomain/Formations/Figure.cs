@@ -34,10 +34,10 @@ internal abstract class Figure
     /// <summary>What the journal and the console call this figure.</summary>
     internal abstract string Name { get; }
 
-    /// <summary>What says its size: a polygon's side, a circle's radius, a double ring's outer radius — what the formations read prints.</summary>
+    /// <summary>What says its size: a polygon's side, a circle's radius, a propeller's tips — what the formations read prints.</summary>
     internal abstract Units.Length Measure { get; }
 
-    /// <summary>Its INNER measure, in metres, when it has one (propuesta 114): a double ring's inner radius, a propeller's hub; 0 otherwise —
+    /// <summary>Its INNER measure, in metres, when it has one (propuesta 114): a propeller's hub; 0 otherwise —
     /// what the formations read prints so the console draws the figure the golem holds.</summary>
     internal virtual double InnerMeters => 0.0;
 
@@ -59,10 +59,10 @@ internal abstract class Figure
     }
 
     /// <summary>The ORBITS of the figure (propuesta 104): the runs of places a step moves round, each as its first place and how many — one
-    /// for every figure, the whole of its places; two for a double ring, the outer ring then the inner one.</summary>
+    /// for every figure, the whole of its places; a propeller's centre and every rung of its blades (propuesta 114).</summary>
     internal virtual IReadOnlyList<(int Start, int Count)> Orbits(int count) => new[] { (0, Places(count).Count) };
 
-    /// <summary>Which orbit the place of that index lies in: 0 for every figure but the double ring.</summary>
+    /// <summary>Which orbit the place of that index lies in: 0 for every figure but the propeller.</summary>
     internal int OrbitOf(int index, int count)
     {
         var orbits = Orbits(count);
@@ -72,16 +72,10 @@ internal abstract class Figure
     }
 
     /// <summary>The figure's ROTATION as a <see cref="Move"/> (ajuste 84; Juan: "que la figura como tal tenga la coreografía"): every body
-    /// to the next place in that sense, <c>clockwise</c> or <c>counterclockwise</c> — <c>move = formation.Figure.Rotate(@sense, @ring)</c>.
+    /// to the next place in that sense, <c>clockwise</c> or <c>counterclockwise</c> — <c>move = formation.Figure.Rotate(@sense)</c>.
     /// A figure that does not rotate refuses; the ones whose places run around a centre say what a step is (<see cref="Polygon"/>,
-    /// <see cref="Circle"/>). The RING (propuesta 104): <c>Whole</c> turns every orbit; <c>Outer</c> or <c>Inner</c> one ring alone — a
-    /// figure with one orbit refuses them. Every figure grows its own moves here, in its class, never in the formation.</summary>
-    internal virtual Move Rotate(Sense sense, Ring ring)
-    {
-        if (ring != Ring.Whole) throw new GolemDomainException($"a {Name} has no rings: it turns whole");
-        return Rotate(sense);
-    }
-
+    /// <see cref="Circle"/>, <see cref="Propeller"/>). Every figure grows its own moves here, in its class, never in the formation. (The
+    /// double ring and its rings turned apart went on 19-oct-2026: two circles do the same.)</summary>
     internal virtual Move Rotate(Sense sense) => throw new GolemDomainException($"a {Name} does not rotate");
 
     /// <summary>One place along the figure's fixed order in that sense, round every orbit: the places run counter-clockwise, so clockwise is
@@ -122,65 +116,6 @@ internal sealed class Circle : Figure
             places.Add(Center.Along(AngleUtility.ToRadians(360.0 * k / count + Turn.InDegrees), Radius.InMeters));
         }
         return places;
-    }
-}
-
-/// <summary>THE DOUBLE RING (propuesta 104, 8-oct-2026; Juan: "una formación que pregunte por los diámetros de los dos anillos y que se
-/// pueda rotar el superior y el inferior… seleccionar cuáles serían los golems del anillo inferior y superior"): two circles round one
-/// centre, said by their RADII, each with as many places as the golems that ride it — evenly spaced from due east (turned by the figure's
-/// orientation), counter-clockwise like the circle. The places run the OUTER ring first, then the INNER one, so a fleet DIVIDED in two
-/// (<see cref="Fleet"/>: the outer names sorted, then the inner ones) puts every golem on its ring by rank; each ring is an ORBIT, so a step
-/// may turn one ring and not the other, or both. The golem knows of both rings: the other ring's members are berths when its route opens.</summary>
-internal sealed class DoubleRing : Figure
-{
-    internal Units.Length OuterRadius { get; }
-    internal Units.Length InnerRadius { get; }
-    internal int OuterPlaces { get; }
-    internal int InnerPlaces { get; }
-
-    internal DoubleRing(Position center, Units.Length outerRadius, Units.Length innerRadius, int outerPlaces, int innerPlaces, Units.Angle turn) : base(center, turn)
-    {
-        if (outerRadius == null) throw new GolemDomainException("DoubleRing.DoubleRing: 'outerRadius' was not given");
-        if (innerRadius == null) throw new GolemDomainException("DoubleRing.DoubleRing: 'innerRadius' was not given");
-        if (innerRadius.InMeters <= 0) throw new GolemDomainException("a double ring needs an inner radius greater than zero");
-        if (outerRadius.InMeters <= innerRadius.InMeters) throw new GolemDomainException("the outer ring of a double ring is wider than the inner one");
-        if (outerPlaces < 1 || innerPlaces < 1) throw new GolemDomainException("each ring of a double ring needs at least one body");
-        OuterRadius = outerRadius;
-        InnerRadius = innerRadius;
-        OuterPlaces = outerPlaces;
-        InnerPlaces = innerPlaces;
-    }
-
-    internal override string Name => "double ring";
-
-    internal override Units.Length Measure => OuterRadius;
-
-    internal override double InnerMeters => InnerRadius.InMeters;
-
-    /// <summary>Whether the place of that index is on the inner ring.</summary>
-    internal bool IsInner(int index) => index >= OuterPlaces;
-
-    internal override IReadOnlyList<Position> Places(int count)
-    {
-        if (count != OuterPlaces + InnerPlaces) throw new GolemDomainException($"a double ring of {OuterPlaces} and {InnerPlaces} is laid out for {OuterPlaces + InnerPlaces} bodies, not {count}");
-        var places = new List<Position>();
-        for (int k = 0; k < OuterPlaces; k++) places.Add(Center.Along(AngleUtility.ToRadians(360.0 * k / OuterPlaces + Turn.InDegrees), OuterRadius.InMeters));
-        for (int k = 0; k < InnerPlaces; k++) places.Add(Center.Along(AngleUtility.ToRadians(360.0 * k / InnerPlaces + Turn.InDegrees), InnerRadius.InMeters));
-        return places;
-    }
-
-    internal override IReadOnlyList<(int Start, int Count)> Orbits(int count) => new[] { (0, OuterPlaces), (OuterPlaces, InnerPlaces) };
-
-    /// <summary>Both rings one place in that sense.</summary>
-    internal override Move Rotate(Sense sense) => OnePlace(sense);
-
-    /// <summary>One ring alone — <c>Outer</c> the orbit 0, <c>Inner</c> the orbit 1 — or both, <c>Whole</c>.</summary>
-    internal override Move Rotate(Sense sense, Ring ring)
-    {
-        if (ring == Ring.Whole) return Rotate(sense);
-        int shift = sense == Sense.Clockwise ? -1 : 1;
-        string which = ring == Ring.Outer ? "outer" : "inner";
-        return new Move($"the {which} ring one step {(sense == Sense.Clockwise ? "clockwise" : "counter-clockwise")}", shift, ring == Ring.Outer ? 0 : 1);
     }
 }
 
