@@ -337,10 +337,10 @@ public sealed class DisplacerRol
             var placed = robot.Choreographer?.Placed();
             if (placed is { Ok: true } placedNow) { robot.Report(placedNow, $"route {was.Route}: on its place in the formation — the fleet is told"); return placedNow; }
             // …or the run of a play (propuesta 108): pacman stands at a decision cell and the rule opens its next run
-            var ran = robot.Dynamics?.Ran();
+            var ran = robot.Dynamics?.Ran(here);   // from where the body really stands (ajuste 119)
             if (ran is { Ok: true } ranNow) { robot.Report(ranNow, $"route {was.Route}: at a decision cell — the next run opens"); return ranNow; }
             // …or a ghost's chase (fase 3): it arrived where pacman was seen, and pacman was seen somewhere new since
-            var chased = robot.Dynamics?.Chased();
+            var chased = robot.Dynamics?.Chased(here);
             if (chased is { Ok: true } chasedNow) { robot.Report(chasedNow, $"route {was.Route}: where pacman was seen — the chase goes on"); return chasedNow; }
         }
         if (answer.Ok && answer.Order is { Action: "stop", Waiting: true })

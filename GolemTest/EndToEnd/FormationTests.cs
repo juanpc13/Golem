@@ -388,7 +388,7 @@ public class FormationTests
         red.Enter(new Scenario(Catalog.OpenFloor(), new Collisions()));
         var redCopy = red.Choreography.Form("tri", "triangle", new Position(3.0, 5.5), new Meters(3.0), new Degrees(0.0), new Fleet("red"), Policy.Rank, "call-1");
         var apex = redCopy.Figure.Places(1)[0];
-        var born = redCopy.Convene(new Pose(apex.X + 0.01, apex.Y - 0.01, -Math.PI / 2 + 0.02), redCopy.Fleet.Member(red));
+        var born = redCopy.Convene(new Pose(apex.X + 0.01, apex.Y - 0.01, -Math.PI / 2 + 0.01), redCopy.Fleet.Member(red));   // within the 0.02 rad the golem lets pass (ajuste 119; was 0.05)
         Assert.AreEqual("completed", born.Status, born.AsPlan());
         Assert.IsTrue(redCopy.Reached, "the host says Placed with no arrival");
     }

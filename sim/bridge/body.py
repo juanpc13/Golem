@@ -48,7 +48,9 @@ MOVE_TIMEOUT = 90.0         # s, a move that takes longer is stuck
 TURN_TIMEOUT = 15.0         # s
 STALL_AFTER = 3.0           # s without the amount progressing = stuck
 PROGRESS = 0.02             # m or rad, progress smaller than this is noise
-DONE_WITHIN = 0.02          # m or rad, what is left of the amount when the action counts as done
+DONE_WITHIN = 0.02          # m, what is left of a move when it counts as done
+TURN_DONE_WITHIN = 0.01     # rad, what is left of a turn when it counts as done (20-oct-2026: a heading error is kept for the whole
+                            # straight run that follows, so a turn is finished twice as finely as a move; 0.0125 rad a sample is the floor)
 BACK_OFF_SPEED = 0.4        # m/s, in reverse
 STANDING_TOUCH_EVERY = 1.0  # s, a standing body reports a touch at most this often
 
@@ -242,7 +244,7 @@ class Body(Node):
                 self.turned += abs(normalize(theta - self.prev_theta))
                 self.prev_theta = theta
                 left = amount - self.turned
-                if left <= DONE_WITHIN:
+                if left <= TURN_DONE_WITHIN:
                     self.drive(0.0, 0.0)
                     self.done({"order": ticket, "result": "done"})
                     return

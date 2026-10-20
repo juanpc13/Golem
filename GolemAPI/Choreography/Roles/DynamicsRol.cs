@@ -238,9 +238,13 @@ public sealed class DynamicsRol
         catch (Exception ex) { return Answer.Refusal($"start {name}: " + GolemEmbodiment.Reason(ex)); }
     }
 
-    // the run reached its decision cell: the next run opens by the rule — refused (nothing written) when this golem is not pacman running there
-    internal Answer Ran()
+    // the run reached its decision cell: the next run opens by the rule — refused (nothing written) when this golem is not pacman running there.
+    // It opens FROM WHERE THE BODY REALLY STANDS (ajuste 119, 20-oct-2026): the arrival is the body's report, and the pose it brings is the
+    // one place the run's drift is corrected — a run chained from `g.Destination` started from the end the golem believed, and the error of
+    // every straight run (a heading kept from an imperfect turn) added up run after run until a touch re-anchored it
+    internal Answer Ran(Pose here)
     {
+        if (here == null) return Answer.Refusal("no telemetry from the body: the next run needs where it stands");
         try
         {
             return Answer.Of(robot.Actor.Using(
@@ -249,8 +253,8 @@ public sealed class DynamicsRol
                 ", @"
                     {
                         play = g.Dynamics.Pacman;
-                        from = g.Destination;
-                        route = g.Dynamics.Run(from, play);
+                        me = Pose(@px, @py, @ptheta);
+                        route = g.Dynamics.Run(me, play);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -271,6 +275,11 @@ public sealed class DynamicsRol
                         expose play.Name title, play.Stamp nonce, play.Runs runs, play.TargetX cellX, play.TargetY cellY;
                     }
                 ")
+                .WithParameters(p => {
+                    p["px", typeof(double)] = Resolution.Metres(here.X);
+                    p["py", typeof(double)] = Resolution.Metres(here.Y);
+                    p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
+                })
                 .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
@@ -326,9 +335,11 @@ public sealed class DynamicsRol
     // A GHOST CHASES (fase 3): from where it stands to the cell pacman was last seen running to — at its arrival (ChaseScript, fired like
     // RanScript) or at pacman's word (UptakeRanTo writes the same act); the first chase is the way out of the den
     // a ghost's chase ended and pacman was seen somewhere new: the next chase opens — refused (nothing written) when this golem is not a
-    // released ghost standing idle with somewhere new to go (fase 3)
-    internal Answer Chased()
+    // released ghost standing idle with somewhere new to go (fase 3); from where the body really stands, like the run (ajuste 119) — the
+    // chase at pacman's word (UptakeRanTo) has no telemetry and keeps `g.Destination`
+    internal Answer Chased(Pose here)
     {
+        if (here == null) return Answer.Refusal("no telemetry from the body: the next chase needs where it stands");
         try
         {
             return Answer.Of(robot.Actor.Using(
@@ -337,8 +348,8 @@ public sealed class DynamicsRol
                 ", @"
                     {
                         play = g.Dynamics.Pacman;
-                        from = g.Destination;
-                        route = g.Dynamics.Chase(from, play);
+                        me = Pose(@px, @py, @ptheta);
+                        route = g.Dynamics.Chase(me, play);
                         if (g.Strategy.OnTheWay.IsActive) {
                             route = g.Dash(route);
                         }
@@ -358,6 +369,11 @@ public sealed class DynamicsRol
                         }
                     }
                 ")
+                .WithParameters(p => {
+                    p["px", typeof(double)] = Resolution.Metres(here.X);
+                    p["py", typeof(double)] = Resolution.Metres(here.Y);
+                    p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
+                })
                 .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }

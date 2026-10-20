@@ -83,8 +83,11 @@ internal sealed class Route
     internal const int PatienceWithWalls = 3;
     /// <summary>How many things the body may bump into on one route before the golem gives it up.</summary>
     internal const int PatienceWithThings = 6;
-    /// <summary>A turn smaller than this (radians) is not asked: the body already faces its point closely enough.</summary>
-    internal const double TurnTolerance = 0.05;
+    /// <summary>A turn smaller than this (radians) is not asked: the body already faces its point closely enough. Was 0.05 until
+    /// 20-oct-2026 (ajuste 119): a heading error the body keeps for a whole straight run becomes lateral drift — 0.05 rad over the maze's
+    /// 7.5 m corridors is 0.37 m, most of the 0.5 m a body of 0.25 has to a 1.5 m cell's wall; 0.02 is twice what the body node can
+    /// resolve (odometry at 20 Hz, turning at 0.25 rad/s at the least: 0.0125 rad a sample).</summary>
+    internal const double TurnTolerance = 0.02;
     /// <summary>A stop WITHIN A HAIR of where the body stands is reached at birth (13-oct-2026): the direction of a leg of a centimetre is
     /// noise, and a line-up turn toward it (a route that starts together asks one however small) sent the body a radian off before its
     /// `face` — green took its place with turnLeft 1.32, advance 0.01, turnRight 1.29, and its belief of where it faced parted from the truth
