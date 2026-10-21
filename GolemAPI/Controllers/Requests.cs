@@ -49,11 +49,12 @@ public sealed record PointRequest(double? X, double? Y)
 }
 
 /// <summary>The strategy the golem optimizes its routes by (ajuste 61; `optimize`, ajuste 82) — <c>{"navigation": "on-the-way"}</c> or <c>door-by-door</c>.</summary>
-/// <summary>A play staged (propuesta 108): its title, pacman and the ghosts — <c>{"name": "pacman", "pacman": "blue", "ghosts": ["red", "green"]}</c> —
-/// and, since 16-oct-2026, how pacman is driven: <c>"steer": "manual" | "autonomous" | "guided"</c> (guided when left out).</summary>
-public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts, string Steer = null, string Kind = null, string As = null)
+/// <summary>A play staged (propuesta 108): its name, its kind, pacman and the ghosts, and the part this golem plays —
+/// <c>{"name": "game-1", "kind": "pacman", "pacman": "blue", "ghosts": ["red", "green"], "as": "ghost"}</c>. Pacman is autonomous (21-oct-2026):
+/// nothing says how it is driven.</summary>
+public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts, string Kind = null, string As = null)
 {
-    public const string Shape = "{\"name\": \"game-1\", \"kind\": \"pacman\", \"pacman\": \"blue\", \"ghosts\": [\"red\", \"green\"], \"as\": \"ghost\", \"steer\": \"guided\"}";
+    public const string Shape = "{\"name\": \"game-1\", \"kind\": \"pacman\", \"pacman\": \"blue\", \"ghosts\": [\"red\", \"green\"], \"as\": \"ghost\"}";
 
     public IEnumerable<string> Problems()
     {
@@ -61,7 +62,6 @@ public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts
         if (Kind != null && Kind.Trim().ToLowerInvariant() != "pacman") yield return "the only play known is pacman: " + Shape;
         if (As != null && As.Trim().ToLowerInvariant() is not ("pacman" or "ghost")) yield return "as is pacman or ghost: " + Shape;
         if (string.IsNullOrWhiteSpace(Pacman)) yield return "the play needs a pacman: " + Shape;
-        if (Steer != null && Steer.Trim().ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) yield return "steer is manual, autonomous or guided: " + Shape;
     }
 }
 
@@ -76,28 +76,6 @@ public sealed record ForgetPlayRequest(string Name)
     }
 }
 
-/// <summary>How pacman is driven from here on (16-oct-2026): <c>{"steer": "manual"}</c>.</summary>
-public sealed record SteerRequest(string Steer)
-{
-    public const string Shape = "{\"steer\": \"manual\"}";
-
-    public IEnumerable<string> Problems()
-    {
-        if (string.IsNullOrWhiteSpace(Steer) || Steer.Trim().ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) yield return "steer is manual, autonomous or guided: " + Shape;
-    }
-}
-
-/// <summary>The keyboard's wish (propuesta 108): <c>{"direction": "north"}</c>.</summary>
-public sealed record HeadRequest(string Direction)
-{
-    public const string Shape = "{\"direction\": \"north\"}";
-    public static readonly string[] Directions = { "north", "south", "east", "west" };
-
-    public IEnumerable<string> Problems()
-    {
-        if (string.IsNullOrWhiteSpace(Direction) || !Directions.Contains(Direction.Trim().ToLowerInvariant())) yield return "the direction is north, south, east or west: " + Shape;
-    }
-}
 
 /// <summary>The body's pace (propuesta 111): the cruise in m/s and, optionally, the turn rate in rad/s — <c>{"speed": 3.0, "turn": 2.5}</c>.</summary>
 public sealed record PaceRequest(double Speed, double? Turn)

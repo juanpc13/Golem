@@ -1,6 +1,7 @@
 using System.Globalization;
 using GolemDomain.Formations;
 using GolemDomain.Plays;
+using GolemDomain.Trails;
 using GolemDomain.Geometry;
 using GolemDomain.Scenarios;
 using GolemDomain.Layouts;
@@ -30,6 +31,7 @@ internal sealed class Golem
     private readonly Strategies strategies = new();      // its strategies of navigation, born with it (ajuste 63): g.Strategy.DoorByDoor (active at birth), g.Strategy.OnTheWay
     private readonly Choreographies choreography;         // its choreographies, born with it (ajustes 69, 70): the formation by name, and the route to its place
     private readonly Dynamics dynamics;                   // its dynamics, born with it (propuesta 108): the play it is in, pacman's runs
+    private readonly Explorations exploration;            // its exploration, born with it (propuesta 120): the trail of where its body went, the map it deduces
     // the map and the collisions the golem reads are the CURRENT scenario's (ajuste 60): a route born in one keeps its own
     private MapLayout layout => Current.Map;
     private Collisions collisions => Current.Collisions;
@@ -49,6 +51,7 @@ internal sealed class Golem
         this.body = body;
         choreography = new Choreographies(this);   // the module is born with its golem and asks it for the route to a place (ajustes 70, 78)
         dynamics = new Dynamics(this);             // the same for the plays (propuesta 108): it asks the golem for the route of a run
+        exploration = new Explorations(this);      // and the exploration (propuesta 120): the trail the golem feeds it, the marks it reads from the scenario
     }
 
     /// <summary>The golem born with its body AND ITS NAME (ajuste 72, 30-sep-2026; Juan: "que g sepa quién es él, el dominio debería
@@ -113,11 +116,41 @@ internal sealed class Golem
         if (pending != null) throw new GolemDomainException($"route {pending.Id} is pending: the golem enters a scenario when it stands free");
         Learn(scenario);
         current = scenarios.First(k => k.Name == scenario.Name);
+        if (standing != null) exploration.Anchored(current.Name, standing);   // the body stands where it stands, in the scenario entered too (propuesta 120)
         return this;
     }
 
     /// <summary>Every scenario the golem knows, in the order it learned them.</summary>
     internal IReadOnlyList<Scenario> Scenarios() => scenarios.ToList();
+
+    /// <summary>THE EXPLORER'S MAP EXPORTED (propuesta 120; Juan: "exportar mapa y se pasa a mapas de ese golem"): the map the exploration deduced
+    /// becomes a scenario of the golem's — collisions born empty, read in the FRAME of the scenario it was deduced in (the body's pose and the
+    /// world's region are that one's) — kept among the scenarios it knows, to be entered like any other (`use map <name>`); a name already known
+    /// is refused. <c>explored = g.Exploration.Deduced(@mapName); exploredScenario = g.Export(explored);</c></summary>
+    internal Scenario Export(MapLayout map)
+    {
+        if (map == null) throw new GolemDomainException("Golem.Export: 'map' was not given");
+        if (scenarios.Any(k => k.Name == map.Name)) throw new GolemDomainException($"the golem already knows a scenario named '{map.Name}'");
+        var scenario = new Scenario(map, new Collisions(), Current.Frame, exported: true);
+        scenarios.Add(scenario);
+        return scenario;
+    }
+
+    /// <summary>A SCENARIO DROPPED (propuesta 120; Juan: "si quiero puedo borrar algún mapa completo del golem"): only one the explorer exported, and
+    /// not the one the golem is in — a map of a release stays. <c>scenario = g.Scenario(@mapName); g.Drop(scenario);</c></summary>
+    internal Golem Drop(Scenario scenario)
+    {
+        if (scenario == null) throw new GolemDomainException("Golem.Drop: 'scenario' was not given");
+        if (!scenario.Exported) throw new GolemDomainException($"the scenario '{scenario.Name}' is a release's map: it stays");
+        if (ReferenceEquals(scenario, current)) throw new GolemDomainException($"the golem is in '{scenario.Name}': it uses another map first");
+        scenarios.Remove(scenario);
+        exploration.Dropped(scenario.Name);
+        return this;
+    }
+
+    /// <summary>Whether the golem is in the scenario of that name — what a peer's word carries (propuesta 120): a touch told from another
+    /// scenario is no mark in this one.</summary>
+    internal bool IsIn(string scenario) => scenario != null && current != null && current.Name == scenario;
 
     // ---- the strategies: how the golem takes the doors — its own objects from birth, one active at a time, asked by the script ----
 
@@ -137,6 +170,9 @@ internal sealed class Golem
     internal Choreographies Choreography => choreography;
     /// <summary>Its dynamics (propuesta 108): <c>g.Dynamics.Stage(…)</c>, <c>g.Dynamics.Run(from, play)</c>.</summary>
     internal Dynamics Dynamics => dynamics;
+    /// <summary>The golem's EXPLORATION (propuesta 120): the trail of where its body went in each scenario and the map it deduces from the trail
+    /// and the touches — <c>g.Exploration.Deduced()</c>, <c>g.Exploration.Frontier()</c>.</summary>
+    internal Explorations Exploration => exploration;
 
     /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here
     /// on it crosses the doors on the way — by the golem's own on-the-way strategy, the same object — and its way is decided again from
@@ -257,6 +293,25 @@ internal sealed class Golem
         return Entrust(from, stop, following: false, choosesOrder: false);
     }
 
+    /// <summary>A PROBE of the exploration (propuesta 120, fase B): the route the golem LAYS ITSELF — no planner — through the points its
+    /// exploration module decided (the cells it knows, and one step into the unknown), from where the body stands; a touch ends it. The
+    /// module asks it, never the journal.</summary>
+    internal Route Probe(Pose from, IReadOnlyList<Position> path)
+    {
+        if (from == null) throw new GolemDomainException("Golem.Probe: 'from' was not given");
+        if (path == null) throw new GolemDomainException("Golem.Probe: 'path' was not given");
+        if (path.Count == 0) throw new GolemDomainException("Golem.Probe: the path has no point");
+        if (HasPendingMission()) throw new GolemDomainException("a route is pending: the golem probes when it stands free");
+        collisions.PeersMovedOn();
+        var route = new Route(lastHandle + 1, path[^1], following: false, choosesOrder: false, strategies.DoorByDoor, layout, collisions, Radius(), body.Retreat.InMeters, this);
+        route.Probing();
+        route.Lay(path, from);
+        Stood(from);
+        routes.Add(route);
+        lastHandle = route.Id;
+        return route;
+    }
+
     /// <summary>The operator opens a route whose order of stops the golem may choose, so the whole way is shortest.</summary>
     internal Route Cover(Position from, Position stop)
     {
@@ -296,6 +351,7 @@ internal sealed class Golem
     internal bool Wake(Pose me)
     {
         if (me == null) throw new GolemDomainException("Golem.Wake: 'me' was not given");
+        exploration.Anchored(current?.Name, me);   // woken where the body stands — reborn, carried: the trail goes on from here, no stride across the jump (propuesta 120)
         Stood(me);
         if (!HasPendingMission() || Held) return false;
         Underway().Awake(me);
@@ -400,6 +456,26 @@ internal sealed class Golem
         if (route.Bumps > bumps) { lastBumpBody = me; lastBumpTouch = touch; lastBumpRoute = route; }   // a thing, for now: remembered, a peer's word may annul it
         Stood(me);
         return true;
+    }
+
+    /// <summary>THE BODY STALLED — <c>route = g.Stall(me, @reason)</c>: it could not move on, where it stands (its own report; lab 20-oct-2026: blue,
+    /// probing into a wall its contact sensor did not feel, stalled "no progress for 3 s" and probed the same cell a thousand times). On a PROBE
+    /// a stall IS a touch — pressed on the nose going forward, on the back going back: the mark is learned and the probe ends as any touch
+    /// ends it; on any other route the stall fails it, as the world's no.</summary>
+    internal Route Stall(Pose me, string why)
+    {
+        if (me == null) throw new GolemDomainException("Golem.Stall: 'me' was not given");
+        if (string.IsNullOrWhiteSpace(why)) throw new GolemDomainException("Golem.Stall: a stall needs the body's reason");
+        if (!HasPendingMission()) throw new GolemDomainException("nothing underway: no pending route stalled");
+        var route = Underway();
+        if (route.IsProbe)
+        {
+            Bump(me, 0.0);   // a probe walks every leg forward, the way back too: what stops it is at the nose
+            return route;
+        }
+        route.Fail(why);
+        Stood(me);
+        return route;
     }
 
     /// <summary>How far from where my body stood a peer's touch may land and still be a touch ON MY BODY: the shell itself is one
@@ -624,7 +700,11 @@ internal sealed class Golem
         if (facing != null) route.Faces(facing);   // a place of a formation: the body ends facing the centre (ajuste 79)
         if (company.Count > 0) route.Among(company);   // the fleet around it (propuesta 107)
         route.Decide(from);   // refused (no way fits) before the golem holds it: nothing is minted
-        if (!HasPendingMission()) standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
+        if (!HasPendingMission())
+        {
+            standing = from as Pose ?? new Pose(from.X, from.Y, standing?.Heading ?? 0.0);
+            exploration.Anchored(current?.Name, standing);   // the errand starts where the body stands: the trail goes on from there (propuesta 120)
+        }
         routes.Add(route);
         lastHandle = route.Id;
         return route;
@@ -641,6 +721,7 @@ internal sealed class Golem
     {
         if (me == null) throw new GolemDomainException("Golem.Stood: 'me' was not given");
         standing = me;
+        exploration.Walked(current?.Name, me);   // a stride of the trail (propuesta 120): the body walked to here
         foreach (var route in routes)
             if (route.IsPending() && !route.HasSetOut) route.StandAt(me);
     }

@@ -43,7 +43,7 @@ public sealed class Golem : INotifyPropertyChanged
     public Readings Knowledge
     {
         get => knowledge;
-        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); Raise(nameof(PaceOptions)); Raise(nameof(PacePrompt)); Raise(nameof(PlayText)); Raise(nameof(PlayCast)); Raise(nameof(IsPacman)); Raise(nameof(PlayList)); }
+        set { Set(ref knowledge, value); Raise(nameof(RoutesText)); Raise(nameof(RouteTitle)); Raise(nameof(RouteNow)); Raise(nameof(ObstaclesText)); Raise(nameof(WhyText)); Raise(nameof(PlanText)); Raise(nameof(ScenarioOptions)); Raise(nameof(NavigationOptions)); Raise(nameof(ScenarioPrompt)); Raise(nameof(NavigationPrompt)); Raise(nameof(PaceOptions)); Raise(nameof(PacePrompt)); Raise(nameof(PlayText)); Raise(nameof(PlayCast)); Raise(nameof(PlayList)); Raise(nameof(ExploredText)); Raise(nameof(ExploredCount)); Raise(nameof(MapList)); Raise(nameof(MapCount)); }
     }
 
     /// <summary>The scenarios it knows, for the environment's drop-down that enters one at once; the one it is in says so.</summary>
@@ -56,10 +56,18 @@ public sealed class Golem : INotifyPropertyChanged
     public string ScenarioPrompt => Knowledge.Scenario == "" ? "a scenario…" : Knowledge.Scenario;
     public string NavigationPrompt => Knowledge.Navigation == "" ? "a way…" : Knowledge.Navigation;
 
-    /// <summary>The play it is in (propuesta 108), for the play tab; with pacman selected the arrow keys say `head …`.</summary>
+    /// <summary>The play it is in (propuesta 108), for the play tab.</summary>
     public string PlayText => Knowledge.Pending == null ? "not asked yet" : Knowledge.Play == null ? "in no play — play pacman --pacman … --ghosts … on a tab stages one" : Knowledge.Play.Text;
     public string PlayCast => Knowledge.Play?.CastText ?? "";
-    public bool IsPacman => Knowledge.Play?.IsPacman == true;
+
+    /// <summary>What it explored in the scenario it is in (propuesta 120): the summary of its `explored` read, for the exploration tab.</summary>
+    public string ExploredText => Knowledge.Pending == null ? "not asked yet" : Knowledge.Explored is not { } e ? "no exploration read: an older program"
+        : $"{e.Scenario}: {e.Strides} stride(s), {e.Metres:0.0} m walked · {e.Covered} cell(s) free, {e.Walls} wall(s), {e.FrontierCount} at the frontier · grain {e.Grain:0.0} m{(e.Exploring ? $" · EXPLORING, {e.Probes} probe(s)" : e.Finished ? $" · explored whole in {e.Probes} probe(s)" : e.Complete ? " · complete" : "")}";
+    /// <summary>The free cells it knows, for the tab's header.</summary>
+    public int ExploredCount => Knowledge.Explored?.Covered ?? 0;
+    /// <summary>The maps it knows (propuesta 120), for the maps tab; the one it is in first.</summary>
+    public IReadOnlyList<ScenarioView> MapList => Knowledge.MapList.OrderByDescending(m => m.Current).ThenBy(m => m.Exported).ThenBy(m => m.Name).ToList();
+    public int MapCount => Knowledge.MapList.Count;
     /// <summary>Every play the golem was told (16-oct-2026), the ended ones among them — the play tab's list, newest first.</summary>
     public IReadOnlyList<PlayView> PlayList => Knowledge.PlayList.Reverse().ToList();
 

@@ -39,7 +39,6 @@ public class PlaysTests
         Assert.AreSame(play, blue.Dynamics.Find("game-1"));
         Assert.AreEqual(1, blue.Dynamics.Plays().Count);
         Assert.AreEqual(Direction.East, play.Heading, "pacman heads east in the cradle");
-        Assert.IsFalse(play.HasWish);
 
         var red = new Golem(body, "red");
         red.Enter(new Scenario(Catalog.Maze(), new Collisions()));
@@ -53,7 +52,7 @@ public class PlaysTests
     }
 
     [TestMethod]
-    public void PacmanRuns_StraightToTheNextDecisionCell_AndTheRuleTurnsIt_WishStraightRightLeftBack()
+    public void PacmanRuns_StraightToWhereTheCorridorCloses_AndTheRuleTurnsIt_RightLeftBack()
     {
         var map = Catalog.Maze();
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
@@ -61,10 +60,9 @@ public class PlaysTests
         blue.Enter(new Scenario(map, new Collisions()));
         var play = (Pacman)blue.Dynamics.Stage("game-1", "pacman", new Cast("blue", "red"), "call-1");
 
-        // released in the cradle (cell-9-5) heading east, no wish, GUIDED (the mode at birth): straight on THROUGH the intersection cell-10-5
-        // (ajuste 16-oct-2026: no stop where straight is open) to cell-12-5, where the east closes
+        // started in the cradle (cell-9-5) heading east, AUTONOMOUS (21-oct-2026, the only way pacman is driven): straight on THROUGH the
+        // intersection cell-10-5 (ajuste 16-oct-2026: no stop where straight is open) to cell-14-5, where the east closes
         var cradle = map.Find("cell-9-5") as Zone;
-        Assert.AreEqual(Steering.Guided, play.Steering);
         Assert.AreEqual(Direction.East, play.Decide(map, cradle));
         var (first, heading) = play.NextRun(map, cradle);
         Assert.AreEqual("cell-14-5", first.Name, "through cell-10-5 (three sides open) and three more intersections, to where row 5 ends");
@@ -83,94 +81,31 @@ public class PlaysTests
         Assert.AreEqual("completed", route.Status);
         Assert.IsTrue(blue.Dynamics.Reached, "the run reached its end: the next is to be decided");
 
-        // at cell-14-5, straight closed and no wish: the right of east is south, open — down column 14 to cell-14-3, where it closes again
+        // at cell-14-5, straight closed: the right of east is south, open — down column 14 to cell-14-3, where it closes again
         var second = blue.Dynamics.Run(new Pose(21.75, 8.25, 0.0), play);
         Assert.AreEqual("cell-14-3@21.75,5.25", second.AsPlan().Trim(), "south, where the corridor ends");
         Assert.AreEqual(Direction.South, play.Heading);
         Assert.AreEqual(2, play.Runs);
         WalkToTheEnd(second);
 
-        // a wish that is closed where pacman stands is kept and the rule decides: at cell-14-3 heading south, west is a wall, straight and the
-        // right (west) are closed, the left (east) is open — east along row 3; the wish stays for the next decision
-        play.Head(Direction.West);
+        // at cell-14-3 heading south: straight and the right (west) are closed, the left (east) is open — east along row 3 to cell-17-3
         var third = blue.Dynamics.Run(new Pose(21.75, 5.25, -1.5708), play);
         Assert.AreEqual(Direction.East, play.Heading);
-        Assert.IsTrue(play.HasWish, "west, closed here, is kept");
         Assert.AreEqual("cell-17-3@26.25,5.25", third.AsPlan().Trim());
         WalkToTheEnd(third);
 
-        // the newest wish wins: north, closed at cell-17-3 too; straight closed, the right of east is south — down to cell-17-1
-        play.Head(Direction.North);
+        // at cell-17-3 heading east: straight closed, the right of east is south — down to cell-17-1
         var fourth = blue.Dynamics.Run(new Pose(26.25, 5.25, 0.0), play);
         Assert.AreEqual("cell-17-1@26.25,2.25", fourth.AsPlan().Trim());
         Assert.AreEqual(Direction.South, play.Heading);
+        Assert.AreEqual(4, play.Runs);
 
-        // STEERED UNDERWAY (ajuste 16-oct-2026): a wish pulsed while running turns the run at the intersection ahead where it opens, from
-        // where the body is — no stop at the intersection; the opposite direction turns it round; a wish opening nowhere ahead is kept
-        var guided = new Golem(body, "blue");
-        guided.Enter(new Scenario(map, new Collisions()));
-        var steered = (Pacman)guided.Dynamics.Stage("game-4", "pacman", new Cast("blue", "red"), "call-4");
-        var running = guided.Dynamics.Run(new Pose(14.25, 8.25, 0.0), steered);   // east along row 5 to cell-14-5
-        Assert.IsFalse(guided.Dynamics.SteersAt(new Position(14.5, 8.25)), "no wish: nothing to steer");
-        steered.Head(Direction.East);
-        Assert.IsFalse(steered.HasWish, "straight on while running is nothing to wish");
-        steered.Head(Direction.North);
-        Assert.IsTrue(guided.Dynamics.SteersAt(new Position(14.5, 8.25)), "north opens at cell-10-5, ahead in this corridor");
-        var turned = guided.Dynamics.Steer(new Pose(14.5, 8.25, 0.0), steered);
-        Assert.AreEqual("abandoned", running.Status, "the run underway let go");
-        Assert.AreEqual("cell-10-5@15.75,8.25", turned.AsPlan().Trim(), "shortened to the intersection where north opens, the same heading");
-        Assert.AreEqual(Direction.East, steered.Heading);
-        Assert.IsTrue(steered.HasWish, "north is taken at cell-10-5, by the rule, when the run ends there");
-        Assert.AreEqual(2, steered.Runs, "a steer counts as a run: the ghosts are told");
-        WalkToTheEnd(turned);
-        var north = guided.Dynamics.Run(new Pose(15.75, 8.25, 0.0), steered);
-        Assert.AreEqual(Direction.North, steered.Heading);
-        StringAssert.StartsWith(north.AsPlan().Trim(), "cell-10-", "up column 10");
-        // the opposite direction: pacman turns round where it is and runs back as far as the corridor goes
-        steered.Head(Direction.South);
-        Assert.IsTrue(guided.Dynamics.SteersAt(new Position(15.75, 9.0)));
-        var back = guided.Dynamics.Steer(new Pose(15.75, 9.0, 1.5708), steered);
-        Assert.AreEqual(Direction.South, steered.Heading);
-        StringAssert.EndsWith(back.AsPlan().Trim(), "cell-10-5@15.75,8.25", "back down to cell-10-5, where the south closes");
-        // a wish that opens nowhere ahead: kept, nothing steered
-        WalkToTheEnd(back);
-        var east = guided.Dynamics.Run(new Pose(15.75, 8.25, -1.5708), steered);   // at cell-10-5 heading south: straight closed, the right is west… the rule decides
-        steered.Head(steered.Heading == Direction.West ? Direction.North : Direction.South);
-        if (!guided.Dynamics.SteersAt(new Position(15.0, 8.25)))
-            StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => guided.Dynamics.Steer(new Pose(15.0, 8.25, 3.1416), steered)).Message, "opens nowhere ahead");
-        Assert.IsTrue(east.IsPending(), "the run goes on; the wish waits for the next decision");
-
-        // MANUAL: every decision cell ends the run, and without a wish pacman stands and waits for the keyboard
-        var manual = new Golem(body, "blue");
-        manual.Enter(new Scenario(map, new Collisions()));
-        var hand = (Pacman)manual.Dynamics.Stage("game-3", "pacman", new Cast("blue", "red"), "call-3");
-        hand.Drive(Steering.Manual);
-        var (stop, _) = hand.NextRun(map, cradle);
-        Assert.AreEqual("cell-10-5", stop.Name, "manual: the run ends at the first decision cell, the intersection");
-        var step = manual.Dynamics.Run(new Pose(14.25, 8.25, 0.0), hand);
-        WalkToTheEnd(step);
-        Assert.IsFalse(manual.Dynamics.Reached, "arrived, no wish: pacman waits for the keyboard");
-        hand.Head(Direction.North);
-        Assert.IsTrue(manual.Dynamics.Reached, "the wish given: the next run is to be decided");
-        Assert.AreEqual("cell-10-7@15.75,11.25", manual.Dynamics.Run(new Pose(15.75, 8.25, 0.0), hand).AsPlan().Trim(), "north up column 10 to the next decision cell");
-
-        // AUTONOMOUS: the keyboard does not steer it
-        hand.Drive(Steering.Autonomous);
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => hand.Head(Direction.West)).Message, "drives itself");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => hand.Drive((Steering)9)).Message, "manual, autonomous or guided");
-
-        // the rule at a corner, without a wish: straight closed → the right of the heading; right closed too → the left; all closed → back
-        var fresh = new Golem(body, "blue");
-        fresh.Enter(new Scenario(map, new Collisions()));
-        var corner = map.Find("cell-1-15") as Zone;   // the north-west corner of the lower-left loop: east and north open, west and south walls
+        // the rule's helpers: the corner cell-1-15 (north-west of the lower-left loop: east and north open) is a decision cell heading west
+        var corner = map.Find("cell-1-15") as Zone;
         Assert.AreEqual(2, map.Neighbours(corner).Count);
-        var westward = (Pacman)fresh.Dynamics.Stage("game-2", "pacman", new Cast("blue", "red"), "call-2");
-        westward.Head(Direction.West);   // heading east at birth; a wish west, taken where it is open…
-        var runWest = fresh.Dynamics.Run(new Pose(5.25, 23.25, 0.0), westward);   // from cell-3-15, west: cell-2-15, then cell-1-15 where straight closes
-        Assert.AreEqual("cell-1-15@2.25,23.25", runWest.AsPlan().Trim());
-        Assert.AreEqual(Direction.West, westward.Heading);
-        Assert.AreEqual(Direction.North, westward.Decide(map, corner), "heading west at the corner: straight closed, the right of west is north, open");
         Assert.IsTrue(Pacman.IsDecision(map, corner, Direction.West));
+        Assert.IsTrue(play.EndsRun(map, corner, Direction.West), "heading west at the corner: straight closed, the run ends");
+        Assert.IsFalse(play.EndsRun(map, map.Find("cell-10-5") as Zone, Direction.East), "an intersection with straight open: crossed without a stop");
         Assert.AreEqual(Direction.East, Pacman.Left(Direction.South));
         Assert.AreEqual(Direction.West, Pacman.Back(Direction.East));
         Assert.AreEqual(Direction.West, Pacman.Right(Direction.South));

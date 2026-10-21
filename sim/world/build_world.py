@@ -134,12 +134,14 @@ def walls(places, doors, opens):
                 lo, hi = a, b
 
 
-def blocks(places):
+def blocks(places, bounds=()):
     """The cells of the plan's grid that lie in no place: solid — MERGED into as few rectangles as a greedy sweep gives
     (12-oct-2026: the maze's 1.5 m grid crossed with the other maps' lines made 272 cells, every one a model; with the
-    398 walls the world of the Pacman maze outgrew the 4 GB of the Docker VM and the physics server was OOM-killed)."""
-    xs = sorted({v for p in places for v in (p["x"], p["x"] + p["w"])})
-    ys = sorted({v for p in places for v in (p["y"], p["y"] + p["h"])})
+    398 walls the world of the Pacman maze outgrew the 4 GB of the Docker VM and the physics server was OOM-killed).
+    The grid spans the places AND the maps' whole regions (`bounds`, 20-oct-2026): a maze's outer ring of '#' cells lies
+    beyond its last free cell and was left as open ground — a blind explorer walked out of the world through it."""
+    xs = sorted({v for p in places for v in (p["x"], p["x"] + p["w"])} | {v for b in bounds for v in (b[0], b[2])})
+    ys = sorted({v for p in places for v in (p["y"], p["y"] + p["h"])} | {v for b in bounds for v in (b[1], b[3])})
     solid = set()
     for i in range(len(xs) - 1):
         for j in range(len(ys) - 1):
@@ -426,19 +428,24 @@ def main(plan_path, out_dir, keep=""):
             plan["places"] += [dict(p, x=p["x"] + ox, y=p["y"] + oy) for p in places]
             plan["doors"] += [dict(d, x=d["x"] + ox, y=d["y"] + oy) for d in doors]
             plan["opens"] += opens
-            regions.append({"name": m["name"], "x": ox, "y": oy,
-                            "w": max(p["x"] + p["w"] for p in places), "h": max(p["y"] + p["h"] for p in places)})
+            # a maze's region is its WHOLE drawing, the ring of walls included (20-oct-2026); any other map's, what its places span
+            if m.get("maze"):
+                region_w, region_h = len(m["maze"][0]) * float(m.get("cell", 1.5)), len(m["maze"]) * float(m.get("cell", 1.5))
+            else:
+                region_w, region_h = max(p["x"] + p["w"] for p in places), max(p["y"] + p["h"] for p in places)
+            regions.append({"name": m["name"], "x": ox, "y": oy, "w": region_w, "h": region_h})
     elif plan.get("maze"):
         maze_places, maze_opens = maze(plan["maze"], float(plan.get("cell", 1.5)))
         plan["places"] = plan.get("places", []) + maze_places
         plan["opens"] = plan.get("opens", []) + maze_opens
         plan.setdefault("doors", [])
     places, doors, opens = plan["places"], plan["doors"], plan["opens"]
-    max_x = max(p["x"] + p["w"] for p in places)
-    max_y = max(p["y"] + p["h"] for p in places)
+    bounds = [(r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"]) for r in regions]
+    max_x = max([p["x"] + p["w"] for p in places] + [b[2] for b in bounds])
+    max_y = max([p["y"] + p["h"] for p in places] + [b[3] for b in bounds])
 
     models = [floor(max_x, max_y), grid(max_x, max_y)]
-    for i, cell in enumerate(blocks(places)):
+    for i, cell in enumerate(blocks(places, bounds)):
         x0, y0, x1, y1 = cell
         models.append(box("block_%d" % (i + 1), (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, WALL_H, BLOCK_COLOR))
     for name, seg in walls(places, doors, opens):

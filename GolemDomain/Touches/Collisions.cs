@@ -198,6 +198,13 @@ internal sealed class Collisions
     /// Returns how many facts were dropped; zero when nothing stands there.
     /// <para>The module forgets, the journal does not: the act of forgetting is journaled like any other, so the
     /// history still says what was believed and when it stopped being believed.</para></summary>
+    /// <summary>EVERYTHING LEARNED BY TOUCHING FORGOTTEN (propuesta 120: the warden clears what was explored): the marks and the bodies met.</summary>
+    internal void ForgetAll()
+    {
+        marks.Clear();
+        encounters.Clear();
+    }
+
     internal int Forget(Position at)
     {
         if (at == null) throw new GolemDomainException("Collisions.Forget: 'at' was not given");

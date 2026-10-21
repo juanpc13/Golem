@@ -48,6 +48,60 @@ public class GolemController : Controller
         return choreographer != null;
     }
 
+    private bool Explorer(out ExplorerRol explorer, out IActionResult refusal)
+    {
+        explorer = golemEmbodiment.Explorer;
+        refusal = explorer == null ? Conflict($"this body explores nothing: the role '{Capabilities.Explorer}' is not among its capabilities ({golemEmbodiment.Capabilities})") : null;
+        return explorer != null;
+    }
+
+    // THE EXPLORATION MODE (propuesta 120): on — the golem probes by itself until nothing unknown is left next to what it knows — and off.
+    [HttpPost("explore")]
+    public IActionResult Explore()
+    {
+        if (!Explorer(out var explorer, out var refusal)) return refusal;
+        var answer = explorer.Explore();
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
+    [HttpPost("explore-stop")]
+    public IActionResult StopExploring()
+    {
+        if (!Explorer(out var explorer, out var refusal)) return refusal;
+        var answer = explorer.StopExploring();
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
+    // What was explored here, cleared (propuesta 120): the trail afresh, the marks forgotten — stopped first.
+    [HttpPost("explore-clear")]
+    public IActionResult ClearExploration()
+    {
+        if (!Explorer(out var explorer, out var refusal)) return refusal;
+        var answer = explorer.ClearExploration();
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
+    // The deduced map exported as a scenario of the golem's (propuesta 120), under the name given.
+    [HttpPost("export-map")]
+    public IActionResult ExportMap([FromBody] ForgetPlayRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"name\": \"explored-1\"}");
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("the map's name is needed: {\"name\": \"explored-1\"}");
+        if (!Explorer(out var explorer, out var refusal)) return refusal;
+        var answer = explorer.ExportMap(request.Name);
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
+    // A scenario the explorer exported, dropped (propuesta 120).
+    [HttpPost("forget-map")]
+    public IActionResult ForgetMap([FromBody] ForgetPlayRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + "{\"name\": \"explored-1\"}");
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("the map's name is needed: {\"name\": \"explored-1\"}");
+        var answer = golemEmbodiment.DropScenario(request.Name);
+        return answer.Ok ? Content(answer.Print ?? "{}", "application/json") : StatusCode(409, answer.Refused);
+    }
+
     private bool Dynamics(out DynamicsRol dynamics, out IActionResult refusal)
     {
         dynamics = golemEmbodiment.Dynamics;
@@ -122,34 +176,12 @@ public class GolemController : Controller
         string pacman = request.Pacman.Trim().ToLowerInvariant();
         var ghosts = request.Ghosts is { Count: > 0 } ? request.Ghosts.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
                                                       : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();
-        return Answered(player.Play(request.Name.Trim().ToLowerInvariant(), request.Kind ?? "pacman", pacman, ghosts, request.Steer ?? "guided", request.As));
+        return Answered(player.Play(request.Name.Trim().ToLowerInvariant(), request.Kind ?? "pacman", pacman, ghosts, request.As));
     }
 
     /// <summary>Every play this golem was told (16-oct-2026): the same document the line `plays` answers.</summary>
     [HttpGet("plays")]
     public IActionResult Plays() => Content(Readings.Plays(golemEmbodiment.Actor), "application/json");
-
-    /// <summary>How pacman is driven from here on (ajuste 16-oct-2026): manual, autonomous or guided — the line `steer …`.</summary>
-    [HttpPost("steer")]
-    public IActionResult Steer([FromBody] SteerRequest request)
-    {
-        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + SteerRequest.Shape);
-        var problems = request.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Dynamics(out var player, out var refusal)) return refusal;
-        return Answered(player.Drive(request.Steer.Trim().ToLowerInvariant()));
-    }
-
-    /// <summary>The keyboard's wish (propuesta 108): the direction pacman takes at its next decision cell.</summary>
-    [HttpPost("head")]
-    public IActionResult Head([FromBody] HeadRequest request)
-    {
-        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + HeadRequest.Shape);
-        var problems = request.Problems().ToList();
-        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
-        if (!Dynamics(out var player, out var refusal)) return refusal;
-        return Answered(player.Head(request.Direction.Trim().ToLowerInvariant()));
-    }
 
     /// <summary>The start of a play on this golem (16-oct-2026; the line `start <name>`): pacman's first run, a ghost's hunt.</summary>
     [HttpPost("start")]
@@ -267,6 +299,10 @@ public class GolemController : Controller
     // The obstacles the golem hypothesizes: one row per obstacle and, under it, one per vertex — the touches that outlined it.
     [HttpGet("obstacles")]
     public IActionResult Obstacles() => Content(Readings.Obstacles(golemEmbodiment.Actor), "application/json");
+
+    // What the golem explored (propuesta 120): the trail, the cells it knows and the frontier, as its exploration module derives them.
+    [HttpGet("explored")]
+    public IActionResult Explored() => Content(Readings.Explored(golemEmbodiment.Actor), "application/json");
 
     [HttpGet("state")]
     public IActionResult MissionBoard() => Content(Board(), "application/json");

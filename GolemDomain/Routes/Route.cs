@@ -63,6 +63,8 @@ internal sealed class Route
     private RouteStatus status = RouteStatus.Pending;
     private Trajectory way = new(Array.Empty<Leg>());   // the plan: passages to cross, points to pass, stops to reach, in order
     private Position origin;                             // where the way was decided from (the errand's start, or where the body stood)
+    private bool probing;                                // a PROBE of the exploration (propuesta 120): the way laid by the golem, a touch ends it
+    private bool touched;                                // …and it touched: the body backs to where the step began, then the route is complete
     private Pose standing;                               // where the body stands and faces, as its last act reported it
     private Position faces;                              // where the body faces once it reached its last stop (a formation's centre, ajuste 79); null: nowhere in particular
     private IReadOnlyList<Peer> company = Array.Empty<Peer>();   // THE COMPANY (propuesta 107): the bodies this route plans around while it lasts — a formation's other members, where each said it stands and where it goes; nobody touched them, so they are no obstacle
@@ -189,7 +191,7 @@ internal sealed class Route
     {
         if (onTheWay == null) throw new GolemDomainException("Route.Dash: 'onTheWay' was not given");
         if (!onTheWay.IsOnTheWay) throw new GolemDomainException($"route {Id} is improved with the golem's on-the-way strategy, not '{onTheWay.Name}'");
-        if (!IsPending() || Yielding || Waiting || Navigation.IsOnTheWay) return this;   // a route that yields is replaced, not improved; one that waits for the fleet keeps its line-up
+        if (!IsPending() || Yielding || Waiting || Navigation.IsOnTheWay || probing) return this;   // a route that yields is replaced, not improved; one that waits for the fleet keeps its line-up; a probe is laid, never planned
         if (reached == stops.Count) return this;                              // on its place, only the facing left: nothing to plan
         Navigation = onTheWay;   // the golem's own strategy, the same object — nothing is built here
         Plan(standing ?? origin);
@@ -204,6 +206,7 @@ internal sealed class Route
         if (me == null) throw new GolemDomainException("Route.Awake: 'me' was not given");
         MustBePending();
         Waiting = false; started = true;   // awake, the route sets out by itself: the fleet's start it waited for is gone with the boot
+        if (probing) { standing = me; return this; }   // a probe keeps the way it was laid: the next order measured from where the body woke
         PlanAgainFrom(me);
         return this;
     }
@@ -483,6 +486,7 @@ internal sealed class Route
         if (!leg.IsReverse && !linedUp && !Same(leg.Approach, leg.Exit)) { linedUp = true; return this; }   // lined up in front of the door: now through it
         linedUp = false;
         nextLeg++;
+        if (probing && touched) { End(RouteStatus.Completed, ""); return this; }   // the probe is back where its step began: done, the mark learned (propuesta 120)
         // the patience with walls is spent since the last leg OF THE PLAN reached: a correction reached (the retreat a graze
         // inserted, a way around, a step aside) is the same leg being tried again, not a new one (28-sep-2026: reset on the
         // retreat, a body off its count grazed "a wall" 39 times and never gave up)
@@ -564,8 +568,61 @@ internal sealed class Route
         if (me == null) throw new GolemDomainException("Route.Touched: 'me' was not given");
         if (ReferenceEquals(touch, me)) throw new GolemDomainException("Route.Touched: 'touch' and 'me' are the same pose");
         MustBePending();
+        if (probing) return Feel(touch, me);
         if (layout.IsWallAt(touch, MapLayout.WallTolerance)) return Graze(touch, me);
         return Bump(touch, me);
+    }
+
+    // ---- the probe (propuesta 120, fase B): a route the golem lays itself, that a touch ends ----
+
+    /// <summary>This route PROBES: its way is laid by the golem (<see cref="Lay"/>), never planned, and a touch ENDS it instead of correcting
+    /// it — the mark learned, the body back where the step began. Said before the way is laid.</summary>
+    internal Route Probing()
+    {
+        if (IsRouted) throw new GolemDomainException($"route {Id} already decided its way: that it probes is said before");
+        probing = true;
+        return this;
+    }
+
+    /// <summary>The way LAID by the golem, point by point (the explorer's path through the cells it knows and one step into the unknown): every
+    /// point a via, the last the stop; walked from where the body stands.</summary>
+    internal Route Lay(IReadOnlyList<Position> path, Pose from)
+    {
+        if (path == null) throw new GolemDomainException("Route.Lay: 'path' was not given");
+        if (from == null) throw new GolemDomainException("Route.Lay: 'from' was not given");
+        if (path.Count == 0) throw new GolemDomainException($"route {Id} needs at least one point to lay");
+        if (!probing) throw new GolemDomainException($"route {Id} does not probe: its way is decided, not laid");
+        var legs = new List<Leg>();
+        for (int i = 0; i < path.Count - 1; i++) legs.Add(new Leg(path[i], Leg.Waypoint));
+        legs.Add(new Leg(path[^1], Leg.Unknown));
+        Take(new Trajectory(legs), from);
+        return this;
+    }
+
+    /// <summary>Whether this route probes.</summary>
+    internal bool IsProbe => probing;
+    /// <summary>A probe that ENDED BY A TOUCH: the step into the unknown met something, the mark was learned, the body is back where the step began.</summary>
+    internal bool EndedByTouch => probing && touched && status == RouteStatus.Completed;
+
+    // The probe FELT something: the mark is learned where the touch landed (no wall of the map is consulted: a probe touches to learn) and
+    // the way left is one leg BACK TO WHERE THE STEP BEGAN, walked as any leg — the body turns toward it and advances (lab 20-oct-2026: in
+    // reverse along the body's axis it backed into the other wall of the corridor whenever the touch came right after a turn, and stalled
+    // there for ever) — reached, the route is complete (Reach)
+    private Route Feel(Pose touch, Pose me)
+    {
+        bumps++;
+        bumpsSinceRoute++;
+        collisions.Mark(touch);
+        lastTouch = touch;
+        touched = true;
+        var began = nextLeg == 0 ? origin : way.LegAt(nextLeg - 1).At;
+        way = new Trajectory(new[] { new Leg(began, Leg.Waypoint) }).WalkedFrom(me);
+        standing = me;
+        nextLeg = 0;
+        turned = false;
+        turnsOnLeg = 0;
+        linedUp = false;
+        return this;
     }
 
     /// <summary>The body touched something the map does not hold — where and heading which way (the touch), and where the
@@ -602,6 +659,7 @@ internal sealed class Route
         if (bumps == 0) throw new GolemDomainException($"route {Id} has no bump to annul");
         bumps--;
         if (bumpsSinceRoute > 0) bumpsSinceRoute--;
+        if (probing) return this;   // a probe's touch annulled: the mark is taken back by the golem, the way back stays (propuesta 120)
         if (IsRouted && nextLeg < way.Count && NextLeg.Kind is Leg.Retreat or Leg.Clearance)
         {
             var back = NextLeg.At;

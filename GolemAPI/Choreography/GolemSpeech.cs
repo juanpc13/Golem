@@ -53,13 +53,13 @@ public sealed class GolemSpeech
             // and only the name is exposed (the journal's identity, in no act). One tell per peer in one entry (several
             // statements: no single-tell elision), one once-id per addressee.
             string bumped = string.Join("\n", peers.Select(p => $@"
-                tell BumpedAt with @bodyX, @bodyY, @bodyHeading, @bearing, @who
+                tell BumpedAt with @bodyX, @bodyY, @bodyHeading, @bearing, @who, @scenario
                     to {p}
                     once 'bump-' + @who + '-' + @bodyX + ',' + @bodyY + ',' + @bearing + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-bumped")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Bumped").One()
-                    .OnMatch("Pose($bodyX, $bodyY, $bodyHeading) [_:Golem].Bump(_, $bearing) expose $who who;")
+                    .OnMatch("Pose($bodyX, $bodyY, $bodyHeading) [_:Golem].Bump(_, $bearing) expose $who who, $scenario scenario;")
                 .Causation.Continue(bumped);
 
             // Somebody took a thing away: the fleet must forget it together, or one golem would keep skirting what
@@ -95,12 +95,6 @@ public sealed class GolemSpeech
                 .Cue().Company().WithSharedHydration()
                 .Seek("Ran").One()
                     .OnMatch("[_:Dynamics].Run(_, _) expose $title title, $nonce nonce, $runs runs, $cellX cellX, $cellY cellY;")
-                .Causation.Continue(ran);
-            // …and a run STEERED underway (ajuste 16-oct-2026) is a run told the same way: the same tell, the same once by the run's number
-            golemActor.Reactions.DefineReaction("echo-steer")
-                .Cue().Company().WithSharedHydration()
-                .Seek("Steered").One()
-                    .OnMatch("[_:Dynamics].Steer(_, _) expose $title title, $nonce nonce, $runs runs, $cellX cellX, $cellY cellY;")
                 .Causation.Continue(ran);
             // GAME OVER (propuesta 108, fase 4): the end of the play, concluded in this copy (a ghost and pacman met; the warden's `play over`)
             // and announced by the clock's act — never the uptake's (an uptake-written act cannot be exposed): every peer is told who ended it
@@ -237,7 +231,7 @@ public sealed class GolemSpeech
             .ListenAs(golem, bindings, wire)
             .Told("PointVisited").With<double>("x").With<double>("y")
                 .Command(DisplacerRol.UptakePointVisited)
-            .Told("BumpedAt").With<double>("bodyX").With<double>("bodyY").With<double>("bodyHeading").With<double>("bearing").With<string>("who")
+            .Told("BumpedAt").With<double>("bodyX").With<double>("bodyY").With<double>("bodyHeading").With<double>("bearing").With<string>("who").With<string>("scenario")
                 .Command(BumperRol.UptakeBumpedAt)
             .Told("ObstacleGone").With<double>("x").With<double>("y")
                 .Command(BumperRol.UptakeObstacleGone)

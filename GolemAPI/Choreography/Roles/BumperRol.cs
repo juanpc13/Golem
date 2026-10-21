@@ -40,7 +40,7 @@ public sealed class BumperRol
                         me = Pose(@bodyX, @bodyY, @bodyHeading);
                         g.Bump(me, @bearing);
                     }
-                    expose @teller who;
+                    expose @teller who, @sceneName scenario;
                     {
                         print g.HasPendingMission() 'pending', g.Held 'held';
                         if (g.HasPendingMission()) {
@@ -60,6 +60,7 @@ public sealed class BumperRol
                     p["bodyHeading", typeof(double)] = Resolution.Radians(bodyHeading);
                     p["bearing", typeof(double)] = Resolution.Radians(bearing);
                     p["teller", typeof(string)] = robot.Name;   // never "name": the print's 'name' label would be rendered as the golem (25-sep-2026)
+                    p["sceneName", typeof(string)] = robot.Scenario;   // the scenario the touch was lived in (propuesta 120): a peer in another one learns nothing from it
                 })
                 .PerformCommand());
         }
@@ -93,8 +94,10 @@ public sealed class BumperRol
     // ==================================================================
     public const string UptakeBumpedAt = @"
         {
-            peer = Pose(@bodyX, @bodyY, @bodyHeading);
-            g.HearBump(@who, peer, @bearing);
+            if (g.IsIn(@scenario)) {
+                peer = Pose(@bodyX, @bodyY, @bodyHeading);
+                g.HearBump(@who, peer, @bearing);
+            }
         }
         ";
     public const string UptakeObstacleGone = @"

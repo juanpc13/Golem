@@ -14,12 +14,21 @@ internal sealed class Scenario
     internal MapLayout Map { get; }
     internal Collisions Collisions { get; }
     internal string Name => Map.Name;
+    /// <summary>The scenario whose FRAME this one is read in (propuesta 120): itself for a map of a release; the scenario it was deduced in
+    /// for a map the explorer exported — the body's pose is read in that frame, the world's region is that one's.</summary>
+    internal string Frame { get; }
+    /// <summary>Whether the explorer exported this scenario's map (propuesta 120): only such a scenario may be dropped by the warden.</summary>
+    internal bool Exported { get; }
 
-    internal Scenario(MapLayout map, Collisions collisions)
+    internal Scenario(MapLayout map, Collisions collisions) : this(map, collisions, null, false) { }
+
+    internal Scenario(MapLayout map, Collisions collisions, string frame, bool exported)
     {
         if (map == null) throw new GolemDomainException("a scenario needs its map, laid out");
         if (collisions == null) throw new GolemDomainException("a scenario needs its collisions module, even empty");
         Map = map;
         Collisions = collisions;
+        Frame = string.IsNullOrWhiteSpace(frame) ? map.Name : frame;
+        Exported = exported;
     }
 }

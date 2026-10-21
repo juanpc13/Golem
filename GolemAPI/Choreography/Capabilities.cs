@@ -16,11 +16,13 @@ public sealed class Capabilities
     /// <summary>The formations (16-oct-2026; Juan: "que el rol sea quien termine llamando al módulo que pertenece"): form, take, rotate, dissolve,
     /// the round's words — on the motors.</summary>
     public const string Choreographer = "choreographer";
-    /// <summary>The plays (16-oct-2026): play, start, head, steer, over, the cast's words — on the motors.</summary>
+    /// <summary>The plays (16-oct-2026): play, start, over, the cast's words — on the motors.</summary>
     public const string Dynamics = "dynamics";
+    /// <summary>The explorer (propuesta 120, fase B): the mode that probes until nothing unknown is left — it needs the motors and the bumper.</summary>
+    public const string Explorer = "explorer";
 
     /// <summary>Every role this host knows how to play, in the order they are listed.</summary>
-    public static readonly IReadOnlyList<string> Known = new[] { Displacer, Bumper, Choreographer, Dynamics };
+    public static readonly IReadOnlyList<string> Known = new[] { Displacer, Bumper, Choreographer, Dynamics, Explorer };
 
     private readonly List<string> roles;
 
@@ -39,8 +41,9 @@ public sealed class Capabilities
             if (!roles.Contains(role)) roles.Add(role);
         }
         // a role that moves the body needs the motors (16-oct-2026)
-        foreach (var onTheMotors in new[] { Choreographer, Dynamics })
+        foreach (var onTheMotors in new[] { Choreographer, Dynamics, Explorer })
             if (roles.Contains(onTheMotors) && !roles.Contains(Displacer)) throw new ArgumentException($"ROLES names '{onTheMotors}', which moves the body: it needs '{Displacer}' too");
+        if (roles.Contains(Explorer) && !roles.Contains(Bumper)) throw new ArgumentException($"ROLES names '{Explorer}', which learns by touching: it needs '{Bumper}' too");
         return new Capabilities(roles);
     }
 

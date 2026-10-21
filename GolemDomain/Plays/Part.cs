@@ -8,25 +8,13 @@ internal enum Part
     Ghost,
 }
 
-/// <summary>A DIRECTION in the maze, the four a corridor can run: what the keyboard says (<c>head north</c>) and the way pacman is heading.</summary>
+/// <summary>A DIRECTION in the maze, the four a corridor can run: the way pacman is heading.</summary>
 internal enum Direction
 {
     North,
     South,
     East,
     West,
-}
-
-/// <summary>HOW PACMAN IS DRIVEN (propuesta 108, ajuste 16-oct-2026; Juan: "por los botones del teclado… otra forma puede ser autónoma y la otra
-/// autónoma + teclado para guiarle donde queremos que tome, pero siempre autónomo"): MANUAL — at a decision the keyboard alone decides, and
-/// without a wish pacman stands and waits (every decision cell ends a run); AUTONOMOUS — the domain decides by its policy and never waits, the
-/// keyboard does not steer it; GUIDED — the domain decides, but the wish rules where it opens, and pacman stays autonomous (the mode at birth).
-/// A closed set of the domain, an enum like Sense (ajuste 90).</summary>
-internal enum Steering
-{
-    Manual,
-    Autonomous,
-    Guided,
 }
 
 /// <summary>Where a play stands: STAGED (told, nobody released), RUNNING (pacman set out), OVER (a ghost caught pacman, or the warden ended it).</summary>

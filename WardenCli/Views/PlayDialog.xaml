@@ -19,17 +19,10 @@
         <!-- THE CAST (propuesta 108, fases 2–4; Juan, 15-oct-2026: "poner a los involucrados para enviarles el comando y el rol que tomarán, si
              serán el pacman o el ghost"): one golem plays pacman, the checked ones the ghosts; every golem knows its part by its name -->
         <TextBlock Text="pacman" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
-        <ComboBox x:Name="PacmanBox" Grid.Column="1" Margin="2,4" SelectionChanged="Pacman_Selected" ToolTip="the golem the keyboard steers: the arrow keys and the play tab's buttons say head … to it"/>
+        <ComboBox x:Name="PacmanBox" Grid.Column="1" Margin="2,4" SelectionChanged="Pacman_Selected" ToolTip="the golem that plays pacman: it runs the maze by itself, the rule driving it"/>
 
         <TextBlock Grid.Row="1" Text="ghosts" Foreground="{StaticResource Dim}" Margin="0,6,8,0" ToolTip="the golems that chase pacman; the rest of the workspace stays out of the play"/>
         <DockPanel Grid.Row="1" Grid.Column="1" Margin="2,6">
-            <!-- HOW PACMAN IS DRIVEN (16-oct-2026): manual, guided (at birth) or autonomous — the steer option on the play line -->
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="driven" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                <RadioButton x:Name="ManualBox" Content="manual" Margin="0,0,10,0" ToolTip="the keyboard decides at every decision cell; without a wish pacman stands and waits"/>
-                <RadioButton x:Name="GuidedBox" Content="guided" IsChecked="True" Margin="0,0,10,0" ToolTip="the rule drives it through the intersections and the wish rules where it opens"/>
-                <RadioButton x:Name="AutonomousBox" Content="autonomous" ToolTip="the rule alone; the keyboard is refused"/>
-            </StackPanel>
             <ListBox x:Name="GhostsBox" SelectionMode="Multiple" Height="130"/>
         </DockPanel>
 
@@ -47,7 +40,7 @@
         </StackPanel>
 
         <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
-                   Text="the play and its start go on every member's tab, each line saying what that golem plays: SEND to selected with every member checked and the game starts — pacman runs, the ghosts hunt; steer pacman with the arrows"/>
+                   Text="the play and its start go on every member's tab, each line saying what that golem plays: SEND to selected with every member checked and the game starts — pacman runs by itself (autonomous, 21-oct-2026), the ghosts hunt it"/>
 
         <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
             <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="260"/>

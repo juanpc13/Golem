@@ -62,7 +62,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=blue
       - BODY=blue
-      - ROLES=displacer,bumper,choreographer,dynamics   # the capabilities of this body: the motors, the bumper, the formations and the plays (16-oct-2026)
+      - ROLES=displacer,bumper,choreographer,dynamics,explorer   # the capabilities of this body: the motors, the bumper, the formations, the plays and the exploration (propuesta 120)
       - HOME_AT=19.3,10.4   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
       - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - PANEL_PORT=8080
@@ -89,7 +89,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=red
       - BODY=red
-      - ROLES=displacer,bumper,choreographer,dynamics   # the capabilities of this body: the motors, the bumper, the formations and the plays (16-oct-2026)
+      - ROLES=displacer,bumper,choreographer,dynamics,explorer   # the capabilities of this body: the motors, the bumper, the formations, the plays and the exploration (propuesta 120)
       - HOME_AT=15.5,2.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
       - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - PANEL_PORT=8080
@@ -121,7 +121,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=green
       - BODY=green
-      - ROLES=displacer,bumper,choreographer,dynamics   # the capabilities of this body: the motors, the bumper, the formations and the plays (16-oct-2026)
+      - ROLES=displacer,bumper,choreographer,dynamics,explorer   # the capabilities of this body: the motors, the bumper, the formations, the plays and the exploration (propuesta 120)
       - HOME_AT=23,10.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
       - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world   # for now (29-sep-2026); wheels = dead reckoning, anchored once, like a real robot
@@ -148,7 +148,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=yellow
       - BODY=yellow
-      - ROLES=displacer,bumper,choreographer,dynamics
+      - ROLES=displacer,bumper,choreographer,dynamics,explorer
       - HOME_AT=22.5,1.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
       - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world
@@ -176,7 +176,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=orange
       - BODY=orange
-      - ROLES=displacer,bumper,choreographer,dynamics
+      - ROLES=displacer,bumper,choreographer,dynamics,explorer
       - HOME_AT=14.5,9.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
       - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world
@@ -204,7 +204,7 @@ services:
       - JOURNAL_PATH=/golem/journal
       - GOLEM=cyan
       - BODY=cyan
-      - ROLES=displacer,bumper,choreographer,dynamics
+      - ROLES=displacer,bumper,choreographer,dynamics,explorer
       - HOME_AT=18.5,1.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
       - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world

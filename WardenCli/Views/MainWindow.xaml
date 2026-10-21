@@ -372,6 +372,7 @@
                     <Button x:Name="PlaceButton" DockPanel.Dock="Right" Content="⌖ place" FontSize="11" Padding="8,1" Margin="10,0,0,0" VerticalAlignment="Center" Click="PlaceOnMap_Click"
                             ToolTip="click, then click the map: the selected golem's body is carried there at once (place x,y) — a click anywhere else, or Esc, cancels"/>
                     <CheckBox x:Name="OthersBox" DockPanel.Dock="Right" Content="other golems" IsChecked="True" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" Checked="Others_Changed" Unchecked="Others_Changed" ToolTip="draw the other golems where they were last seen — the selected one is always drawn"/>
+                    <CheckBox x:Name="ExploredBox" DockPanel.Dock="Right" Content="explored" IsChecked="True" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" Checked="Explored_Changed" Unchecked="Explored_Changed" ToolTip="draw what the golem explored over the map — the cells it deduced free (teal) or wall (dark), the frontier of the unknown (rings) — while the exploration tab is open"/>
                     <TextBlock DockPanel.Dock="Left" Text="MAP" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <Border DockPanel.Dock="Left" Style="{StaticResource Chip}" VerticalAlignment="Center" ToolTip="the scenario the selected golem is in, as it tells it"><TextBlock x:Name="MapScenario" Text="no scenario yet" FontSize="11"/></Border>
                     <TextBlock x:Name="MapNote" Text="" Foreground="{StaticResource Dim}" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
@@ -388,7 +389,7 @@
                 <Thumb x:Name="MapDivider" DockPanel.Dock="Top" Style="{StaticResource DividerThumb}" DragDelta="MapDivider_DragDelta" MouseDoubleClick="MapDivider_DoubleClick" ToolTip="drag to give the map or its tabs more height — double-click: the map square again"/>
                 <!-- THE DEBUGGER'S FOOT, under the map (Juan, 7-oct-2026: "agrega mejor este tab como parte baja del mapa, ahí veremos las formaciones"):
                      two tabs of one height, so switching never moves the map; right under the map, the height left is theirs — the tool that builds a command from a point, and the active formations -->
-                <TabControl x:Name="DebuggerFoot" MinHeight="176" Margin="0" Style="{StaticResource DarkTabs}">
+                <TabControl x:Name="DebuggerFoot" MinHeight="176" Margin="0" Style="{StaticResource DarkTabs}" SelectionChanged="DebuggerFoot_SelectionChanged">
                     <!-- THE GOLEM'S FORMATIONS (propuesta 104; Juan: "la pestaña de formaciones será una consulta GET del golem para ver a cuáles él está
                          metido"): what the selected golem's `formations` read says — its figure, who holds which place, how many stand on theirs — with
                          its eye (the figure PROJECTED on the map, propuesta 96), its steps (↻ ↺ write rotate on the tab) and its dissolution; FIRST of the foot's tabs, its count in the header (Juan, 9-oct-2026) -->
@@ -574,29 +575,18 @@
                             </ListBox>
                         </DockPanel>
                     </TabItem>
-                                    <!-- THE PLAY (propuesta 108, fase 2): what the selected golem's `play` read says, the keyboard's wishes (the arrow keys, or these
-                         buttons, say head … at once to pacman) and the release -->
+                    <!-- THE PLAY (propuesta 108, fase 2): what the selected golem's `play` read says, the start and the end; pacman is AUTONOMOUS
+                         (21-oct-2026; Juan: "pacman autónomo nada más") — no arrow keys, no head buttons, no driving modes -->
                     <TabItem x:Name="PlayTab" Header="play">
                         <DockPanel Background="{StaticResource Well}">
                             <TextBlock DockPanel.Dock="Top" Margin="6,4,6,0" FontSize="11" Foreground="{StaticResource Ink}" Text="{Binding SelectedItem.PlayText, ElementName=GolemList, Mode=OneWay}" TextWrapping="Wrap"/>
                             <TextBlock DockPanel.Dock="Top" Margin="6,0,6,4" FontSize="11" Foreground="{StaticResource Dim}" Text="{Binding SelectedItem.PlayCast, ElementName=GolemList, Mode=OneWay}" TextWrapping="Wrap"/>
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,2,6,4">
-                                <Button Content="▲ north" Tag="north" Click="Head_Click" Margin="0,0,4,0" ToolTip="head north — pacman takes north at its next decision cell (the arrow keys say the same)"/>
-                                <Button Content="▼ south" Tag="south" Click="Head_Click" Margin="0,0,4,0"/>
-                                <Button Content="◀ west" Tag="west" Click="Head_Click" Margin="0,0,4,0"/>
-                                <Button Content="▶ east" Tag="east" Click="Head_Click" Margin="0,0,12,0"/>
                                 <Button Content="start" Click="Start_Click" Margin="0,0,12,0" ToolTip="start &lt;name&gt; — this golem's own start of the current play: pacman sets out, a ghost joins the hunt (the Pacman dialog writes it on every member's tab)"/>
                                 <Button Content="over" Click="Over_Click" ToolTip="play over — the warden ends the play for the whole cast, at once (fase 4); a ghost touching pacman ends it by itself"/>
                             </StackPanel>
-                            <!-- HOW PACMAN IS DRIVEN (16-oct-2026; Juan: "por los botones del teclado… autónoma… autónoma + teclado"): steer …, at once -->
-                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,6,4">
-                                <TextBlock Text="driven" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <Button Content="manual" Tag="manual" Click="Steer_Click" Margin="0,0,4,0" ToolTip="steer manual — the keyboard decides at every decision cell; without a wish pacman stands and waits"/>
-                                <Button Content="guided" Tag="guided" Click="Steer_Click" Margin="0,0,4,0" ToolTip="steer guided — the rule drives it through the intersections and the wish rules where it opens (at birth)"/>
-                                <Button Content="autonomous" Tag="autonomous" Click="Steer_Click" ToolTip="steer autonomous — the rule alone; the keyboard is refused"/>
-                            </StackPanel>
                             <TextBlock DockPanel.Dock="Top" Margin="6,0,6,4" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
-                                       Text="Workspace › Pacman writes the board, the play and the start on every member's tab, each with its part; SEND and the game starts — steer pacman with the arrows"/>
+                                       Text="Workspace › Pacman writes the board, the play and the start on every member's tab, each with its part; SEND and the game starts — pacman runs by itself, the ghosts hunt it"/>
                             <!-- EVERY PLAY TOLD (16-oct-2026; Juan: "la lista de las dinámicas de juegos de pacman u otros"): the golem's `plays` read, newest first -->
                             <TextBlock DockPanel.Dock="Top" Margin="6,2,6,2" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Dim}" Text="PLAYS TOLD"/>
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -638,6 +628,77 @@
                                                             </Border>
                                                         </StackPanel>
                                                         <TextBlock FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,1,0,0" Text="{Binding CastText, Mode=OneWay}"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </TabItem>
+                    <!-- THE EXPLORATION (propuesta 120, 20-oct-2026; Juan: "un apartado de exploración y poder ir viendo el mapa que ha ido explorando, como
+                         hacerle get a su mapa actual explorado"): the selected golem's `explored` read as a map of its own — the cells it deduced free
+                         (teal) and wall (dark), the frontier of the unknown (rings), the golem where it stands — in the frame of its scenario, read with
+                         the rest at every refresh; the console draws the hypothesis, it concludes nothing -->
+                    <TabItem x:Name="ExplorationTab">
+                        <TabItem.Header>
+                            <TextBlock><Run Text="exploration"/><Run Text="{Binding SelectedItem.ExploredCount, ElementName=GolemList, Mode=OneWay, StringFormat=' ({0})'}"/></TextBlock>
+                        </TabItem.Header>
+                        <DockPanel Background="{StaticResource Well}">
+                            <TextBlock DockPanel.Dock="Top" Margin="6,4,6,0" FontSize="11" Foreground="{StaticResource Ink}" Text="{Binding SelectedItem.ExploredText, ElementName=GolemList, Mode=OneWay}" TextWrapping="Wrap"/>
+                            <!-- THE MODE (fase B; Juan: "uno inicia el modo exploración y él solo se queda ahí un tiempo indefinido hasta lograr explorar todo lo que
+                                 encuentre"): explore / explore stop, at once on the selected golem; blind in the maze: use map blind first -->
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,2,6,4">
+                                <Button Content="explore" Click="Explore_Click" Margin="0,0,4,0" ToolTip="explore — the exploration mode on, always blind: the golem blindfolds itself first (a scenario of its own with no map at all, blind-&lt;scenario&gt;, where its body stands — taken up again if it exists) and probes by itself, cell by cell into the unknown, until nothing unknown is left next to what it knows"/>
+                                <Button Content="stop" Click="StopExploring_Click" Margin="0,0,12,0" ToolTip="explore stop — the mode off; a probe underway ends on its own: what was explored stays"/>
+                                <Button Content="export map" Click="ExportMap_Click" Margin="0,0,4,0" ToolTip="export map &lt;name&gt; — the map deduced here becomes a scenario of the golem's own (named explored-&lt;scenario&gt;-&lt;n&gt;), listed in the maps tab: use map enters it, forget map drops it"/>
+                                <Button Content="clear" Click="ClearExploration_Click" Margin="0,0,12,0" ToolTip="explore clear — what was explored here starts afresh: the trail and the marks gone (stopped first; it asks)"/>
+                                <TextBlock Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Text="a probe is one step into the unknown; a touch ends it and the wall is learned"/>
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Top" Margin="6,0,6,4" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
+                                       Text="the map the golem deduced from where its body went and what it touched — free cells in teal, walls in dark red, the frontier of the unknown as rings; it grows with every arrival"/>
+                            <Canvas x:Name="ExploredMap" Background="{StaticResource Well}" SizeChanged="ExploredMap_SizeChanged" ClipToBounds="True" Margin="6,0,6,6"/>
+                        </DockPanel>
+                    </TabItem>
+                    <!-- THE GOLEM'S MAPS (propuesta 120; Juan: "otra pestaña con los mapas actuales y poder administrarlos a mi gusto… borrar algún mapa completo
+                         del golem"): the `scenarios` read — a release's maps and the ones the explorer exported — each with 'use' (use map, at once) and,
+                         for an exported one the golem is not in, a cross (forget map, after asking) -->
+                    <TabItem x:Name="MapsTab">
+                        <TabItem.Header>
+                            <TextBlock><Run Text="maps"/><Run Text="{Binding SelectedItem.MapCount, ElementName=GolemList, Mode=OneWay, StringFormat=' ({0})'}"/></TextBlock>
+                        </TabItem.Header>
+                        <DockPanel Background="{StaticResource Well}">
+                            <TextBlock DockPanel.Dock="Top" Margin="6,4,6,4" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
+                                       Text="the maps the selected golem knows: its releases' and the ones it exported from an exploration — use enters one, the cross drops an exported one"/>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding SelectedItem.MapList, ElementName=GolemList}" Margin="4,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="2,4">
+                                                <DockPanel>
+                                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <Button Content="use" Tag="{Binding}" Click="UseMap_Click" Margin="0,0,4,0" ToolTip="use map — the golem enters this scenario now"/>
+                                                        <Button Content="✕" Tag="{Binding}" Click="ForgetMap_Click" IsEnabled="{Binding CanDrop}" ToolTip="forget map — drops this exported map from the golem (asks first); a release's map stays, and the one the golem is in too"/>
+                                                    </StackPanel>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Name, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="0,0,8,0"/>
+                                                            <Border Style="{StaticResource Chip}">
+                                                                <TextBlock Text="{Binding Kind, Mode=OneWay}" FontSize="11"/>
+                                                            </Border>
+                                                            <Border>
+                                                                <TextBlock Text="in it now" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Green}"/>
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border" BasedOn="{StaticResource Chip}">
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Current}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,1,0,0" Text="{Binding Text, Mode=OneWay}"/>
                                                     </StackPanel>
                                                 </DockPanel>
                                             </Border>

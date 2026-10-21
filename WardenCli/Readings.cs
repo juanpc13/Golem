@@ -9,8 +9,10 @@ public sealed record Readings(string Zone, string Scenario, string Navigation, d
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
                               int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios,
                               IReadOnlyList<FormationView> Formations, PlayView? Play = null, IReadOnlyList<DisputeView>? Disputes = null,
-                              IReadOnlyList<PlayView>? Plays = null)
+                              IReadOnlyList<PlayView>? Plays = null, ExploredView? Explored = null, IReadOnlyList<ScenarioView>? Maps = null)
 {
+    /// <summary>THE GOLEM'S MAPS (propuesta 120): every scenario it knows, with what the `scenarios` read says of each; none before it answered.</summary>
+    public IReadOnlyList<ScenarioView> MapList => Maps ?? Array.Empty<ScenarioView>();
     /// <summary>The disputes by distance (14-oct-2026), none before the golem answered.</summary>
     public IReadOnlyList<DisputeView> DisputeList => Disputes ?? Array.Empty<DisputeView>();
     /// <summary>Every play the golem was told (16-oct-2026), the ended ones among them; none before the golem answered.</summary>
@@ -38,11 +40,11 @@ public sealed record Choice(string Name, bool Current)
     public override string ToString() => Label;
 }
 
-/// <summary>THE PLAY the golem is in (propuesta 108, fase 2): its title, this golem's part, the state, pacman's heading and wish, the runs — the
-/// `play` read, shown in the play tab; with pacman selected the arrow keys say `head …`.</summary>
-public sealed record PlayView(string Name, string Part, string State, string Heading, string Wish, int Runs, string Pacman, string Ghosts,
+/// <summary>THE PLAY the golem is in (propuesta 108, fase 2): its title, this golem's part, the state, pacman's heading, the runs — the
+/// `play` read, shown in the play tab. Pacman is autonomous (21-oct-2026): no keyboard, nothing of how it is driven.</summary>
+public sealed record PlayView(string Name, string Part, string State, string Heading, int Runs, string Pacman, string Ghosts,
                               bool Released = false, (double X, double Y)? Seen = null, int RunsSeen = 0, int Chases = 0, bool Caught = false, string Catcher = "",
-                              string Steering = "", string Kind = "pacman")
+                              string Kind = "pacman")
 {
     /// <summary>The state as the list's chip says it: staged, running, or over with who ended it.</summary>
     public string StateText => IsOver ? (Caught ? $"over — {Catcher} caught {Pacman}" : $"over — ended by the {Catcher}") : State.ToLowerInvariant();
@@ -55,7 +57,7 @@ public sealed record PlayView(string Name, string Part, string State, string Hea
         var list = new List<PlayView>();
         if (JsonWalk.Find(json, "told") is not { ValueKind: JsonValueKind.Array } told) return list;
         foreach (var p in told.EnumerateArray())
-            list.Add(new PlayView(JsonWalk.String(p, "called") ?? "", "", JsonWalk.String(p, "state") ?? "", "", "", 0,
+            list.Add(new PlayView(JsonWalk.String(p, "called") ?? "", "", JsonWalk.String(p, "state") ?? "", "", 0,
                                   JsonWalk.String(p, "pacman") ?? "", JsonWalk.String(p, "ghosts") ?? "",
                                   Caught: JsonWalk.Find(p, "caught") is { ValueKind: JsonValueKind.True }, Catcher: JsonWalk.String(p, "catcher") ?? "",
                                   Kind: JsonWalk.String(p, "kind") ?? "pacman"));
@@ -64,14 +66,12 @@ public sealed record PlayView(string Name, string Part, string State, string Hea
 
     public bool IsPacman => Part.Equals("pacman", StringComparison.OrdinalIgnoreCase);
     public bool IsOver => State.Equals("over", StringComparison.OrdinalIgnoreCase);
-    /// <summary>How pacman is driven (16-oct-2026): manual, autonomous or guided — lower case, "" when the golem does not say.</summary>
-    public string Drive => Steering.ToLowerInvariant();
-    /// <summary>Pacman's line: how it is driven, its heading, wish and runs; a ghost's (fase 3): whether it left the den, where pacman was last seen
-    /// and on which run, its chases; over (fase 4): who caught pacman, or the warden.</summary>
+    /// <summary>Pacman's line: its heading and runs; a ghost's (fase 3): whether it left the den, where pacman was last seen and on which run,
+    /// its chases; over (fase 4): who caught pacman, or the warden.</summary>
     public string Text => IsOver
         ? $"{Name} · {Part.ToLowerInvariant()} · over — {(Caught ? $"{Catcher} caught {Pacman}" : $"ended by the {Catcher}")}"
         : IsPacman
-        ? $"{Name} · pacman · {State.ToLowerInvariant()}{(Drive == "" ? "" : $" · driven {Drive}")} · heading {Heading.ToLowerInvariant()}{(Wish == "" ? "" : $", wishing {Wish.ToLowerInvariant()}")} · {Runs} run(s)"
+        ? $"{Name} · pacman · {State.ToLowerInvariant()} · heading {Heading.ToLowerInvariant()} · {Runs} run(s)"
         : $"{Name} · ghost · {State.ToLowerInvariant()} · {(Released ? "out of the den" : "in the den")}{(Seen is { } s ? $" · pacman seen at ({N(s.X)}, {N(s.Y)}) on run {RunsSeen}" : " · pacman not seen yet")} · {Chases} chase(s)";
     public string CastText => $"pacman {Pacman} · ghosts {Ghosts}";
     private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
@@ -79,16 +79,14 @@ public sealed record PlayView(string Name, string Part, string State, string Hea
     public static PlayView? Parse(JsonElement json)
     {
         if (JsonWalk.Find(json, "playing") is not { ValueKind: JsonValueKind.True }) return null;
-        bool wishing = JsonWalk.Find(json, "wishing") is { ValueKind: JsonValueKind.True };
         bool seen = JsonWalk.Find(json, "seen") is { ValueKind: JsonValueKind.True };
         return new PlayView(JsonWalk.String(json, "play") ?? "", JsonWalk.String(json, "part") ?? "", JsonWalk.String(json, "state") ?? "",
-                            JsonWalk.String(json, "heading") ?? "", wishing ? JsonWalk.String(json, "wish") ?? "" : "", (int)(JsonWalk.Number(json, "runs") ?? 0),
+                            JsonWalk.String(json, "heading") ?? "", (int)(JsonWalk.Number(json, "runs") ?? 0),
                             JsonWalk.String(json, "pacman") ?? "", JsonWalk.String(json, "ghosts") ?? "",
                             JsonWalk.Find(json, "released") is { ValueKind: JsonValueKind.True },
                             seen ? (JsonWalk.Number(json, "seenX") ?? 0, JsonWalk.Number(json, "seenY") ?? 0) : null,
                             (int)(JsonWalk.Number(json, "runsSeen") ?? 0), (int)(JsonWalk.Number(json, "chases") ?? 0),
-                            JsonWalk.Find(json, "caught") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "catcher") ?? "",
-                            JsonWalk.String(json, "steering") ?? "");
+                            JsonWalk.Find(json, "caught") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "catcher") ?? "");
     }
 }
 
@@ -142,3 +140,60 @@ public sealed record Obstacle(string Kind, string Who, string Shape, string Zone
 
 /// <summary>A mark of a thing: where the body touched, the normal it pressed along, how far the mark reaches.</summary>
 public sealed record Vertex(double X, double Y, double Normal, double Reach);
+
+/// <summary>WHAT THE GOLEM EXPLORED (propuesta 120): the cells its exploration module deduced — free where its body went, wall where it touched —
+/// and the frontier of the unknown, read from `explored`; the console draws them over the map and decides nothing.</summary>
+public sealed record ExploredView(string Scenario, double Grain, int Strides, double Metres, int Covered, int Walls, int FrontierCount, bool Complete,
+                                  IReadOnlyList<ExploredCell> Cells, IReadOnlyList<(double X, double Y)> Frontier, bool Exploring = false, bool Finished = false, int Probes = 0)
+{
+    public static ExploredView Parse(JsonElement e)
+    {
+        var cells = new List<ExploredCell>();
+        if (e.TryGetProperty("cells", out var cs) && cs.ValueKind == JsonValueKind.Array)
+            foreach (var c in cs.EnumerateArray())
+                cells.Add(new ExploredCell(Int(c, "col"), Int(c, "row"), Str(c, "kind"), Num(c, "x"), Num(c, "y")));
+        var frontier = new List<(double, double)>();
+        if (e.TryGetProperty("unknown", out var fs) && fs.ValueKind == JsonValueKind.Array)
+            foreach (var f in fs.EnumerateArray())
+                frontier.Add((Num(f, "fx"), Num(f, "fy")));
+        return new ExploredView(Str(e, "scenario"), Num(e, "grain"), Int(e, "strides"), Num(e, "metres"), Int(e, "covered"), Int(e, "walls"),
+                                Int(e, "frontier"), Bool(e, "complete"), cells, frontier, Bool(e, "exploring"), Bool(e, "finished"), Int(e, "probes"));
+    }
+
+    private static string Str(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+    private static bool Bool(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+    private static int Int(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+    private static double Num(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0.0;
+}
+
+/// <summary>ONE OF THE GOLEM'S MAPS (propuesta 120; Juan: "otra pestaña con los mapas actuales y poder administrarlos"): a scenario the golem knows —
+/// a release's, or one the explorer exported — as the `scenarios` read lists it: its zones, its marks, whether the golem is in it, whether it may be dropped.</summary>
+public sealed record ScenarioView(string Name, int Zones, int Marks, bool Current, bool Exported, string Frame)
+{
+    public string Text => $"{Zones} zone(s), {Marks} mark(s)" + (Exported && Frame != "" && Frame != Name ? $" · read in {Frame}'s frame" : "");
+    public string Kind => Exported ? "exported" : "release";
+    public bool CanDrop => Exported && !Current;
+
+    public static IReadOnlyList<ScenarioView> Parse(JsonElement e)
+    {
+        var list = new List<ScenarioView>();
+        string current = e.TryGetProperty("current", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() ?? "" : "";
+        if (e.TryGetProperty("known", out var known) && known.ValueKind == JsonValueKind.Array)
+            foreach (var k in known.EnumerateArray())
+            {
+                string name = k.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() ?? "" : "";
+                int zones = k.TryGetProperty("zones", out var z) && z.ValueKind == JsonValueKind.Number ? z.GetInt32() : 0;
+                int marks = k.TryGetProperty("marks", out var m) && m.ValueKind == JsonValueKind.Number ? m.GetInt32() : 0;
+                bool exported = k.TryGetProperty("exported", out var x) && x.ValueKind == JsonValueKind.True;
+                string frame = k.TryGetProperty("frame", out var f) && f.ValueKind == JsonValueKind.String ? f.GetString() ?? "" : "";
+                list.Add(new ScenarioView(name, zones, marks, name == current, exported, frame));
+            }
+        return list;
+    }
+}
+
+/// <summary>One cell the golem knows: free or wall, its centre in the scenario's frame.</summary>
+public sealed record ExploredCell(int Col, int Row, string Kind, double X, double Y)
+{
+    public bool IsFree => Kind == "free";
+}

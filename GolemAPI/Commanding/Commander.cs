@@ -100,13 +100,11 @@ public sealed class Commander
             "disputes" => Disputes(),
             "play" => command.Text == "" ? PlayRead() : command.Text == "over" ? (Dynamics(out var po, out var por) ? Answered(po.Over(), "the play is over — the cast is told") : por) : Play(command),
             "plays" => PlaysRead(),
-            "head" => Dynamics(out var h, out var hr) ? Answered(h.Head(command.Text), $"heading {command.Text} at the next decision cell") : hr,
-            "steer" => Dynamics(out var st, out var str) ? Answered(st.Drive(command.Text), $"pacman driven {command.Text}") : str,
             "start" => Dynamics(out var rl, out var rr) ? Answered(rl.Start(command.Text), $"{command.Text} started here") : rr,
             "then" => Then(command),
             "pause" => Motors(out var d, out var refusal) ? Answered(d.Pause()) : refusal,
             "resume" => Motors(out var d, out var refusal) ? Answered(d.Resume()) : refusal,
-            "forget" => command.Text == "disputes" ? ForgetDisputes() : command.Text == "play" ? (Dynamics(out var fp, out var fpr) ? Answered(fp.ForgetPlay(command.Values["play"]), $"play {command.Values["play"]} forgotten: off the list") : fpr) : Forget(command),
+            "forget" => command.Text == "map" ? Answered(golem.DropScenario(command.Values["map"]), $"map {command.Values["map"]} forgotten: off the golem's scenarios") : command.Text == "disputes" ? ForgetDisputes() : command.Text == "play" ? (Dynamics(out var fp, out var fpr) ? Answered(fp.ForgetPlay(command.Values["play"]), $"play {command.Values["play"]} forgotten: off the list") : fpr) : Forget(command),
             "anchor" => Answered(golem.Anchor(), "anchored: awake where the body really stands"),
             "reset" => await ResetAsync(command),
             "place" => await PlaceAsync(command),
@@ -118,6 +116,9 @@ public sealed class Commander
             "optimize" => Motors(out var op, out var opr) ? Answered(op.Optimize(command.Text), $"navigating {command.Text.Replace('-', ' ')}") : opr,
             "speed" => Pace(command),
             "scenarios" => Scenarios(),
+            "explored" => Explored(),
+            "explore" => Explorer(out var ex, out var exr) ? (command.Text == "stop" ? Answered(ex.StopExploring(), "exploration stopped — a probe underway ends on its own") : command.Text == "clear" ? Answered(ex.ClearExploration(), "what was explored here is cleared: the trail starts afresh, the marks are forgotten") : Answered(ex.Explore(), "exploring blind: no map at all — every touch a wall learned, the floor ending where it touches — until nothing unknown is left next to what it knows")) : exr,
+            "export" => Explorer(out var xm, out var xmr) ? Answered(xm.ExportMap(command.Text), $"map {command.Text} exported: among the golem's scenarios now — use map {command.Text} enters it") : xmr,
             "set" or "show" => Reply.Syntax($"{command.Verb} is the console's own: it keeps the value and writes @{(command.Text == "" ? "name" : command.Text)} on the line before it is sent — nothing of it reaches the golem"),
             "help" => Help(command),
             _ => Reply.Syntax($"'{command.Verb}' is no command"),
@@ -383,10 +384,9 @@ public sealed class Commander
         var ghosts = command.Values.TryGetValue("ghosts", out var crew)
             ? crew.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList()
             : new[] { golem.Name.ToLowerInvariant() }.Concat(golem.Peers.Select(x => x.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();
-        string steering = command.Values.TryGetValue("steer", out var drive) ? drive : "guided";   // how pacman is driven (ajuste 16-oct-2026)
         string kind = command.Values.TryGetValue("kind", out var k) ? k : "pacman";
         string role = command.Values.TryGetValue("as", out var part) ? part : null;
-        var answer = player.Play(command.Text, kind, pacman, ghosts, steering, role);
+        var answer = player.Play(command.Text, kind, pacman, ghosts, role);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var e = JsonDocument.Parse(answer.Print ?? "{}").RootElement;
         return Reply.Done($"staged {Str(e, "play")} ({Str(e, "kind")}) — {golem.Name} plays {Str(e, "part").ToLowerInvariant()}; pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}", answer.Print ?? "");
@@ -420,8 +420,7 @@ public sealed class Commander
             string seen = Bool(e, "seen") ? $"pacman seen at ({Num(e, "seenX"):0.##}, {Num(e, "seenY"):0.##}) on run {Num(e, "runsSeen")}" : "pacman not seen yet";
             return Reply.Done($"{Str(e, "play")} · ghost · {Str(e, "state").ToLowerInvariant()} · {(Bool(e, "released") ? "out of the den" : "in the den")} · {seen} · {Num(e, "chases")} chase(s) · {cast}", json);
         }
-        string wish = Bool(e, "wishing") ? $", wishing {Str(e, "wish").ToLowerInvariant()}" : "";
-        return Reply.Done($"{Str(e, "play")} · pacman · {Str(e, "state").ToLowerInvariant()} · heading {Str(e, "heading").ToLowerInvariant()}{wish} · {Num(e, "runs")} run(s) · {cast}", json);
+        return Reply.Done($"{Str(e, "play")} · pacman · {Str(e, "state").ToLowerInvariant()} · heading {Str(e, "heading").ToLowerInvariant()} · {Num(e, "runs")} run(s) · {cast}", json);
     }
 
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
@@ -433,6 +432,15 @@ public sealed class Commander
     // a step asked (ajuste 77): opened at once when everybody already stands on its place — the order, as any — or queued, said so
     private Reply Stepped(Answer answer, string sense) =>
         answer.Ok && answer.Order == null ? Reply.Done($"step {sense} queued — it opens when everybody stands on its place", answer.Print ?? "") : Answered(answer);
+
+    // What the golem explored (propuesta 120): the summary and the drawing of the cells it knows, rendered here for a console
+    private Reply Explored()
+    {
+        string json = Readings.Explored(golem.Actor);
+        var e = JsonDocument.Parse(json).RootElement;
+        var lines = new List<string> { $"explored in {Str(e, "scenario")}: {Int(e, "strides")} stride(s), {Num(e, "metres")} m walked, {Int(e, "covered")} cell(s) free, {Int(e, "walls")} wall(s), {Int(e, "frontier")} at the frontier{(e.TryGetProperty("complete", out var c) && c.ValueKind == JsonValueKind.True ? " — complete" : "")}" };
+        return Reply.Done(string.Join(Environment.NewLine, lines), json);
+    }
 
     private Reply Obstacles()
     {
@@ -496,6 +504,13 @@ public sealed class Commander
         choreographer = golem.Choreographer;
         refusal = choreographer == null ? Reply.Refused($"this body plays no choreographer: the role '{Capabilities.Choreographer}' is not among its capabilities ({golem.Capabilities})") : null;
         return choreographer != null;
+    }
+
+    private bool Explorer(out ExplorerRol explorer, out Reply refusal)
+    {
+        explorer = golem.Explorer;
+        refusal = explorer == null ? Reply.Refused($"this body explores nothing: the role '{Capabilities.Explorer}' is not among its capabilities ({golem.Capabilities})") : null;
+        return explorer != null;
     }
 
     private bool Dynamics(out DynamicsRol dynamics, out Reply refusal)

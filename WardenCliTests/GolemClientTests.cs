@@ -30,8 +30,6 @@ public class GolemClientTests
         AssertPost("anchor", "anchor", null);
         AssertPost("reset", "reset", null);
         AssertPost("reset --all", "reset-everything", "{\"cascade\":true}");
-        AssertPost("head north", "head", "{\"direction\":\"north\"}");
-        AssertPost("steer manual", "steer", "{\"steer\":\"manual\"}");
         AssertPost("start game-1", "start", "{\"name\":\"game-1\"}");
         AssertPost("play over", "over", null);
         AssertPost("forget disputes", "forget-disputes", null);

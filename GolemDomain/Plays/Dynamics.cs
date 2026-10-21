@@ -11,7 +11,7 @@ namespace GolemDomain.Plays;
 /// (<c>pacman</c> today), the ended ones among them (history); <c>play = g.Dynamics.Stage(@playName, @kind, cast, @stamp)</c> stages one
 /// (told again under its name: made again, the former ended), <c>g.Dynamics.Current</c> is the latest told, <c>Find(@playName)</c> one by
 /// name, <c>Plays()</c> all of them (the warden's read). The pacman verbs ask <see cref="Pacman"/> — the current play as pacman: the engine
-/// binds a member by the declared type, and <c>Head</c>, <c>Drive</c>, <c>Seen</c>, <c>Steer</c> are not every play's. The module is in the
+/// binds a member by the declared type, and <c>Start</c>, <c>Seen</c> are not every play's. The module is in the
 /// namespace <c>Plays</c>: a class may not share its name with a namespace.
 /// </summary>
 internal sealed class Dynamics
@@ -33,7 +33,7 @@ internal sealed class Dynamics
     /// <summary>EVERY PLAY TOLD, in the order told, the ended ones too: the warden's read (<c>plays</c>).</summary>
     internal IReadOnlyList<Play> Plays() => plays;
 
-    /// <summary>THE CURRENT PLAY AS PACMAN — what the pacman verbs are written on (<c>play = g.Dynamics.Pacman; play.Head(@direction);</c>);
+    /// <summary>THE CURRENT PLAY AS PACMAN — what the pacman verbs are written on (<c>play = g.Dynamics.Pacman; route = g.Dynamics.Run(me, play);</c>);
     /// refused when no play is staged or the current one is of another kind.</summary>
     internal Pacman Pacman => Current switch
     {
@@ -116,8 +116,9 @@ internal sealed class Dynamics
     /// <summary>Whether pacman's run underway reached its end: the host asks before writing the next run.</summary>
     internal bool Reached => CurrentPacman is { } play && play.Cast.PartOf(golem) == Part.Pacman && play.Reached;
 
-    /// <summary>PACMAN RUNS (released, or arrived at the end of a run): from where it stands, the play decides the next cell by the rule and the
-    /// golem opens the route there — square, one advance down the corridor, no facing. Only pacman runs; a ghost chases.</summary>
+    /// <summary>PACMAN RUNS (started, or arrived at the end of a run): from where it stands, the play decides the next cell by the rule and the
+    /// golem opens the route there — square, one advance down the corridor, no facing. Only pacman runs; a ghost chases. Pacman is AUTONOMOUS
+    /// (21-oct-2026): the rule alone decides, nothing steers it underway.</summary>
     internal Route Run(Position from, Pacman play)
     {
         if (from == null) throw new GolemDomainException("Dynamics.Run: 'from' was not given");
@@ -131,50 +132,6 @@ internal sealed class Dynamics
         var (target, heading) = play.NextRun(map, cell);
         var route = golem.RunTo(from, target.Center, $"the decision cell {target.Name}");
         play.Ran(route, heading, target.Center);
-        return route;
-    }
-
-    // ---- the steering (ajuste 16-oct-2026): the wish taken underway ----
-
-    /// <summary>Whether a wish pulsed UNDERWAY turns pacman somewhere from where its body is — asked with the body's position before writing
-    /// the steer: <c>if (g.Dynamics.SteersAt(Position(@px, @py))) { … }</c>. False when not pacman running, no route underway, no wish, or the
-    /// wish opens nowhere ahead (it is kept for the next decision).</summary>
-    internal bool SteersAt(Position at)
-    {
-        if (at == null) throw new GolemDomainException("Dynamics.SteersAt: 'at' was not given");
-        if (CurrentPacman is not { } play || play.Cast.PartOf(golem) != Part.Pacman || !play.IsRunning || play.Route == null || !play.Route.IsPending()) return false;
-        if (play.Steering == Steering.Autonomous) return false;
-        return play.SteerTarget(golem.Current.Map, at) != null;
-    }
-
-    /// <summary>The same question for a wish NOT YET SAID — the host asks it with the keyboard's direction before choosing the script that
-    /// says it: <c>Check(g.Dynamics.WouldSteerAt(Position(@px, @py), @direction))</c>.</summary>
-    internal bool WouldSteerAt(Position at, Direction wish)
-    {
-        if (at == null) throw new GolemDomainException("Dynamics.WouldSteerAt: 'at' was not given");
-        if (CurrentPacman is not { } play || play.Cast.PartOf(golem) != Part.Pacman || !play.IsRunning || play.Route == null || !play.Route.IsPending()) return false;
-        if (play.Steering == Steering.Autonomous) return false;
-        return play.SteerTarget(golem.Current.Map, at, wish) != null;
-    }
-
-    /// <summary>PACMAN STEERED UNDERWAY — <c>route = g.Dynamics.Steer(me, play)</c>, the pose the body's own report of where it is (like the
-    /// hold): the run underway is abandoned and a new one opened from there — shortened to the intersection where the wish opens, the same
-    /// heading, or turned round when the wish is the opposite direction — so the body gets a new advance with the right amount and never stops
-    /// at the intersection. Counts as a run (the ghosts are told). Refused when there is nothing to steer to.</summary>
-    internal Route Steer(Pose me, Pacman play)
-    {
-        if (me == null) throw new GolemDomainException("Dynamics.Steer: 'me' was not given");
-        if (play == null) throw new GolemDomainException("Dynamics.Steer: 'play' was not given");
-        if (!ReferenceEquals(play, Current)) throw new GolemDomainException($"the play '{play.Name}' is not the one staged");
-        if (play.Cast.PartOf(golem) != Part.Pacman) throw new GolemDomainException($"'{golem.Name}' plays a ghost: only pacman is steered");
-        if (play.IsOver) throw new GolemDomainException($"the play '{play.Name}' is over");
-        if (play.Steering == Steering.Autonomous) throw new GolemDomainException("pacman drives itself: the keyboard does not steer it");
-        if (play.Route == null || !play.Route.IsPending()) throw new GolemDomainException("pacman is not running: nothing to steer — release it, or head it");
-        var map = golem.Current.Map;
-        var target = play.SteerTarget(map, me) ?? throw new GolemDomainException("the wish opens nowhere ahead in this corridor: kept for the next decision");
-        play.Route.Abandon($"steered {target.Heading} toward {target.Cell.Name}");
-        var route = golem.RunTo(me, target.Cell.Center, $"the cell {target.Cell.Name}");
-        play.Ran(route, target.Heading, target.Cell.Center);
         return route;
     }
 

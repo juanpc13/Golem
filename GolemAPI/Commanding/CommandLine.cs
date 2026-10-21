@@ -46,15 +46,13 @@ public static class CommandLine
         new CommandHelp("finish", "finish <name>", "this golem finishes its part of the formation (propuesta 117): the last line of its script about it, queued like the steps — it counts when the last step is walked; the fleet is told, and the one that counts the fleet's last finish cues the golem the formation names (--cue); the formation stays (dissolve lets it go)", "finish tri-left"),
         new CommandHelp("disputes", "disputes", "the places this golem disputed with another by distance, formation by formation: whether it won the place or yielded it, to whom, and both distances (a golem disputes the place nearest to where it stood)", "disputes"),
         new CommandHelp("formations", "formations", "the formations this golem is in: each one's figure, centre, size, orientation, policy, fleet and who holds which place", "formations"),
-        new CommandHelp("play", "play <name> pacman --pacman <golem> --ghosts a,b [--as pacman|ghost] [--steer manual|autonomous|guided] | play | play over", "a play staged on this golem by its name (its identity across the fleet, like a formation's) and its kind — pacman: who plays pacman and who the ghosts (left out, this golem and every peer but pacman), how pacman is driven; written on every member's tab by the warden, each line saying with --as what that golem plays (left out, what the cast says of its name), never --with; alone, play says the current play — its part, state, heading, wish, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play game-1 pacman --pacman blue --ghosts red,green,yellow"),
+        new CommandHelp("play", "play <name> pacman --pacman <golem> --ghosts a,b [--as pacman|ghost] | play | play over", "a play staged on this golem by its name (its identity across the fleet, like a formation's) and its kind — pacman: who plays pacman and who the ghosts (left out, this golem and every peer but pacman); pacman is autonomous — the rule alone drives it (21-oct-2026); written on every member's tab by the warden, each line saying with --as what that golem plays (left out, what the cast says of its name), never --with; alone, play says the current play — its part, state, heading, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play game-1 pacman --pacman blue --ghosts red,green,yellow"),
         new CommandHelp("plays", "plays", "every play this golem was told, the ended ones among them: name, kind, state, cast, who ended it", "plays"),
-        new CommandHelp("head", "head north|south|east|west", "the keyboard's wish: running and guided, pacman turns at the intersection ahead where it opens (or round, for the opposite direction) without stopping; closed ahead, kept for the next decision; without one, straight on through the intersections, else right, else left, else back", "head north"),
-        new CommandHelp("steer", "steer manual|autonomous|guided", "how pacman is driven (16-oct-2026): manual — the keyboard decides at every decision cell and pacman waits for it; autonomous — the rule decides, the keyboard is refused; guided — the rule decides and the wish rules where it opens (at birth)", "steer manual"),
         new CommandHelp("start", "start <name>", "the start of a play on this golem, written on every member's tab (16-oct-2026): pacman sets out — its first run, straight down the corridor — and a ghost joins the hunt, chasing from then on as pacman's runs release it from the den", "start game-1"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
         new CommandHelp("pause", "pause", "hold the golem where its body stands", "pause"),
         new CommandHelp("resume", "resume", "let it go on", "resume"),
-        new CommandHelp("forget", "forget x,y  ·  forget disputes | forget play <name>", "what stood there is gone: the golem forgets it, marks and all, and tells the peers — or, with disputes, it forgets the disputes it had over places (the next ones come with the next rounds played); forget play <name> takes a play off the list once it is over (a running one: play over first)", "forget 10.13,5.5"),
+        new CommandHelp("forget", "forget x,y  ·  forget disputes | forget play <name> | forget map <name>", "what stood there is gone: the golem forgets it, marks and all, and tells the peers — or, with disputes, it forgets the disputes it had over places (the next ones come with the next rounds played); forget play <name> takes a play off the list once it is over (a running one: play over first)", "forget 10.13,5.5"),
         new CommandHelp("anchor", "anchor", "the golem takes where its body REALLY stands (telemetry) as where it stands — the scenario whose region holds it, a waking there, a plan underway decided again — without a reset and without moving anything; for when its belief drifted from the truth (13-oct-2026)", "anchor"),
         new CommandHelp("reset", "reset [--all]", "let go: every pending route abandoned, the body back on its mark; --all wipes the journal — the peers' too — and reboots reborn", "reset"),
         new CommandHelp("state", "state", "the board: the routes pending, the one underway and its next point, how the last one ended", "state"),
@@ -66,6 +64,9 @@ public static class CommandLine
         new CommandHelp("speed", "speed <m/s> [--turn <rad/s>]", "the body's pace from here on (propuesta 111): its cruise in metres per second and, with --turn, how fast it turns in place in radians per second — every order after it carries them; born at 2 m/s and 1.5 rad/s (body_v1 and the body node's own cap); the motors cap what the body can really do", "speed 3 --turn 2.5"),
         new CommandHelp("use", "use map <scenario>", "the golem uses that map — it enters the scenario it knows by that name, its collisions with it, from here on (warehouse, open-floor); refused while a route is pending (was enter, 7-oct-2026)", "use map open-floor"),
         new CommandHelp("scenarios", "scenarios", "the scenarios the golem knows, and the one it is in", "scenarios"),
+        new CommandHelp("explored", "explored", "what the golem explored here: the trail, the cells it knows (free, wall) and the frontier of the unknown", "explored"),
+        new CommandHelp("explore", "explore [stop | clear]", "the exploration mode (propuesta 120), always BLIND: the golem blindfolds itself first — a scenario of its own with no map at all, blind-<scenario>, where its body stands (taken up again if it exists) — and probes by itself, cell by cell into the unknown, until nothing unknown is left next to what it knows, or until explore stop; explore clear starts what was explored here afresh (stopped first)", "explore"),
+        new CommandHelp("export", "export map <name>", "the map the golem deduced here becomes a scenario of its own under that name (propuesta 120): use map <name> enters it, forget map <name> drops it", "export map explored-1"),
         new CommandHelp("set", "set name x,y [x,y …]", "the console keeps a value under that name, to write @name on a line (visit @stops)", "set stops 2,9.5 9,8"),
         new CommandHelp("show", "show [name]", "the values the console keeps", "show"),
         new CommandHelp("help", "help [command]", "this table, or one command of it", "help visit"),
@@ -119,6 +120,11 @@ public static class CommandLine
             case "forget":
                 if (args.Count == 1 && args[0].Equals("disputes", StringComparison.OrdinalIgnoreCase))
                     return new Command(named, with, verb, none, noOptions, "disputes");   // the disputes over places forgotten (14-oct-2026)
+                if (args.Count >= 1 && args[0].Equals("map", StringComparison.OrdinalIgnoreCase))   // a scenario the explorer exported, dropped (propuesta 120)
+                {
+                    if (args.Count != 2 || !Name.IsMatch(args[1])) throw new CommandSyntaxException("forget map: expected the map's name, like forget map explored-1");
+                    return new Command(named, with, verb, none, noOptions, "map", new Dictionary<string, string> { ["map"] = args[1].ToLowerInvariant() });
+                }
                 if (args.Count >= 1 && args[0].Equals("play", StringComparison.OrdinalIgnoreCase))   // a play forgotten (16-oct-2026): off the list
                 {
                     if (args.Count != 2 || !Name.IsMatch(args[1])) throw new CommandSyntaxException("forget play: expected the play's name, like forget play game-1");
@@ -237,13 +243,8 @@ public static class CommandLine
                         values["as"] = args[++i].ToLowerInvariant();
                         continue;
                     }
-                    if (a == "--steer")   // how pacman is driven (ajuste 16-oct-2026)
-                    {
-                        if (i + 1 >= args.Count || args[i + 1].ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) throw new CommandSyntaxException("play: --steer needs manual, autonomous or guided");
-                        values["steer"] = args[++i].ToLowerInvariant();
-                        continue;
-                    }
-                    if (a.StartsWith("--")) throw new CommandSyntaxException($"play: '{Head(a)}' is no option; the options are --pacman <golem>, --ghosts a,b, --as pacman|ghost and --steer manual|autonomous|guided");
+                    if (a == "--steer") throw new CommandSyntaxException("play: --steer is gone (21-oct-2026) — pacman is autonomous, the rule alone drives it");
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"play: '{Head(a)}' is no option; the options are --pacman <golem>, --ghosts a,b and --as pacman|ghost");
                     rest.Add(args[i]);
                 }
                 // the play by NAME and KIND (16-oct-2026; Juan: "generar un id del juego"): play game-1 pacman …
@@ -252,14 +253,11 @@ public static class CommandLine
                 return new Command(named, with, verb, none, noOptions, rest[0].ToLowerInvariant(), values);
             }
             case "head":
-                if (args.Count != 1 || args[0].ToLowerInvariant() is not ("north" or "south" or "east" or "west")) throw new CommandSyntaxException("head: expected a direction, north, south, east or west");
-                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+            case "steer":   // the keyboard and the driving modes are gone (21-oct-2026; Juan: "pacman autónomo nada más")
+                throw new CommandSyntaxException($"'{verb}' is gone (21-oct-2026): pacman is autonomous — the rule alone drives it, nothing steers it");
             case "plays":   // every play told (16-oct-2026)
                 if (args.Count > 0) throw new CommandSyntaxException($"plays takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");
-            case "steer":   // how pacman is driven (ajuste 16-oct-2026)
-                if (args.Count != 1 || args[0].ToLowerInvariant() is not ("manual" or "autonomous" or "guided")) throw new CommandSyntaxException("steer: expected manual, autonomous or guided");
-                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
             case "start":   // the start of a play, this golem's own (16-oct-2026): start <name>
                 if (args.Count != 1 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("start: expected the play's name, like start game-1");
                 return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
@@ -294,6 +292,7 @@ public static class CommandLine
             case "where":
             case "obstacles":
             case "scenarios":
+            case "explored":
             case "formations":
             case "disputes":
                 if (args.Count > 0) throw new CommandSyntaxException($"{verb} takes nothing more; found '{Head(string.Join(' ', args))}'");
@@ -320,6 +319,13 @@ public static class CommandLine
             case "anchor":
                 if (args.Count > 0) throw new CommandSyntaxException($"anchor takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");
+            case "explore":   // the exploration mode on, or off with stop (propuesta 120)
+                if (args.Count == 0) return new Command(named, with, verb, none, noOptions, "");
+                if (args.Count == 1 && args[0].ToLowerInvariant() is "stop" or "clear") return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant());
+                throw new CommandSyntaxException($"explore takes nothing, stop or clear; found '{Head(string.Join(' ', args))}'");
+            case "export":   // the deduced map exported as a scenario of the golem's (propuesta 120): export map <name>
+                if (args.Count != 2 || !args[0].Equals("map", StringComparison.OrdinalIgnoreCase) || !Name.IsMatch(args[1])) throw new CommandSyntaxException("export map: expected the map's name, like export map explored-1");
+                return new Command(named, with, verb, none, noOptions, args[1].ToLowerInvariant());
             case "reset":
                 foreach (var a in args)
                     if (a.ToLowerInvariant() != "--all") throw new CommandSyntaxException($"reset takes no argument but the option --all; found '{Head(a)}'");

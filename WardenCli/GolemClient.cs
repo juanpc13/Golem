@@ -19,7 +19,7 @@ public sealed record Call(HttpMethod Method, string Path, object? Body)
 /// <summary>The golem's HTTP surface, as the console uses it: the tabs' lines to POST /command (the language, JSON back for a program), and
 /// since 16-oct-2026 (Juan: "el CLI debería usar esos endpoints también") THE READS BY GET (`/where`, `/state`, `/route`, `/scenarios`,
 /// `/obstacles`, `/formations`, `/disputes`, `/play`) and THE LEVERS ACTED AT ONCE BY THEIR POSTS (`/enter`, `/optimize`, `/speed`, `/place`,
-/// `/anchor`, `/reset`, `/reset-everything`, `/head`, `/start`, `/over`, `/forget`, `/forget-disputes`, `/dissolve`) — the same documents
+/// `/anchor`, `/reset`, `/reset-everything`, `/start`, `/over`, `/forget`, `/forget-disputes`, `/dissolve`) — the same documents
 /// and the same acts the lines reach, <see cref="Endpoint"/> saying which; a golem that does not know an endpoint yet (404) is asked by the
 /// line. The telemetry of GET /body says whether it is there, GET /commands its language. The console decides nothing: it carries lines and
 /// reads answers.</summary>
@@ -27,7 +27,7 @@ public static class GolemClient
 {
     private static readonly HttpClient Wire = new() { Timeout = TimeSpan.FromSeconds(90) };
 
-    private static readonly HashSet<string> Reads = new(StringComparer.Ordinal) { "where", "state", "route", "scenarios", "obstacles", "formations", "disputes", "play", "plays" };
+    private static readonly HashSet<string> Reads = new(StringComparer.Ordinal) { "where", "state", "route", "scenarios", "obstacles", "formations", "disputes", "play", "plays", "explored" };
 
     /// <summary>THE ENDPOINT OF A LINE the console writes by itself — a read, or a lever of the environment, the map, the play or a tab —
     /// or null when the line is the language's (a tab's script goes by POST /command). Pure: tested as such.</summary>
@@ -46,10 +46,13 @@ public static class GolemClient
                 if (words.Length == 2) return new Call(HttpMethod.Post, "speed", new { speed });
                 return words[2].Equals("--turn", StringComparison.OrdinalIgnoreCase) && TryNumber(words[3], out double turn) ? new Call(HttpMethod.Post, "speed", new { speed, turn }) : null;
             case "anchor" when words.Length == 1: return new Call(HttpMethod.Post, "anchor", null);
+            case "explore" when words.Length == 1: return new Call(HttpMethod.Post, "explore", null);
+            case "explore" when words.Length == 2 && words[1].Equals("stop", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "explore-stop", null);
+            case "explore" when words.Length == 2 && words[1].Equals("clear", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "explore-clear", null);
+            case "export" when words.Length == 3 && words[1].Equals("map", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "export-map", new { name = words[2] });
+            case "forget" when words.Length == 3 && words[1].Equals("map", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "forget-map", new { name = words[2] });
             case "reset" when words.Length == 1: return new Call(HttpMethod.Post, "reset", null);
             case "reset" when words.Length == 2 && words[1] == "--all": return new Call(HttpMethod.Post, "reset-everything", new { cascade = true });
-            case "head" when words.Length == 2: return new Call(HttpMethod.Post, "head", new { direction = words[1] });
-            case "steer" when words.Length == 2: return new Call(HttpMethod.Post, "steer", new { steer = words[1] });
             case "start" when words.Length == 2: return new Call(HttpMethod.Post, "start", new { name = words[1] });
             case "play" when words.Length == 2 && words[1].Equals("over", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "over", null);
             case "forget" when words.Length == 2 && words[1].Equals("disputes", StringComparison.OrdinalIgnoreCase): return new Call(HttpMethod.Post, "forget-disputes", null);
@@ -221,7 +224,7 @@ public static class GolemClient
             };
         var scenarios = await GetAsync(golem, "scenarios", ct);
         if (scenarios.Ok && scenarios.Json is { } sc)
-            k = k with { Scenarios = Readings.ParseScenarios(sc) };
+            k = k with { Scenarios = Readings.ParseScenarios(sc), Maps = ScenarioView.Parse(sc) };
         var obstacles = await GetAsync(golem, "obstacles", ct);
         if (obstacles.Ok && obstacles.Json is { } o)
             k = k with
@@ -247,6 +250,10 @@ public static class GolemClient
         var plays = await GetAsync(golem, "plays", ct);
         if (plays.Ok && plays.Json is { } pl)
             k = k with { Plays = PlayView.ParseList(pl) };
+        // WHAT THE GOLEM EXPLORED (propuesta 120): the cells it deduced, drawn over its map
+        var explored = await GetAsync(golem, "explored", ct);
+        if (explored.Ok && explored.Json is { } ex)
+            k = k with { Explored = ExploredView.Parse(ex) };
         golem.Knowledge = k;
         return true;
     }

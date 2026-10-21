@@ -5,8 +5,8 @@ using Puppeteer;
 namespace GolemAPI.Choreography.Roles;
 
 // THE PLAYER — the role of the PLAYS (propuesta 108; a role of its own since 16-oct-2026, Juan: "la combinación del golemActor.Using + el
-// string del script debe ser parte del rol"): every act the golem writes on its dynamics module — a play staged, started, steered, driven,
-// ended, forgotten; pacman's runs and a ghost's chases; the end announced by the clock; and the words heard from the cast (the uptakes
+// string del script debe ser parte del rol"): every act the golem writes on its dynamics module — a play staged, started, ended,
+// forgotten; pacman's runs and a ghost's chases; the end announced by the clock; and the words heard from the cast (the uptakes
 // GolemSpeech binds). It moves the body through the motors, so the body must play the Displacer too (Capabilities). It RECEIVES the robot
 // and builds nothing; the Displacer asks it at an arrival what the play says next.
 public sealed class DynamicsRol
@@ -20,13 +20,14 @@ public sealed class DynamicsRol
     }
 
     // ==================================================================
-    // THE PLAY (propuesta 108, fase 2, 12-oct-2026): pacman at the keyboard. The play is written on every member's tab (16-oct-2026);
-    // `head` is the keyboard's wish; `start <name>` opens pacman's first run, and every run that reaches its decision cell opens the next by the
-    // domain's rule (RanScript, fired by the arrival like PlacedScript). Fixed templates, parameters only, never named like a print label.
+    // THE PLAY (propuesta 108, fase 2, 12-oct-2026): pacman AUTONOMOUS (21-oct-2026; Juan: "pacman autónomo nada más" — no keyboard, no `head`,
+    // no `steer`). The play is written on every member's tab (16-oct-2026); `start <name>` opens pacman's first run, and every run that reaches
+    // its end opens the next by the domain's rule (Ran, fired by the arrival like PlacedScript). Fixed templates, parameters only, never named
+    // like a print label.
     // ==================================================================
 
     /// <summary>A PLAY STAGED on this golem: pacman by name, the ghosts by name; the cast is told (echo-staged) and every member stages the same.</summary>
-    public Answer Play(string name, string kind, string pacman, IReadOnlyList<string> ghosts, string steering = "guided", string role = null)
+    public Answer Play(string name, string kind, string pacman, IReadOnlyList<string> ghosts, string role = null)
     {
         // THE PART ON THE LINE (16-oct-2026): --as pacman|ghost, the warden's word of what this golem plays; left out, what the cast says of its name
         string part = (role ?? "").Trim().ToLowerInvariant() switch { "" => pacman.Trim().ToLowerInvariant() == robot.Name.ToLowerInvariant() ? "Pacman" : "Ghost", "pacman" => "Pacman", "ghost" => "Ghost", _ => null };
@@ -35,8 +36,6 @@ public sealed class DynamicsRol
         if ((kind ?? "").Trim().ToLowerInvariant() != "pacman") return Answer.Refusal($"the only play known is pacman, not '{kind}'");
         if (string.IsNullOrWhiteSpace(pacman)) return Answer.Refusal("a play needs a pacman: --pacman blue");
         if (ghosts == null || ghosts.Count == 0) return Answer.Refusal("a play needs at least one ghost: --ghosts red,green");
-        string drive = SteeringMember(steering);
-        if (drive == null) return Answer.Refusal($"pacman is driven manual, autonomous or guided, not '{steering}'");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";   // the once of the call, frozen as a parameter
         try
         {
@@ -44,8 +43,7 @@ public sealed class DynamicsRol
                     {
                         cast = Cast(@starName, @crewNames);
                         play = g.Dynamics.Stage(@playName, @kind, cast, @part, @stamp);
-                        play.Drive(@steering);
-                        print play.Name 'play', play.Kind 'kind', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Steering 'steering', cast.Pacman 'pacman', cast.Roster 'ghosts';
+                        print play.Name 'play', play.Kind 'kind', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', cast.Pacman 'pacman', cast.Roster 'ghosts';
                     }
                 ")
                 .WithParameters(p => {
@@ -55,125 +53,10 @@ public sealed class DynamicsRol
                     p["crewNames", typeof(string)] = string.Join(",", ghosts.Select(n => n.Trim().ToLowerInvariant()));
                     p["stamp", typeof(string)] = stamp;
                     p["part", typeof(string)] = part;        // the member's name: the engine resolves the enum at the verb (ajuste 90)
-                    p["steering", typeof(string)] = drive;
                 })
                 .PerformCommand());
         }
         catch (Exception ex) { return Answer.Refusal($"play {name}: " + GolemEmbodiment.Reason(ex)); }
-    }
-
-    // the operator's word for how pacman is driven → the member's name of the domain's Steering (ajuste 90); null when it is none
-    private static string SteeringMember(string word) => (word ?? "").Trim().ToLowerInvariant() switch { "manual" => "Manual", "autonomous" => "Autonomous", "guided" => "Guided", _ => null };
-
-    // HOW PACMAN IS DRIVEN from here on (ajuste 16-oct-2026): manual, autonomous or guided — nothing for the body
-    /// <summary>HOW PACMAN IS DRIVEN from here on (ajuste 16-oct-2026): `steer manual|autonomous|guided`.</summary>
-    public Answer Drive(string steering)
-    {
-        string drive = SteeringMember(steering);
-        if (drive == null) return Answer.Refusal($"pacman is driven manual, autonomous or guided, not '{steering}'");
-        try
-        {
-            return Answer.Of(robot.Actor.Using(
-                @"
-                    Check(g.Dynamics.Knows) Error 'no play is staged: play pacman --pacman … --ghosts … first';
-                ", @"
-                    {
-                        play = g.Dynamics.Pacman;
-                        play.Drive(@steering);
-                        print play.Name 'play', play.State 'state', play.Steering 'steering';
-                    }
-                ")
-                .WithParameters(p => { p["steering", typeof(string)] = drive; })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"steer {steering}: " + GolemEmbodiment.Reason(ex)); }
-    }
-
-    // STEERED UNDERWAY (ajuste 16-oct-2026; Juan: "deberían seguir de largo"): the wish turns the run at the intersection ahead where it opens,
-    // or round, from where the body is (its pose, like the hold) — the run underway abandoned inside, a new advance for the body; counts as a run,
-    // so the ghosts are told (echo-steer: the same expose as the run)
-    // THE KEYBOARD'S WISH (fase 2; ajuste 16-oct-2026): kept for the next decision — and, driven manual and standing at a decision cell, the
-    // run it was waiting for opens now
-    /// <summary>The keyboard's wish: the direction pacman takes at its next decision cell (north, south, east, west) — or, running and guided,
-    /// the turn it takes NOW at the intersection ahead where it opens (ajuste 16-oct-2026): with the body's pose in hand the host asks whether the
-    /// wish steers from there and writes the steer, else the wish alone.</summary>
-    public Answer Head(string direction)
-    {
-        string member = (direction ?? "").Trim().ToLowerInvariant() switch { "north" => "North", "south" => "South", "east" => "East", "west" => "West", _ => null };
-        if (member == null) return Answer.Refusal($"a direction is north, south, east or west, not '{direction}'");
-        try
-        {
-            if (robot.Pose is { } here)
-            {
-                var steered = Answer.Of(robot.Actor.Using(
-                    @"
-                        Check(g.Dynamics.Knows) Error 'no play is staged: play pacman --pacman … --ghosts … first';
-                        Check(g.Dynamics.WouldSteerAt(Position(@px, @py), @direction)) Error 'the wish steers nothing from here: kept for the next decision';
-                    ", @"
-                    {
-                        play = g.Dynamics.Pacman;
-                        play.Head(@direction);
-                        me = Pose(@px, @py, @ptheta);
-                        route = g.Dynamics.Steer(me, play);
-                        if (g.Strategy.OnTheWay.IsActive) {
-                            route = g.Dash(route);
-                        }
-                        print play.Heading 'heading', play.Runs 'runs';
-                        if (route.IsPending()) {
-                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                            if (route.IsWalkable) {
-                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                      route.Following 'following', route.StopsLeft 'stopsLeft';
-                            }
-                        } else {
-                            print route.Id 'route', route.Status 'ended';
-                        }
-                        expose play.Name title, play.Stamp nonce, play.Runs runs, play.TargetX cellX, play.TargetY cellY;
-                    }
-                ")
-                    .WithParameters(p => {
-                        p["direction", typeof(string)] = member;   // the member's name: the engine resolves the enum at the verb (ajuste 90)
-                        p["px", typeof(double)] = Resolution.Metres(here.X);
-                        p["py", typeof(double)] = Resolution.Metres(here.Y);
-                        p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
-                    })
-                    .PerformCheckThenCommand());
-                if (steered.Ok) return steered;
-            }
-            return Answer.Of(robot.Actor.Using(
-                @"
-                    Check(g.Dynamics.Knows) Error 'no play is staged: play pacman --pacman … --ghosts … first';
-                ", @"
-                    {
-                        play = g.Dynamics.Pacman;
-                        play.Head(@direction);
-                        if (g.Dynamics.Reached) {
-                            from = g.Destination;
-                            route = g.Dynamics.Run(from, play);
-                            if (g.Strategy.OnTheWay.IsActive) {
-                                route = g.Dash(route);
-                            }
-                            print play.Heading 'heading', play.Runs 'runs';
-                            if (route.IsPending()) {
-                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
-                                if (route.IsWalkable) {
-                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
-                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
-                                          route.Following 'following', route.StopsLeft 'stopsLeft';
-                                }
-                            } else {
-                                print route.Id 'route', route.Status 'ended';
-                            }
-                        } else {
-                            print play.Name 'play', play.State 'state', play.Heading 'heading', play.HasWish 'wishing', play.Wish 'wish', play.Runs 'runs';
-                        }
-                    }
-                ")
-                .WithParameters(p => { p["direction", typeof(string)] = member; })
-                .PerformCheckThenCommand());
-        }
-        catch (Exception ex) { return Answer.Refusal($"head {direction}: " + GolemEmbodiment.Reason(ex)); }
     }
 
     // THE START (16-oct-2026; Juan: "release no me suena, quisiera algo más como empezar y el id de la dinámica… también se pone en los ghosts

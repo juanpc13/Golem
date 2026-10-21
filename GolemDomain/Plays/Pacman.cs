@@ -7,12 +7,13 @@ namespace GolemDomain.Plays;
 /// <summary>
 /// THE PLAY OF PACMAN, as one golem's copy of it — a <see cref="Play"/> of the kind <c>pacman</c>, by its name (propuesta 108, fase 2, 12-oct-2026; Juan: "sería como enviarle que tome el tramo de
 /// arriba/abajo/izquierda/derecha cuando entre en una intersección, si no seguir; cuando llegue a un camino sin salida… girar siempre a la
-/// derecha"). Told to one golem and spread by tell, every member of the cast keeps the same play by the same name and stamp. What it keeps:
-/// the cast, where it stands (<see cref="PlayState"/>), the direction pacman HEADS, the direction the keyboard WISHES (consumed at the next
-/// decision), how many runs were made, and the route of the run underway. What it decides: THE NEXT RUN — not a route, the CELL the next route
-/// goes to: pacman runs straight along the corridor to the next DECISION CELL (an intersection, three or more neighbours; or where straight
-/// is closed, a corner or a dead end) and there the RULE picks the way on: the wish if open, else straight, else the right of the heading,
-/// else the left, else back. The golem opens the route (<see cref="Dynamics.Run"/>), square (propuesta 110): one advance down the corridor.
+/// derecha"). The warden writes the play on every member's tab, each copy by the same name. What it keeps: the cast, where it stands
+/// (<see cref="PlayState"/>), the direction pacman HEADS, how many runs were made, and the route of the run underway. What it decides: THE
+/// NEXT RUN — not a route, the CELL the next route goes to: pacman runs straight down the corridor, through every intersection, to where
+/// STRAIGHT ON IS CLOSED (a corner, a dead end) and there the RULE picks the way on: the right of the heading, else the left, else back.
+/// PACMAN IS AUTONOMOUS, AND NOTHING ELSE (21-oct-2026; Juan: "pacman autónomo nada más, las formas de manejo manual y guiado ya no"): no
+/// keyboard, no wish, no steering — the manual and guided modes of 16-oct-2026 (<c>Head</c>, <c>Drive</c>, <c>Steer</c>, the enum
+/// <c>Steering</c>) are gone. The golem opens the route (<see cref="Dynamics.Run"/>), square (propuesta 110): one advance down the corridor.
 /// THE GHOSTS (fase 3, 15-oct-2026): a ghost's copy keeps WHERE PACMAN WAS LAST SEEN — the decision cell every run of pacman's is told to
 /// (<c>RanTo</c>), <see cref="Seen"/> — and CHASES it (<see cref="Dynamics.Chase"/>): a route to that cell, decided when the ghost is idle
 /// (released, standing, or its last chase ended) and pacman was seen somewhere else; a word heard underway is kept and taken at the arrival.
@@ -27,7 +28,6 @@ internal sealed class Pacman : Play
     /// <summary>How many runs of pacman's between one ghost's release and the next (fase 3): the first ghost leaves at run 1, the second at 3, the third at 5…</summary>
     internal const int RunsBetweenReleases = 2;
 
-    private Direction? wish;
     private Position target;      // pacman's copy: the decision cell the run underway goes to — what RanTo tells
     private Position lastSeen;    // a ghost's copy: where pacman was last told to run
     private int runsSeen;         // …and which run that was
@@ -38,14 +38,9 @@ internal sealed class Pacman : Play
         Heading = Direction.East;
     }
 
-    /// <summary>How pacman is driven (ajuste 16-oct-2026): manual, autonomous or guided — guided at birth; <c>play.Drive(@steering)</c> changes it.</summary>
-    internal Steering Steering { get; private set; } = Steering.Guided;
     /// <summary>The direction pacman heads along its corridor (east at birth, as it stands in the cradle).</summary>
     internal Direction Heading { get; private set; }
-    /// <summary>Whether the keyboard asked a direction not yet consumed, and which.</summary>
-    internal bool HasWish => wish != null;
-    internal Direction Wish => wish ?? Heading;
-    /// <summary>How many runs pacman made since released.</summary>
+    /// <summary>How many runs pacman made since started.</summary>
     internal int Runs { get; private set; }
     /// <summary>Pacman's copy: the decision cell its run underway goes to — the reads a tell carries (<c>expose play.TargetX cellX, …</c>).</summary>
     internal double TargetX => target == null ? throw new GolemDomainException("pacman has not run yet") : target.X;
@@ -117,26 +112,8 @@ internal sealed class Pacman : Play
         State = PlayState.Running;
     }
 
-    /// <summary>The keyboard's word: the direction to take at the next decision cell — or, underway and guided, the one to steer to now
-    /// (<see cref="SteerTarget"/>). Said again, the newest wins; straight on while running is nothing to wish. Refused when autonomous.</summary>
-    internal void Head(Direction direction)
-    {
-        if (IsOver) throw new GolemDomainException($"the play '{Name}' is over");
-        if (Steering == Steering.Autonomous) throw new GolemDomainException("pacman drives itself: the keyboard does not steer it (steer guided, or manual)");
-        wish = IsRunning && route != null && route.IsPending() && direction == Heading ? null : direction;
-    }
-
-    /// <summary>HOW PACMAN IS DRIVEN from here on (ajuste 16-oct-2026): <c>play.Drive(@steering)</c> — manual, autonomous or guided.</summary>
-    internal void Drive(Steering steering)
-    {
-        if (!Enum.IsDefined(steering)) throw new GolemDomainException($"pacman is driven manual, autonomous or guided, not '{steering}'");
-        if (IsOver) throw new GolemDomainException($"the play '{Name}' is over");
-        Steering = steering;
-    }
-
-    /// <summary>Whether this golem's run reached its end and the next is to be decided: the route underway completed (not short) — and, driven
-    /// manual, a wish was given (without one pacman stands and waits for the keyboard).</summary>
-    internal bool Reached => IsRunning && route != null && !route.IsPending() && !route.EndedShort && (Steering != Steering.Manual || wish != null);
+    /// <summary>Whether this golem's run reached its end and the next is to be decided: the route underway completed (not short).</summary>
+    internal bool Reached => IsRunning && route != null && !route.IsPending() && !route.EndedShort;
 
     /// <summary>THE NEXT RUN, decided on the map from the cell pacman stands in: the way on by the rule, then straight DOWN THE CORRIDOR to
     /// where the run ends (<see cref="EndsRun"/>); answers that cell and the heading that reaches it. Refused when no way is open at all.</summary>
@@ -150,61 +127,21 @@ internal sealed class Pacman : Play
         return (here, way);
     }
 
-    /// <summary>WHERE A RUN ENDS (ajuste 16-oct-2026; Juan: "deberían seguir de largo"): where straight on is closed — a corner, a dead end —
-    /// or at the intersection where the WISH opens (sideways; straight or back are no turn here); driven manual, at every decision cell, so the
-    /// keyboard chooses (the way it was until then).</summary>
+    /// <summary>WHERE A RUN ENDS (ajuste 16-oct-2026; Juan: "deberían seguir de largo"): where straight on is closed — a corner, a dead end;
+    /// an intersection is crossed without a stop.</summary>
     internal bool EndsRun(MapLayout map, Zone cell, Direction heading)
     {
         if (map == null) throw new GolemDomainException("Pacman.EndsRun: 'map' was not given");
         if (cell == null) throw new GolemDomainException("Pacman.EndsRun: 'cell' was not given");
-        if (Steering == Steering.Manual) return IsDecision(map, cell, heading);
-        if (Neighbour(map, cell, heading) == null) return true;
-        return wish is Direction wanted && wanted != heading && wanted != Back(heading) && Neighbour(map, cell, wanted) != null;
+        return Neighbour(map, cell, heading) == null;
     }
 
-    /// <summary>WHERE TO STEER TO, underway (ajuste 16-oct-2026): from where the body is — the cell at that position — the wish's turn ahead in
-    /// this corridor (the run shortened to the intersection where it opens, the same heading), or the way back when the wish is the opposite
-    /// direction (the run turned round, as far as it goes); null when the wish opens nowhere ahead (kept for the next decision), or there is
-    /// no wish, or the wish is straight on.</summary>
-    internal (Zone Cell, Direction Heading)? SteerTarget(MapLayout map, Position at)
-    {
-        if (map == null) throw new GolemDomainException("Pacman.SteerTarget: 'map' was not given");
-        if (at == null) throw new GolemDomainException("Pacman.SteerTarget: 'at' was not given");
-        return wish is Direction wanted ? SteerTarget(map, at, wanted) : null;
-    }
-
-    /// <summary>The same, for a wish not yet said (the host asks before saying it).</summary>
-    internal (Zone Cell, Direction Heading)? SteerTarget(MapLayout map, Position at, Direction wanted)
-    {
-        if (map == null) throw new GolemDomainException("Pacman.SteerTarget: 'map' was not given");
-        if (at == null) throw new GolemDomainException("Pacman.SteerTarget: 'at' was not given");
-        if (wanted == Heading) return null;
-        var cell = map.ZoneAt(at);
-        if (cell == null) return null;
-        if (wanted == Back(Heading))
-        {
-            var back = Neighbour(map, cell, wanted);
-            if (back == null) return null;
-            var there = back;
-            while (!EndsRun(map, there, wanted)) there = Neighbour(map, there, wanted);
-            return (there, wanted);
-        }
-        var here = cell;
-        while (here != null)
-        {
-            if (Neighbour(map, here, wanted) != null) return (here, Heading);
-            here = Neighbour(map, here, Heading);
-        }
-        return null;
-    }
-
-    /// <summary>THE RULE at a cell: the wish if that side is open, else straight on, else to the right of the heading, else to the left,
-    /// else back the way it came (the only way out of a dead end).</summary>
+    /// <summary>THE RULE at a cell: straight on, else to the right of the heading, else to the left, else back the way it came (the only way
+    /// out of a dead end).</summary>
     internal Direction Decide(MapLayout map, Zone cell)
     {
         if (map == null) throw new GolemDomainException("Pacman.Decide: 'map' was not given");
         if (cell == null) throw new GolemDomainException("Pacman.Decide: 'cell' was not given");
-        if (wish is Direction wanted && Neighbour(map, cell, wanted) != null) return wanted;
         foreach (var candidate in new[] { Heading, Right(Heading), Left(Heading), Back(Heading) })
             if (Neighbour(map, cell, candidate) != null) return candidate;
         throw new GolemDomainException($"no way out of {cell.Name}: every side is closed");
@@ -253,7 +190,6 @@ internal sealed class Pacman : Play
         route = opened;
         target = toward;
         Heading = heading;
-        if (wish == heading) wish = null;   // the wish taken is consumed; one not open stays for the next decision
         State = PlayState.Running;
         Runs++;
     }

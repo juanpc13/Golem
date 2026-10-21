@@ -125,6 +125,17 @@ internal static class Catalog
         return l;
     }
 
+    internal const string BlindName = "blind";
+
+    /// <summary>A BLIND FLOOR of that size (the tests'): one zone and NO WALL KNOWN, so every touch is a mark and the floor's edge bounds the unknown.
+    /// The golem's own blindfold (`g.Exploration.Blindfold()`, propuesta 120) has no zone at all: nothing bounds the unknown but what it touches.</summary>
+    internal static MapLayout Blind(double width, double height)
+    {
+        var l = new MapLayout(BlindName);
+        l.Area("blind-floor").At(P(0, 0)).Size(width, height);   // not "floor": a block local of that name in a second upgrade is refused by the engine (lab 20-oct-2026)
+        return l;
+    }
+
     /// <summary>The centre of the cell drawn with that mark (<c>P</c> the cradle, <c>G</c> the den); refused when the drawing has none.</summary>
     internal static Position MazeMark(char mark)
     {

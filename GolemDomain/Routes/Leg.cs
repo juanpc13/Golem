@@ -28,6 +28,8 @@ internal sealed class Leg
     /// <summary>A point the way passes through that is no passage and no stop — what the route calls a point it was given
     /// bare (the planner's detours and courtesy steps arrive at the journal as points).</summary>
     internal const string Waypoint = "via";
+    /// <summary>The stop of a PROBE (propuesta 120): one step into a cell the explorer does not know yet.</summary>
+    internal const string Unknown = "unknown";
     /// <summary>The MIDDLE of a narrow zone — a cell of the maze, a corridor — where the way turns SQUARE (propuesta 110, 12-oct-2026;
     /// Juan: "esperaría que sea algo cuadrada la navegación"): named after its zone, <c>cell-12-13:middle</c>.</summary>
     internal const string Middle = "middle";

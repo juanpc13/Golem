@@ -342,6 +342,9 @@ public sealed class DisplacerRol
             // …or a ghost's chase (fase 3): it arrived where pacman was seen, and pacman was seen somewhere new since
             var chased = robot.Dynamics?.Chased(here);
             if (chased is { Ok: true } chasedNow) { robot.Report(chasedNow, $"route {was.Route}: where pacman was seen — the chase goes on"); return chasedNow; }
+            // …or a probe of the exploration (propuesta 120): the step into the unknown done, or backed off a touch — the next probe opens
+            var probed = robot.Explorer?.Probed(here);
+            if (probed is { Ok: true } probedNow) { robot.Report(probedNow, $"route {was.Route}: a probe ended — the next one opens"); return probedNow; }
         }
         if (answer.Ok && answer.Order is { Action: "stop", Waiting: true })
         {
@@ -454,11 +457,45 @@ public sealed class DisplacerRol
         var was = robot.Mechanics.Carrying;
         if (was == null || was.Ticket != order) return null;
         robot.Mechanics.Done();
-        var answer = Failed(reason);
-        robot.Report(answer, $"route {was.Route} failed: {reason}");
+        // a STALL is written with where the body stands (propuesta 120): on a probe the domain takes it as a touch — the mark learned, the body
+        // back where the step began — on any other route it fails it; without telemetry, or stuck otherwise (a turn timeout), the route fails
+        var answer = reason.StartsWith("stalled", StringComparison.OrdinalIgnoreCase) && robot.Pose is { } here ? Stalled(here, reason) : Failed(reason);
+        robot.Report(answer, answer.Ok && answer.Order is { IsEnded: false } ? $"route {was.Route}: stalled — a touch where it stands, the body backs off" : $"route {was.Route} failed: {reason}");
         if (robot.Choreographer?.Retaken(answer, was) is { } retaken) return retaken;   // the body could not: the formation takes the place again (propuesta 113)
         return answer;
     }
+
+    // The body stalled where it stands: the golem decides what it was — a touch on a probe, a failure on any other route (propuesta 120)
+    private Answer Stalled(Pose here, string reason) => Answer.Of(robot.Actor.Using(
+        @"
+            Check(g.HasPendingMission()) Error 'nothing underway: no pending route';
+        ",
+        @"
+            {
+                me = Pose(@px, @py, @ptheta);
+                route = g.Stall(me, @reason);
+                if (route.IsPending()) {
+                    print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                    if (route.IsWalkable) {
+                        print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                              route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                              route.Following 'following', route.StopsLeft 'stopsLeft';
+                    }
+                } else {
+                    print route.Id 'route', route.Status 'ended';
+                    if (route.EndedShort) {
+                        print route.Why 'why';
+                    }
+                }
+            }
+        ")
+        .WithParameters(p => {
+            p["px", typeof(double)] = Resolution.Metres(here.X);
+            p["py", typeof(double)] = Resolution.Metres(here.Y);
+            p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
+            p["reason", typeof(string)] = reason;
+        })
+        .PerformCheckThenCommand());
 
     // The world said no — a collision, a stall, no way — in the body's words; the route ends, the next one's order follows.
     private Answer Failed(string reason) => Answer.Of(robot.Actor.Using(

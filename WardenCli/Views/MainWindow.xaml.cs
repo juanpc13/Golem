@@ -47,7 +47,37 @@ public partial class MainWindow : Window
     private int quietTicks;
 
     // the floor the map draws: the selected golem's scenario as it told it (GET /map), the arena's 11 × 11 m until one is known
-    private double FloorSize => Current?.Plan?.Extent ?? 11.0;
+    private double FloorSize => View.Size;
+    private double ViewX => View.X0;
+    private double ViewY => View.Y0;
+
+    /// <summary>THE VIEW the map shows — a square window of the floor: the scenario's own extent from its origin when the golem has a map; with
+    /// none (a blindfold, propuesta 120; Juan, 20-oct-2026: "mientras se explora debería cambiar la vista para verlo centrado todo") the square
+    /// around EVERYTHING THE GOLEM KNOWS — the cells deduced, the frontier, where it stands — a grain of margin each side, never under 11 m,
+    /// centred on it, so the picture follows the exploration as it grows.</summary>
+    private (double X0, double Y0, double Size) View
+    {
+        get
+        {
+            if (Current?.Plan is { } plan && plan.Zones.Count > 0) return (0, 0, plan.Extent);
+            var xs = new List<double>(); var ys = new List<double>();
+            double grain = 1.5;
+            if (Current?.Knowledge.Explored is { } explored && explored.Grain > 0)
+            {
+                grain = explored.Grain;
+                foreach (var c in explored.Cells) { xs.Add(c.Col * grain); xs.Add((c.Col + 1) * grain); ys.Add(c.Row * grain); ys.Add((c.Row + 1) * grain); }
+                foreach (var (fx, fy) in explored.Frontier) { xs.Add(fx - grain / 2); xs.Add(fx + grain / 2); ys.Add(fy - grain / 2); ys.Add(fy + grain / 2); }
+            }
+            if (Current is { LastX: { } gx, LastY: { } gy }) { xs.Add(gx); ys.Add(gy); }
+            if (xs.Count == 0) return (0, 0, 11.0);
+            double minX = xs.Min() - grain, maxX = xs.Max() + grain, minY = ys.Min() - grain, maxY = ys.Max() + grain;
+            double size = Math.Max(11.0, Math.Max(maxX - minX, maxY - minY));
+            double cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+            return (Math.Floor(cx - size / 2), Math.Floor(cy - size / 2), Math.Ceiling(size));
+        }
+    }
+
+    private bool OnTheView(double x, double y) => x >= ViewX && y >= ViewY && x <= ViewX + FloorSize && y <= ViewY + FloorSize;
 
     /// <summary>The console's own directive on a tab (propuesta 95): never sent — the queues of one SEND wait for each other there.</summary>
     public const string Sync = "@sync";
@@ -75,13 +105,6 @@ public partial class MainWindow : Window
         {
             if (e.Key == Key.F9) { SetDebugger(DebuggerPanel.Visibility != Visibility.Visible); e.Handled = true; }
             else if (e.Key == Key.Escape && placing != null) { Disarm("cancelled"); e.Handled = true; }
-            // THE ARROW KEYS (propuesta 108, fase 2): with pacman selected, and no text box taking the keys, they say head … at once
-            else if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right && Current is { IsPacman: true } && Keyboard.FocusedElement is not TextBox)
-            {
-                string direction = e.Key switch { Key.Up => "north", Key.Down => "south", Key.Left => "west", _ => "east" };
-                e.Handled = true;
-                _ = ActNowAsync(Current, $"head {direction}");
-            }
         };
         // place armed: a click anywhere but the map (or the button itself, which disarms it) cancels it (Juan, 8-oct-2026)
         PreviewMouseDown += (_, e) => { if (placing != null && !IsWithin(e.OriginalSource, Map) && !IsWithin(e.OriginalSource, PlaceButton)) Disarm("cancelled: a click elsewhere"); };
@@ -483,13 +506,8 @@ public partial class MainWindow : Window
         Log($"{g.Name} › environment applied to all: {scenario} · {navigation} · {g.PacePrompt} — {told} golem(s) changed, {golems.Count - 1 - told} already had it");
     }
 
-    // THE PLAY'S BUTTONS (propuesta 108): the keyboard's wish and the release, said at once to the selected golem
-    private async void Head_Click(object sender, RoutedEventArgs e)
-    {
-        if (Current == null || (sender as Button)?.Tag is not string direction) return;
-        await ActNowAsync(Current, $"head {direction}");
-    }
-
+    // THE PLAY'S BUTTONS (propuesta 108): the start and the end, said at once to the selected golem — no keyboard since 21-oct-2026 (pacman is
+    // autonomous: the rule alone drives it)
     // the start of the current play on the selected golem (16-oct-2026): start <name> — on a ghost's tab too, so it joins the hunt
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
@@ -506,13 +524,6 @@ public partial class MainWindow : Window
         if (members.Count == 0) return;
         if (MessageBox.Show(this, $"Forget the play {play.Name} on {string.Join(", ", members.Select(m => m.Name))}?\n\nIt is taken off each one's list; a running play has to be over first.", "forget play", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         foreach (var g in members) await ActNowAsync(g, $"forget play {play.Name}");
-    }
-
-    // how pacman is driven (16-oct-2026): said to the selected golem at once — steer manual|guided|autonomous
-    private async void Steer_Click(object sender, RoutedEventArgs e)
-    {
-        if (Current == null || (sender as Button)?.Tag is not string steering) return;
-        await ActNowAsync(Current, $"steer {steering}");
     }
 
     // the warden ends the play (fase 4): said to the selected golem at once; it announces GameOver to the cast
@@ -1305,6 +1316,125 @@ public partial class MainWindow : Window
 
     private void Map_SizeChanged(object sender, SizeChangedEventArgs e) => Draw();
     // the box is born checked while the window is being built, before the map exists: draw only once loaded
+    private void Explored_Changed(object sender, RoutedEventArgs e) { if (IsLoaded) Draw(); }
+
+    // the explored overlay and its box belong to the exploration tab: shown while it is open, the map clean otherwise
+    private bool ExploringTabOpen => DebuggerFoot?.SelectedItem == ExplorationTab;
+
+    private void DebuggerFoot_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || !ReferenceEquals(e.Source, DebuggerFoot)) return;
+        ExploredBox.Visibility = ExploringTabOpen ? Visibility.Visible : Visibility.Collapsed;
+        Draw();
+    }
+
+    private void ExploredMap_SizeChanged(object sender, SizeChangedEventArgs e) { if (IsLoaded) DrawExplored(); }
+
+    // THE EXPLORATION MODE (propuesta 120, fase B): on and off, at once, on the selected golem
+    private async void Explore_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current == null) { Log("select a golem to explore"); return; }
+        await ActNowAsync(Current, "explore");
+    }
+
+    private async void StopExploring_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current == null) return;
+        await ActNowAsync(Current, "explore stop");
+    }
+
+
+    // THE MAP EXPORTED (propuesta 120; Juan: "exportar mapa y se pasa a mapas de ese golem"): the deduced map becomes a scenario of the golem's, named
+    // explored-<scenario>-<n> with the next number the golem does not know yet; it shows in the maps tab
+    private async void ExportMap_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current is not { } g) { Log("select a golem to export its map"); return; }
+        if (g.Knowledge.Explored is not { } explored || explored.Covered == 0) { Log($"{g.Name} explored nothing here yet: nothing to export"); return; }
+        string scenario = explored.Scenario == "" ? "map" : explored.Scenario;
+        var known = g.Knowledge.MapList.Select(m => m.Name).ToList();
+        int n = 1;
+        while (known.Contains($"explored-{scenario}-{n}", StringComparer.OrdinalIgnoreCase)) n++;
+        // the name is the warden's (Juan, 20-oct-2026: "debe pedirme el nombre que quiero setearle y que se validen no existan otros iguales"): asked
+        // in a dialog, suggested explored-<scenario>-<n>, refused while empty, malformed or known already
+        var dialog = new MapNameDialog(g.Name, scenario, known, $"explored-{scenario}-{n}") { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        await ActNowAsync(g, $"export map {dialog.Chosen}");
+    }
+
+    // WHAT WAS EXPLORED HERE, CLEARED (propuesta 120; Juan: "clear de lo actualmente explorado, como un reset"): after asking — the trail and the marks go
+    private async void ClearExploration_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current is not { } g) return;
+        if (MessageBox.Show(this, $"Clear what {g.Name} explored in {g.Knowledge.Scenario}?\n\nThe trail starts afresh from where the body stands and every mark learned there is forgotten. The mode has to be stopped first.", "clear the exploration", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        await ActNowAsync(g, "explore clear");
+    }
+
+    // THE GOLEM'S MAPS (propuesta 120): use map at once; forget map after asking — an exported map the golem is not in
+    private async void UseMap_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current is not { } g || (sender as Button)?.Tag is not ScenarioView map) return;
+        await ActNowAsync(g, $"use map {map.Name}");
+    }
+
+    private async void ForgetMap_Click(object sender, RoutedEventArgs e)
+    {
+        if (Current is not { } g || (sender as Button)?.Tag is not ScenarioView map) return;
+        if (MessageBox.Show(this, $"Forget the map {map.Name} on {g.Name}?\n\nThe scenario and everything learned in it go; a release's map stays, and so does the one the golem is in.", "forget map", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        await ActNowAsync(g, $"forget map {map.Name}");
+    }
+
+    // THE EXPLORED MAP ALONE (propuesta 120; Juan: "ir viendo el mapa que ha ido explorando"): the selected golem's deduced cells in the frame of its
+    // scenario, square and centred in the tab's canvas — the real map is not drawn here: this is what the golem KNOWS, and nothing else
+    private void DrawExplored()
+    {
+        ExploredMap.Children.Clear();
+        if (ExploredMap.ActualWidth < 10 || ExploredMap.ActualHeight < 10) return;
+        var (viewX, viewY, floor) = View;
+        double scale = Math.Max(1, (Math.Min(ExploredMap.ActualWidth, ExploredMap.ActualHeight) - 8) / floor);
+        double ox = (ExploredMap.ActualWidth - floor * scale) / 2, oy = (ExploredMap.ActualHeight - floor * scale) / 2;
+        Point At(double x, double y) => new(ox + (x - viewX) * scale, oy + (viewY + floor - y) * scale);
+        var frame = At(viewX, viewY + floor); var far = At(viewX + floor, viewY);
+        ExploredMap.Children.Add(new Rectangle { Width = far.X - frame.X, Height = far.Y - frame.Y, Stroke = (Brush)FindResource("Line"), StrokeThickness = 1, Fill = new SolidColorBrush(Color.FromRgb(0x0e, 0x13, 0x19)) }.Also(r => { Canvas.SetLeft(r, frame.X); Canvas.SetTop(r, frame.Y); }));
+        if (Current?.Knowledge.Explored is not { } explored || explored.Grain <= 0)
+        {
+            var none = new TextBlock { Text = Current == null ? "select a golem" : "nothing explored here yet", Foreground = (Brush)FindResource("Dim"), FontSize = 11 };
+            Canvas.SetLeft(none, frame.X + 8); Canvas.SetTop(none, frame.Y + 8); ExploredMap.Children.Add(none);
+            return;
+        }
+        double g = explored.Grain;
+        var grid = new SolidColorBrush(Color.FromRgb(0x1c, 0x24, 0x2c));
+        for (double v = Math.Ceiling(viewX / g) * g; v <= viewX + floor + 1e-9; v += g)
+        {
+            var a = At(v, viewY); var b = At(v, viewY + floor); ExploredMap.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = grid, StrokeThickness = 0.5 });
+        }
+        for (double v = Math.Ceiling(viewY / g) * g; v <= viewY + floor + 1e-9; v += g)
+        {
+            var l = At(viewX, v); var r = At(viewX + floor, v); ExploredMap.Children.Add(new Line { X1 = l.X, Y1 = l.Y, X2 = r.X, Y2 = r.Y, Stroke = grid, StrokeThickness = 0.5 });
+        }
+        var freeFill = new SolidColorBrush(Color.FromArgb(0x90, 0x3d, 0xb8, 0x9a));
+        var wallFill = new SolidColorBrush(Color.FromArgb(0xc0, 0x6a, 0x2e, 0x3a));
+        var edge = new SolidColorBrush(Color.FromArgb(0xc0, 0x3d, 0xb8, 0x9a));
+        foreach (var c in explored.Cells)
+        {
+            var tl = At(c.Col * g, (c.Row + 1) * g); var br = At((c.Col + 1) * g, c.Row * g);
+            var box = new Rectangle { Width = Math.Max(1, br.X - tl.X), Height = Math.Max(1, br.Y - tl.Y), Fill = c.IsFree ? freeFill : wallFill, Stroke = c.IsFree ? edge : wallFill, StrokeThickness = 0.5, ToolTip = $"{c.Kind} cell {c.Col}-{c.Row} at ({c.X:0.00}, {c.Y:0.00})" };
+            Canvas.SetLeft(box, tl.X); Canvas.SetTop(box, tl.Y); ExploredMap.Children.Add(box);
+        }
+        foreach (var (fx, fy) in explored.Frontier)
+        {
+            var pf = At(fx, fy); double r = Math.Max(2, 0.2 * scale);
+            var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = edge, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 1.5, 1.5 }, ToolTip = $"frontier: unknown at ({fx:0.00}, {fy:0.00})" };
+            Canvas.SetLeft(ring, pf.X - r); Canvas.SetTop(ring, pf.Y - r); ExploredMap.Children.Add(ring);
+        }
+        // the golem where its last `where` said, in its own colour
+        if (Current is { } me && me.LastX is { } mx && me.LastY is { } my)
+        {
+            var pm = At(mx, my); double r = Math.Max(3, 0.25 * scale);
+            var dot = new Ellipse { Width = 2 * r, Height = 2 * r, Fill = new SolidColorBrush(GolemColor.Of(me.Name)), Stroke = Brushes.White, StrokeThickness = 1 };
+            Canvas.SetLeft(dot, pm.X - r); Canvas.SetTop(dot, pm.Y - r); ExploredMap.Children.Add(dot);
+        }
+    }
+
     private void Others_Changed(object sender, RoutedEventArgs e) { if (IsLoaded) Draw(); }
 
     // PLACE ON THE MAP (Juan, 8-oct-2026: "un botón arriba del mapa que cuando se dé clic espere por la posición de donde desea ser ubicado en el
@@ -1353,7 +1483,7 @@ public partial class MainWindow : Window
             // armed: this click is where the golem goes, never a point of the tool
             e.Handled = true;
             var (px, py) = FloorPoint(e.GetPosition(Map));
-            if (px < 0 || py < 0 || px > FloorSize || py > FloorSize) { Disarm("cancelled: off the floor"); return; }
+            if (!OnTheView(px, py)) { Disarm("cancelled: off the floor"); return; }
             Disarm(null);
             _ = PlaceAtAsync(who, Math.Round(px, 1), Math.Round(py, 1));
             return;
@@ -1368,7 +1498,7 @@ public partial class MainWindow : Window
             return;
         }
         var (x, y) = FloorPoint(e.GetPosition(Map));
-        if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) return;
+        if (!OnTheView(x, y)) return;
         x = Math.Round(x, 1); y = Math.Round(y, 1);
         picked.Add((x, y));
         ShowLastPoint();
@@ -1380,8 +1510,8 @@ public partial class MainWindow : Window
     private double Scale() => Math.Max(1, (Math.Min(Map.ActualWidth, Map.ActualHeight) - 12) / FloorSize);
     private double OffsetX => (Map.ActualWidth - FloorSize * Scale()) / 2;
     private double OffsetY => (Map.ActualHeight - FloorSize * Scale()) / 2;
-    private (double X, double Y) FloorPoint(Point p) => ((p.X - OffsetX) / Scale(), FloorSize - (p.Y - OffsetY) / Scale());
-    private Point Pixel(double x, double y) => new(OffsetX + x * Scale(), OffsetY + (FloorSize - y) * Scale());
+    private (double X, double Y) FloorPoint(Point p) => (ViewX + (p.X - OffsetX) / Scale(), ViewY + FloorSize - (p.Y - OffsetY) / Scale());
+    private Point Pixel(double x, double y) => new(OffsetX + (x - ViewX) * Scale(), OffsetY + (ViewY + FloorSize - y) * Scale());
 
     // THE GRIPS of the selected formation, projected (propuestas 97, 98): the ring at its centre moves it, the square on its first vertex
     // resizes it, the knob beyond that vertex turns it; null when the point is on none of them
@@ -1417,7 +1547,7 @@ public partial class MainWindow : Window
         switch (held)
         {
             case Grip.Move:
-                return figure.At(new Spot(Math.Round(Math.Clamp(x, 0, FloorSize), 1), Math.Round(Math.Clamp(y, 0, FloorSize), 1)));
+                return figure.At(new Spot(Math.Round(Math.Clamp(x, ViewX, ViewX + FloorSize), 1), Math.Round(Math.Clamp(y, ViewY, ViewY + FloorSize), 1)));
             case Grip.Size:
                 double reach = new Spot(x, y).DistanceTo(figure.Center);
                 return figure.Sized(Math.Max(0.1, Math.Round(figure.MeasureFor(reach), 1)));
@@ -1508,7 +1638,7 @@ public partial class MainWindow : Window
         var over = dragging != null ? grip : OnGrip(p)?.Grip;
         Map.Cursor = over switch { Grip.Move => Cursors.SizeAll, Grip.Size => Cursors.SizeNWSE, Grip.Turn => Cursors.Hand, _ => null };
         var (x, y) = FloorPoint(p);
-        if (x < 0 || y < 0 || x > FloorSize || y > FloorSize) { Hover.Visibility = Visibility.Collapsed; return; }
+        if (!OnTheView(x, y)) { Hover.Visibility = Visibility.Collapsed; return; }
         HoverText.Text = dragging != null && ghost != null && grip != Grip.Move
             ? (grip == Grip.Size ? $"{(ghost is Circle ? "radius" : "side")} {Spot.Fmt(ghost.Measure)} m" : $"{Spot.Fmt(ghost.Angle)}°")
             : $"x {x.ToString("0.0", CultureInfo.InvariantCulture)}  y {y.ToString("0.0", CultureInfo.InvariantCulture)}";
@@ -1523,16 +1653,21 @@ public partial class MainWindow : Window
 
     private void Draw()
     {
+        DrawExplored();
         Map.Children.Clear();
         double scale = Scale();
         var grid = new SolidColorBrush(Color.FromRgb(0x2b, 0x35, 0x40));
-        var origin = Pixel(0, FloorSize); var far = Pixel(FloorSize, 0);
+        var (viewX, viewY, viewSize) = View;
+        var origin = Pixel(viewX, viewY + viewSize); var far = Pixel(viewX + viewSize, viewY);
         Map.Children.Add(new Rectangle { Width = far.X - origin.X, Height = far.Y - origin.Y, Stroke = (Brush)FindResource("Line"), StrokeThickness = 1.5, Fill = new SolidColorBrush(Color.FromRgb(0x0e, 0x13, 0x19)) }.Also(r => { Canvas.SetLeft(r, origin.X); Canvas.SetTop(r, origin.Y); }));
-        for (int i = 0; i <= FloorSize; i++)
+        for (int i = (int)Math.Ceiling(viewX); i <= viewX + viewSize; i++)
         {
-            var a = Pixel(i, 0); var b = Pixel(i, FloorSize);
+            var a = Pixel(i, viewY); var b = Pixel(i, viewY + viewSize);
             Map.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = grid, StrokeThickness = i % 5 == 0 ? 1.2 : 0.5 });
-            var l = Pixel(0, i); var r = Pixel(FloorSize, i);
+        }
+        for (int i = (int)Math.Ceiling(viewY); i <= viewY + viewSize; i++)
+        {
+            var l = Pixel(viewX, i); var r = Pixel(viewX + viewSize, i);
             Map.Children.Add(new Line { X1 = l.X, Y1 = l.Y, X2 = r.X, Y2 = r.Y, Stroke = grid, StrokeThickness = i % 5 == 0 ? 1.2 : 0.5 });
         }
         // THE SELECTED GOLEM'S SCENARIO, as it told it: its zones, the open sides faint, the doors marked (Juan, 6-oct-2026)
@@ -1579,10 +1714,32 @@ public partial class MainWindow : Window
             }
         }
         // the axes' numbers, every metre, so a point is read off the picture
-        for (int i = 0; i <= FloorSize; i += 1)
+        int every = viewSize > 20 ? 5 : 1;   // a wide view numbers every fifth metre, or the numbers pile up
+        for (int i = (int)Math.Ceiling(viewX); i <= viewX + viewSize; i += 1)
+            if (i % every == 0) { var tx = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var px = Pixel(i, viewY); Canvas.SetLeft(tx, px.X - 3); Canvas.SetTop(tx, px.Y + 1); Map.Children.Add(tx); }
+        for (int i = (int)Math.Ceiling(viewY); i <= viewY + viewSize; i += 1)
+            if (i % every == 0) { var ty = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var py = Pixel(viewX, i); Canvas.SetLeft(ty, py.X - 14); Canvas.SetTop(ty, py.Y - 7); Map.Children.Add(ty); }
+        // WHAT THE SELECTED GOLEM EXPLORED (propuesta 120): the cells its exploration module deduced, over the map — free in teal, a wall it touched
+        // in a darker tint, the frontier of the unknown as small rings; the console draws the golem's hypothesis, it concludes nothing
+        // …only while the exploration tab is open (Juan, 20-oct-2026: "si no estoy en el tab de exploración no debería verse el mapa manchado")
+        if (ExploringTabOpen && ExploredBox?.IsChecked == true && Current?.Knowledge.Explored is { } explored && explored.Grain > 0)
         {
-            var tx = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var px = Pixel(i, 0); Canvas.SetLeft(tx, px.X - 3); Canvas.SetTop(tx, px.Y + 1); Map.Children.Add(tx);
-            var ty = new TextBlock { Text = i.ToString(), Foreground = grid, FontSize = 9 }; var py = Pixel(0, i); Canvas.SetLeft(ty, py.X - 12); Canvas.SetTop(ty, py.Y - 7); Map.Children.Add(ty);
+            var freeFill = new SolidColorBrush(Color.FromArgb(0x50, 0x3d, 0xb8, 0x9a));
+            var wallFill = new SolidColorBrush(Color.FromArgb(0x80, 0x5a, 0x2e, 0x3a));
+            var edge = new SolidColorBrush(Color.FromArgb(0x90, 0x3d, 0xb8, 0x9a));
+            double g = explored.Grain;
+            foreach (var c in explored.Cells)
+            {
+                var tl = Pixel(c.Col * g, (c.Row + 1) * g); var br = Pixel((c.Col + 1) * g, c.Row * g);
+                var box = new Rectangle { Width = Math.Max(1, br.X - tl.X), Height = Math.Max(1, br.Y - tl.Y), Fill = c.IsFree ? freeFill : wallFill, Stroke = c.IsFree ? edge : wallFill, StrokeThickness = 0.5, ToolTip = $"{c.Kind} cell {c.Col}-{c.Row}" };
+                Canvas.SetLeft(box, tl.X); Canvas.SetTop(box, tl.Y); Map.Children.Add(box);
+            }
+            foreach (var (fx, fy) in explored.Frontier)
+            {
+                var pf = Pixel(fx, fy); double r = Math.Max(2, 0.15 * scale);
+                var ring = new Ellipse { Width = 2 * r, Height = 2 * r, Stroke = edge, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 1.5, 1.5 } };
+                Canvas.SetLeft(ring, pf.X - r); Canvas.SetTop(ring, pf.Y - r); Map.Children.Add(ring);
+            }
         }
         // THE OBSTACLES THE SELECTED GOLEM HYPOTHESIZES (Juan, 7-oct-2026: "mostrar los obstáculos en el mapa que el golem ha reconocido"): each
         // mark of a thing as a red disc of its reach, the vertices joined — two make a line, three or more a figure; a peer met as a dashed ring
@@ -1690,7 +1847,7 @@ public partial class MainWindow : Window
             if (g.LastHeading is double h)
                 Map.Children.Add(new Line { X1 = cx, Y1 = cy, X2 = cx + 2 * r * Math.Cos(h), Y2 = cy - 2 * r * Math.Sin(h), Stroke = Brushes.White, StrokeThickness = 1.5 });
             var label = new TextBlock { Text = g.Name, Foreground = brush, FontSize = 11, FontWeight = FontWeights.Bold };
-            bool nearRight = g.LastX.Value > FloorSize - 1.5, nearTop = g.LastY.Value > FloorSize - 0.8;
+            bool nearRight = g.LastX.Value > ViewX + FloorSize - 1.5, nearTop = g.LastY.Value > ViewY + FloorSize - 0.8;
             Canvas.SetLeft(label, nearRight ? cx - r - 6 * g.Name.Length - 4 : cx + r + 2); Canvas.SetTop(label, nearTop ? cy + r : cy - r - 4);
             Map.Children.Add(label);
         }

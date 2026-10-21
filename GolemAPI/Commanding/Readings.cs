@@ -43,6 +43,25 @@ public static class Readings
         ")
         .PerformQuery();
 
+    /// <summary>WHAT THE GOLEM EXPLORED in the scenario it is in (propuesta 120): the trail's strides and metres, the cells it knows (free where the
+    /// trail crossed, wall where a touch's normal pointed) and the frontier — the unknown next to the known — as its exploration module derives them.</summary>
+    public static string Explored(ActorV2 actor) =>
+        actor.Using(@"
+            {
+                explored = g.Exploration;
+                print g.Current.Name 'scenario', explored.Grain 'grain', explored.StrideCount 'strides', explored.Distance 'metres',
+                      explored.Covered 'covered', explored.WallCount 'walls', explored.FrontierCount 'frontier', explored.IsComplete 'complete',
+                      explored.Exploring 'exploring', explored.Finished 'finished', explored.Probes 'probes', explored.Policy 'policy';
+                foreach (cells in explored.Cells()) {
+                    print cells.Col 'col', cells.Row 'row', cells.Kind 'kind', cells.X 'x', cells.Y 'y';
+                }
+                foreach (unknown in explored.Frontier()) {
+                    print unknown.X 'fx', unknown.Y 'fy';
+                }
+            }
+        ")
+        .PerformQuery();
+
     /// <summary>The newest route, if any: its way as decided, the legs ahead, what it asks the body now, how it ended and why.</summary>
     public static string Route(ActorV2 actor) =>
         actor.Using(@"
@@ -117,15 +136,15 @@ public static class Readings
         ")
         .PerformQuery();
 
-    /// <summary>THE PLAY THE GOLEM IS IN (propuesta 108): its title, this golem's part, the state, pacman's heading and wish, the runs made.</summary>
+    /// <summary>THE PLAY THE GOLEM IS IN (propuesta 108): its title, this golem's part, the state, pacman's heading, the runs made.</summary>
     public static string Play(ActorV2 actor) =>
         actor.Using(@"
             {
                 print g.Dynamics.Knows 'playing';
                 if (g.Dynamics.Knows) {
                     play = g.Dynamics.Pacman;
-                    print play.Name 'play', play.Kind 'kind', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Steering 'steering', play.Cast.Pacman 'pacman', play.Cast.Roster 'ghosts',
-                          play.Heading 'heading', play.HasWish 'wishing', play.Wish 'wish', play.Runs 'runs',
+                    print play.Name 'play', play.Kind 'kind', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Cast.Pacman 'pacman', play.Cast.Roster 'ghosts',
+                          play.Heading 'heading', play.Runs 'runs',
                           play.HasSeen 'seen', play.RunsSeen 'runsSeen', play.Chases 'chases', g.Dynamics.Released 'released',
                           play.WasCaught 'caught', play.Catcher 'catcher', play.Started 'started';
                     if (play.HasSeen) {
@@ -154,7 +173,7 @@ public static class Readings
             {
                 print g.Current.Name 'current';
                 foreach (known in g.Scenarios()) {
-                    print known.Name 'name', known.Map.ZoneCount 'zones', known.Collisions.MarkCount 'marks';
+                    print known.Name 'name', known.Map.ZoneCount 'zones', known.Collisions.MarkCount 'marks', known.Exported 'exported', known.Frame 'frame';
                 }
             }
         ")
