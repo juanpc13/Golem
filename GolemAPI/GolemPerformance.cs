@@ -449,12 +449,17 @@ internal sealed class GolemPerformance : PerformanceV2
     internal bool BornThisBoot { get; private set; }
 
     private readonly string golemName;   // who the golem is (env GOLEM) — handed to the init release as a parameter (ajuste 72)
+    private readonly IReadOnlyList<string> cast;   // whom the golem addresses (its peers and whom it tells its stops): the 3.0 engine's cast
 
-    internal GolemPerformance(string actorName, string golemName, params Assembly[] libraryAssemblies)
+    internal GolemPerformance(string actorName, string golemName, IReadOnlyList<string> cast, params Assembly[] libraryAssemblies)
         : base(actorName, libraryAssemblies)
     {
         if (string.IsNullOrWhiteSpace(golemName)) throw new ArgumentException("a golem needs a name to be born with", nameof(golemName));
         this.golemName = golemName;
+        this.cast = cast ?? Array.Empty<string>();
+        foreach (var name in this.cast)
+            if (string.IsNullOrEmpty(name) || !name.All(c => char.IsLetterOrDigit(c) || c == '_') || char.IsDigit(name[0]))
+                throw new ArgumentException($"'{name}' cannot be declared as an addressee: a role is an identifier", nameof(cast));
     }
 
     protected override void OnFirstHydration()
@@ -559,5 +564,16 @@ internal sealed class GolemPerformance : PerformanceV2
         ")
         .WithParameters(p => { p["golemName", typeof(string)] = golemName; })   // the same release for every golem; only who it is changes
         .PerformCommand();
+
+        // THE CAST (motor 3.0, 21-oct-2026; the engine's reactions guide, "An actor declares whom it addresses"): since d040150/2a0b001 an
+        // utterance to a name the actor never declared is refused — "This actor tells 'blue', which it never declared it addresses" — and the
+        // declaration STATES the whole cast in one sentence, inside a versioned upgrade, so replay rebuilds it. The names are the golem's peers
+        // and whom it tells its stops (TELL_ROUTES / TELL_DONE_TO): a role is an identifier, never a parameter, so the sentence is built from
+        // them here — the one release whose text differs per golem. A golem with nobody to address declares nothing (`tells to ;` would be
+        // the empty cast). A fleet that grows needs the next release (`cast_v2`): an applied release is never edited.
+        if (cast.Count > 0)
+        {
+            Actor.Using("upgrade('cast_v1') { tells to " + string.Join(", ", cast) + "; }").PerformCommand();
+        }
     }
 }

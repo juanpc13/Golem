@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
+using Choreography.Input;
 using Choreography.Transport.Brokered;
 using GolemAPI;
 using GolemAPI.Choreography;
@@ -575,6 +576,6 @@ public sealed class MockWorld : ILabWorld
         }
         public Task ProduceAsync(string topic, string key, IReadOnlyDictionary<string, string> headers, string value, CancellationToken ct) =>
             broker.ProduceAsync(topic, key, headers, value, ct);
-        public IDisposable Subscribe(string topic, Action<BrokerRecord> onRecord) => broker.Subscribe(topic, onRecord);
+        public IInputSubscription Subscribe(string topic, Action<BrokerRecord> onRecord) => broker.Subscribe(topic, onRecord);
     }
 }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Choreography.Input;
 using Choreography.Transport.Brokered;
 using GolemAPI;
 using GolemAPI.Choreography;
@@ -50,7 +51,7 @@ public class GolemHostTests
         public Task<PeerReply> CommandPeerAsync(string peer, string line) => Task.FromResult<PeerReply>(null);   // no peers on this wire
         public Task ProduceAsync(string topic, string key, IReadOnlyDictionary<string, string> headers, string value, CancellationToken ct) =>
             broker.ProduceAsync(topic, key, headers, value, ct);
-        public IDisposable Subscribe(string topic, Action<BrokerRecord> onRecord) => broker.Subscribe(topic, onRecord);
+        public IInputSubscription Subscribe(string topic, Action<BrokerRecord> onRecord) => broker.Subscribe(topic, onRecord);
     }
 
     [TestInitialize]
