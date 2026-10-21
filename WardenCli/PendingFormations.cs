@@ -94,6 +94,7 @@ public static class PendingFormations
                                  spots.Count, 0, 0, 0, -1, holders, spots,
                                  inner: shape is Propeller p ? p.Hub : 0, arms: shape is Propeller q ? q.Blades : 0,
                                  cueTo: opts.TryGetValue("cue", out var cue) ? cue.Trim().ToLowerInvariant() : "", onCue: onCue || opts.ContainsKey("after"), cued: !onCue && !opts.ContainsKey("after"),
-                                 after: opts.TryGetValue("after", out var after) ? after.Trim().ToLowerInvariant() : "", askTo: opts.TryGetValue("ask", out var ask) ? ask.Trim().ToLowerInvariant() : "");
+                                 after: opts.TryGetValue("after", out var after) ? after.Trim().ToLowerInvariant() : "", askTo: opts.TryGetValue("ask", out var ask) ? ask.Trim().ToLowerInvariant() : "",
+                                 every: opts.TryGetValue("every", out var every) && double.TryParse(every.TrimEnd('s', 'S'), NumberStyles.Float, CultureInfo.InvariantCulture, out double period) && period > 0 ? period : 0);
     }
 }

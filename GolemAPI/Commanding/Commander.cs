@@ -148,7 +148,8 @@ public sealed class Commander
                                       command.Values.TryGetValue("cue", out var cue) ? cue : null,
                                       command.Values.ContainsKey("on-cue"),
                                       command.Values.TryGetValue("after", out var after) ? after : null,
-                                      command.Values.TryGetValue("ask", out var ask) ? ask : null);
+                                      command.Values.TryGetValue("ask", out var ask) ? ask : null,
+                                      Metres("every"));
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Choreographer(out var choreographer, out var refusal)) return refusal;

@@ -1,7 +1,11 @@
 using System.Globalization;
+using GolemDomain.Attention;
+using GolemDomain.Attention;
 using GolemDomain.Geometry;
 using GolemDomain.Routes;
 using GolemDomain.Touches;
+using GolemDomain.Units;
+using GolemDomain.Units;
 
 namespace GolemDomain.Formations;
 
@@ -69,6 +73,7 @@ internal sealed class Formation
     // THE PULL (propuesta 118, 20-oct-2026): the formation this one starts after and the golem its asker asks whether that one finished
     private string after;                                               // the formation this one starts after; null: none (a push, or none)
     private string askTo;                                               // the golem the asker asks
+    private Duration every;                                             // how often (propuesta 121): the period of the inquiry the asker commits to
     private int asked;                                                  // how many questions the asker sent
     private int notYet;                                                 // how many answers said "not yet"
     private bool finishing;                                             // this golem asked to finish: counted the moment its part is done (the clock asks)
@@ -144,16 +149,24 @@ internal sealed class Formation
         onCue = true;
     }
 
+    /// <summary>How often the asker asks unless the warden says (propuesta 121): every 5 s.</summary>
+    internal const double DefaultEverySeconds = 5.0;
+
     /// <summary>THIS FORMATION STARTS AFTER ANOTHER, BY ASKING (propuesta 118, 20-oct-2026; Juan: "quiero ver que yellow esté pendiente de consultarle
-    /// a alguno si ya terminó… por ask me suena bien"): the warden's <c>--after tri-left --ask red</c> — <c>formation.Follows(@after, @askTo);</c>
-    /// right after the <c>Form</c>. Born waiting like one on cue (a take refused, the steps queued), and its ASKER — the first of the fleet's
-    /// order — asks the golem named, on every tick of its clock, whether that formation finished (<see cref="Ask"/>); the answer "yes" is its cue
-    /// (<see cref="TakeCue"/>), "not yet" is counted (<see cref="HeardNotYet"/>) and the next tick asks again. Refused once this golem convened,
+    /// a alguno si ya terminó… por ask me suena bien"): the warden's <c>--after tri-left --ask red [--every 5s]</c> — <c>every = Seconds(@every);
+    /// formation.Follows(@after, @askTo, every);</c> right after the <c>Form</c>. Born waiting like one on cue (a take refused, the steps queued), and
+    /// its ASKER — the first of the fleet's order — COMMITS ITSELF (propuesta 121, 21-oct-2026; paper 0B: "a Puppet can claim future attention") to
+    /// ask the golem named whether that formation finished, every so often, until the answer is yes: an <see cref="Inquiry"/> armed in its golem's
+    /// <see cref="Commitments"/>, which the host's clock — the attention — keeps when it is due (<see cref="Ask"/>, the act the reaction tells
+    /// <c>DidYouFinish</c> on) and nothing before; "not yet" is counted (<see cref="HeardNotYet"/>) and the commitment stays open; the answer "yes"
+    /// is its cue (<see cref="TakeCue"/>) and the golem desists. The other members arm nothing: the asker asks. Refused once this golem convened,
     /// for its own name, and for a golem of its own fleet (it would ask itself).</summary>
-    internal void Follows(string formationName, string golemName)
+    internal void Follows(string formationName, string golemName, Duration every)
     {
         if (formationName == null) throw new GolemDomainException("Formation.Follows: 'formationName' was not given");
         if (golemName == null) throw new GolemDomainException("Formation.Follows: 'golemName' was not given");
+        if (every == null) throw new GolemDomainException("Formation.Follows: 'every' was not given");
+        if (every.IsZero) throw new GolemDomainException($"{Name} asks every so often: zero is no period");
         string called = formationName.Trim().ToLowerInvariant();
         string who = golemName.Trim().ToLowerInvariant();
         if (called == "" || who == "") throw new GolemDomainException($"{Name} starts after a formation by its name, asking a golem by its name");
@@ -162,29 +175,42 @@ internal sealed class Formation
         if (me != null) throw new GolemDomainException($"{Name} was already taken: it starts after nothing now");
         after = called;
         askTo = who;
+        this.every = every;
         onCue = true;
+        if (golem.Name != null && golem.Name == Asker) golem.Commitments.Commit(new Inquiry(this, every));   // the asker's copy alone claims the attention
     }
 
-    /// <summary>The formation this one starts after ("" none), the golem asked ("" none), who asks (the first by rank), how many times, how many "not yet".</summary>
+    /// <summary>The same, asking every 5 s (<see cref="DefaultEverySeconds"/>).</summary>
+    internal void Follows(string formationName, string golemName) => Follows(formationName, golemName, new Seconds(DefaultEverySeconds));
+
+    /// <summary>The formation this one starts after ("" none), the golem asked ("" none), who asks (the first by rank), how often (0 when it
+    /// starts after nothing), how many times, how many "not yet".</summary>
     internal string After => after ?? "";
     internal string AskTo => askTo ?? "";
     internal string Asker => Fleet.Names[0];
+    internal double EverySeconds => every?.InSeconds ?? 0.0;
     internal int Asked => asked;
     internal int NotYet => notYet;
-    /// <summary>Whether THIS golem has a question to ask now: it is the asker of a formation that starts after another, not cued yet, not taken —
-    /// the clock's question (<c>AskIfWaiting</c>).</summary>
+    /// <summary>THE COMMITMENT PENDING ABOUT THIS FORMATION (propuesta 121; Juan: "al recuperar la formación tener esos compromisos pendientes"): the
+    /// inquiry its asker armed, as long as it is open — read from the golem's commitments, never kept here; <see cref="IsCommitted"/> says whether
+    /// there is one (the asker's copy, until the answer came or the formation was dissolved).</summary>
+    internal bool IsCommitted => golem.Commitments.HasOpen(Name);
+    internal Commitment Commitment => golem.Commitments.Open(Name);
+    /// <summary>Whether THIS golem may ask: it is the asker of a formation that starts after another, not cued yet, not taken — what the
+    /// inquiry's activation needs true.</summary>
     internal bool MayAsk => after != null && !Dissolved && !cued && me == null && golem.Name != null && golem.Name == Asker;
 
-    /// <summary>THE QUESTION (propuesta 118): "did tri-left finish?" — <c>formation.Ask();</c>, written by the asker's clock; the reaction on this act
-    /// tells <c>DidYouFinish</c> to the golem named. A lived fact: this golem asked. Refused when there is nothing to ask.</summary>
+    /// <summary>THE QUESTION (propuesta 118): "did tri-left finish?" — <c>formation.Ask()</c>, kept by the inquiry when it is due (propuesta 121:
+    /// <c>commitment.Attend(@Now)</c> is the act, the reaction on it tells <c>DidYouFinish</c> to the golem named). A lived fact: this golem asked.
+    /// Refused when there is nothing to ask.</summary>
     internal void Ask()
     {
         if (!MayAsk) throw new GolemDomainException($"{Name}: nothing to ask — {(after == null ? "it starts after no formation" : cued ? "the answer came" : golem.Name == Asker ? "it was taken" : $"{Asker} asks, not {golem.Name}")}");
         asked++;
     }
 
-    /// <summary>THE ANSWER "NOT YET" (propuesta 118): <c>formation.HeardNotYet();</c> — counted; the next tick asks again. The answer "yes" is
-    /// <see cref="TakeCue"/>.</summary>
+    /// <summary>THE ANSWER "NOT YET" (propuesta 118): <c>formation.HeardNotYet();</c> — counted; the commitment stays open and asks again when due.
+    /// The answer "yes" is <see cref="TakeCue"/>.</summary>
     internal void HeardNotYet()
     {
         if (after == null) throw new GolemDomainException($"{Name} starts after no formation: no answer to hear");
@@ -211,6 +237,7 @@ internal sealed class Formation
         MustBeFree(member);
         if (!byDistance) golem.CheckPlace(Figure.Place(member), $"place {member.Rank + 1} of {member.Of} of the {Figure.Name}");   // refused before anything is marked
         cued = true;
+        golem.Commitments.Desist(Name, $"{Name} was cued: the answer came");   // the inquiry, if this golem armed one, is kept no more (propuesta 121)
         return Convene(from, member);
     }
 
@@ -646,6 +673,8 @@ internal sealed class Formation
         Dissolved = true;
         if (route != null && route.IsPending()) route.Abandon($"{Name} was dissolved");
         steps.Clear();
+        golem.Commitments.Desist(Name, $"{Name} was dissolved");   // the inquiry, if any, with it (propuesta 121)
+        golem.Commitments.Desist(Name, $"{Name} was dissolved");   // the inquiry, if any, with it (propuesta 121)
     }
 
     // by distance: the table of who gets what, over every member that spoke (the first law), kept as the indices of the ones who spoke

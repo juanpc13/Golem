@@ -30,6 +30,8 @@ public partial class FormationDialog : Window
     /// <summary>THE PULL (propuesta 118): the formation this one starts after and the golem asked; "" none.</summary>
     public string After { get; private set; } = "";
     public string AskTo { get; private set; } = "";
+    /// <summary>How often the asker asks, in seconds (propuesta 121): --every on the line; 5 unless changed.</summary>
+    public double Every { get; private set; } = 5;
     private const string None = "— none —";
     /// <summary>The formations the console knows (told, or on the tabs), to pick the one waited for.</summary>
     public void KnowsFormations(IEnumerable<string> names)
@@ -95,6 +97,7 @@ public partial class FormationDialog : Window
         CueBox.SelectedItem = formation.CueTo != "" && golems.Contains(formation.CueTo) && !names.Contains(formation.CueTo) ? formation.CueTo : Nobody;
         if (formation.After != "") { KnowsFormations(new[] { formation.After }); AfterBox.SelectedItem = formation.After; }
         AskBox.SelectedItem = formation.AskTo != "" && golems.Contains(formation.AskTo) && !names.Contains(formation.AskTo) ? formation.AskTo : Nobody;
+        if (formation.Every > 0) EveryBox.Text = formation.Every.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
     // the figure changes what the dialog asks: a side, a radius, or a propeller's radius with its hub and its blades
@@ -135,7 +138,8 @@ public partial class FormationDialog : Window
         string after = AfterBox.SelectedItem as string is { } pickedAfter && pickedAfter != None ? pickedAfter.Trim().ToLowerInvariant() : "";
         string ask = AskBox.SelectedItem as string is { } pickedAsk && pickedAsk != Nobody ? pickedAsk.Trim().ToLowerInvariant() : "";
         if ((after == "") != (ask == "")) { Problem.Text = "the pull needs both: the formation waited for, and the golem asked"; return; }
-        After = after; AskTo = ask;
+        if (!double.TryParse(EveryBox.Text.Trim().TrimEnd('s', 'S'), NumberStyles.Float, CultureInfo.InvariantCulture, out double every) || every <= 0) { Problem.Text = "every: seconds above zero, like 5"; return; }
+        After = after; AskTo = ask; Every = every;
         OnCue = OnCueBox.IsChecked == true || after != "";
         CenterX = cx; CenterY = cy; Measure = measure;
         Chosen = GolemsBox.SelectedItems.Cast<string>().ToList();

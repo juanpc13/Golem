@@ -177,6 +177,12 @@ public class CommandLineTests
         StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --after tri-left"), "--after <formation> and --ask <golem> go together");
         StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --after tri-right --ask red"), "cannot start after itself");
         StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --after tri-left --ask red,blue"), "--ask expects one golem's name");
+        // how often it asks (propuesta 121): --every in seconds, with or without the s; only with the pull
+        Assert.AreEqual("5", CommandLine.Parse("form tri-right triangle --center 8,5.5 --side 3 --after tri-left --ask red --every 5s").Values["every"]);
+        Assert.AreEqual("2.5", CommandLine.Parse("form tri-right triangle --center 8,5.5 --side 3 --after tri-left --ask red --every 2.5").Values["every"]);
+        Assert.IsFalse(pull.Values.ContainsKey("every"), "left out: the golem's own period");
+        StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --after tri-left --ask red --every 0"), "--every expects seconds above zero");
+        StringAssert.Contains(Refused("form tri-right triangle --center 8,5.5 --side 3 --every 5s"), "--every goes with --after");
         Assert.AreEqual("tri-left", CommandLine.Parse("finish Tri-Left").Text);
         StringAssert.Contains(Refused("finish"), "finish: expected the formation's name");
         Assert.AreEqual("formations", CommandLine.Parse("formations").Verb);

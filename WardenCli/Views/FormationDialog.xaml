@@ -71,7 +71,10 @@
             <TextBlock DockPanel.Dock="Left" Text="starts after" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
             <ComboBox x:Name="AfterBox" DockPanel.Dock="Left" Width="130" HorizontalAlignment="Left" Margin="0,0,14,0" ToolTip="--after &lt;formation&gt;: the formation waited for; no take — the pull: the first golem of this fleet asks every tick whether it finished"/>
             <TextBlock DockPanel.Dock="Left" Text="asking" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="AskBox" Width="130" HorizontalAlignment="Left" ToolTip="--ask &lt;golem&gt;: the golem asked, one of the other group"/>
+            <ComboBox x:Name="AskBox" DockPanel.Dock="Left" Width="130" HorizontalAlignment="Left" Margin="0,0,14,0" ToolTip="--ask &lt;golem&gt;: the golem asked, one of the other group"/>
+            <TextBlock DockPanel.Dock="Left" Text="every" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBox x:Name="EveryBox" DockPanel.Dock="Left" Width="40" Text="5" ToolTip="--every &lt;seconds&gt;: how often the asker asks — a commitment of the golem's, kept by its attention when due (propuesta 121)"/>
+            <TextBlock Text="s" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="4,0,0,0"/>
         </DockPanel>
 
         <TextBlock x:Name="GolemsLabel" Grid.Row="5" Text="golems of the fleet" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,6,8,0"/>

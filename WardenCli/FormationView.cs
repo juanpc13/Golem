@@ -22,11 +22,11 @@ public sealed class FormationView : INotifyPropertyChanged
                          int places, int placed, int queued, int round, int mine, IReadOnlyList<HolderView> holders, IReadOnlyList<(double X, double Y)> spots, int aligned = 0,
                          bool stranded = false, string strandedWhy = "", double inner = 0, int arms = 0,
                          string cueTo = "", bool onCue = false, bool cued = true, int finished = 0, bool done = false, bool cueGiven = false,
-                         string after = "", string askTo = "", int asked = 0, int notYet = 0)
+                         string after = "", string askTo = "", int asked = 0, int notYet = 0, double every = 0, bool committed = false)
     {
         Inner = inner; Arms = arms;
         CueTo = cueTo ?? ""; OnCue = onCue; Cued = cued; Finished = finished; Done = done; CueGiven = cueGiven;
-        After = after ?? ""; AskTo = askTo ?? ""; Asked = asked; NotYet = notYet;
+        After = after ?? ""; AskTo = askTo ?? ""; Asked = asked; NotYet = notYet; Every = every; Committed = committed;
         Name = name; Shape = shape; CenterX = centerX; CenterY = centerY; Measure = measure; Degrees = degrees; Policy = policy; Crew = crew;
         Places = places; Placed = placed; Queued = queued; Round = round; Mine = mine; Holders = holders; Spots = spots; Aligned = aligned;
         Stranded = stranded; StrandedWhy = strandedWhy;
@@ -50,8 +50,12 @@ public sealed class FormationView : INotifyPropertyChanged
     public string AskTo { get; }
     public int Asked { get; }
     public int NotYet { get; }
+    /// <summary>THE COMMITMENT (propuesta 121): how often the asker asks (0 when the golem does not say) and whether this golem's copy holds the
+    /// inquiry open — it is the asker, the answer not come yet.</summary>
+    public double Every { get; }
+    public bool Committed { get; }
     public string SequenceText =>
-        (After != "" ? $" · after {After}, asks {AskTo}{(Asked > 0 ? $" ({Asked} asked, {NotYet} not yet)" : "")}" : "")
+        (After != "" ? $" · after {After}, asks {AskTo}{(Every > 0 ? $" every {N(Every)} s" : "")}{(Committed ? " (committed)" : "")}{(Asked > 0 ? $" ({Asked} asked, {NotYet} not yet)" : "")}" : "")
         + (OnCue ? (Cued ? " · cued" : After != "" ? " — waiting" : " · on cue — waiting") : "")
         + (CueTo != "" ? $" · cue → {CueTo}{(CueGiven ? " (given)" : "")}" : "")
         + (Finished > 0 ? $" · {Finished}/{CrewCount} finished{(Done ? " — done" : "")}" : "");
@@ -167,7 +171,7 @@ public sealed class FormationView : INotifyPropertyChanged
         string size = figure is Propeller propeller ? $"--radius {N(propeller.Radius)} --inner-radius {N(propeller.Hub)} --blades {propeller.Blades}"
             : figure is Circle ? $"--radius {N(figure.Measure)}" : $"--side {N(figure.Measure)}";
         string shape = figure.Name;
-        return $"form {Name} {shape} --center {figure.Center} {size} --angle {N(figure.Angle)} {FleetOptions()} --by {PolicyWord}{(CueTo != "" ? $" --cue {CueTo}" : "")}{(After != "" ? $" --after {After} --ask {AskTo}" : OnCue ? " --on-cue" : "")}";
+        return $"form {Name} {shape} --center {figure.Center} {size} --angle {N(figure.Angle)} {FleetOptions()} --by {PolicyWord}{(CueTo != "" ? $" --cue {CueTo}" : "")}{(After != "" ? $" --after {After} --ask {AskTo}{(Every > 0 ? $" --every {N(Every)}s" : "")}" : OnCue ? " --on-cue" : "")}";
     }
 
     public static IReadOnlyList<FormationView> Parse(JsonElement json)
@@ -186,7 +190,7 @@ public sealed class FormationView : INotifyPropertyChanged
                                        (int)Num(f, "places"), (int)Num(f, "placed"), (int)Num(f, "queued"), (int)Num(f, "round"), (int)Num(f, "mine"), holders, spots, (int)Num(f, "aligned"),
                                        f.TryGetProperty("stranded", out var st) && st.ValueKind == JsonValueKind.True, Str(f, "strandedWhy"), Num(f, "inner"), (int)Num(f, "arms"),
                                        Str(f, "cueTo"), Flag(f, "onCue"), !f.TryGetProperty("cued", out var cu) || cu.ValueKind != JsonValueKind.False, (int)Num(f, "finished"), Flag(f, "done"), Flag(f, "cueGiven"),
-                                       Str(f, "after"), Str(f, "askTo"), (int)Num(f, "asked"), (int)Num(f, "notYet")));
+                                       Str(f, "after"), Str(f, "askTo"), (int)Num(f, "asked"), (int)Num(f, "notYet"), Num(f, "every"), Flag(f, "committed")));
         }
         return list;
     }

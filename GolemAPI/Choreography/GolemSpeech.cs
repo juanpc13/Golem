@@ -175,7 +175,7 @@ public sealed class GolemSpeech
                     .OnMatch("[_:Formation].Cue() expose $call call, $nonce nonce, $to to;")
                 .Causation.Continue(yourTurn);
             // THE PULL (propuesta 118, 20-oct-2026): the asker's question and the asked one's answer, two tells — both acts written by the clock
-            // (AskIfWaiting, AnswerIfAsked), so no uptake stands between the fact and the word; both to every peer with the name inside, the
+            // (AttendIfDue — the commitment kept, propuesta 121 — and AnswerIfAsked), so no uptake stands between the fact and the word; both to every peer with the name inside, the
             // named one taking it
             string ask = string.Join("\n", peers.Select(p => $@"
                 tell DidYouFinish with @call, @to, @who
@@ -184,7 +184,7 @@ public sealed class GolemSpeech
             golemActor.Reactions.DefineReaction("echo-ask")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Asked").One()
-                    .OnMatch("[_:Formation].Ask() expose $call call, $nonce nonce, $to to, $who who, $asked asked;")
+                    .OnMatch("[_:Commitment].Attend(_) expose $call call, $nonce nonce, $to to, $who who, $asked asked;")   // the inquiry kept (propuesta 121): the question asked inside
                 .Causation.Continue(ask);
             string answer = string.Join("\n", peers.Select(p => $@"
                 tell FinishedState with @call, @to, @done

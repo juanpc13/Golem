@@ -283,7 +283,7 @@ public sealed class GolemEmbodiment
             Choreographer?.FinishIfDone();       // a finish queued and the part done (propuesta 117): the word counts now and the fleet is told
             Choreographer?.CueIfFinished();      // this copy counted the fleet's last finish (propuesta 117): the cue to the next group
             Choreographer?.TakeIfCued();         // cued before its formation was told (propuesta 117): it takes it now
-            Choreographer?.AskIfWaiting();       // the pull (propuesta 118): the asker of a formation waiting asks the golem named whether the other finished
+            Choreographer?.AttendIfDue();        // the attention (propuesta 121): a commitment of the golem due now is kept — the pull's question, every so often
             Choreographer?.AnswerIfAsked();      // …and the one asked answers from its copy
             Dynamics?.AnnounceIfConcluded();     // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
             Explorer?.ProbeIfIdle();             // exploring and standing free (propuesta 120): the next probe — the first after `explore`, or after one refused

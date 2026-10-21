@@ -157,7 +157,7 @@ public partial class MainWindow : Window
         string size = dialog.Figure == "propeller" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)} --blades {dialog.Blades}"
                     : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
         string fleet = $"--fleet {string.Join(",", dialog.Chosen)}";
-        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}{(dialog.CueTo != "" ? $" --cue {dialog.CueTo}" : "")}{(dialog.After != "" ? $" --after {dialog.After} --ask {dialog.AskTo}" : dialog.OnCue ? " --on-cue" : "")}";
+        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}{(dialog.CueTo != "" ? $" --cue {dialog.CueTo}" : "")}{(dialog.After != "" ? $" --after {dialog.After} --ask {dialog.AskTo} --every {Fmt(dialog.Every)}s" : dialog.OnCue ? " --on-cue" : "")}";
     }
 
     private static bool LineOf(string line, string name) =>

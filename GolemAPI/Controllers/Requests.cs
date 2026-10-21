@@ -118,15 +118,16 @@ public sealed record ScenarioRequest(string Scenario)
 /// may be left out (this golem and every peer it can reach); the policy too (rank).</summary>
 public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side = null, double? Radius = null, double? InnerRadius = null,
                                  double? Angle = null, List<string> Fleet = null, string By = null, int? Blades = null,
-                                 string Cue = null, bool OnCue = false, string After = null, string Ask = null)
+                                 string Cue = null, bool OnCue = false, string After = null, string Ask = null, double? Every = null)
 {
-    /// <summary>THE PULL (propuesta 118): the formation this one starts after, and the golem its asker asks whether it finished — lower case; null: none.</summary>
+    /// <summary>THE PULL (propuesta 118): the formation this one starts after, and the golem its asker asks whether it finished — lower case; null: none;
+    /// and how often it asks, in seconds (propuesta 121; 5 when left out).</summary>
     public string StartsAfter => string.IsNullOrWhiteSpace(After) ? null : After.Trim().ToLowerInvariant();
     public string AskedGolem => string.IsNullOrWhiteSpace(Ask) ? null : Ask.Trim().ToLowerInvariant();
     /// <summary>The golem the last of this fleet to finish cues (propuesta 117), lower case; null when nobody.</summary>
     public string CuedGolem => string.IsNullOrWhiteSpace(Cue) ? null : Cue.Trim().ToLowerInvariant();
 
-    public const string Shape = "{\"name\": \"square-2\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0, \"fleet\": [\"blue\", \"red\"], \"by\": \"rank\"} — a circle: \"radius\"; a propeller: \"figure\": \"propeller\", \"radius\", \"innerRadius\" (the hub), \"blades\"; the sequence (propuesta 117): \"cue\": \"cyan\", \"onCue\": true";
+    public const string Shape = "{\"name\": \"square-2\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0, \"fleet\": [\"blue\", \"red\"], \"by\": \"rank\"} — a circle: \"radius\"; a propeller: \"figure\": \"propeller\", \"radius\", \"innerRadius\" (the hub), \"blades\"; the sequence (propuesta 117): \"cue\": \"cyan\", \"onCue\": true; the pull (propuestas 118, 121): \"after\": \"tri-left\", \"ask\": \"red\", \"every\": 5";
     public static readonly string[] Figures = { "square", "pentagon", "triangle", "circle", "propeller" };
 
     public string Kind => (Figure ?? "").Trim().ToLowerInvariant();
@@ -175,6 +176,8 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
         if ((StartsAfter == null) != (AskedGolem == null)) yield return "\"after\" (the formation waited for) and \"ask\" (the golem asked) go together";
         if (StartsAfter != null && Name != null && StartsAfter == Name.Trim().ToLowerInvariant()) yield return "a formation cannot start after itself";
         if (AskedGolem != null && !System.Text.RegularExpressions.Regex.IsMatch(AskedGolem, @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "\"ask\" names one golem, like red";
+        if (Every.HasValue && (!double.IsFinite(Every.Value) || Every.Value <= 0)) yield return "\"every\" is seconds above zero";
+        if (Every.HasValue && StartsAfter == null) yield return "\"every\" goes with \"after\" and \"ask\": how often the golem asks";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
     }
 }

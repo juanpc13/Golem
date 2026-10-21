@@ -24,19 +24,19 @@
    "Name": "yellow",
    "Host": "localhost",
    "Port": 8084,
-   "Script": "use map open-floor\nform tri-right triangle --center 8,5.5 --side 3 --angle 0 --fleet yellow,orange,cyan --by rank --after tri-left --ask red\nrotate tri-right clockwise\nrotate tri-right clockwise\nrotate tri-right clockwise"
+   "Script": "use map open-floor\nform tri-right triangle --center 8,5.5 --side 3 --angle 0 --fleet yellow,orange,cyan --by rank --after tri-left --ask red --every 5s\nrotate tri-right clockwise\nrotate tri-right clockwise\nrotate tri-right clockwise"
   },
   {
    "Name": "orange",
    "Host": "localhost",
    "Port": 8085,
-   "Script": "use map open-floor\nform tri-right triangle --center 8,5.5 --side 3 --angle 0 --fleet yellow,orange,cyan --by rank --after tri-left --ask red\nrotate tri-right clockwise\nrotate tri-right clockwise\nrotate tri-right clockwise"
+   "Script": "use map open-floor\nform tri-right triangle --center 8,5.5 --side 3 --angle 0 --fleet yellow,orange,cyan --by rank --after tri-left --ask red --every 5s\nrotate tri-right clockwise\nrotate tri-right clockwise\nrotate tri-right clockwise"
   },
   {
    "Name": "cyan",
    "Host": "localhost",
    "Port": 8086,
-   "Script": "use map open-floor\nform tri-right triangle --center 8,5.5 --side 3 --angle 0 --fleet yellow,orange,cyan --by rank --after tri-left --ask red\nrotate tri-right clockwise\nrotate tri-right clockwise\nrotate tri-right clockwise"
+   "Script": "use map open-floor\nform tri-right triangle --center 8,5.5 --side 3 --angle 0 --fleet yellow,orange,cyan --by rank --after tri-left --ask red --every 5s\nrotate tri-right clockwise\nrotate tri-right clockwise\nrotate tri-right clockwise"
   }
  ]
 }

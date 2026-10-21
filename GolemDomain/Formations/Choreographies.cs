@@ -181,12 +181,8 @@ internal sealed class Choreographies
     internal bool HasPendingCue => pendingCue && formations.Any(WaitsForTheCue);
 
     // ---- THE PULL (propuesta 118, 20-oct-2026; Juan: "que yellow esté pendiente de consultarle a alguno si ya terminó"): a question and an answer, two
-    // tells; the asker's clock asks, the asked one's clock answers from its own copy ----
-
-    /// <summary>Whether this golem has a question to ask on this tick: it is the asker of a formation that starts after another, not cued yet.</summary>
-    internal bool Asking => formations.Any(f => f.MayAsk);
-    /// <summary>The formation this golem asks for — <c>formation = g.Choreography.AskingFormation; formation.Ask();</c>. Refused when none.</summary>
-    internal Formation AskingFormation => formations.LastOrDefault(f => f.MayAsk) ?? throw new GolemDomainException("this golem has nothing to ask");
+    // tells; the asker's golem COMMITS ITSELF to ask every so often (propuesta 121: the inquiry in g.Commitments, kept by the attention when due),
+    // the asked one's clock answers from its own copy ----
 
     /// <summary>Whether a word addressed to a golem by name is for THIS golem — the uptakes of the pull ask it first.</summary>
     internal bool AskedOf(string golemName)

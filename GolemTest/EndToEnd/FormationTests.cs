@@ -609,10 +609,11 @@ public class FormationTests
     }
 
     // THE PULL (propuesta 118, 20-oct-2026; Juan: "quiero ver que yellow esté pendiente de consultarle a alguno si ya terminó… por ask me suena bien"):
-    // the right formation starts after the left by ASKING — its first golem by rank asks the golem named, every tick, whether the left finished; the
-    // asked one answers from its own copy; "not yet" is counted and asked again, "yes" is the cue (TakeCue), the team following the asker's word
+    // the right formation starts after the left by ASKING — its first golem by rank COMMITS ITSELF (propuesta 121, 21-oct-2026; paper 0B's lab: a
+    // commitment to self, pending until desisted, kept by the attention when due) to ask the golem named every 5 s whether the left finished; the
+    // asked one answers from its own copy; "not yet" is counted and the commitment stays open, "yes" is the cue (TakeCue) and the golem desists
     [TestMethod]
-    public void AFormationThatStartsAfterAnotherByAsking_AsksEveryTick_AndTakesTheAnswerYesAsItsCue()
+    public void AFormationThatStartsAfterAnotherByAsking_CommitsItselfToAskEvery5s_AndTakesTheAnswerYesAsItsCue()
     {
         var body = new Body(new Meters(0.25), new MetersPerSecond(2.0), new Seconds(6.0), new Meters(0.6));
         Golem Born(string name) { var g = new Golem(body, name); g.Enter(new Scenario(Catalog.OpenFloor(), new Collisions())); return g; }
@@ -627,14 +628,28 @@ public class FormationTests
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyanRight.Convene(new Pose(7.0, 5.5, 0.0), right.Member(cyan))).Message, "starts on cue");
         Assert.AreEqual(1, cyanRight.Queue(cyanRight.Figure.Rotate(Sense.Clockwise), "s1"), "its steps wait");
 
-        // the asker asks on every tick; a member that is not the asker never asks
-        Assert.IsTrue(cyanRight.MayAsk); Assert.IsTrue(cyan.Choreography.Asking); Assert.AreSame(cyanRight, cyan.Choreography.AskingFormation);
-        cyanRight.Ask(); cyanRight.Ask();
-        Assert.AreEqual(2, cyanRight.Asked);
+        // THE INQUIRY (propuesta 121): the asker's golem is committed to ask every 5 s — the attention keeps it when due, nothing before
+        Assert.IsTrue(cyanRight.MayAsk); Assert.IsTrue(cyanRight.IsCommitted); Assert.AreEqual(1, cyan.Commitments.PendingCount);
+        var inquiry = cyanRight.Commitment;
+        Assert.AreEqual("tri-right", inquiry.About); Assert.AreEqual("ask red whether tri-left finished", inquiry.What); Assert.AreEqual(5.0, inquiry.Every.InSeconds, "every 5 s unless the warden says");
+        Assert.IsTrue(inquiry.IsOpen); Assert.IsNull(inquiry.NextDue, "never kept: due at once");
+        var t0 = new DateTime(2026, 10, 21, 10, 0, 0, DateTimeKind.Utc);
+        Assert.IsTrue(cyan.Commitments.IsDue(t0)); Assert.AreSame(inquiry, cyan.Commitments.Due(t0));
+        inquiry.Attend(t0);
+        Assert.AreEqual(1, cyanRight.Asked, "kept: the formation asked"); Assert.AreEqual(1, inquiry.Activations); Assert.AreEqual(t0, inquiry.LastKept); Assert.AreEqual(t0.AddSeconds(5), inquiry.NextDue);
+        Assert.IsFalse(cyan.Commitments.IsDue(t0.AddSeconds(3)), "kept 3 s ago: not due");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => inquiry.Attend(t0.AddSeconds(3))).Message, "not due yet");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Commitments.Due(t0.AddSeconds(3))).Message, "nothing is due");
+        Assert.IsTrue(cyan.Commitments.IsDue(t0.AddSeconds(5)));
+        cyan.Commitments.Due(t0.AddSeconds(5)).Attend(t0.AddSeconds(5));
+        Assert.AreEqual(2, cyanRight.Asked); Assert.AreEqual(2, inquiry.Activations);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyan.Commitments.Commit(new Inquiry(cyanRight, new Seconds(5.0)))).Message, "committed already");
+        // a member that is not the asker commits to nothing and never asks
         var orangeRight = orange.Choreography.Form("tri-right", orange.Choreography.Figure("triangle", new Position(8.0, 5.5), new Meters(2.0)), right, Policy.Rank);
         orangeRight.Follows("tri-left", "red");
-        Assert.IsFalse(orangeRight.MayAsk, "orange is not the asker"); Assert.IsFalse(orange.Choreography.Asking);
+        Assert.IsFalse(orangeRight.MayAsk, "orange is not the asker"); Assert.IsFalse(orangeRight.IsCommitted); Assert.AreEqual(0, orange.Commitments.PendingCount);
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => orangeRight.Ask()).Message, "cyan asks, not orange");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => orangeRight.Commitment).Message, "no open commitment");
 
         // red is asked: the question kept, answered on its tick from its copy — not yet, then yes once tri-left finished there
         Assert.IsTrue(red.Choreography.AskedOf("Red")); Assert.IsFalse(red.Choreography.AskedOf("cyan"));
@@ -662,9 +677,20 @@ public class FormationTests
         Assert.IsFalse(cyan.Choreography.AwaitsAnswer("cyan", "square-9"));
         Assert.AreSame(cyanRight, cyan.Choreography.FormationAfter("tri-left"));
         cyanRight.HeardNotYet();
-        Assert.AreEqual(1, cyanRight.NotYet); Assert.IsTrue(cyanRight.MayAsk, "the next tick asks again");
+        Assert.AreEqual(1, cyanRight.NotYet); Assert.IsTrue(cyanRight.MayAsk, "not yet: the commitment stays open and asks again when due"); Assert.IsTrue(inquiry.IsOpen);
         Assert.IsNull(cyanRight.TakeCue(new Pose(7.0, 5.5, 0.0), right.Member(cyan)), "yes: taken, one of three spoke");
         Assert.IsTrue(cyanRight.IsCued); Assert.IsFalse(cyanRight.MayAsk, "cued: nothing to ask"); Assert.IsFalse(cyan.Choreography.AwaitsAnswer("cyan", "tri-left"));
+        Assert.IsFalse(inquiry.IsOpen, "the answer came: the golem desisted"); StringAssert.Contains(inquiry.DesistedWhy, "cued"); Assert.IsFalse(cyanRight.IsCommitted); Assert.AreEqual(0, cyan.Commitments.PendingCount);
+        Assert.IsFalse(cyan.Commitments.IsDue(t0.AddSeconds(60)), "desisted: never due again");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => inquiry.Desist("twice")).Message, "desisted already");
+        Assert.AreEqual(1, cyan.Commitments.All().Count, "history keeps it");
+        // a formation dissolved desists its inquiry too; a period of zero is refused
+        var dissolved = cyan.Choreography.Form("tri-later", cyan.Choreography.Figure("triangle", new Position(8.0, 5.5), new Meters(2.0)), right, Policy.Rank);
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => dissolved.Follows("tri-left", "red", new Seconds(0.0))).Message, "zero is no period");
+        dissolved.Follows("tri-left", "red", new Seconds(2.0));
+        Assert.AreEqual(2.0, dissolved.EverySeconds); Assert.IsTrue(dissolved.IsCommitted);
+        cyan.Choreography.Dissolve(dissolved);
+        Assert.IsFalse(dissolved.IsCommitted); Assert.AreEqual(0, cyan.Commitments.PendingCount);
         orangeRight.Stood(right.Member("cyan"), new Position(7.0, 5.5));
         Assert.IsTrue(orangeRight.IsCued, "the asker spoke: the team follows");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => cyanRight.Follows("other", "blue")).Message, "already taken");
