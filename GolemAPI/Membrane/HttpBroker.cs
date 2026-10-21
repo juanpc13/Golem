@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using Choreography.Input;
 using Choreography.Transport.Brokered;
 
 namespace GolemAPI.Membrane;
@@ -189,7 +190,9 @@ public sealed class HttpBroker : ITellWire
         }
     }
 
-    public IDisposable Subscribe(string topic, Action<BrokerRecord> onRecord)
+    // Since the 3.0 engine a subscription is an IInputSubscription (Stop confirms the position, Dispose does not). This wire keeps no
+    // position — a late subscriber replays the retained log — so both are the plain unsubscribe the contract allows.
+    public IInputSubscription Subscribe(string topic, Action<BrokerRecord> onRecord)
     {
         var handlers = local.GetOrAdd(topic, _ => new List<Action<BrokerRecord>>());
         lock (handlers) handlers.Add(onRecord);
@@ -253,10 +256,11 @@ public sealed class HttpBroker : ITellWire
         return queue;
     });
 
-    private sealed class Subscription : IDisposable
+    private sealed class Subscription : IInputSubscription
     {
         private readonly Action dispose;
         internal Subscription(Action dispose) => this.dispose = dispose;
+        public void Stop() => dispose();
         public void Dispose() => dispose();
     }
 }

@@ -13,7 +13,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
     <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
-    <PackageReference Include="Ncubo.Puppeteer" Version="2.0.1-beta.10017-portable.2" />
+    <PackageReference Include="Ncubo.Puppeteer" Version="3.0.0-local.586d2c9" />
   </ItemGroup>
 
   <ItemGroup>

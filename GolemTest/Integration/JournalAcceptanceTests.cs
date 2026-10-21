@@ -66,7 +66,8 @@ public class JournalAcceptanceTests
     public void TheMagnitudes_AreTypedInTheJournal_ADurationWhereALengthGoesIsRefusedBeforeAnythingRuns()
     {
         Refuses("b = Body(Seconds(0.25), MetersPerSecond(2.0), Seconds(6.0), Meters(0.6));", "a value of type 'Length' is expected");
-        Refuses("b = Body(Meters(0.0), MetersPerSecond(2.0), Seconds(6.0), Meters(0.6));", "Error while instantiating class 'Body'");
+        // Since the 3.0 engine the domain's own exception reaches the caller unwrapped (no "Error while instantiating class 'Body'" around it).
+        Refuses("b = Body(Meters(0.0), MetersPerSecond(2.0), Seconds(6.0), Meters(0.6));", "a body needs a radius above zero");
     }
 
     [TestMethod]

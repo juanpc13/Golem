@@ -265,8 +265,9 @@ public sealed class GolemEmbodiment
         // THE CLOCK AS AN INPUT SOURCE (propuesta 118, 20-oct-2026; the training-lab's input-surfaces guide: "the clock is an input source — an actor is
         // the MERGE of N sources"): a ClockSource ticks every 2 s, the golem's Dispatch routes every tick to the Tick message and runs the clock's
         // questions on it — one worker, so no two ticks overlap; the Task.Delay loop of the host is gone. The tick itself is not journaled (one every
-        // 2 s): the questions are Check-then-command, written only when the domain says yes.
-        using var dispatch = performance.CreateDispatch(o => o.MaxParallelism = 1);
+        // 2 s): the questions are Check-then-command, written only when the domain says yes. Since the 3.0 engine (6e83200) a dispatch applies one
+        // message at a time, in the order its source delivered them, by design: MaxParallelism is gone and the serial worker is the only one.
+        using var dispatch = performance.CreateDispatch();
         dispatch.On<Tick>((actor, tick) => OnTick());
         dispatch.ConsumeFrom(new ClockSource(TimeSpan.FromSeconds(2)), signal => new DispatchCommand(signal.Id, (char)Tick.TypeId + signal.Value));
         Note($"the clock ticks every 2 s through the dispatch (alive: {performance.IsAlive})");

@@ -67,7 +67,8 @@ public sealed class GolemHost : IAsyncDisposable
         // scenarios in a row: the second 'red' woke at entry 16). The golem's name — the journal's identity in the tells — stays.
         bool inMemory = settings.Storage != DatabaseType.FileSystem;
         string actor = inMemory ? $"{settings.Golem}-{Guid.NewGuid():N}" : settings.Golem;
-        var performance = new GolemPerformance(actor, settings.Golem, DomainLibrary.Assembly);   // the golem is born with its name (ajuste 72)
+        var cast = settings.Peers.Union(settings.TellDoneTo == null ? Array.Empty<string>() : new[] { settings.TellDoneTo }).ToList();
+        var performance = new GolemPerformance(actor, settings.Golem, cast, DomainLibrary.Assembly);   // the golem is born with its name (ajuste 72) and its cast (motor 3.0)
         performance.ConfigureStorage(settings.Storage, inMemory ? actor : $"path={settings.JournalPath}");
 
         var speech = new GolemSpeech(performance, tellWire, feed, settings.Golem, settings.TellDoneTo, settings.Peers);

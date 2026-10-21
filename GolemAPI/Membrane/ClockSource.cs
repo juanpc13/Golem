@@ -22,7 +22,8 @@ public sealed class ClockSource : IInputSource
 
     public string SourceName => $"clock-{period.TotalMilliseconds:0}ms";
 
-    public IDisposable Start(Action<InputSignal> onSignal)
+    // Since the 3.0 engine Start hands back an IInputSubscription; a clock remembers no position, so Stop and Dispose both stop the timer.
+    public IInputSubscription Start(Action<InputSignal> onSignal)
     {
         if (onSignal == null) throw new ArgumentNullException(nameof(onSignal));
         if (Interlocked.Exchange(ref started, 1) == 1) throw new InvalidOperationException("a clock source is started once");
@@ -32,6 +33,14 @@ public sealed class ClockSource : IInputSource
             long n = Interlocked.Increment(ref ticks);
             onSignal(new InputSignal($"tick-{n}", "clock", null, n.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }, null, period, period);
-        return timer;
+        return new Ticking(timer);
+    }
+
+    private sealed class Ticking : IInputSubscription
+    {
+        private readonly Timer timer;
+        internal Ticking(Timer timer) => this.timer = timer;
+        public void Stop() => timer.Dispose();
+        public void Dispose() => timer.Dispose();
     }
 }
