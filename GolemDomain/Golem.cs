@@ -1,5 +1,4 @@
 using System.Globalization;
-using GolemDomain.Attention;
 using GolemDomain.Formations;
 using GolemDomain.Plays;
 using GolemDomain.Trails;
@@ -33,7 +32,6 @@ internal sealed class Golem
     private readonly Choreographies choreography;         // its choreographies, born with it (ajustes 69, 70): the formation by name, and the route to its place
     private readonly Dynamics dynamics;                   // its dynamics, born with it (propuesta 108): the play it is in, pacman's runs
     private readonly Explorations exploration;            // its exploration, born with it (propuesta 120): the trail of where its body went, the map it deduces
-    private readonly Commitments commitments;             // its commitments to itself, born with it (propuesta 121): what it promised to keep doing until it desists
     // the map and the collisions the golem reads are the CURRENT scenario's (ajuste 60): a route born in one keeps its own
     private MapLayout layout => Current.Map;
     private Collisions collisions => Current.Collisions;
@@ -54,7 +52,6 @@ internal sealed class Golem
         choreography = new Choreographies(this);   // the module is born with its golem and asks it for the route to a place (ajustes 70, 78)
         dynamics = new Dynamics(this);             // the same for the plays (propuesta 108): it asks the golem for the route of a run
         exploration = new Explorations(this);      // and the exploration (propuesta 120): the trail the golem feeds it, the marks it reads from the scenario
-        commitments = new Commitments(this);       // and the commitments (propuesta 121): armed by the modules, kept by the host's attention when due
     }
 
     /// <summary>The golem born with its body AND ITS NAME (ajuste 72, 30-sep-2026; Juan: "que g sepa quién es él, el dominio debería
@@ -176,11 +173,6 @@ internal sealed class Golem
     /// <summary>The golem's EXPLORATION (propuesta 120): the trail of where its body went in each scenario and the map it deduces from the trail
     /// and the touches — <c>g.Exploration.Deduced()</c>, <c>g.Exploration.Frontier()</c>.</summary>
     internal Explorations Exploration => exploration;
-    /// <summary>The golem's COMMITMENTS TO ITSELF (propuesta 121, 21-oct-2026; paper 0B, "a Puppet can claim future attention"): what it promised
-    /// to keep doing every so often until it desists — armed by its modules (a formation that starts after another arms the inquiry that asks),
-    /// kept by the host's clock, the attention, when due: <c>commitment = g.Commitments.Due(@Now); commitment.Attend(@Now);</c>.</summary>
-    internal Commitments Commitments => commitments;
-
     /// <summary>A route of this golem IMPROVED with a dash (ajuste 62; the team's notes: "tomar la route actual y mejorarla"): from here
     /// on it crosses the doors on the way — by the golem's own on-the-way strategy, the same object — and its way is decided again from
     /// where it stands; handed back for the print. Idempotent — a route already on the way, or ended, comes back as it is — so the script

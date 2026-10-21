@@ -266,6 +266,18 @@ internal sealed class Choreographies
         return formations.LastOrDefault(f => f.Name == called && InForce(f)) ?? throw new GolemDomainException($"the golem was told no formation named '{called}': form it first");
     }
 
+    /// <summary>WHETHER THE ASKER'S RECURRENCE STILL ASKS (propuesta 122, 21-oct-2026): what the <c>while</c> of the <c>remember</c> armed in the
+    /// Follows act reads at every knock — <c>while (g.Choreography.StillAsks(@formationName, @stamp));</c> — by name AND stamp, so a copy told again
+    /// under the same name (the old one dissolved, its stamp gone with it) ends the old recurrence by itself; false once the answer came, the
+    /// formation was taken or dissolved, or it was never told here.</summary>
+    internal bool StillAsks(string name, string stamp)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.StillAsks: 'name' was not given");
+        if (stamp == null) throw new GolemDomainException("Choreographies.StillAsks: 'stamp' was not given");
+        string called = name.Trim().ToLowerInvariant();
+        return formations.Any(f => f.Name == called && f.Stamp == stamp && InForce(f) && f.StillAsks);
+    }
+
     /// <summary>Whether the golem was told a formation by that name, still in force — what a script asks before it finds it.</summary>
     internal bool HasFormation(string name)
     {

@@ -110,7 +110,7 @@ public static class Readings
                           told.Figure.Measure.InMeters 'length', told.Figure.InnerMeters 'inner', told.Figure.Arms 'arms', told.Figure.Turn.InDegrees 'degrees', told.Policy 'policy',
                           told.Fleet.Roster 'crew', told.PlaceCount 'places', told.PlacedCount 'placed', told.AlignedCount 'aligned', told.Stranded 'stranded', told.StrandedWhy 'strandedWhy', told.Queued 'queued', told.Round 'round', told.PlaceIndex 'mine', told.HasRoute 'routed',
                           told.CueTo 'cueTo', told.OnCue 'onCue', told.IsCued 'cued', told.Finishing 'finishing', told.FinishedCount 'finished', told.IsFinished 'done', told.CueGiven 'cueGiven',
-                          told.After 'after', told.AskTo 'askTo', told.EverySeconds 'every', told.IsCommitted 'committed', told.Asked 'asked', told.NotYet 'notYet';
+                          told.After 'after', told.AskTo 'askTo', told.EverySeconds 'every', told.IsAsker 'asks', told.Asked 'asked', told.NotYet 'notYet';
                     foreach (holders in told.Holders()) {
                         print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
                     }

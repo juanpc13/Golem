@@ -81,6 +81,7 @@ public sealed class GolemHost : IAsyncDisposable
         embodiment.Mechanics.DefineReactions(performance);   // one next-order reaction per act shape: the engine pushes the print
 
         performance.Start();                                  // rehydration + release chain + the .Cue() reactions come alive
+        performance.Actor.UseAttentionClock(new AttentionClock());   // the attention (propuesta 122): after rehydration, as a host does — it arms what the journal left pending
         new JournalTap(performance, feed).Start();            // the panel's journal lane: the whole diary, then every record
         Console.WriteLine($"[golem {settings.Golem}] journal {(settings.Storage == DatabaseType.FileSystem ? "at " + settings.JournalPath : "in memory")}");
         Console.WriteLine($"[golem {settings.Golem}] rehydrated at entry {performance.CurrentEntryId}");
