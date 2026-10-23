@@ -184,7 +184,7 @@ whether it could or not, so the domain resolves what follows. Consequences:
   included (`'x'` rendered as `'6.3'`, 21-sep-2026). A command's print
   comes back to WHOEVER PERFORMED IT, at write time — `PerformCheckThenCommand` returns it; a refused Check returns
   `{"EWI":[{"Error":"…"}]}`, the domain's own words (lab 16-sep, `lab-print.txt`) — so the answer to a report IS the
-  next order (`Choreography/Order.cs`: `Order`, `Answer`). **The print is handed to the ROBOT, the actor's OUTPUT
+  next order (`Choreography/Order.cs`: `Order`, `Answer`; since 23-oct-2026, after the training-lab guides control-flow §9 and output-and-controller §10, `Answer.Of` recognises a refusal BY ITS SHAPE — the top-level `EWI` property of a JSON object, `TryGetProperty`, never a substring nor emptiness — and `Warning` refuses like `Error`, its text the reason; `AnswerTests`). **The print is handed to the ROBOT, the actor's OUTPUT
   TARGET** (Juan, 16-sep, evening: "el print retorna al controller, pero ese mismo objeto analiza el JSON y tiene un
   switch con las acciones disponibles; dentro de cada case están los llamados que viajan hasta el robot… el robot solo
   es el cuerpo; cuando termina le dice al actor por un endpoint que ya terminó, para pedir el siguiente print"):

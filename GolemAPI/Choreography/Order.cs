@@ -83,18 +83,25 @@ public readonly record struct Answer(Order Order, string Refused, string Print)
     public static Answer Refusal(string why) => new(null, why, "");
     public static Answer Of(string performed)
     {
-        // a refused Check comes back as {"EWI":[{"Error":"…"}]}; anything else is the print (or nothing)
-        if (!string.IsNullOrWhiteSpace(performed) && performed.Contains("\"EWI\"", StringComparison.Ordinal))
+        // A REFUSAL IS RECOGNISED BY ITS SHAPE (control-flow §9, output-and-controller §10, the guides of 23-oct-2026): the check's
+        // sidecar is the top-level property "EWI" of a JSON object — {"EWI":[{"Error":"…"}]} — never a substring, never emptiness
+        // (an accepted command that prints returns a non-empty string too). Only Error and Warning refuse; their text is the reason.
+        if (string.IsNullOrWhiteSpace(performed)) return new Answer(Order.Parse(performed), "", performed ?? "");
+        try
         {
-            try
+            using var doc = JsonDocument.Parse(performed);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("EWI", out var ewi) && ewi.ValueKind == JsonValueKind.Array)
             {
-                using var doc = JsonDocument.Parse(performed);
-                var first = doc.RootElement.GetProperty("EWI").EnumerateArray().FirstOrDefault();
-                if (first.ValueKind == JsonValueKind.Object && first.TryGetProperty("Error", out var error)) return new Answer(null, error.GetString() ?? "refused", performed);
+                foreach (var reason in ewi.EnumerateArray())
+                {
+                    if (reason.ValueKind != JsonValueKind.Object) continue;
+                    if (reason.TryGetProperty("Error", out var error)) return new Answer(null, error.GetString() ?? "refused", performed);
+                    if (reason.TryGetProperty("Warning", out var warning)) return new Answer(null, warning.GetString() ?? "refused", performed);
+                }
+                return new Answer(null, performed, performed);   // a sidecar of another shape: refused, the whole text as the reason
             }
-            catch (JsonException) { }
-            return new Answer(null, performed, performed);
         }
+        catch (JsonException) { }   // not JSON: the print as the engine gave it, Order.Parse decides
         return new Answer(Order.Parse(performed), "", performed ?? "");
     }
 }
