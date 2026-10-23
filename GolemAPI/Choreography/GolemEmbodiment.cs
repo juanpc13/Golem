@@ -128,7 +128,10 @@ public sealed class GolemEmbodiment
         var at = layout.At(world.X, world.Y);
         if (at == null || at == FrameName) return;   // the region the journal's scenario is read in (an exported map's, a blindfold's: its source's)
         var answer = EnterScenario(at);
-        if (answer.Ok) { scenario = at; Note($"the body stands in the {at}'s region of the world: the golem entered it"); }
+        // the FRAME follows (22-oct-2026, night; lab: after a `reset all` green entered the warehouse here but kept reading its pose in open-floor's
+        // frame, so its `use map open-floor` found "the same frame" and carried nothing — the golem in open-floor at (23, 10.5), off the map, its take
+        // refused and the whole union waiting for its word)
+        if (answer.Ok) { scenario = at; frame = CurrentFrame(); Note($"the body stands in the {at}'s region of the world: the golem entered it"); }
         else Note($"the body stands in the {at}'s region, but the golem could not enter it: {answer.Refused}");
     }
     /// <summary>The robot's mechanics — the output target: the print the reactions emit, switched on and sent to the body over ROS.</summary>
@@ -284,6 +287,7 @@ public sealed class GolemEmbodiment
             Choreographer?.FinishIfDone();       // a finish queued and the part done (propuesta 117): the word counts now and the fleet is told
             Choreographer?.CueIfFinished();      // this copy counted the fleet's last finish (propuesta 117): the cue to the next group
             Choreographer?.TakeIfCued();         // cued before its formation was told (propuesta 117): it takes it now
+            Choreographer?.ArmIfAsker();         // the asker of a formation that starts after another (propuesta 123): its recurrence armed once, with the engine's remember
             Choreographer?.AnswerIfAsked();      // …and the one asked answers from its copy
             Dynamics?.AnnounceIfConcluded();     // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
             Explorer?.ProbeIfIdle();             // exploring and standing free (propuesta 120): the next probe — the first after `explore`, or after one refused

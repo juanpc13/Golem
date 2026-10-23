@@ -118,16 +118,15 @@ public sealed record ScenarioRequest(string Scenario)
 /// may be left out (this golem and every peer it can reach); the policy too (rank).</summary>
 public sealed record FormRequest(string Name, string Figure, PointRequest Center, double? Side = null, double? Radius = null, double? InnerRadius = null,
                                  double? Angle = null, List<string> Fleet = null, string By = null, int? Blades = null,
-                                 string Cue = null, bool OnCue = false, string After = null, string Ask = null, double? Every = null)
+                                 string Cue = null, bool OnCue = false, string After = null, double? Every = null, bool Open = false, int? Places = null)
 {
-    /// <summary>THE PULL (propuesta 118): the formation this one starts after, and the golem its asker asks whether it finished — lower case; null: none;
-    /// and how often it asks, in seconds (propuesta 121; 5 when left out).</summary>
+    /// <summary>THE PULL (propuesta 118): the formation this one starts after — the one its asker asks whether it finished (propuesta 123: its first
+    /// golem by rank answers) — lower case; null: none; and how often it asks, in seconds (propuesta 121; 5 when left out).</summary>
     public string StartsAfter => string.IsNullOrWhiteSpace(After) ? null : After.Trim().ToLowerInvariant();
-    public string AskedGolem => string.IsNullOrWhiteSpace(Ask) ? null : Ask.Trim().ToLowerInvariant();
-    /// <summary>The golem the last of this fleet to finish cues (propuesta 117), lower case; null when nobody.</summary>
-    public string CuedGolem => string.IsNullOrWhiteSpace(Cue) ? null : Cue.Trim().ToLowerInvariant();
+    /// <summary>The FORMATION the last of this fleet to finish cues (propuesta 117; by its name since propuesta 123), lower case; null when none.</summary>
+    public string CuesFormation => string.IsNullOrWhiteSpace(Cue) ? null : Cue.Trim().ToLowerInvariant();
 
-    public const string Shape = "{\"name\": \"square-2\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0, \"fleet\": [\"blue\", \"red\"], \"by\": \"rank\"} — a circle: \"radius\"; a propeller: \"figure\": \"propeller\", \"radius\", \"innerRadius\" (the hub), \"blades\"; the sequence (propuesta 117): \"cue\": \"cyan\", \"onCue\": true; the pull (propuestas 118, 121): \"after\": \"tri-left\", \"ask\": \"red\", \"every\": 5";
+    public const string Shape = "{\"name\": \"square-2\", \"figure\": \"square\", \"center\": {\"x\": 5.5, \"y\": 5.5}, \"side\": 2.0, \"angle\": 0, \"fleet\": [\"blue\", \"red\"], \"by\": \"rank\"} — a circle: \"radius\"; a propeller: \"figure\": \"propeller\", \"radius\", \"innerRadius\" (the hub), \"blades\"; the sequence (propuesta 117, by formation names since propuesta 123): \"cue\": \"tri-right\", \"onCue\": true; the pull (propuestas 118, 122): \"after\": \"tri-left\", \"every\": 5";
     public static readonly string[] Figures = { "square", "pentagon", "triangle", "circle", "propeller" };
 
     public string Kind => (Figure ?? "").Trim().ToLowerInvariant();
@@ -172,13 +171,68 @@ public sealed record FormRequest(string Name, string Figure, PointRequest Center
         if (Blades.HasValue && !IsPropeller) yield return "only a propeller has blades";
         if (Angle.HasValue && !double.IsFinite(Angle.Value)) yield return "the angle must be a number of degrees";
         if (Policy is not ("rank" or "distance" or "rps")) yield return "the policy is \"rank\", \"distance\" or \"rps\"";
-        if (CuedGolem != null && !System.Text.RegularExpressions.Regex.IsMatch(CuedGolem, @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "\"cue\" names one golem, like cyan";
-        if ((StartsAfter == null) != (AskedGolem == null)) yield return "\"after\" (the formation waited for) and \"ask\" (the golem asked) go together";
+        if (CuesFormation != null && !System.Text.RegularExpressions.Regex.IsMatch(CuesFormation, @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "\"cue\" names one formation, like tri-right";
+        if (CuesFormation != null && Name != null && CuesFormation == Name.Trim().ToLowerInvariant()) yield return "a formation cannot cue itself";
+        if (StartsAfter != null && !System.Text.RegularExpressions.Regex.IsMatch(StartsAfter, @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "\"after\" names one formation, like tri-left";
         if (StartsAfter != null && Name != null && StartsAfter == Name.Trim().ToLowerInvariant()) yield return "a formation cannot start after itself";
-        if (AskedGolem != null && !System.Text.RegularExpressions.Regex.IsMatch(AskedGolem, @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "\"ask\" names one golem, like red";
         if (Every.HasValue && (!double.IsFinite(Every.Value) || Every.Value <= 0)) yield return "\"every\" is seconds above zero";
-        if (Every.HasValue && StartsAfter == null) yield return "\"every\" goes with \"after\" and \"ask\": how often the golem asks";
+        if (Every.HasValue && StartsAfter == null) yield return "\"every\" goes with \"after\": how often the golem asks";
         if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
+        // the open formation (propuesta 123): of a union — no fleet of its own, shared by distance or rps, a polygon
+        if (Open && Fleet is { Count: > 0 }) yield return "an open formation takes no fleet: the union's candidates are its fleet";
+        if (Open && Policy == "rank") yield return "an open formation shares its places by distance or rps: by rank nobody chooses";
+        if (Open && (IsCircle || IsPropeller) && !Places.HasValue) yield return $"a {Kind} opens for a number of golems (\"places\"); a polygon alone opens for its vertices";
+        if (Places.HasValue && !Open) yield return "\"places\" goes with \"open\": how many of the union's candidates the figure takes";
+        if (Open && (CuesFormation != null || OnCue || StartsAfter != null)) yield return "an open formation follows the beats of its union (propuesta 124): no \"cue\", \"onCue\" or \"after\" of its own — the link is the union's";
+        if (Places.HasValue && Places.Value < 1) yield return "\"places\" is a whole number above zero";
+    }
+}
+
+/// <summary>THE PROGRAMME (propuesta 123, 21-oct-2026) — <c>{"name": "two-triangles", "formations": ["tri-left", "tri-right"], "fleet": ["blue", …], "by": "distance"}</c>:
+/// several open formations in order and the golems shared among them by the law; the candidates left out are this golem and every peer.</summary>
+public sealed record UnionRequest(string Name, List<string> Formations, List<string> Fleet = null, string By = null, string Link = null, double? Every = null)
+{
+    public const string Shape = "{\"name\": \"two-triangles\", \"formations\": [\"tri-left\", \"tri-right\"], \"fleet\": [\"blue\", \"red\"], \"by\": \"distance\", \"link\": \"cue\"}";
+
+    public string Policy => string.IsNullOrWhiteSpace(By) ? "distance" : By.Trim().ToLowerInvariant();
+    /// <summary>How the beats are agreed (propuesta 124): "cue" (the default) or "ask".</summary>
+    public string LinkWord => string.IsNullOrWhiteSpace(Link) ? "cue" : Link.Trim().ToLowerInvariant();
+    public IReadOnlyList<string> Bill => (Formations ?? new List<string>()).Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim().ToLowerInvariant()).ToList();
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Name) || !System.Text.RegularExpressions.Regex.IsMatch(Name.Trim(), @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "the union needs a name like two-triangles: " + Shape;
+        if (Bill.Count == 0) yield return "a union names at least one formation: " + Shape;
+        if (Bill.Any(n => !System.Text.RegularExpressions.Regex.IsMatch(n, @"^[A-Za-z_][A-Za-z0-9_-]*$"))) yield return "every formation of the union is named like tri-left";
+        if (Bill.Distinct().Count() != Bill.Count) yield return "a union names each formation once";
+        if (Name != null && Bill.Contains(Name.Trim().ToLowerInvariant())) yield return "a union cannot name itself as a formation";
+        if (Policy is not ("distance" or "rps")) yield return "the policy is \"distance\" or \"rps\": by rank nobody chooses";
+        if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
+        if (LinkWord is not ("cue" or "ask")) yield return "the link is \"cue\" or \"ask\": how the beats are agreed among the golems";
+        if (Every.HasValue && (!double.IsFinite(Every.Value) || Every.Value <= 0)) yield return "\"every\" is seconds above zero";
+        if (Every.HasValue && LinkWord != "ask") yield return "\"every\" goes with the link \"ask\": how often the askers ask";
+    }
+}
+
+/// <summary>THE PROGRAM (propuesta 124) — <c>{"name": "two-triangles", "definition": "tri-left: triangle 3,5.5 side 3 places 3 = cw,cw,cw; tri-right: …",
+/// "fleet": […], "by": "distance", "link": "cue"}</c>: the whole union in one definition the domain reads — its formations in order, each with its figure
+/// and its part of the score (cw, ccw, - a rest, one per beat); the line is this golem's word too.</summary>
+public sealed record ProgramRequest(string Name, string Definition, List<string> Fleet = null, string By = null, string Link = null, double? Every = null)
+{
+    public const string Shape = "{\"name\": \"two-triangles\", \"definition\": \"tri-left: triangle 3,5.5 side 3 places 3 = cw,cw,cw; tri-right: triangle 8,5.5 side 3 places 3 = cw,cw,-\", \"by\": \"distance\", \"link\": \"cue\"}";
+
+    public string Policy => string.IsNullOrWhiteSpace(By) ? "distance" : By.Trim().ToLowerInvariant();
+    public string LinkWord => string.IsNullOrWhiteSpace(Link) ? "cue" : Link.Trim().ToLowerInvariant();
+
+    public IEnumerable<string> Problems()
+    {
+        if (string.IsNullOrWhiteSpace(Name) || !System.Text.RegularExpressions.Regex.IsMatch(Name.Trim(), @"^[A-Za-z_][A-Za-z0-9_-]*$")) yield return "the program needs a name like two-triangles: " + Shape;
+        if (string.IsNullOrWhiteSpace(Definition)) yield return "a program needs its definition — the formations and their score: " + Shape;
+        if (Policy is not ("distance" or "rps")) yield return "the policy is \"distance\" or \"rps\": by rank nobody chooses";
+        if (Fleet != null && Fleet.Any(n => string.IsNullOrWhiteSpace(n))) yield return "every name in the fleet must be a name";
+        if (LinkWord is not ("cue" or "ask")) yield return "the link is \"cue\" or \"ask\": how the beats are agreed among the golems";
+        if (Every.HasValue && (!double.IsFinite(Every.Value) || Every.Value <= 0)) yield return "\"every\" is seconds above zero";
+        if (Every.HasValue && LinkWord != "ask") yield return "\"every\" goes with the link \"ask\": how often the askers ask";
     }
 }
 

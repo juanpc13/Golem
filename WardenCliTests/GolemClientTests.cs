@@ -13,7 +13,7 @@ public class GolemClientTests
     [TestMethod]
     public void TheReads_GoByGet_AndTheLevers_ByTheirPosts_WithTheBodyTheEndpointExpects()
     {
-        foreach (var read in new[] { "where", "state", "route", "scenarios", "obstacles", "formations", "disputes", "play", "plays" })
+        foreach (var read in new[] { "where", "state", "route", "scenarios", "obstacles", "formations", "unions", "disputes", "play", "plays" })
         {
             var call = GolemClient.Endpoint(read);
             Assert.IsNotNull(call, read);

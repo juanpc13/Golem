@@ -149,12 +149,40 @@ public class GolemController : Controller
         var center = (request.Center.X.Value, request.Center.Y.Value);
         string name = request.Name.Trim().ToLowerInvariant();
         if (request.IsPropeller)
-            return Answered(choreographer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem, request.Every));
-        return Answered(choreographer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem, request.Every));
+            return Answered(choreographer.FormPropeller(name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy, request.CuesFormation, request.OnCue, request.StartsAfter, request.Every, request.Open, request.Places ?? 0));
+        return Answered(choreographer.Form(name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy, request.CuesFormation, request.OnCue, request.StartsAfter, request.Every, request.Open, request.Places ?? 0));
+    }
+
+    /// <summary>THE PROGRAM (propuesta 124): the whole union in one definition — its formations and their score — and this golem's word; every candidate
+    /// is told the same on its own tab.</summary>
+    [HttpPost("program")]
+    public IActionResult Program([FromBody] ProgramRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + ProgramRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
+                                                    : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
+        return Answered(choreographer.Program(request.Name.Trim().ToLowerInvariant(), request.Definition, fleet, request.Policy, request.LinkWord, request.Every));
+    }
+
+    /// <summary>THE PROGRAMME TOLD (propuesta 123): several open formations in order and the golems shared among them by the law; left out, the candidates
+    /// are this golem and every peer. Every candidate is told the same on its own tab.</summary>
+    [HttpPost("union")]
+    public IActionResult Union([FromBody] UnionRequest request)
+    {
+        if (request == null) return BadRequest((ModelState.IsValid ? "a JSON body is required: " : "the JSON body could not be read; expected ") + UnionRequest.Shape);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        var fleet = request.Fleet is { Count: > 0 } ? request.Fleet.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
+                                                    : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Distinct().ToList();
+        return Answered(choreographer.Union(request.Name.Trim().ToLowerInvariant(), request.Bill, fleet, request.Policy, request.LinkWord, request.Every));
     }
 
     /// <summary>A FORMATION TAKEN (propuesta 104): this golem says where it stands; the fleet's words open the routes, each to its place by
-    /// the policy. It spreads by itself: command one golem.</summary>
+    /// the policy. It spreads by itself: command one golem. A PROGRAMME's name (propuesta 123): the golem's one word for the whole union.</summary>
     [HttpPost("take")]
     public IActionResult Take([FromBody] TakeRequest request)
     {

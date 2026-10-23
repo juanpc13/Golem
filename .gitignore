@@ -9,3 +9,6 @@ journal-legacy-*/
 GolemTest/appsettings.local.json
 # the test runners' logs (dotnet test --logger trx)
 TestResults/
+
+# the team's local docs: the notebook and the plans (Juan, 22-oct-2026)
+docs/

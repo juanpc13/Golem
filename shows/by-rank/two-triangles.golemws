@@ -6,19 +6,19 @@
    "Name": "blue",
    "Host": "localhost",
    "Port": 8081,
-   "Script": "use map open-floor\nform tri-left triangle --center 3,5.5 --side 3 --angle 0 --fleet blue,red,green --by rank --cue cyan\ntake tri-left\nrotate tri-left clockwise\nrotate tri-left clockwise\nrotate tri-left clockwise\nfinish tri-left"
+   "Script": "use map open-floor\nform tri-left triangle --center 3,5.5 --side 3 --angle 0 --fleet blue,red,green --by rank --cue tri-right\ntake tri-left\nrotate tri-left clockwise\nrotate tri-left clockwise\nrotate tri-left clockwise\nfinish tri-left"
   },
   {
    "Name": "red",
    "Host": "localhost",
    "Port": 8082,
-   "Script": "use map open-floor\nform tri-left triangle --center 3,5.5 --side 3 --angle 0 --fleet blue,red,green --by rank --cue cyan\ntake tri-left\nrotate tri-left clockwise\nrotate tri-left clockwise\nrotate tri-left clockwise\nfinish tri-left"
+   "Script": "use map open-floor\nform tri-left triangle --center 3,5.5 --side 3 --angle 0 --fleet blue,red,green --by rank --cue tri-right\ntake tri-left\nrotate tri-left clockwise\nrotate tri-left clockwise\nrotate tri-left clockwise\nfinish tri-left"
   },
   {
    "Name": "green",
    "Host": "localhost",
    "Port": 8083,
-   "Script": "use map open-floor\nform tri-left triangle --center 3,5.5 --side 3 --angle 0 --fleet blue,red,green --by rank --cue cyan\ntake tri-left\nrotate tri-left clockwise\nrotate tri-left clockwise\nrotate tri-left clockwise\nfinish tri-left"
+   "Script": "use map open-floor\nform tri-left triangle --center 3,5.5 --side 3 --angle 0 --fleet blue,red,green --by rank --cue tri-right\ntake tri-left\nrotate tri-left clockwise\nrotate tri-left clockwise\nrotate tri-left clockwise\nfinish tri-left"
   },
   {
    "Name": "yellow",

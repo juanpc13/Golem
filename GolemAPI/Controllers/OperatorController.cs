@@ -177,6 +177,10 @@ public class OperatorController : Controller
     [HttpGet("formations")]
     public IActionResult Formations() => Content(Readings.Formations(golemEmbodiment.Actor), "application/json");
 
+    /// <summary>The unions the warden told this golem (propuesta 123): the same document the line `unions` answers.</summary>
+    [HttpGet("unions")]
+    public IActionResult Unions() => Content(Readings.Unions(golemEmbodiment.Actor), "application/json");
+
     /// <summary>The disputes over the places of its formations (14-oct-2026): the same document the line `disputes` answers.</summary>
     [HttpGet("disputes")]
     public IActionResult Disputes() => Content(Readings.Disputes(golemEmbodiment.Actor), "application/json");

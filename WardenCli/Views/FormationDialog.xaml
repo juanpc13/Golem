@@ -18,6 +18,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <TextBlock Text="figure" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
@@ -56,31 +57,38 @@
             <RadioButton x:Name="ByGameBox" Content="rock-paper-scissors" ToolTip="who stands nearest — and when several want the same place, they play rock, paper, scissors for it; the disputes tab says who won and how (propuesta 115)"/>
         </StackPanel>
 
-        <!-- THE CUE BETWEEN DANCERS (propuesta 117): the last of this fleet cues one golem of the next group when everybody finished; a formation
-             that starts on cue gets no take — it waits, its steps queued, until one of its members is cued -->
+        <!-- THE CUE BETWEEN DANCERS (propuesta 117; by the formation's name since propuesta 123): the last of this fleet cues the next FORMATION when
+             everybody finished, and every member of it takes the cue; a formation that starts on cue gets no take — it waits, its steps queued -->
         <TextBlock Grid.Row="6" Text="the cue" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
         <DockPanel Grid.Row="6" Grid.Column="1" Margin="2,4">
             <CheckBox x:Name="OnCueBox" DockPanel.Dock="Right" Content="starts on cue (no take)" VerticalAlignment="Center" Margin="12,0,0,0" ToolTip="--on-cue: the formation waits, its steps queued, until the group before it cues one of its golems — then it dances all of it"/>
             <TextBlock DockPanel.Dock="Left" Text="when done, cue" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="CueBox" Width="130" HorizontalAlignment="Left" ToolTip="--cue &lt;golem&gt;: the last of this fleet to finish tells that golem 'your turn' — a golem of the next group, chosen here"/>
+            <ComboBox x:Name="CueBox" Width="130" HorizontalAlignment="Left" ToolTip="--cue &lt;formation&gt;: the last of this fleet to finish tells that formation 'your turn' — every member of it takes the cue (propuesta 123)"/>
         </DockPanel>
 
-        <!-- THE PULL (propuesta 118): the formation starts after another, and its first golem by rank asks a golem of that group every tick whether it finished -->
+        <!-- THE PULL (propuesta 118): the formation starts after another, and its first golem by rank asks that formation every so often whether it finished; its first by rank answers (propuesta 123) -->
         <TextBlock Grid.Row="7" Text="or ask" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
         <DockPanel Grid.Row="7" Grid.Column="1" Margin="2,4">
             <TextBlock DockPanel.Dock="Left" Text="starts after" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="AfterBox" DockPanel.Dock="Left" Width="130" HorizontalAlignment="Left" Margin="0,0,14,0" ToolTip="--after &lt;formation&gt;: the formation waited for; no take — the pull: the first golem of this fleet asks every tick whether it finished"/>
-            <TextBlock DockPanel.Dock="Left" Text="asking" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="AskBox" DockPanel.Dock="Left" Width="130" HorizontalAlignment="Left" Margin="0,0,14,0" ToolTip="--ask &lt;golem&gt;: the golem asked, one of the other group"/>
+            <ComboBox x:Name="AfterBox" DockPanel.Dock="Left" Width="130" HorizontalAlignment="Left" Margin="0,0,14,0" ToolTip="--after &lt;formation&gt;: the formation waited for and asked; no take — the pull: the first golem of this fleet asks it every so often whether it finished, and its first golem answers"/>
             <TextBlock DockPanel.Dock="Left" Text="every" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <TextBox x:Name="EveryBox" DockPanel.Dock="Left" Width="40" Text="5" ToolTip="--every &lt;seconds&gt;: how often the asker asks — a commitment of the golem's, kept by its attention when due (propuesta 121)"/>
+            <TextBox x:Name="EveryBox" DockPanel.Dock="Left" Width="40" Text="5" ToolTip="--every &lt;seconds&gt;: how often the asker asks — a recurrence of the golem's own (propuesta 122)"/>
             <TextBlock Text="s" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="4,0,0,0"/>
         </DockPanel>
 
         <TextBlock x:Name="GolemsLabel" Grid.Row="5" Text="golems of the fleet" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,6,8,0"/>
         <ListBox x:Name="GolemsBox" Grid.Row="5" Grid.Column="1" Margin="2,6" SelectionMode="Multiple" Height="150"/>
 
-        <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+        <!-- THE PROGRAMME (propuesta 123; Juan: "sin que uno elija a los golems como tal… ellos deciden dónde estar"): an OPEN formation belongs to a
+             union said before it on every tab; its members are picked by the union's law among every golem of the workspace -->
+        <TextBlock Grid.Row="8" Text="the union" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+        <DockPanel Grid.Row="8" Grid.Column="1" Margin="2,4">
+            <CheckBox x:Name="OpenBox" DockPanel.Dock="Left" Content="open — the golems choose" VerticalAlignment="Center" Margin="0,0,12,0" ToolTip="--open: no fleet of its own — every golem of the workspace is a candidate of the union, and the union's law (distance or rps) picks who dances here and who in its other formations"/>
+            <TextBlock DockPanel.Dock="Left" Text="union" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBox x:Name="UnionBox" DockPanel.Dock="Left" Width="130" HorizontalAlignment="Left" Text="show-1" ToolTip="the union this open formation belongs to: `union &lt;name&gt; &lt;formations…&gt;` is written on every tab, and `take &lt;union&gt;` is each golem's one word"/>
+        </DockPanel>
+
+        <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
             <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="300"/>
             <Button Content="form in the selected golem" Click="Ok_Click" Style="{StaticResource GoGreen}" ToolTip="the form and take lines go on the selected golem's tab; the golem tells its fleet"/>
             <Button Content="cancel" IsCancel="True"/>

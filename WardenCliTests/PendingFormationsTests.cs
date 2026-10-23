@@ -40,21 +40,35 @@ public class PendingFormationsTests
         StringAssert.Contains(ring.HoldersText, "nobody placed yet (by distance)");
 
         // the cue between dancers (propuesta 117): the lines' --cue and --on-cue are read, and the row says it
-        var left = new Golem { Name = "blue", Host = "localhost", Port = 8081, Script = "form tri-left triangle --center 3,5.5 --side 3 --fleet blue,red,green --by rank --cue cyan\ntake tri-left\nfinish tri-left" };
+        var left = new Golem { Name = "blue", Host = "localhost", Port = 8081, Script = "form tri-left triangle --center 3,5.5 --side 3 --fleet blue,red,green --by rank --cue tri-right\ntake tri-left\nfinish tri-left" };
         var right = new Golem { Name = "cyan", Host = "localhost", Port = 8086, Script = "form tri-right triangle --center 8,5.5 --side 3 --fleet cyan,orange,yellow --by rank --on-cue\nrotate tri-right clockwise" };
         var both = PendingFormations.Parse(new[] { left, right });
         var l = both.Single(v => v.Name == "tri-left"); var r = both.Single(v => v.Name == "tri-right");
-        Assert.AreEqual("cyan", l.CueTo); Assert.IsFalse(l.OnCue);
-        StringAssert.Contains(l.RoundText, "cue → cyan");
+        Assert.AreEqual("tri-right", l.CueTo, "the cue names a formation (propuesta 123)"); Assert.IsFalse(l.OnCue);
+        StringAssert.Contains(l.RoundText, "cue → tri-right");
         Assert.IsTrue(r.OnCue); Assert.IsFalse(r.Cued); Assert.AreEqual("", r.CueTo);
         StringAssert.Contains(r.RoundText, "on cue — waiting");
 
-        // the pull (propuesta 118): --after and --ask on the line — born waiting, the row says whom it asks
-        var puller = new Golem { Name = "cyan", Host = "localhost", Port = 8086, Script = "form tri-right triangle --center 8,5.5 --side 3 --fleet cyan,orange,yellow --after tri-left --ask red\nrotate tri-right clockwise" };
+        // the pull (propuesta 118): --after on the line — born waiting, the row says which formation it asks (no golem named: propuesta 123)
+        var puller = new Golem { Name = "cyan", Host = "localhost", Port = 8086, Script = "form tri-right triangle --center 8,5.5 --side 3 --fleet cyan,orange,yellow --after tri-left\nrotate tri-right clockwise" };
         var pv = PendingFormations.Parse(new[] { puller }).Single();
-        Assert.AreEqual("tri-left", pv.After); Assert.AreEqual("red", pv.AskTo); Assert.IsTrue(pv.OnCue); Assert.IsFalse(pv.Cued);
-        StringAssert.Contains(pv.RoundText, "after tri-left, asks red");
-        StringAssert.EndsWith(pv.FormLine(pv.AsFigure()!), "--after tri-left --ask red");
+        Assert.AreEqual("tri-left", pv.After); Assert.IsTrue(pv.OnCue); Assert.IsFalse(pv.Cued);
+        StringAssert.Contains(pv.RoundText, "after tri-left, asks it");
+        StringAssert.EndsWith(pv.FormLine(pv.AsFigure()!), "--after tri-left");
+
+        // THE UNION (propuesta 123): a `form … --open` line of a union on the tab — no fleet: every golem of the workspace a candidate; the row says it
+        var union = new Golem { Name = "blue", Host = "localhost", Port = 8081, Script = "union two-triangles tri-left,tri-right --by distance\nform tri-left triangle --center 3,5.5 --side 3 --by distance --open --cue tri-right\ntake two-triangles" };
+        var uv = PendingFormations.Parse(new[] { union, right }).Single(v => v.Name == "tri-left");
+        Assert.IsTrue(uv.Open); Assert.AreEqual("two-triangles", uv.UnionName); Assert.IsFalse(uv.Resolved);
+        Assert.AreEqual("blue,cyan", uv.Crew, "every golem of the workspace is a candidate");
+        StringAssert.Contains(uv.RoundText, "open · union two-triangles");
+        StringAssert.Contains(uv.FormLine(uv.AsFigure()!), " --by distance --open --cue tri-right");
+        var counted = new Golem { Name = "blue", Host = "localhost", Port = 8081, Script = "union duo a,b --by distance\nform a square --center 3,5.5 --side 2 --by distance --open --places 2\ntake duo" };
+        var cv = PendingFormations.Parse(new[] { counted }).Single();
+        Assert.AreEqual(2, cv.OpenPlaces, "told for two"); Assert.AreEqual(4, cv.Spots.Count, "the square's corners are drawn whole; the law shares the first two");
+        StringAssert.Contains(cv.FormLine(cv.AsFigure()!), "--open --places 2");
+        Assert.IsFalse(uv.FormLine(uv.AsFigure()!).Contains("--fleet"), "open: no fleet of its own");
+        Assert.AreEqual("two-triangles", PendingFormations.UnionsOf(union.Script)["tri-right"]);
 
         // a line without a centre or a size is no formation
         var bad = new Golem { Name = "x", Host = "localhost", Port = 8090, Script = "form nope square --fleet a,b" };

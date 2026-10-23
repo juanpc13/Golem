@@ -110,12 +110,31 @@ public static class Readings
                           told.Figure.Measure.InMeters 'length', told.Figure.InnerMeters 'inner', told.Figure.Arms 'arms', told.Figure.Turn.InDegrees 'degrees', told.Policy 'policy',
                           told.Fleet.Roster 'crew', told.PlaceCount 'places', told.PlacedCount 'placed', told.AlignedCount 'aligned', told.Stranded 'stranded', told.StrandedWhy 'strandedWhy', told.Queued 'queued', told.Round 'round', told.PlaceIndex 'mine', told.HasRoute 'routed',
                           told.CueTo 'cueTo', told.OnCue 'onCue', told.IsCued 'cued', told.Finishing 'finishing', told.FinishedCount 'finished', told.IsFinished 'done', told.CueGiven 'cueGiven',
-                          told.After 'after', told.AskTo 'askTo', told.EverySeconds 'every', told.IsAsker 'asks', told.Asked 'asked', told.NotYet 'notYet';
+                          told.After 'after', told.EverySeconds 'every', told.IsAsker 'asks', told.Asked 'asked', told.NotYet 'notYet',
+                          told.IsOpen 'open', told.UnionName 'union', told.IsResolved 'resolved', told.IsMember 'member', told.OpenPlaces 'openPlaces';
                     foreach (holders in told.Holders()) {
                         print holders.Name 'who', holders.Index 'place', holders.X 'x', holders.Y 'y', holders.Orbit 'ring';
                     }
                     foreach (spots in told.Figure.Places(told.Fleet.Count)) {
                         print spots.X 'x', spots.Y 'y';
+                    }
+                }
+            }
+        ")
+        .PerformQuery();
+
+    /// <summary>THE PROGRAMMES (propuesta 123): each one's formations, candidates, policy, who spoke, whether resolved — and the table: who dances where.</summary>
+    public static string Unions(ActorV2 actor) =>
+        actor.Using(@"
+            {
+                print g.Choreography.Unions().Count 'count';
+                foreach (shows in g.Choreography.Unions()) {
+                    print shows.Name 'called', shows.Stamp 'nonce', shows.Bill 'formations', shows.Candidates.Roster 'candidates', shows.Policy 'policy',
+                          shows.StoodCount 'stood', shows.IsKnown 'known', shows.IsComplete 'complete', shows.IsResolved 'resolved', shows.CannotResolve 'stuck', shows.Why 'why',
+                          shows.IsMember 'member', shows.MineName 'mine', shows.LeftOutNames 'leftOut', shows.Played 'games',
+                          shows.Link 'link', shows.EverySeconds 'every', shows.Beat 'beat', shows.IsDone 'done', shows.IsStranded 'stranded', shows.StrandedWhy 'strandedWhy';
+                    foreach (shares in shows.Shares()) {
+                        print shares.Who 'who', shares.Formation 'in', shares.Place 'place';
                     }
                 }
             }

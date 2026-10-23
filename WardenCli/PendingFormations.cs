@@ -16,7 +16,64 @@ public static class PendingFormations
 {
     private static readonly Regex FormLine = new(@"^\s*form\s+(?<name>[A-Za-z_][A-Za-z0-9_-]*)\s+(?<figure>square|pentagon|triangle|circle|propeller)\b(?<opts>.*)$",
                                                  RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex Option = new(@"--(?<key>[a-z-]+)\s+(?<value>\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex Option = new(@"--(?<key>[a-z-]+)\s+(?<value>(?!--)\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);   // a flag (--open, --on-cue) takes no value: the next option is not its value
+    private static readonly Regex UnionLine = new(@"^\s*union\s+(?<name>[A-Za-z_][A-Za-z0-9_-]*)\s+(?<bill>[A-Za-z_][A-Za-z0-9_,-]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>THE PROGRAMMES ON A TAB (propuesta 123): `union <name> <f1,f2,…>` lines — which formation belongs to which union.</summary>
+    public static IReadOnlyDictionary<string, string> UnionsOf(string script)
+    {
+        var bill = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var raw in (script ?? "").Split('\n'))
+        {
+            string line = raw.TrimEnd('\r');
+            var m = UnionLine.Match(line);
+            if (m.Success) { foreach (var f in m.Groups["bill"].Value.ToLowerInvariant().Split(',', StringSplitOptions.RemoveEmptyEntries)) bill[f] = m.Groups["name"].Value.ToLowerInvariant(); continue; }
+            var p = ProgramLine.Match(line);
+            if (p.Success) foreach (var f in BillOf(line)) bill[f] = p.Groups["name"].Value.ToLowerInvariant();   // propuesta 124
+        }
+        return bill;
+    }
+
+    private static readonly Regex ByOption = new(@"--by\s+(?<by>\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FleetOption = new(@"--fleet\s+(?<fleet>[^\s-][^\s]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex LinkOption = new(@"--link\s+(?<link>\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ProgramLine = new(@"^\s*program\s+(?<name>[A-Za-z_][A-Za-z0-9_-]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);   // propuesta 124: the whole union in one line
+    private static readonly Regex FormClause = new(@"--form\s+(?<formation>[A-Za-z_][A-Za-z0-9_-]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>The formations a `program` line names (its --form clauses), in order, lower case.</summary>
+    public static IReadOnlyList<string> BillOf(string programLine) => FormClause.Matches(programLine ?? "").Select(m => m.Groups["formation"].Value.ToLowerInvariant()).ToList();
+
+    /// <summary>THE UNIONS TO SEND (22-oct-2026): every `union <name> <bill> [--fleet a,b] [--by p]` line on the tabs and not sent, one view per name
+    /// (the first tab that names it), with the tabs it is on — listed in the unions tab like a pending formation; nothing is in any golem yet.</summary>
+    public static IReadOnlyList<UnionView> Unions(IEnumerable<Golem> golems)
+    {
+        var views = new List<UnionView>();
+        var onTabs = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var all = golems.ToList();
+        string everybody = string.Join(",", all.Select(g => g.Name).OrderBy(n => n, StringComparer.Ordinal));
+        foreach (var golem in all)
+            foreach (var raw in (golem.Script ?? "").Split('\n'))
+            {
+                var line = raw.TrimEnd('\r');
+                var m = UnionLine.Match(line);
+                var program = m.Success ? null : ProgramLine.Match(line);
+                if (!m.Success && !(program?.Success ?? false)) continue;
+                string name = (m.Success ? m.Groups["name"].Value : program!.Groups["name"].Value).ToLowerInvariant();
+                var named = m.Success ? m.Groups["bill"].Value.ToLowerInvariant().Split(',', StringSplitOptions.RemoveEmptyEntries) : BillOf(line).ToArray();
+                if (!onTabs.TryGetValue(name, out var tabs)) onTabs[name] = tabs = new List<string>();
+                if (!tabs.Contains(golem.Name)) tabs.Add(golem.Name);
+                if (views.Any(v => v.Name == name)) continue;
+                var by = ByOption.Match(line);
+                var fleet = FleetOption.Match(line);
+                var link = LinkOption.Match(line);
+                views.Add(new UnionView(name, "", named,
+                                        fleet.Success ? fleet.Groups["fleet"].Value.ToLowerInvariant() : everybody,
+                                        by.Success ? by.Groups["by"].Value.ToLowerInvariant() : "distance",
+                                        0, false, false, false, false, "", false, "", "", "", Array.Empty<ShareView>(),
+                                        link.Success ? link.Groups["link"].Value.ToLowerInvariant() : "cue") { IsPending = true });
+            }
+        return views.Select(v => v with { PendingOn = string.Join(", ", onTabs[v.Name]) }).ToList();
+    }
 
     /// <summary>Every formation told on the golems' tabs and not sent, one view per name (the first tab that names it), with the tabs it is on.</summary>
     public static IReadOnlyList<FormationView> Parse(IEnumerable<Golem> golems)
@@ -27,6 +84,7 @@ public static class PendingFormations
         var onTabs = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var golem in all)
         {
+            var unions = UnionsOf(golem.Script);
             foreach (var raw in (golem.Script ?? "").Split('\n'))
             {
                 var m = FormLine.Match(raw.TrimEnd('\r'));
@@ -35,7 +93,7 @@ public static class PendingFormations
                 if (!onTabs.TryGetValue(name, out var tabs)) onTabs[name] = tabs = new List<string>();
                 if (!tabs.Contains(golem.Name)) tabs.Add(golem.Name);
                 if (views.Any(v => v.Name == name)) continue;
-                var view = FromLine(name, m.Groups["figure"].Value.ToLowerInvariant(), m.Groups["opts"].Value, golem.Name, everybody);
+                var view = FromLine(name, m.Groups["figure"].Value.ToLowerInvariant(), m.Groups["opts"].Value, golem.Name, everybody, unions.TryGetValue(name, out var show) ? show : "");
                 if (view != null) views.Add(view);
             }
         }
@@ -54,11 +112,12 @@ public static class PendingFormations
 
     /// <summary>The view of one `form` line: figure, centre, measure, orientation, fleet and policy as the line says; the places by the
     /// console's geometry; the holders by rank. Null when the line lacks what a figure needs.</summary>
-    public static FormationView? FromLine(string name, string figure, string options, string teller, IReadOnlyList<string> everybody)
+    public static FormationView? FromLine(string name, string figure, string options, string teller, IReadOnlyList<string> everybody, string union = "")
     {
         var opts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (Match o in Option.Matches(options)) opts[o.Groups["key"].Value] = o.Groups["value"].Value;
         bool onCue = Regex.IsMatch(options, @"(^|\s)--on-cue(\s|$)", RegexOptions.IgnoreCase);   // a flag without a value (propuesta 117)
+        bool open = Regex.IsMatch(options, @"(^|\s)--open(\s|$)", RegexOptions.IgnoreCase);       // a flag: one of a union, the golems choose (propuesta 123)
         double? Num(string key) => opts.TryGetValue(key, out var v) && double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
         List<string> Names(string key) => opts.TryGetValue(key, out var v) ? v.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList() : new List<string>();
         if (!opts.TryGetValue("center", out var centre)) return null;
@@ -76,6 +135,8 @@ public static class PendingFormations
         outer.Sort(StringComparer.Ordinal);
         var crew = outer.ToList();
         int places = crew.Count;
+        int openPlaces = open && Num("places") is { } told && told >= 1 ? (int)told : 0;   // an open formation told for how many (22-oct-2026)
+        if (openPlaces > 0) places = openPlaces;
         if (places == 0) return null;
         Figure shape;
         try
@@ -94,7 +155,8 @@ public static class PendingFormations
                                  spots.Count, 0, 0, 0, -1, holders, spots,
                                  inner: shape is Propeller p ? p.Hub : 0, arms: shape is Propeller q ? q.Blades : 0,
                                  cueTo: opts.TryGetValue("cue", out var cue) ? cue.Trim().ToLowerInvariant() : "", onCue: onCue || opts.ContainsKey("after"), cued: !onCue && !opts.ContainsKey("after"),
-                                 after: opts.TryGetValue("after", out var after) ? after.Trim().ToLowerInvariant() : "", askTo: opts.TryGetValue("ask", out var ask) ? ask.Trim().ToLowerInvariant() : "",
+                                 after: opts.TryGetValue("after", out var after) ? after.Trim().ToLowerInvariant() : "",
+                                 open: open, union: union, resolved: false, member: true, openPlaces: openPlaces,
                                  every: opts.TryGetValue("every", out var every) && double.TryParse(every.TrimEnd('s', 'S'), NumberStyles.Float, CultureInfo.InvariantCulture, out double period) && period > 0 ? period : 0);
     }
 }

@@ -65,18 +65,25 @@ internal sealed class Formation
     private int retakes;                                                // how many times this golem's failed route was opened again this round (propuesta 113)
     // THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026): whom this fleet cues when every member finished; whether this formation starts on a
     // cue and whether the cue came; who said it finished its part (this golem's own word queued until its part is done); the cue given
-    private string cueTo;                                               // the golem the last of this fleet cues when everybody finished; null: nobody
+    private string cueTo;                                               // the FORMATION the last of this fleet cues when everybody finished (propuesta 123: a name of a formation, never a golem's); null: nobody
     private bool onCue;                                                 // born waiting: its take IS the cue (or a member's word, once the cued one spoke)
     private bool cued;                                                  // the cue came, or a member spoke: the formation may be convened
-    // THE PULL (propuesta 118, 20-oct-2026): the formation this one starts after and the golem its asker asks whether that one finished
+    // THE PULL (propuesta 118, 20-oct-2026): the formation this one starts after; its asker asks THAT formation whether it finished (propuesta 123: its first by rank answers)
     private string after;                                               // the formation this one starts after; null: none (a push, or none)
-    private string askTo;                                               // the golem the asker asks
     private Duration every;                                             // how often (propuestas 121, 122): the period the asker's recurrence asks at
     private int asked;                                                  // how many questions the asker sent
     private int notYet;                                                 // how many answers said "not yet"
     private bool finishing;                                             // this golem asked to finish: counted the moment its part is done (the clock asks)
     private readonly HashSet<string> finished = new(StringComparer.Ordinal);   // who said it finished its part
     private bool cueGiven;                                              // this copy gave the cue: the one that counted the fleet's last finish
+    // THE OPEN FORMATION (propuesta 123, 21-oct-2026): one of a union — its fleet is the union's candidates until the union's law picks its members
+    private bool open;                                                  // told --open: the union that names it shares the golems
+    private bool enrolled;                                              // the union resolved: Fleet is its members now
+    private string unionName;                                       // the union that names it; null: none
+    private int openPlaces;                                             // how many golems it takes, told (--places n); 0: its vertices
+    private readonly List<Peer> company = new();                        // the candidates that went elsewhere, where they stood: bodies on the same floor, planned around (berths)
+    private bool inquiryArmed;                                          // the asker's recurrence was armed (the clock's act, ArmInquiry)
+    private Union union;                                                // THE UNION IT FOLLOWS (propuesta 124): its steps are beats of the union, danced with the other formations; null for a loose formation
 
     /// <param name="stamp">the ONCE of the formation (ajuste 71's call id, kept): the host mints it when the warden forms, every copy keeps the same, and
     /// every tell about the formation carries it, so a formation told again under the same name is a new round of words to the peers</param>
@@ -106,7 +113,7 @@ internal sealed class Formation
     /// <c>RockPaperScissors</c> (who stands nearest, and the game between those who want the same place — propuesta 115).</summary>
     internal Policy Policy => policy;
     internal Figure Figure { get; }
-    internal Fleet Fleet { get; }
+    internal Fleet Fleet { get; private set; }
     /// <summary>Dissolved by the warden (propuesta 104): it stays in the journal's history and in no list.</summary>
     internal bool Dissolved { get; private set; }
     /// <summary>How many members said where they stood — this golem among them once it convened.</summary>
@@ -121,20 +128,23 @@ internal sealed class Formation
     // dicen 'continúas tú' y éste le avisa a su equipo"; then: "dejarle a red la responsabilidad de terminar la formación, de notificarle a su grupo
     // que se terminó"; then, 19-oct evening: "volvamos a que el último en salir de la coreografía sea el que diga realmente a yellow") ----
 
-    /// <summary>WHOM THIS FLEET CUES when its dance is over (propuesta 117): the warden's <c>--cue cyan</c> — <c>formation.Cues(@cueTo);</c>
-    /// right after the <c>Form</c>. A golem's name and nothing more: this fleet knows nothing of the formation that golem is in. Refused for a member
-    /// of this very fleet, and once the formation finished.</summary>
-    internal void Cues(string golemName)
+    /// <summary>WHICH FORMATION THIS FLEET CUES when its dance is over (propuesta 117; since propuesta 123, 21-oct-2026, A FORMATION'S NAME, never a
+    /// golem's — Juan: "el último le tuvo que decir a los 3… cómo solucionar el problema sin coordinador": the cue named one golem, who relayed it to
+    /// its team; now every member of the formation named takes the cue by itself and the round completes with no relay): the warden's
+    /// <c>--cue tri-right</c> — <c>formation.Cues(@cueTo);</c> right after the <c>Form</c>. A name and nothing more: this fleet knows nothing of that
+    /// formation's figure or fleet. Refused for its own name, and once the cue was given.</summary>
+    internal void Cues(string formationName)
     {
-        if (golemName == null) throw new GolemDomainException("Formation.Cues: 'golemName' was not given");
-        string who = golemName.Trim().ToLowerInvariant();
-        if (who == "") throw new GolemDomainException($"{Name} cues a golem by its name");
-        if (Fleet.Names.Contains(who)) throw new GolemDomainException($"{Name} cannot cue '{who}': it is of this very fleet");
+        if (formationName == null) throw new GolemDomainException("Formation.Cues: 'formationName' was not given");
+        string called = formationName.Trim().ToLowerInvariant();
+        if (called == "") throw new GolemDomainException($"{Name} cues a formation by its name");
+        if (called == Name) throw new GolemDomainException($"{Name} cannot cue itself");
+        if (open) throw new GolemDomainException($"{Name} is open: it follows the beats of its union {unionName} — a cue is for a loose formation");   // propuesta 124
         if (cueGiven) throw new GolemDomainException($"{Name} already gave its cue");
-        cueTo = who;
+        cueTo = called;
     }
 
-    /// <summary>The golem this fleet cues when it finished; "" when nobody.</summary>
+    /// <summary>The formation this fleet cues when it finished; "" when none.</summary>
     internal string CueTo => cueTo ?? "";
 
     /// <summary>THIS FORMATION STARTS ON A CUE (propuesta 117): the warden's <c>--on-cue</c> — <c>formation.StartsOnCue();</c> right after the
@@ -144,6 +154,7 @@ internal sealed class Formation
     internal void StartsOnCue()
     {
         if (me != null) throw new GolemDomainException($"{Name} was already taken: it starts on cue no more");
+        if (open) throw new GolemDomainException($"{Name} is open: it is taken with its union {unionName} — on cue is for a loose formation");   // propuesta 124
         onCue = true;
     }
 
@@ -151,42 +162,39 @@ internal sealed class Formation
     internal const double DefaultEverySeconds = 5.0;
 
     /// <summary>THIS FORMATION STARTS AFTER ANOTHER, BY ASKING (propuesta 118, 20-oct-2026; Juan: "quiero ver que yellow esté pendiente de consultarle
-    /// a alguno si ya terminó… por ask me suena bien"): the warden's <c>--after tri-left --ask red [--every 5s]</c> — <c>period = Seconds(@everySeconds);
-    /// formation.Follows(@after, @askTo, period);</c> right after the <c>Form</c>. Born waiting like one on cue (a take refused, the steps queued), and
+    /// a alguno si ya terminó… por ask me suena bien"): the warden's <c>--after tri-left [--every 5s]</c> — <c>period = Seconds(@everySeconds);
+    /// formation.Follows(@after, period);</c> right after the <c>Form</c>. Born waiting like one on cue (a take refused, the steps queued), and
     /// its ASKER — the first of the fleet's order (<see cref="IsAsker"/>) — COMMITS ITSELF (propuesta 122, 21-oct-2026; paper 0B: "a Puppet can claim
-    /// future attention", and the engine's own <c>remember</c> since the 3.0) to ask the golem named whether that formation finished, every so often,
+    /// future attention", and the engine's own <c>remember</c> since the 3.0) to ask THAT FORMATION whether it finished (propuesta 123: no golem is
+    /// named — the first by rank of the formation asked answers, <see cref="Choreographies.Answers"/>), every so often,
     /// until the answer is yes: the recurrence is ARMED IN THE SAME ACT by the host's script — <c>if (formation.IsAsker) { remember (@firstAt,
     /// @everyTicks) { asking.Ask(); … } while (g.Choreography.StillAsks(@formationName, @stamp)); }</c> — and the substrate keeps it: every activation
     /// is a command of the actor's own (<see cref="Ask"/>, the act <c>echo-ask</c> tells <c>DidYouFinish</c> on), the <c>while</c> reads
     /// <see cref="StillAsks"/> at every knock and closes it by itself once the answer came (<see cref="TakeCue"/>), the formation was taken or
     /// dissolved. "Not yet" is counted (<see cref="HeardNotYet"/>) and the recurrence goes on. The domain keeps WHO asks, HOW OFTEN and WHETHER IT
     /// STILL ASKS; the engine keeps the appointments (rebuilt from the journal on replay). The other members arm nothing. Refused once this golem
-    /// convened, for its own name, and for a golem of its own fleet (it would ask itself).</summary>
-    internal void Follows(string formationName, string golemName, Duration every)
+    /// convened, and for its own name.</summary>
+    internal void Follows(string formationName, Duration every)
     {
         if (formationName == null) throw new GolemDomainException("Formation.Follows: 'formationName' was not given");
-        if (golemName == null) throw new GolemDomainException("Formation.Follows: 'golemName' was not given");
         if (every == null) throw new GolemDomainException("Formation.Follows: 'every' was not given");
         if (every.IsZero) throw new GolemDomainException($"{Name} asks every so often: zero is no period");
         string called = formationName.Trim().ToLowerInvariant();
-        string who = golemName.Trim().ToLowerInvariant();
-        if (called == "" || who == "") throw new GolemDomainException($"{Name} starts after a formation by its name, asking a golem by its name");
+        if (called == "") throw new GolemDomainException($"{Name} starts after a formation by its name");
         if (called == Name) throw new GolemDomainException($"{Name} cannot start after itself");
-        if (Fleet.Names.Contains(who)) throw new GolemDomainException($"{Name} cannot ask '{who}': it is of this very fleet");
         if (me != null) throw new GolemDomainException($"{Name} was already taken: it starts after nothing now");
+        if (open) throw new GolemDomainException($"{Name} is open: it is taken with its union {unionName} — a pull is for a loose formation");   // propuesta 124
         after = called;
-        askTo = who;
         this.every = every;
         onCue = true;
     }
 
     /// <summary>The same, asking every 5 s (<see cref="DefaultEverySeconds"/>).</summary>
-    internal void Follows(string formationName, string golemName) => Follows(formationName, golemName, new Seconds(DefaultEverySeconds));
+    internal void Follows(string formationName) => Follows(formationName, new Seconds(DefaultEverySeconds));
 
-    /// <summary>The formation this one starts after ("" none), the golem asked ("" none), who asks (the first by rank), how often (0 when it
-    /// starts after nothing), how many times, how many "not yet".</summary>
+    /// <summary>The formation this one starts after ("" none) — the one ASKED whether it finished: its first by rank answers (propuesta 123) —, who
+    /// asks here (the first by rank), how often (0 when it starts after nothing), how many times, how many "not yet".</summary>
     internal string After => after ?? "";
-    internal string AskTo => askTo ?? "";
     internal string Asker => Fleet.Names[0];
     internal double EverySeconds => every?.InSeconds ?? 0.0;
     internal int Asked => asked;
@@ -195,7 +203,108 @@ internal sealed class Formation
     internal bool IsAsker => golem.Name != null && golem.Name == Asker;
     /// <summary>Whether THIS golem may ask: it is the asker of a formation that starts after another, not cued yet, not taken, not dissolved —
     /// what an activation of the recurrence needs true.</summary>
-    internal bool MayAsk => after != null && !Dissolved && !cued && me == null && IsAsker;
+    internal bool MayAsk => after != null && !Dissolved && !cued && me == null && IsAsker && (!open || enrolled);
+    /// <summary>THE RECURRENCE TO ARM (propuesta 123): this golem is the asker of a formation that starts after another, not cued, not taken — and, open,
+    /// enrolled already (its asker is the first of its MEMBERS, known only once the union resolved) — and the recurrence is not armed yet: the
+    /// clock's question (<c>ArmIfAsker</c>), answered by writing <see cref="ArmInquiry"/> with the engine's <c>remember</c> in the same act.</summary>
+    internal bool InquiryDue => MayAsk && !inquiryArmed;
+    /// <summary>The asker's recurrence ARMED (propuesta 123): the act the clock writes once, with the <c>remember</c> beside it. Refused when none is due.</summary>
+    internal void ArmInquiry()
+    {
+        if (!InquiryDue) throw new GolemDomainException($"{Name}: no recurrence to arm here — {(inquiryArmed ? "armed already" : !IsAsker ? $"{Asker} asks, not {golem.Name}" : "nothing to ask")}");
+        inquiryArmed = true;
+    }
+    internal bool InquiryArmed => inquiryArmed;
+
+    // ---- THE OPEN FORMATION (propuesta 123, 21-oct-2026; Juan: "sin que uno elija a los golems como tal… ellos deciden dónde estar") ----
+
+    /// <summary>OPENED (propuesta 123): the warden's <c>--open</c> — <c>g.Choreography.Open(formation)</c>, the module's act right after the Form: the
+    /// formation belongs to the union that names it, its fleet is the union's CANDIDATES until the union's law picks its MEMBERS
+    /// (<see cref="Enrol"/>). A polygon only (its vertices are its places), shared by distance or rps (by rank nobody chooses); refused once taken.</summary>
+    internal void Opens(string unionName, Fleet candidates) => Opens(unionName, candidates, 0);
+
+    /// <summary>The same, FOR HOW MANY (22-oct-2026; Juan: "uno puede decir cuántos van destinados para cada una de las formaciones"): the places the
+    /// union's law shares out on this figure — its vertices, or, for more, the corners first and the rest on the sides (ajuste 100); with a count
+    /// a circle opens too. Zero: the vertices (a polygon only).</summary>
+    internal void Opens(string unionName, Fleet candidates, int places)
+    {
+        if (unionName == null) throw new GolemDomainException("Formation.Opens: 'unionName' was not given");
+        if (candidates == null) throw new GolemDomainException("Formation.Opens: 'candidates' was not given");
+        if (places < 0) throw new GolemDomainException($"{Name} opens for a number of golems above zero, or its vertices (zero)");
+        if (me != null) throw new GolemDomainException($"{Name} was already taken: it opens no more");
+        if (enrolled) throw new GolemDomainException($"{Name} was enrolled already");
+        if (policy == Policy.Rank) throw new GolemDomainException($"{Name} cannot open by rank: an open formation shares its places by distance or rps — by rank nobody chooses");
+        if (places == 0 && Figure is not Polygon) throw new GolemDomainException($"{Name} cannot open: an open formation is a polygon — its vertices are its places; a {Figure.Name} opens for a number of golems (--places n)");
+        if (cueTo != null || onCue || after != null) throw new GolemDomainException($"{Name} cannot open: an open formation follows the beats of its union — no --cue, --on-cue or --after of its own (propuesta 124)");
+        open = true;
+        openPlaces = places;
+        this.unionName = unionName.Trim().ToLowerInvariant();
+        Fleet = candidates;
+        indices.Clear();
+    }
+
+    /// <summary>OPENED INTO ITS UNION (propuesta 124): the same, with the union itself — its steps are the union's beats, danced together with the
+    /// other formations of it (<see cref="Union.Step"/>, <see cref="Union.LetGoIfAligned"/>).</summary>
+    internal void Opens(Union union, int places)
+    {
+        if (union == null) throw new GolemDomainException("Formation.Opens: 'union' was not given");
+        Opens(union.Name, union.Candidates, places);
+        this.union = union;
+    }
+
+    internal bool IsOpen => open;
+    /// <summary>The union that names it; "" when none.</summary>
+    internal string UnionName => unionName ?? "";
+    /// <summary>The union resolved and this formation got its members.</summary>
+    internal bool IsResolved => enrolled;
+    /// <summary>Whether THIS golem dances in it: of its fleet — and, open, enrolled: before the union resolves everybody is a candidate, nobody a member.</summary>
+    internal bool IsMember => golem.Name != null && Fleet.Has(golem) && (!open || enrolled);
+    /// <summary>How many places the figure lays out: as many as the fleet has bodies — or, open and not resolved yet, its VERTICES (the places the
+    /// union's law shares).</summary>
+    internal int Capacity => open && !enrolled ? (openPlaces > 0 ? openPlaces : ((Polygon)Figure).Vertices().Count) : Fleet.Count;
+    /// <summary>How many golems an open formation was told to take (0: its vertices).</summary>
+    internal int OpenPlaces => openPlaces;
+
+    /// <summary>ENROLLED (propuesta 123): the union resolved and these are the MEMBERS — the union said who, the formation says where, as it
+    /// always did: its own policy over its members' words. A formation that dances at once takes the union's words as its round (every copy has the
+    /// same six) and opens this golem's route; one that WAITS (a cue, a pull) keeps only its members and convenes afresh when it starts. The other
+    /// candidates are company (berths) on the same floor. A golem that is no member keeps nothing of it: its steps queued are dropped.</summary>
+    internal void Enrol(Fleet members, IReadOnlyDictionary<string, (Position At, string Nonce)> words) => Enrol(members, words, null);
+
+    /// <summary>The same, with WHERE THIS GOLEM STOOD AS IT KNOWS IT (22-oct-2026, night; lab: cyan woke facing 2.60 and its take asked `turnLeft 1.44`
+    /// toward a heading of 1.44 — the route had opened from the WORD, a position with no heading, so it believed the body faced 0; from that turn on
+    /// its belief and the truth parted by 2.6 rad, it said "placed" on a vertex its body never reached and crossed the others' ways): the route opens
+    /// from the pose the golem knows (`g.Destination`, ajuste 67), heading included; the word, to the millimetre, stays what the law shares.</summary>
+    internal void Enrol(Fleet members, IReadOnlyDictionary<string, (Position At, string Nonce)> words, Position from)
+    {
+        if (members == null) throw new GolemDomainException("Formation.Enrol: 'members' was not given");
+        if (words == null) throw new GolemDomainException("Formation.Enrol: 'words' was not given");
+        if (!open) throw new GolemDomainException($"{Name} is not open: its fleet was told");
+        if (enrolled) throw new GolemDomainException($"{Name} was enrolled already");
+        foreach (var name in members.Names) if (!words.ContainsKey(name)) throw new GolemDomainException($"{Name}: no word of {name}");
+        Fleet = members;
+        enrolled = true;
+        indices.Clear();
+        company.Clear();
+        foreach (var (who, word) in words) if (!members.Names.Contains(who)) company.Add(new Peer(who, word.At));
+        if (!Fleet.Has(golem))
+        {
+            if (union == null) { steps.Clear(); return; }    // not mine, loose: nothing of it waits here
+            // not mine, of a union (propuesta 124): this copy keeps its score and follows it — the members' words, their places by the law, the movers
+            // of the take — so the beats step it here too and the start of every beat waits for its movers as well
+            foreach (var name in Fleet.Names) { stood[name] = Said(words[name].At); nonces[name] = words[name].Nonce ?? ""; }
+            if (byDistance) Retable();
+            movers = Fleet.Names.Where(n => !StandsOnItsPlace(n)).ToHashSet(StringComparer.Ordinal);
+            foreach (var name in Fleet.Names) if (StandsOnItsPlace(name)) placed.Add(name);   // standing on its place already: placed, no word to wait for
+            return;
+        }
+        if (onCue) return;                                    // it waits for its cue or its answer: its members convene afresh then
+        foreach (var name in Fleet.Names) { stood[name] = Said(words[name].At); nonces[name] = words[name].Nonce ?? ""; }
+        me = Fleet.Member(golem);
+        convenedFrom = from ?? stood[me.Name];   // the pose the golem knows, with its heading; the word alone when none was given (the tests' shorthand)
+        if (byDistance) Retable();
+        if (IsComplete) Open();
+    }
     /// <summary>Whether the asker's recurrence STILL ASKS (propuesta 122): what the <c>while</c> of the <c>remember</c> armed in the Follows act
     /// reads at every knock — true until the answer came (the cue), the formation was taken or dissolved. The same as <see cref="MayAsk"/>, named
     /// for what the engine reads.</summary>
@@ -260,6 +369,10 @@ internal sealed class Formation
         return route;
     }
 
+    /// <summary>THE FINISH IMPLIED BY THE SCORE (propuesta 124): a formation of a programmed union finishes where its part of the score ends — no
+    /// <c>finish</c> line: this golem's word is due once its part is done (<see cref="FinishDue"/>, the clock writes it), a non-member's never.</summary>
+    internal void FinishesAtTheEnd() => finishing = true;
+
     /// <summary>This golem's part is DONE: its route to its place complete, no step queued, standing on its place.</summary>
     internal bool IsDone => me != null && route != null && !route.IsPending() && !route.EndedShort && steps.Count == 0 && placed.Contains(me.Name);
     /// <summary>This golem asked to finish and its part is not done yet (or not counted yet): the word waits for the last step.</summary>
@@ -312,6 +425,12 @@ internal sealed class Formation
     internal int PlacedCount => placed.Count;
     /// <summary>Whether this golem has a route in the formation yet — a word heard before it has one is only kept.</summary>
     internal bool HasRoute => route != null;
+    /// <summary>Every member stands on its place, this round — what a beat of the union waits for (propuesta 124).</summary>
+    internal bool AllPlaced => placed.SetEquals(Fleet.Names);
+    /// <summary>Every mover of the round underway is lined up — the start of a beat of the union waits for it in every formation (propuesta 124).</summary>
+    internal bool MoversAligned => movers.All(AlignedIn(Round).Contains);
+    /// <summary>The union this formation follows; null for a loose one.</summary>
+    internal Union Union => union;
     /// <summary>How many members said they are lined up for the round underway (propuesta 106).</summary>
     internal int AlignedCount => AlignedIn(Round).Count;
     private HashSet<string> AlignedIn(int round) => aligned.TryGetValue(round, out var set) ? set : aligned[round] = new HashSet<string>(StringComparer.Ordinal);
@@ -324,15 +443,15 @@ internal sealed class Formation
     /// <summary>How many steps wait in the queue.</summary>
     internal int Queued => steps.Count;
     /// <summary>Whether the next step may open now: this golem has its route, EVERY member said it stands on its place, and a step is queued.</summary>
-    internal bool CanStep => route != null && steps.Count > 0 && placed.SetEquals(Fleet.Names);
+    internal bool CanStep => union != null ? union.CanStep : route != null && steps.Count > 0 && placed.SetEquals(Fleet.Names);
     /// <summary>How many places the figure has for this fleet — more than the fleet when vertices stay free (ajuste 86).</summary>
-    internal int PlaceCount => Figure.Places(Fleet.Count).Count;
+    internal int PlaceCount => Figure.Places(Capacity).Count;
 
     /// <summary>WHO HOLDS WHAT, as this copy knows it (propuesta 104: the formations read): by rank every member from birth; by distance the
     /// members that spoke, by the table; after every step, where the step took them. In the fleet's order.</summary>
     internal IReadOnlyList<Holder> Holders()
     {
-        var places = Figure.Places(Fleet.Count);
+        var places = Figure.Places(Capacity);
         var holders = new List<Holder>();
         foreach (var name in Fleet.Names)
             if (indices.TryGetValue(name, out int index)) holders.Add(new Holder(name, index, places[index], Figure.OrbitOf(index, places.Count)));
@@ -363,7 +482,7 @@ internal sealed class Formation
     {
         if (member == null) throw new GolemDomainException("Formation.PlaceOf: 'member' was not given");
         if (!Table().TryGetValue(member.Name, out int index)) throw new GolemDomainException($"'{member.Name}' has not said where it stands in {Name}");
-        return Figure.Places(Fleet.Count)[index];
+        return Figure.Places(Capacity)[index];
     }
 
     /// <summary>This golem JOINS BY RANK (propuesta 59, paso 1): the place of its rank among as many places as the fleet has bodies, and the
@@ -389,6 +508,7 @@ internal sealed class Formation
         if (from == null) throw new GolemDomainException("Formation.Convene: 'from' was not given");
         if (member == null) throw new GolemDomainException("Formation.Convene: 'member' was not given");
         if (Dissolved) throw new GolemDomainException($"{Name} was dissolved");
+        if (open && !enrolled) throw new GolemDomainException($"{Name} is open: its union {unionName} convenes — take {unionName}");   // propuesta 123
         if (onCue && !cued) throw new GolemDomainException($"{Name} starts on cue: it waits for the word of the fleet before it");   // propuesta 117: its take is the cue
         MustBeFree(member);
         if (!byDistance) golem.CheckPlace(Figure.Place(member), $"place {member.Rank + 1} of {member.Of} of the {Figure.Name}");   // known at once by rank: refused now, not after the fleet waited
@@ -403,7 +523,7 @@ internal sealed class Formation
     // berths, so the way goes around them (ajuste 80).
     private Route Open()
     {
-        place = Figure.Places(Fleet.Count)[indices[me.Name]];
+        place = Figure.Places(Capacity)[indices[me.Name]];
         // the take moves everybody — except a member that said it STANDS ON ITS PLACE already (a take again after a failure, 13-oct-2026: its route is
         // nothing to walk, so it never lines up, and the others waited for its word for ever): the fleet sets out together once every body that moves
         // faces its place (propuesta 106)
@@ -435,20 +555,21 @@ internal sealed class Formation
     internal const double OnPlaceTolerance = 0.3;
 
     private bool StandsOnItsPlace(string name) =>
-        stood.TryGetValue(name, out var at) && indices.TryGetValue(name, out int index) && at.DistanceTo(Figure.Places(Fleet.Count)[index]) <= OnPlaceTolerance;
+        stood.TryGetValue(name, out var at) && indices.TryGetValue(name, out int index) && at.DistanceTo(Figure.Places(Capacity)[index]) <= OnPlaceTolerance;
 
     /// <summary>The OTHER members as bodies in the way (ajuste 80): where each said it stands and the place it gets — by rank its rank's,
     /// by distance the table's, once it spoke. What the golem plans around when it opens its route to its place.</summary>
     internal IReadOnlyList<Peer> Berths()
     {
         var berths = new List<Peer>();
-        var places = Figure.Places(Fleet.Count);
+        var places = Figure.Places(Capacity);
         foreach (var name in Fleet.Names)
         {
             if (me != null && name == me.Name) continue;
             if (stood.TryGetValue(name, out var at)) berths.Add(new Peer(name, at));
             if (indices.TryGetValue(name, out int index)) berths.Add(new Peer(name, places[index]));
         }
+        berths.AddRange(company);   // the union's other candidates, where they stood (propuesta 123): bodies on the same floor
         return berths;
     }
 
@@ -469,6 +590,7 @@ internal sealed class Formation
         if (me != null && peer.Name == me.Name) throw new GolemDomainException($"'{peer.Name}' is this golem: its own word is its Convene");
         if (!Fleet.Names.Contains(peer.Name)) throw new GolemDomainException($"'{peer.Name}' is not a member of the fleet of {Name}");
         if (Round > 0) return route;
+        if (open && !enrolled) return route;                      // open and not resolved yet: its union convenes, a word about it is nobody's (propuesta 123)
         cued = true;                                              // a member spoke: the cued one took it, the team follows (propuesta 117)
         stood[peer.Name] = Said(at);
         nonces[peer.Name] = nonce ?? "";
@@ -477,7 +599,7 @@ internal sealed class Formation
         if (route == null) return IsComplete ? Open() : null;
         if (!byDistance) return route;                            // by rank the place is the rank's: no word moves it
         if (route.EndedShort) return route;
-        var now = Figure.Places(Fleet.Count)[indices[me.Name]];
+        var now = Figure.Places(Capacity)[indices[me.Name]];
         if (now.DistanceTo(place) < 1e-6) return route;
         place = now;
         yieldedTo = peer.Name;
@@ -490,6 +612,32 @@ internal sealed class Formation
         else placed.Remove(me.Name);              // it leaves the place it had reached
         Take(golem.Destination, Berths(), Where(place));   // from where the body is (13-oct-2026): the place it had reached, or wherever an errand took it since; the same round: the others' line-up words stay counted, so it sets out as soon as its own body is lined up
         yieldedTo = null;
+        return route;
+    }
+
+    /// <summary>TAKEN AGAIN BY THE WARDEN (22-oct-2026, night; Juan: "que un miembro varado no deje al sindicato esperando"): a formation STRANDED for
+    /// this golem — its route ended short twice, or no road fit (propuesta 113) — is taken again on the warden's word, `take <name>` / `take <union>`,
+    /// from where the body really stands: the stranding is forgotten, the retake spent no more, and the route to the same place opens, starting
+    /// together with the round (its line-up word is what the others wait for). Refused by its route the same way: stranded again, said in the read.</summary>
+    internal Route TakeAgain(Pose me)
+    {
+        if (me == null) throw new GolemDomainException("Formation.TakeAgain: 'me' was not given");
+        if (Dissolved) throw new GolemDomainException($"{Name} was dissolved");
+        if (this.me == null || place == null) throw new GolemDomainException($"{Name}: this golem has no place to take again");
+        if (!Stranded) throw new GolemDomainException($"{Name} is not stranded for {this.me.Name}: nothing to take again");
+        Stranded = false;
+        StrandedWhy = "";
+        retakes = 0;
+        try
+        {
+            route = golem.TakePlace(me, place, Figure.Facing(place), Berths(), Where(place));
+            route.StartTogether();
+        }
+        catch (GolemDomainException ex)
+        {
+            Stranded = true;
+            StrandedWhy = $"{this.me.Name} could not reach ({Fmt(place.X)}, {Fmt(place.Y)}) from ({Fmt(me.X)}, {Fmt(me.Y)}): {ex.Message}";
+        }
         return route;
     }
 
@@ -598,6 +746,7 @@ internal sealed class Formation
     {
         if (!Fleet.Names.Contains(member.Name)) throw new GolemDomainException($"'{member.Name}' is not a member of the fleet of {Name}");
         AlignedIn(round).Add(member.Name);
+        if (union != null) return union.LetGoIfAligned();   // THE BEAT'S START (propuesta 124): every mover of every formation of the union is lined up
         if (route != null && route.Waiting && round == Round && movers.All(AlignedIn(Round).Contains)) route.Go();   // THE FLEET'S START: everybody who moves is lined up
         return route;
     }
@@ -610,6 +759,12 @@ internal sealed class Formation
         // placed implies lined up (13-oct-2026): a body standing on its place needs no line-up turn, and its word of being there is at least as
         // strong — so a route waiting for the fleet's start never waits for one that already arrived (a take again with a member already in place)
         AlignedIn(Round).Add(member.Name);
+        if (union != null)
+        {
+            // of a union (propuesta 124): the start and the beat are the union's — the word may be about another formation of it
+            union.LetGoIfAligned();
+            return union.CanStep ? union.Step() : union.Route;
+        }
         if (route != null && route.Waiting && movers.All(AlignedIn(Round).Contains)) route.Go();
         if (route == null) return null;
         return CanStep ? Step() : route;
@@ -624,6 +779,7 @@ internal sealed class Formation
         if (move == null) throw new GolemDomainException("Formation.Queue: 'move' was not given");
         if (string.IsNullOrWhiteSpace(stepId)) throw new GolemDomainException("Formation.Queue: 'stepId' was not given");
         if (Dissolved) throw new GolemDomainException($"{Name} was dissolved");
+        if (open && enrolled && !Fleet.Has(golem) && union == null) throw new GolemDomainException($"{golem.Name} is no member of {Name}: the union {unionName} placed it elsewhere");   // propuesta 123; of a union every copy keeps the whole score (propuesta 124)
         if (!stepIds.Add(stepId)) throw new GolemDomainException($"the step {stepId} is already queued in {Name}");
         // a step AFTER the finish is allowed (19-oct-2026; Juan: "siempre debería permitir moverse"): a finish not counted yet counts when the queue
         // empties, this step included; a finish already counted stays counted — the cue given, the pull answered — and the fleet keeps dancing
@@ -637,13 +793,18 @@ internal sealed class Formation
     /// se posiciona donde tiene que estar" — the step was planned from where the route in place had left the body, so a golem sent elsewhere
     /// in between turned and advanced as if it still stood on its vertex; now it comes back to the figure, to the place the step gives it);
     /// a member of a ring the move leaves alone stays placed. A new round begins. <c>route = formation.Step();</c>. Refused when it cannot step yet.</summary>
-    internal Route Step()
+    internal Route Step() => union != null ? union.Step() : StepAlone();
+
+    /// <summary>The step of THIS formation alone — what <see cref="Step"/> is for a loose formation, and what a beat of the union does to each of its
+    /// formations with a step queued (propuesta 124); in a copy that is no member of it the holders shift and nothing opens (null).</summary>
+    internal Route StepAlone()
     {
-        if (route == null) throw new GolemDomainException($"'{Name}': this golem has no place in the formation yet");
+        if (route == null && union == null) throw new GolemDomainException($"'{Name}': this golem has no place in the formation yet");
         if (steps.Count == 0) throw new GolemDomainException($"'{Name}': no step is queued");
         if (!placed.SetEquals(Fleet.Names)) throw new GolemDomainException($"'{Name}': {placed.Count} of {Fleet.Count} stand on their places — the step waits for everybody");
         var (move, _) = steps.Dequeue();
-        var places = Figure.Places(Fleet.Count);           // the figure's places — more than the fleet when vertices stay free (ajuste 86): the hole moves with everybody
+        if (move.IsRest) return route;                   // THE REST (propuesta 124): this beat the formation stays — placed, nobody moves, the round goes on
+        var places = Figure.Places(Capacity);           // the figure's places — more than the fleet when vertices stay free (ajuste 86): the hole moves with everybody
         var orbits = Figure.Orbits(places.Count);
         var staying = new List<string>();
         foreach (var name in indices.Keys.ToList())
@@ -657,6 +818,7 @@ internal sealed class Formation
         movers = indices.Keys.Where(name => !staying.Contains(name)).ToHashSet(StringComparer.Ordinal);   // whose line-up the start waits for (propuesta 106)
         aligned.Remove(Round);                                // the words of the round left behind
         Round++;
+        if (me == null) return null;                          // a formation of my union I am no member of (propuesta 124): its holders shifted, nothing of mine opens
         if (staying.Contains(me.Name)) return route;          // this golem does not move on this step: its route in place stands
         int next = indices[me.Name];
         place = places[next];
@@ -699,7 +861,7 @@ internal sealed class Formation
     {
         disputes.Clear();
         if (disputesForgotten || !byDistance || me == null || !IsComplete || !indices.TryGetValue(me.Name, out int mine)) return;
-        var places = Figure.Places(Fleet.Count);
+        var places = Figure.Places(Capacity);
         if (policy == Policy.RockPaperScissors)
         {
             // the game's matches this golem played: won or lost, against whom, the throw that decided
@@ -741,7 +903,7 @@ internal sealed class Formation
     private IReadOnlyDictionary<string, int> GameTable()
     {
         matches.Clear();
-        var places = Figure.Places(Fleet.Count);
+        var places = Figure.Places(Capacity);
         var free = Enumerable.Range(0, places.Count).ToList();
         var table = new Dictionary<string, int>();
         var waiting = stood.Keys.OrderBy(n => n, StringComparer.Ordinal).ToList();
@@ -787,7 +949,7 @@ internal sealed class Formation
 
     private IReadOnlyDictionary<string, int> NearestTable()
     {
-        var places = Figure.Places(Fleet.Count);
+        var places = Figure.Places(Capacity);
         var pairs = new List<(double Distance, string Name, int Place)>();
         foreach (var said in stood)
             for (int i = 0; i < places.Count; i++) pairs.Add((said.Value.DistanceTo(places[i]), said.Key, i));

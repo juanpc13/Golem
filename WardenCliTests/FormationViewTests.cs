@@ -69,16 +69,16 @@ public class FormationViewTests
     {
         const string json = @"{""count"":2,""told"":[
           {""called"":""tri-left"",""shape"":""triangle"",""atX"":3.0,""atY"":5.5,""length"":3.0,""degrees"":0.0,""policy"":""Rank"",""crew"":""blue,green,red"",""places"":3,""placed"":3,""queued"":0,""round"":3,""mine"":0,
-           ""cueTo"":""cyan"",""onCue"":false,""cued"":true,""finishing"":false,""finished"":2,""done"":false,""cueGiven"":false,""holders"":[],""spots"":[]},
+           ""cueTo"":""tri-right"",""onCue"":false,""cued"":true,""finishing"":false,""finished"":2,""done"":false,""cueGiven"":false,""holders"":[],""spots"":[]},
           {""called"":""tri-right"",""shape"":""triangle"",""atX"":8.0,""atY"":5.5,""length"":3.0,""degrees"":0.0,""policy"":""Rank"",""crew"":""cyan,orange,yellow"",""places"":3,""placed"":0,""queued"":3,""round"":0,""mine"":-1,
            ""cueTo"":"""",""onCue"":true,""cued"":false,""finishing"":false,""finished"":0,""done"":false,""cueGiven"":false,""holders"":[],""spots"":[]}]}";
         var views = FormationView.Parse(JsonDocument.Parse(json).RootElement);
         var left = views[0];
-        Assert.AreEqual("cyan", left.CueTo);
+        Assert.AreEqual("tri-right", left.CueTo, "the cue names a formation (propuesta 123)");
         Assert.IsFalse(left.OnCue);
-        StringAssert.Contains(left.RoundText, "cue → cyan");
+        StringAssert.Contains(left.RoundText, "cue → tri-right");
         StringAssert.Contains(left.RoundText, "2/3 finished");
-        StringAssert.EndsWith(left.FormLine(left.AsFigure()!), "--by rank --cue cyan");
+        StringAssert.EndsWith(left.FormLine(left.AsFigure()!), "--by rank --cue tri-right");
         var right = views[1];
         Assert.IsTrue(right.OnCue); Assert.IsFalse(right.Cued);
         StringAssert.Contains(right.RoundText, "on cue — waiting");
@@ -88,6 +88,16 @@ public class FormationViewTests
         Assert.IsTrue(plain.Cued, "a formation that does not start on cue is as good as cued");
         Assert.AreEqual("", plain.SequenceText);
         Assert.IsFalse(plain.FormLine(plain.AsFigure()!).Contains("--cue"));
+        // THE OPEN FORMATION (propuesta 123): the read says it is open, of which union, whether resolved and whether the golem that answered is in it
+        const string openJson = @"{""count"":1,""told"":[
+          {""called"":""tri-left"",""shape"":""triangle"",""atX"":3.0,""atY"":5.5,""length"":3.0,""degrees"":0.0,""policy"":""Distance"",""crew"":""blue,green,red"",""places"":3,""placed"":0,""queued"":0,""round"":0,""mine"":-1,
+           ""open"":true,""union"":""two-triangles"",""resolved"":true,""member"":false,""holders"":[],""spots"":[]}]}";
+        var opened = FormationView.Parse(JsonDocument.Parse(openJson).RootElement)[0];
+        Assert.IsTrue(opened.Open); Assert.AreEqual("two-triangles", opened.UnionName); Assert.IsTrue(opened.Resolved); Assert.IsFalse(opened.Member);
+        StringAssert.Contains(opened.RoundText, "open · union two-triangles · not mine");
+        StringAssert.EndsWith(opened.FormLine(opened.AsFigure()!), "--by distance --open");
+        Assert.IsFalse(opened.FormLine(opened.AsFigure()!).Contains("--fleet"));
+        Assert.IsTrue(plain.Member, "a formation with its fleet told: the golem is of it");
     }
 
     [TestMethod]

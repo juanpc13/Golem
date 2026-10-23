@@ -39,7 +39,10 @@ public static class CommandLine
     {
         new CommandHelp("visit", "visit x,y [x,y …]", "an errand through those points, in that order", "visit 2,9.5 9,8"),
         new CommandHelp("cover", "cover x,y x,y [x,y …]", "an errand through those points, in the order the golem finds shortest", "cover 9,1.5 2,9.5 9,9.5"),
-        new CommandHelp("form", "form <name> square|pentagon|triangle --center x,y --side s [--angle a] [--fleet a,b] [--by rank|distance|rps] [--cue <golem>] [--on-cue] [--after <formation> --ask <golem> [--every 5s]]  ·  form <name> circle --center x,y --radius r …  ·  form <name> propeller --center x,y --radius R [--inner-radius hub] [--blades n] …", "a formation of the golem's (propuesta 104): its name, its figure, its centre, its size (a polygon's side, a circle's radius, a propeller's tips — its hub a third of it and three blades unless told; a step turns it one blade, every golem to the next blade at its own distance), its orientation (counter-clockwise, 0 as laid out), its FLEET (left out: this golem and every peer) and the POLICY that shares the places — by rank, the names sorted, the default; by distance, who stands nearest (ajuste 73); by rps, who stands nearest and, when several want the same place, rock, paper, scissors between them (propuesta 115); told again under the same name, it is made again (moved, turned, resized, re-crewed); every golem of the fleet is told the same (--with is refused); with --cue <golem> the last of the fleet to finish tells that golem 'your turn' once every member said finish (propuesta 117); with --on-cue the formation starts on that word — no take: it waits, its steps queued, and dances when one of its members is cued; with --after <formation> --ask <golem> (propuesta 118, the pull) it waits the same way, and its first golem by rank COMMITS ITSELF to ask that golem whether that formation finished — every 5 s, or what --every says (propuesta 122: the engine's own remember, a recurrence armed inside the Follows act that asks while the answer has not come and stops by itself when it does — its cue — or the formation is taken or dissolved); it answers the places it resolved and who holds each", "form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red,green,yellow"),
+        new CommandHelp("form", "form <name> square|pentagon|triangle --center x,y --side s [--angle a] [--fleet a,b] [--by rank|distance|rps] [--cue <formation>] [--on-cue] [--after <formation> [--every 5s]] [--open [--places n]]  ·  form <name> circle --center x,y --radius r …  ·  form <name> propeller --center x,y --radius R [--inner-radius hub] [--blades n] …", "a formation of the golem's (propuesta 104): its name, its figure, its centre, its size (a polygon's side, a circle's radius, a propeller's tips — its hub a third of it and three blades unless told; a step turns it one blade, every golem to the next blade at its own distance), its orientation (counter-clockwise, 0 as laid out), its FLEET (left out: this golem and every peer) and the POLICY that shares the places — by rank, the names sorted, the default; by distance, who stands nearest (ajuste 73); by rps, who stands nearest and, when several want the same place, rock, paper, scissors between them (propuesta 115); told again under the same name, it is made again (moved, turned, resized, re-crewed); every golem of the fleet is told the same (--with is refused); with --cue <formation> the last of the fleet to finish tells that formation 'your turn' once every member said finish (propuesta 117; by the formation's name since propuesta 123: every member of it takes the cue, no golem relays it); with --on-cue the formation starts on that word — no take: it waits, its steps queued, and dances when it is cued; with --after <formation> (propuesta 118, the pull) it waits the same way, and its first golem by rank COMMITS ITSELF to ask that formation whether it finished — its first golem by rank answers — every 5 s, or what --every says (propuesta 122: the engine's own remember, a recurrence armed inside the Follows act that asks while the answer has not come and stops by itself when it does — its cue — or the formation is taken or dissolved); with --open (propuesta 123) the formation is one of a PROGRAMME said before it on the same tab — no --fleet: the union's candidates are its fleet until the union's law picks its members by distance or rps (--by rank cannot open; a polygon's vertices are its places, or --places n says for how many golems — the corners first, the rest on the sides — and a circle opens with a count); it answers the places it resolved and who holds each", "form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red,green,yellow"),
+        new CommandHelp("union", "union <name> <formation,formation,…> [--fleet a,b] [--by distance|rps] [--link cue|ask [--every 5s]]", "THE UNION (propuesta 123): several OPEN formations (each told `form … --open` after it, on every candidate's tab) and the golems shared among them by the law — nobody is told a fleet: the candidates are every golem the union was told to (left out: this golem and every peer); `take <union>` is each one's single word, where it stands; with every word in and every figure told, each copy shares every candidate among every place of every figure — by distance the free place nearest to each, over all the figures at once, a figure full sending the next one to the other; by rps the places wanted by several are played; more candidates than places: the farthest are left out and free; a formation that would get nobody leaves the union unresolved and says why. THE SCORE (propuesta 124): every formation of the union is taken at once and the steps queued in each (`rotate <formation> …`, written on every tab) are its part — the k-th step of every formation is the k-th BEAT, danced together: a beat opens when every formation has every member on its place (one with nothing queued stays), and the movers of the whole union set out together by the LINK — by the cue (the words of line-up across the union, the default) or by asking every so often (to come); the union is done when every member of every formation said finish. An open formation has no --cue, --on-cue or --after of its own", "union two-triangles tri-left,tri-right --by distance --link cue"),
+        new CommandHelp("program", "program <name> [--fleet a,b] [--by distance|rps] [--link cue|ask [--every 5s]] --form <formation> triangle|square|pentagon|circle <cx,cy> side|radius <m> [angle <degrees>] [places <n>] [--form …] [--score <formation>=cw,ccw,-,… …]", "THE PROGRAM (propuesta 124): the whole union in ONE line, the same on every candidate's tab — its formations in order (--form, each with its figure, centre, size, orientation and how many golems it takes; a polygon left without places takes its vertices) and its SCORE (--score: a row per formation, a column per beat — cw, ccw, or - for a rest, that beat the formation stays); the domain makes the union, opens every formation into it, queues every step and implies each formation's finish at the end of its row; the line is this golem's word too, where it stands (no take): with every candidate's word in, the law shares them by distance or rps and every formation sets out at once, beat by beat, agreed by the link; the union is done when everybody finished", "program two-triangles --by distance --link cue --form tri-left triangle 3,5.5 side 3 angle 0 places 3 --form tri-right triangle 8,5.5 side 3 places 3 --score tri-left=cw,cw,cw tri-right=cw,cw,-"),
+        new CommandHelp("unions", "unions", "the unions this golem was told: candidates, formations, who spoke, whether resolved, who dances where, who was left out", "unions"),
         new CommandHelp("take", "take <name>", "the fleet takes that formation: this golem says where it stands, every peer of the fleet is told and says where it stands, and the routes open when everybody spoke — each to the place the policy gives it, ending facing the centre; it spreads by itself (--with is refused)", "take square-2"),
         new CommandHelp("rotate", "rotate <name> clockwise|counterclockwise", "one step of that formation: every body takes the next place in that sense, once everybody stands on its own; steps queue — say it three times for three steps (ajuste 77); it spreads by itself (--with is refused)", "rotate square-2 clockwise"),
         new CommandHelp("dissolve", "dissolve <name>", "the formation leaves every golem of its fleet; a route of it still pending is let go", "dissolve square-2"),
@@ -134,21 +137,22 @@ public static class CommandLine
             case "form":
             {
                 // a formation of the golem's (propuesta 104): its name, its figure, then --center x,y, --side s | --radius r [--inner-radius hub],
-                // --angle degrees, --fleet a,b, --by rank|distance|rps, --cue <golem>, --on-cue
+                // --angle degrees, --fleet a,b, --by rank|distance|rps, --cue <formation>, --on-cue, --after <formation> [--every 5s]
                 var values = new Dictionary<string, string>();
                 var rest = new List<string>();
                 for (int i = 0; i < args.Count; i++)
                 {
                     string a = args[i].ToLowerInvariant();
                     if (a == "--on-cue") { values["on-cue"] = "true"; continue; }   // a flag: the formation starts on cue (propuesta 117)
-                    if (a is "--center" or "--side" or "--radius" or "--inner-radius" or "--angle" or "--fleet" or "--by" or "--blades" or "--cue" or "--after" or "--ask" or "--every")
+                    if (a == "--open") { values["open"] = "true"; continue; }       // a flag: one of a union, its members picked by the law (propuesta 123)
+                    if (a == "--ask") throw new CommandSyntaxException("form: --ask is gone (propuesta 123) — the question names the formation waited for, --after <formation>, and its first golem by rank answers");
+                    if (a is "--center" or "--side" or "--radius" or "--inner-radius" or "--angle" or "--fleet" or "--by" or "--blades" or "--cue" or "--after" or "--every" or "--places")
                     {
-                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"form: {a} needs a value, like {a switch { "--center" => "--center 5.5,5.5", "--side" => "--side 2.0", "--radius" => "--radius 1.5", "--inner-radius" => "--inner-radius 0.8", "--fleet" => "--fleet blue,red", "--by" => "--by rank", "--blades" => "--blades 3", "--cue" => "--cue cyan", "--after" => "--after tri-left", "--ask" => "--ask red", "--every" => "--every 5s", _ => "--angle 45" }}");
+                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"form: {a} needs a value, like {a switch { "--center" => "--center 5.5,5.5", "--side" => "--side 2.0", "--radius" => "--radius 1.5", "--inner-radius" => "--inner-radius 0.8", "--fleet" => "--fleet blue,red", "--by" => "--by rank", "--blades" => "--blades 3", "--cue" => "--cue tri-right", "--after" => "--after tri-left", "--every" => "--every 5s", "--places" => "--places 3", _ => "--angle 45" }}");
                         values[a[2..]] = args[++i];
                         continue;
                     }
-                    if (a == "--places") throw new CommandSyntaxException("form: --places is gone (propuesta 104) — the places are as many as the fleet: --fleet a,b");
-                    if (a.StartsWith("--")) throw new CommandSyntaxException($"form: '{Head(a)}' is no option; the options are --center x,y, --side s | --radius r [--inner-radius hub] [--blades n], --angle degrees, --fleet a,b, --by rank|distance|rps, --cue <golem>, --on-cue");
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"form: '{Head(a)}' is no option; the options are --center x,y, --side s | --radius r [--inner-radius hub] [--blades n], --angle degrees, --fleet a,b, --by rank|distance|rps, --cue <formation>, --on-cue, --after <formation> [--every 5s], --open [--places n]");
                     rest.Add(args[i]);
                 }
                 if (rest.Count != 2 || !Name.IsMatch(rest[0])) throw new CommandSyntaxException("form: expected the formation's name and its figure, like form square-2 square --center 5.5,5.5 --side 2 --fleet blue,red");
@@ -181,32 +185,168 @@ public static class CommandLine
                 if (values.TryGetValue("fleet", out var crew) && !Names.IsMatch(crew)) throw new CommandSyntaxException($"form: --fleet expects names like blue,red; found '{Head(crew)}'");
                 if (values.TryGetValue("cue", out var cue))
                 {
-                    // the golem the last of this fleet to finish cues (propuesta 117): one name
-                    if (!Name.IsMatch(cue) || cue.Contains(',')) throw new CommandSyntaxException($"form: --cue expects one golem's name, like --cue cyan; found '{Head(cue)}'");
+                    // the formation the last of this fleet to finish cues (propuesta 117; its name since propuesta 123): one name, not this one
+                    if (!Name.IsMatch(cue) || cue.Contains(',')) throw new CommandSyntaxException($"form: --cue expects one formation's name, like --cue tri-right; found '{Head(cue)}'");
                     values["cue"] = cue.ToLowerInvariant();
+                    if (values["cue"] == rest[0].ToLowerInvariant()) throw new CommandSyntaxException($"form {rest[0]}: a formation cannot cue itself");
                 }
-                // the pull (propuesta 118): the formation this one starts after and the golem asked, both or neither
-                if (values.ContainsKey("after") != values.ContainsKey("ask")) throw new CommandSyntaxException("form: --after <formation> and --ask <golem> go together — the formation waited for, and the golem asked whether it finished");
+                // the pull (propuesta 118): the formation this one starts after — the one asked (propuesta 123: its first golem by rank answers)
                 if (values.TryGetValue("after", out var after))
                 {
                     if (!Name.IsMatch(after)) throw new CommandSyntaxException($"form: --after expects a formation's name, like --after tri-left; found '{Head(after)}'");
                     values["after"] = after.ToLowerInvariant();
                     if (values["after"] == rest[0].ToLowerInvariant()) throw new CommandSyntaxException($"form {rest[0]}: a formation cannot start after itself");
-                    string ask = values["ask"];
-                    if (!Name.IsMatch(ask) || ask.Contains(',')) throw new CommandSyntaxException($"form: --ask expects one golem's name, like --ask red; found '{Head(ask)}'");
-                    values["ask"] = ask.ToLowerInvariant();
                 }
-                // how often the asker asks (propuesta 121): seconds above zero, with or without an s; only with --after … --ask …
+                // how often the asker asks (propuesta 121): seconds above zero, with or without an s; only with --after …
                 if (values.TryGetValue("every", out var every))
                 {
-                    if (!values.ContainsKey("after")) throw new CommandSyntaxException("form: --every goes with --after <formation> --ask <golem>: how often the golem asks");
+                    if (!values.ContainsKey("after")) throw new CommandSyntaxException("form: --every goes with --after <formation>: how often the golem asks");
                     string seconds = every.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? every[..^1] : every;
                     if (!double.TryParse(seconds, NumberStyles.Float, CultureInfo.InvariantCulture, out double period) || !double.IsFinite(period) || period <= 0)
                         throw new CommandSyntaxException($"form: --every expects seconds above zero, like --every 5s; found '{Head(every)}'");
                     values["every"] = period.ToString(CultureInfo.InvariantCulture);
                 }
+                if (values.ContainsKey("open"))
+                {
+                    // the open formation (propuesta 123): of a union, no fleet of its own, shared by distance or rps, a polygon
+                    if (values.ContainsKey("fleet")) throw new CommandSyntaxException("form: --open takes no --fleet — the union's candidates are its fleet until the union's law picks its members");
+                    if (values.ContainsKey("cue") || values.ContainsKey("on-cue") || values.ContainsKey("after")) throw new CommandSyntaxException("form: --open takes no --cue, --on-cue or --after — an open formation follows the beats of its union (propuesta 124): the link is the union's, --link cue|ask");
+                    if (!values.TryGetValue("by", out var openBy) || openBy == "rank") throw new CommandSyntaxException("form: --open shares its places by distance or rps — write --by distance (or --by rps): by rank nobody chooses");
+                    if (round && !values.ContainsKey("places")) throw new CommandSyntaxException($"form: a {figure} opens for a number of golems — --places n; a polygon alone opens for its vertices");
+                }
+                // how many golems an open formation takes (22-oct-2026): a whole number above zero, only with --open
+                if (values.TryGetValue("places", out var placesText))
+                {
+                    if (!values.ContainsKey("open")) throw new CommandSyntaxException("form: --places goes with --open — how many of the union's candidates this figure takes; a formation with its fleet has as many places as the fleet");
+                    if (!int.TryParse(placesText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int placesCount) || placesCount < 1) throw new CommandSyntaxException($"form: --places expects a whole number above zero, like --places 3; found '{Head(placesText)}'");
+                    values["places"] = placesCount.ToString(CultureInfo.InvariantCulture);
+                }
                 values["figure"] = figure;
                 return new Command(named, with, verb, centre, noOptions, rest[0].ToLowerInvariant(), values);
+            }
+            case "union":
+            {
+                // THE PROGRAMME (propuesta 123): its name, its formations in order, [--fleet a,b] (left out: this golem and every peer), [--by distance|rps]
+                var values = new Dictionary<string, string>();
+                var rest = new List<string>();
+                for (int i = 0; i < args.Count; i++)
+                {
+                    string a = args[i].ToLowerInvariant();
+                    if (a is "--fleet" or "--by" or "--link" or "--every")
+                    {
+                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"union: {a} needs a value, like {a switch { "--fleet" => "--fleet blue,red", "--by" => "--by distance", "--link" => "--link cue", _ => "--every 5s" }}");
+                        values[a[2..]] = args[++i];
+                        continue;
+                    }
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"union: '{Head(a)}' is no option; the options are --fleet a,b, --by distance|rps and --link cue|ask [--every 5s]");
+                    rest.Add(args[i]);
+                }
+                if (rest.Count != 2 || !Name.IsMatch(rest[0]) || !Names.IsMatch(rest[1])) throw new CommandSyntaxException("union: expected its name and its formations in order, like union two-triangles tri-left,tri-right");
+                var bill = rest[1].ToLowerInvariant().Split(',').ToList();
+                if (bill.Distinct().Count() != bill.Count) throw new CommandSyntaxException("union: each formation once");
+                if (bill.Contains(rest[0].ToLowerInvariant())) throw new CommandSyntaxException($"union {rest[0]}: a union cannot name itself as a formation");
+                if (values.TryGetValue("by", out var by))
+                {
+                    values["by"] = by.ToLowerInvariant();
+                    if (values["by"] is not ("distance" or "rps")) throw new CommandSyntaxException($"union: --by is distance or rps — by rank nobody chooses; found '{Head(by)}'");
+                }
+                if (values.TryGetValue("fleet", out var crew) && !Names.IsMatch(crew)) throw new CommandSyntaxException($"union: --fleet expects names like blue,red; found '{Head(crew)}'");
+                // THE LINK (propuesta 124): how the beats are agreed among the golems — by the cue, or by asking every so often
+                if (values.TryGetValue("link", out var link))
+                {
+                    values["link"] = link.ToLowerInvariant();
+                    if (values["link"] is not ("cue" or "ask")) throw new CommandSyntaxException($"union: --link is cue or ask — how the beats are agreed; found '{Head(link)}'");
+                }
+                if (values.TryGetValue("every", out var every))
+                {
+                    if (!values.TryGetValue("link", out var l) || l != "ask") throw new CommandSyntaxException("union: --every goes with --link ask: how often the askers ask");
+                    string secs = every.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? every[..^1] : every;
+                    if (!double.TryParse(secs, NumberStyles.Float, CultureInfo.InvariantCulture, out double period) || !double.IsFinite(period) || period <= 0)
+                        throw new CommandSyntaxException($"union: --every expects seconds above zero, like --every 5s; found '{Head(every)}'");
+                    values["every"] = period.ToString(CultureInfo.InvariantCulture);
+                }
+                values["formations"] = string.Join(",", bill);
+                return new Command(named, with, verb, none, noOptions, rest[0].ToLowerInvariant(), values);
+            }
+            case "program":
+            {
+                // THE PROGRAM (propuesta 124): its name, [--fleet a,b] [--by distance|rps] [--link cue|ask [--every 5s]], then --form clauses and --score rows;
+                // the line composes the DEFINITION the domain reads — `name: figure x,y side m angle g places n = steps; …` — and validates its shape only
+                if (args.Count == 0 || !Name.IsMatch(args[0])) throw new CommandSyntaxException("program: expected its name first, like program two-triangles --form …");
+                var values = new Dictionary<string, string>();
+                var forms = new List<(string Name, string Text)>();
+                var score = new Dictionary<string, string>(StringComparer.Ordinal);
+                int i = 1;
+                while (i < args.Count)
+                {
+                    string a = args[i].ToLowerInvariant();
+                    if (a is "--fleet" or "--by" or "--link" or "--every")
+                    {
+                        if (i + 1 >= args.Count) throw new CommandSyntaxException($"program: {a} needs a value, like {a switch { "--fleet" => "--fleet blue,red", "--by" => "--by distance", "--link" => "--link cue", _ => "--every 5s" }}");
+                        values[a[2..]] = args[i + 1];
+                        i += 2;
+                        continue;
+                    }
+                    if (a == "--form")
+                    {
+                        var clause = new List<string>();
+                        for (i++; i < args.Count && !args[i].StartsWith("--"); i++) clause.Add(args[i]);
+                        if (clause.Count < 5 || !Name.IsMatch(clause[0])) throw new CommandSyntaxException("program: --form expects <formation> <figure> <cx,cy> side|radius <m> [angle <degrees>] [places <n>], like --form tri-left triangle 3,5.5 side 3 places 3");
+                        string formation = clause[0].ToLowerInvariant(), figure = clause[1].ToLowerInvariant();
+                        if (figure is not ("triangle" or "square" or "pentagon" or "circle")) throw new CommandSyntaxException($"program: a formation of a program is a triangle, a square, a pentagon or a circle; found '{Head(clause[1])}'");
+                        if (!Point.IsMatch(clause[2])) throw new CommandSyntaxException($"program: --form {formation}: the centre is x,y, like 3,5.5; found '{Head(clause[2])}'");
+                        var pairs = new List<string>();
+                        for (int k = 3; k < clause.Count; k += 2)
+                        {
+                            string key = clause[k].ToLowerInvariant();
+                            if (key is not ("side" or "radius" or "angle" or "places") || k + 1 >= clause.Count || !double.TryParse(clause[k + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                                throw new CommandSyntaxException($"program: --form {formation}: expected side|radius <m>, angle <degrees>, places <n>; found '{Head(string.Join(' ', clause.Skip(k)))}'");
+                            pairs.Add($"{key} {clause[k + 1]}");
+                        }
+                        if (forms.Any(f => f.Name == formation)) throw new CommandSyntaxException($"program: --form {formation} twice");
+                        forms.Add((formation, $"{formation}: {figure} {clause[2]} {string.Join(' ', pairs)}"));
+                        continue;
+                    }
+                    if (a == "--score")
+                    {
+                        for (i++; i < args.Count && !args[i].StartsWith("--"); i++)
+                        {
+                            int eq = args[i].IndexOf('=');
+                            if (eq <= 0) throw new CommandSyntaxException($"program: --score expects <formation>=<steps>, like tri-left=cw,cw,-; found '{Head(args[i])}'");
+                            string formation = args[i][..eq].ToLowerInvariant(), steps = args[i][(eq + 1)..].ToLowerInvariant();
+                            if (!Name.IsMatch(formation)) throw new CommandSyntaxException($"program: --score: '{Head(formation)}' is no formation's name");
+                            if (steps.Split(',').Any(s => s is not ("cw" or "ccw" or "-" or "clockwise" or "counterclockwise" or "rest"))) throw new CommandSyntaxException($"program: --score {formation}: a step is cw, ccw or - (a rest); found '{Head(steps)}'");
+                            score[formation] = steps;
+                        }
+                        continue;
+                    }
+                    throw new CommandSyntaxException($"program: '{Head(args[i])}' is no option; the options are --fleet a,b, --by distance|rps, --link cue|ask [--every 5s], --form … and --score …");
+                }
+                if (forms.Count == 0) throw new CommandSyntaxException("program: at least one --form <formation> …");
+                foreach (var row in score.Keys) if (forms.All(f => f.Name != row)) throw new CommandSyntaxException($"program: --score names {row}, which no --form told");
+                if (forms.Any(f => f.Name == args[0].ToLowerInvariant())) throw new CommandSyntaxException($"program {args[0]}: a program cannot name itself as a formation");
+                if (values.TryGetValue("by", out var by))
+                {
+                    values["by"] = by.ToLowerInvariant();
+                    if (values["by"] is not ("distance" or "rps")) throw new CommandSyntaxException($"program: --by is distance or rps — by rank nobody chooses; found '{Head(by)}'");
+                }
+                if (values.TryGetValue("fleet", out var crew) && !Names.IsMatch(crew)) throw new CommandSyntaxException($"program: --fleet expects names like blue,red; found '{Head(crew)}'");
+                if (values.TryGetValue("link", out var link))
+                {
+                    values["link"] = link.ToLowerInvariant();
+                    if (values["link"] is not ("cue" or "ask")) throw new CommandSyntaxException($"program: --link is cue or ask — how the beats are agreed; found '{Head(link)}'");
+                }
+                if (values.TryGetValue("every", out var every))
+                {
+                    if (!values.TryGetValue("link", out var l) || l != "ask") throw new CommandSyntaxException("program: --every goes with --link ask: how often the askers ask");
+                    string secs = every.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? every[..^1] : every;
+                    if (!double.TryParse(secs, NumberStyles.Float, CultureInfo.InvariantCulture, out double period) || !double.IsFinite(period) || period <= 0)
+                        throw new CommandSyntaxException($"program: --every expects seconds above zero, like --every 5s; found '{Head(every)}'");
+                    values["every"] = period.ToString(CultureInfo.InvariantCulture);
+                }
+                values["formations"] = string.Join(",", forms.Select(f => f.Name));
+                values["definition"] = string.Join("; ", forms.Select(f => score.TryGetValue(f.Name, out var steps) ? $"{f.Text} = {steps}" : f.Text));
+                return new Command(named, with, verb, none, noOptions, args[0].ToLowerInvariant(), values);
             }
             case "take":
                 // the formation taken (propuesta 104): its name — who goes where is the golem's to resolve, never the line's
@@ -303,6 +443,7 @@ public static class CommandLine
             case "scenarios":
             case "explored":
             case "formations":
+            case "unions":
             case "disputes":
                 if (args.Count > 0) throw new CommandSyntaxException($"{verb} takes nothing more; found '{Head(string.Join(' ', args))}'");
                 return new Command(named, with, verb, none, noOptions, "");

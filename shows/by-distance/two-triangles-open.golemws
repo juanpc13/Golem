@@ -1,0 +1,42 @@
+{
+ "Kind": "golem workspace",
+ "Version": 3,
+ "Golems": [
+  {
+   "Name": "blue",
+   "Host": "localhost",
+   "Port": 8081,
+   "Script": "use map open-floor\nprogram two-triangles --by distance --link cue --form tri-left triangle 3,5.5 side 3 angle 0 places 3 --form tri-right triangle 8,5.5 side 3 angle 0 places 3 --score tri-left=cw,cw,cw tri-right=cw,-,cw"
+  },
+  {
+   "Name": "red",
+   "Host": "localhost",
+   "Port": 8082,
+   "Script": "use map open-floor\nprogram two-triangles --by distance --link cue --form tri-left triangle 3,5.5 side 3 angle 0 places 3 --form tri-right triangle 8,5.5 side 3 angle 0 places 3 --score tri-left=cw,cw,cw tri-right=cw,-,cw"
+  },
+  {
+   "Name": "green",
+   "Host": "localhost",
+   "Port": 8083,
+   "Script": "use map open-floor\nprogram two-triangles --by distance --link cue --form tri-left triangle 3,5.5 side 3 angle 0 places 3 --form tri-right triangle 8,5.5 side 3 angle 0 places 3 --score tri-left=cw,cw,cw tri-right=cw,-,cw"
+  },
+  {
+   "Name": "yellow",
+   "Host": "localhost",
+   "Port": 8084,
+   "Script": "use map open-floor\nprogram two-triangles --by distance --link cue --form tri-left triangle 3,5.5 side 3 angle 0 places 3 --form tri-right triangle 8,5.5 side 3 angle 0 places 3 --score tri-left=cw,cw,cw tri-right=cw,-,cw"
+  },
+  {
+   "Name": "orange",
+   "Host": "localhost",
+   "Port": 8085,
+   "Script": "use map open-floor\nprogram two-triangles --by distance --link cue --form tri-left triangle 3,5.5 side 3 angle 0 places 3 --form tri-right triangle 8,5.5 side 3 angle 0 places 3 --score tri-left=cw,cw,cw tri-right=cw,-,cw"
+  },
+  {
+   "Name": "cyan",
+   "Host": "localhost",
+   "Port": 8086,
+   "Script": "use map open-floor\nprogram two-triangles --by distance --link cue --form tri-left triangle 3,5.5 side 3 angle 0 places 3 --form tri-right triangle 8,5.5 side 3 angle 0 places 3 --score tri-left=cw,cw,cw tri-right=cw,-,cw"
+  }
+ ]
+}

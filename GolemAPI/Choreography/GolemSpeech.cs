@@ -118,6 +118,11 @@ public sealed class GolemSpeech
                 .Seek("Stood").One()
                     .OnMatch("[_:Formation].Convene(_, _) expose $call call, $nonce nonce, $who who, $stoodX stoodX, $stoodY stoodY;")   // the act on the formation (ajuste 81)
                 .Causation.Continue(stood);
+            golemActor.Reactions.DefineReaction("echo-stood-union")   // the union's word (propuesta 123): the same tell, the call the union's name
+                .Cue().Company().WithSharedHydration()
+                .Seek("Stood").One()
+                    .OnMatch("[_:Union].Convene(_, _) expose $call call, $nonce nonce, $who who, $stoodX stoodX, $stoodY stoodY;")
+                .Causation.Continue(stood);
             golemActor.Reactions.DefineReaction("echo-stood-cued")   // the take by cue (propuesta 117): the same word to the fleet
                 .Cue().Company().WithSharedHydration()
                 .Seek("Stood").One()
@@ -151,9 +156,9 @@ public sealed class GolemSpeech
                     once 'dissolved-' + @nonce + '-{p}';"));
             // THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026): a member whose part is done says it finished (the act that COUNTS exposes
             // finishedNow true; the one that only queued the finish does not) — the fleet hears it; and the LAST OF THE FLEET, every member finished,
-            // gives the cue to ONE golem by name — the act the clock writes (CueIfFinished: the count completes inside an uptake, which no expose may
-            // observe) — told to every peer with that name inside, since a tell goes to a fixed route (the name as a literal, ajuste 71): only the
-            // named one takes it, as the take of the formation it waits in
+            // gives the cue to ONE FORMATION by name (propuesta 123; was one golem, who relayed it) — the act the clock writes (CueIfFinished: the count
+            // completes inside an uptake, which no expose may observe) — told to every peer with that name inside, since a tell goes to a fixed route
+            // (ajuste 71): every member of the formation named takes it, as its take
             string finished = string.Join("\n", peers.Select(p => $@"
                 tell FinishedAt with @call, @who
                     to {p}
@@ -164,7 +169,7 @@ public sealed class GolemSpeech
                     .OnMatch("[_:Formation].Finish(_) expose $call call, $nonce nonce, $who who, true finishedNow;")
                 .Causation.Continue(finished);
             // the cue: the copy that counted the fleet's last finish (Juan: "el último en salir") — the act the clock writes (CueIfFinished), told to
-            // every peer with the cued golem's name inside; only the named one takes it, the first word standing
+            // every peer with the cued FORMATION's name inside (propuesta 123); every member of it takes it, the first word standing
             string yourTurn = string.Join("\n", peers.Select(p => $@"
                 tell YourTurn with @to
                     to {p}
@@ -175,16 +180,16 @@ public sealed class GolemSpeech
                     .OnMatch("[_:Formation].Cue() expose $call call, $nonce nonce, $to to;")
                 .Causation.Continue(yourTurn);
             // THE PULL (propuesta 118, 20-oct-2026): the asker's question and the asked one's answer, two tells — both acts written by the actor itself
-            // (the activation of the asker's `remember`, propuesta 122, and AnswerIfAsked on the clock), so no uptake stands between the fact and the word; both to every peer with the name inside, the
-            // named one taking it
+            // (the activation of the asker's `remember`, propuesta 122, and AnswerIfAsked on the clock), so no uptake stands between the fact and the word; both to every peer: the
+            // question names the FORMATION asked and its first by rank keeps it (propuesta 123); the answer names the asker, who takes it
             string ask = string.Join("\n", peers.Select(p => $@"
-                tell DidYouFinish with @call, @to, @who
+                tell DidYouFinish with @call, @who
                     to {p}
                     once 'ask-' + @nonce + '-' + @asked + '-{p}';"));
             golemActor.Reactions.DefineReaction("echo-ask")
                 .Cue().Company().WithSharedHydration()
                 .Seek("Asked").One()
-                    .OnMatch("[_:Formation].Ask() expose $call call, $nonce nonce, $to to, $who who, $asked asked;")   // an activation of the asker's recurrence (propuesta 122): the question asked
+                    .OnMatch("[_:Formation].Ask() expose $call call, $nonce nonce, $who who, $asked asked;")   // an activation of the asker's recurrence (propuesta 122): the question asked — about a FORMATION, whose first by rank answers (propuesta 123)
                 .Causation.Continue(ask);
             string answer = string.Join("\n", peers.Select(p => $@"
                 tell FinishedState with @call, @to, @done
@@ -199,6 +204,11 @@ public sealed class GolemSpeech
                 .Cue().Company().WithSharedHydration()
                 .Seek("Dissolved").One()
                     .OnMatch("[_:Choreographies].Dissolve(_) expose $call call, $nonce nonce;")
+                .Causation.Continue(dissolved);
+            golemActor.Reactions.DefineReaction("echo-dissolved-union")   // a union dissolved (propuesta 123): the same word, the call its name
+                .Cue().Company().WithSharedHydration()
+                .Seek("Dissolved").One()
+                    .OnMatch("[_:Choreographies].DissolveUnion(_) expose $call call, $nonce nonce;")
                 .Causation.Continue(dissolved);
         }
 
@@ -249,7 +259,7 @@ public sealed class GolemSpeech
                 .Command(ChoreographerRol.UptakeDissolved)
             .Told("FinishedAt").With<string>("call").With<string>("who")
                 .Command(ChoreographerRol.UptakeFinishedAt)
-            .Told("DidYouFinish").With<string>("about").With<string>("asked").With<string>("asker")
+            .Told("DidYouFinish").With<string>("about").With<string>("asker")
                 .Command(ChoreographerRol.UptakeDidYouFinish)
             .Told("FinishedState").With<string>("about").With<string>("asked").With<bool>("finished")
                 .Command(ChoreographerRol.UptakeFinishedState)

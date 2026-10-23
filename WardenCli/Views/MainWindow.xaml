@@ -35,12 +35,13 @@
         <DataTemplate x:Key="ScriptOf">
             <DockPanel Margin="6">
                 <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"><Run Text="the script for "/><Run Text="{Binding Name}" FontWeight="Bold" Foreground="#e6e1cf"/><Run Text=" — one command per line, sent in order; a line starting with # is a note"/></TextBlock>
-                <!-- THE SEND COLUMN (Juan, 7-oct-2026: "sólo enviar a los selected… el stop debajo y posiciónalos hasta abajo"): one SEND, to the
-                     checked golems, at the foot of the column with stop under it; which golems go is said by the checks, never by a button -->
-                <DockPanel DockPanel.Dock="Right" Width="150" Margin="8,0,0,0" LastChildFill="False">
-                    <TextBlock DockPanel.Dock="Top" Margin="4,4" Foreground="{StaticResource Dim}" TextWrapping="Wrap"><Run Text="sent "/><Run Text="{Binding Sent}"/><Run Text=" command(s) this session"/></TextBlock>
-                    <Button DockPanel.Dock="Bottom" Content="SEND to selected" Click="SendSelected_Click" Height="56" FontSize="15" FontWeight="Bold" Style="{StaticResource GoGreen}" ToolTip="the queue of every checked golem, each its own, line by line; they wait for each other at @sync"/>
-                    <Button DockPanel.Dock="Bottom" Content="stop" Margin="2,2,2,4" Click="StopSelected_Click" ToolTip="the checked golems that are sending stop; the rest of each queue stays on its tab"/>
+                <!-- THE SEND ROW (Juan, 7-oct-2026: "sólo enviar a los selected… el stop debajo"; 23-oct-2026: "cambiar esta área para abajo, que tenga
+                     más espacio horizontal" — the column at the right became a row UNDER the script, so the script takes the whole width): one SEND, to
+                     the checked golems, with stop beside it and the count of what went; which golems go is said by the checks, never by a button -->
+                <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0" LastChildFill="True">
+                    <Button DockPanel.Dock="Right" Content="SEND to selected" Click="SendSelected_Click" Width="170" Height="40" FontSize="15" FontWeight="Bold" Style="{StaticResource GoGreen}" ToolTip="the queue of every checked golem, each its own, line by line; they wait for each other at @sync"/>
+                    <Button DockPanel.Dock="Right" Content="stop" Width="80" Margin="0,0,8,0" Click="StopSelected_Click" ToolTip="the checked golems that are sending stop; the rest of each queue stays on its tab"/>
+                    <TextBlock Margin="4,0" Foreground="{StaticResource Dim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"><Run Text="sent "/><Run Text="{Binding Sent}"/><Run Text=" command(s) this session"/></TextBlock>
                 </DockPanel>
                 <!-- ABOVE THE SCRIPT: what the golem can be told (Juan, 6-oct-2026: "algunos botones siempre por arriba y al centro el comando") -->
                 <Border DockPanel.Dock="Top" Background="{StaticResource Well}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="4,2" Margin="0,0,0,4">
@@ -121,6 +122,7 @@
                     <GroupBox Header="choreography by the console" Style="{StaticResource RibbonGroup}">
                         <StackPanel Orientation="Horizontal">
                             <Button Style="{StaticResource Big}" Content="Formation" local:Look.Glyph="⬟" local:Look.Tint="{StaticResource Purple}" Click="Formation_Click" ToolTip="square, pentagon, triangle or circle: the console writes every golem's script — the places, the steps around"/>
+                            <Button Style="{StaticResource Big}" Content="Unionize" local:Look.Glyph="⬢" local:Look.Tint="{StaticResource Purple}" Click="Union_Click" ToolTip="a list of formations and how many golems each takes — no golem named: the union's law shares them (propuesta 123); the lines go on every tab"/>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="play" Style="{StaticResource RibbonGroup}">
@@ -164,21 +166,12 @@
             <GridSplitter Grid.Column="1" Style="{StaticResource DividerV}" ToolTip="drag to share the width between the golems and the script"/>
             <GridSplitter Grid.Row="1" Grid.ColumnSpan="3" Style="{StaticResource DividerH}" ToolTip="drag to give the log more or less height"/>
 
-            <!-- THE BOTTOM: the log and the journal of the current golem, under the golems and the script only — the debugger keeps the
-                 whole height of its column, so the map is not squeezed by the foot under it (7-oct-2026) -->
+            <!-- THE BOTTOM: the log, under the golems and the script only — the debugger keeps the whole height of its column, so the map
+                 is not squeezed by the foot under it (7-oct-2026); the JOURNAL is a tab of the debugger's foot since 23-oct-2026 (Juan: "pasemos
+                 el journal a un tab") -->
             <TabControl Grid.Row="2" Grid.ColumnSpan="3" Margin="4" Style="{StaticResource DarkTabs}">
                 <TabItem Header="log — what every golem answered">
                     <TextBox x:Name="LogBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0"/>
-                </TabItem>
-                <TabItem x:Name="JournalTab" Header="journal">
-                    <!-- the scripts with their line breaks, and a box per kind of entry to hide it (13-oct-2026; Juan: "que se vean bien los scripts del
-                         journal con sus saltos de línea… y permitir esconder de cierto tipo") -->
-                    <DockPanel>
-                        <WrapPanel x:Name="JournalKinds" DockPanel.Dock="Top" Margin="6,3,6,2" VerticalAlignment="Center">
-                            <TextBlock Text="show:" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        </WrapPanel>
-                        <TextBox x:Name="JournalBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" BorderThickness="0" AcceptsReturn="True"/>
-                    </DockPanel>
                 </TabItem>
             </TabControl>
 
@@ -436,6 +429,52 @@
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Stranded}" Value="True">
                                                 <Setter TargetName="StrandedRow" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </TabItem>
+                    <!-- THE UNIONS (22-oct-2026; Juan: "debería haber un apartado o endpoint de las unionize que existen o a las que pertenece el golem, así uno
+                         puede hacerle GET en el CLI para ver las formaciones que tiene encima esa unionize"): the selected golem's `unions` read — each union with
+                         the formations it administers in order, who the law sent to each, this golem's share, where the round stands; a union written on the tabs
+                         and not sent is listed too, marked 'to send' -->
+                    <TabItem x:Name="UnionsTab">
+                        <TabItem.Header>
+                            <TextBlock><Run Text="unions"/><Run x:Name="UnionsCount" Text=""/></TextBlock>
+                        </TabItem.Header>
+                        <DockPanel Background="{StaticResource Well}">
+                            <TextBlock x:Name="NoUnion" DockPanel.Dock="Top" Margin="6,4,6,2" Text="select a golem: its unions are read from it" Foreground="{StaticResource Dim}" FontSize="11" TextWrapping="Wrap"/>
+                            <ListBox x:Name="UnionList" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="4,3">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                                <Button Content="✕" Tag="{Binding}" Click="DissolveUnion_Click" ToolTip="dissolve …, asked of the golem now: the union and every formation of it leave every golem of the fleet; a union to send has its lines taken off the tabs"/>
+                                            </StackPanel>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="0,0,8,0"/>
+                                                    <Border Style="{StaticResource Chip}">
+                                                        <TextBlock x:Name="StateChip" Text="{Binding StateText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Orange}"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding MineText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding BillText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" ToolTip="the formations the union administers, in the order they dance"/>
+                                                <TextBlock Text="{Binding FormationsText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,1,0,0" ToolTip="who the union's law sent to each formation, with the place each got"/>
+                                                <TextBlock Text="{Binding CandidatesText, Mode=OneWay}" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CandidatesText, Mode=OneWay}"/>
+                                            </StackPanel>
+                                        </DockPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsResolved}" Value="True">
+                                                <Setter TargetName="StateChip" Property="Foreground" Value="{StaticResource Green}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsStuck}" Value="True">
+                                                <Setter TargetName="StateChip" Property="Foreground" Value="{StaticResource Red}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsPending}" Value="True">
+                                                <Setter TargetName="StateChip" Property="Foreground" Value="{StaticResource Dim}"/>
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -706,6 +745,57 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
+                        </DockPanel>
+                    </TabItem>
+                    <!-- THE JOURNAL of the selected golem (23-oct-2026; Juan: "pasemos el journal a un tab"): a tab of the debugger's foot, where the other reads are -->
+                    <TabItem x:Name="JournalTab" Header="journal">
+                        <!-- the scripts with their line breaks, and a box per kind of entry to hide it (13-oct-2026; Juan: "que se vean bien los scripts del
+                             journal con sus saltos de línea… y permitir esconder de cierto tipo") -->
+                        <DockPanel>
+                            <WrapPanel x:Name="JournalKinds" DockPanel.Dock="Top" Margin="6,3,6,2" VerticalAlignment="Center">
+                                <TextBlock Text="show:" Foreground="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            </WrapPanel>
+                            <!-- ONE CARD PER ENTRY (23-oct-2026; Juan: "que se vea la separación entre cada cosa del journal"): the number in the accent, the time dim,
+                                 the kind as a chip in its colour, the script under them in Consolas; a rule between cards -->
+                            <ListBox x:Name="JournalList" BorderThickness="0" Background="{StaticResource Well}" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="6,5,6,7" Margin="0,0,0,2" Background="{Binding Shade}">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                                    <TextBlock Text="{Binding Number, Mode=OneWay}" FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,8,0"/>
+                                                    <TextBlock Text="{Binding At, Mode=OneWay}" FontFamily="Consolas" Foreground="{StaticResource Dim}" Margin="0,0,8,0"/>
+                                                    <Border Style="{StaticResource Chip}" Background="{Binding Tint}">
+                                                        <TextBlock Text="{Binding Label, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Panel}"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding Head, Mode=OneWay}" FontFamily="Consolas" Foreground="{StaticResource Ink}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <!-- a long script opens whole in a window of its own (23-oct-2026; Juan: "hay actions muy extensos… un modal para verlo mejor") -->
+                                                    <TextBlock Text="⤢ open" Foreground="{StaticResource Blue}" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0" Cursor="Hand" Visibility="{Binding BodyShown}"
+                                                               ToolTip="the whole script in a window of its own" MouseLeftButtonDown="OpenJournalEntry_Click"/>
+                                                </StackPanel>
+                                                <TextBox Text="{Binding Body, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource Ink}" Padding="0" Margin="12,0,0,0" Visibility="{Binding BodyShown}"
+                                                         MaxHeight="220" VerticalScrollBarVisibility="Auto" ToolTip="the first lines; ⤢ open shows the whole script"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Margin" Value="0"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Focusable" Value="False"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <ContentPresenter/>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                            </ListBox>
                         </DockPanel>
                     </TabItem>
 </TabControl>

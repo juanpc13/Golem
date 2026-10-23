@@ -23,23 +23,30 @@ public partial class FormationDialog : Window
     public Policy Policy { get; private set; } = Policy.Rank;
     /// <summary>The golems chosen for the fleet.</summary>
     public List<string> Chosen { get; private set; } = new();
-    /// <summary>The golem the last of this fleet cues when everybody finished (propuesta 117), lower case; "" nobody.</summary>
+    /// <summary>The FORMATION the last of this fleet cues when everybody finished (propuesta 117; its name since propuesta 123), lower case; "" none.</summary>
     public string CueTo { get; private set; } = "";
     /// <summary>Whether the formation starts on a cue: no take is written for it.</summary>
     public bool OnCue { get; private set; }
-    /// <summary>THE PULL (propuesta 118): the formation this one starts after and the golem asked; "" none.</summary>
+    /// <summary>THE PULL (propuesta 118): the formation this one starts after — the one asked (propuesta 123); "" none.</summary>
     public string After { get; private set; } = "";
-    public string AskTo { get; private set; } = "";
     /// <summary>How often the asker asks, in seconds (propuesta 121): --every on the line; 5 unless changed.</summary>
     public double Every { get; private set; } = 5;
+    /// <summary>THE OPEN FORMATION (propuesta 123): of a union, no fleet of its own — every golem of the workspace a candidate; and the union's name.</summary>
+    public bool Open { get; private set; }
+    public string UnionName { get; private set; } = "";
     private const string None = "— none —";
-    /// <summary>The formations the console knows (told, or on the tabs), to pick the one waited for.</summary>
+    /// <summary>The formations the console knows (told, or on the tabs), to pick the one waited for — and, since propuesta 123, the one CUED (the cue
+    /// names a formation, never a golem).</summary>
     public void KnowsFormations(IEnumerable<string> names)
     {
+        known = names.Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
         var kept = AfterBox.SelectedItem as string;
-        AfterBox.ItemsSource = new[] { None }.Concat(names.Distinct().OrderBy(n => n, StringComparer.Ordinal)).ToList();
+        AfterBox.ItemsSource = new[] { None }.Concat(known).ToList();
         AfterBox.SelectedItem = kept != null && kept != None && AfterBox.Items.Contains(kept) ? kept : None;
+        RefreshCue();
     }
+    private List<string> known = new();
+    private string ownName = "";
 
     private readonly IReadOnlyList<string> golems;
 
@@ -49,7 +56,6 @@ public partial class FormationDialog : Window
         InitializeComponent();
         GolemsBox.ItemsSource = golems;
         GolemsBox.SelectAll();
-        GolemsBox.SelectionChanged += (_, _) => RefreshCue();   // the cue goes to the next group: never one of this fleet (Juan: "no deberían aparecer los que tengo seleccionados")
         RefreshCue();
         if (point.Contains(',')) CenterBox.Text = point.Trim();
     }
@@ -57,17 +63,13 @@ public partial class FormationDialog : Window
     private string Picked => Figures.Children.OfType<RadioButton>().FirstOrDefault(r => r.IsChecked == true)?.Content as string ?? "square";
     private const string Nobody = "— nobody —";
 
-    // the golems a cue may go to: the ones of the workspace NOT in this fleet (propuesta 117); the choice is kept while it is still one of them
+    // the formations a cue may go to (propuesta 123): the ones the console knows, this one left out; the choice is kept while it is still one of them
     private void RefreshCue()
     {
         if (CueBox == null) return;
-        var chosen = GolemsBox.SelectedItems.Cast<string>().ToHashSet(StringComparer.Ordinal);
         var kept = CueBox.SelectedItem as string;
-        CueBox.ItemsSource = new[] { Nobody }.Concat(golems.Where(g => !chosen.Contains(g))).ToList();
-        CueBox.SelectedItem = kept != null && kept != Nobody && !chosen.Contains(kept) ? kept : Nobody;
-        var keptAsk = AskBox.SelectedItem as string;
-        AskBox.ItemsSource = new[] { Nobody }.Concat(golems.Where(g => !chosen.Contains(g))).ToList();
-        AskBox.SelectedItem = keptAsk != null && keptAsk != Nobody && !chosen.Contains(keptAsk) ? keptAsk : Nobody;
+        CueBox.ItemsSource = new[] { Nobody }.Concat(known.Where(n => n != ownName)).ToList();
+        CueBox.SelectedItem = kept != null && kept != Nobody && CueBox.Items.Contains(kept) ? kept : Nobody;
         if (AfterBox.ItemsSource == null) AfterBox.ItemsSource = new[] { None };
         if (AfterBox.SelectedItem == null) AfterBox.SelectedItem = None;
     }
@@ -93,11 +95,15 @@ public partial class FormationDialog : Window
         var names = formation.CrewNames;
         GolemsBox.SelectedItems.Clear();
         foreach (var n in golems) if (names.Contains(n)) GolemsBox.SelectedItems.Add(n);
-        RefreshCue();
-        CueBox.SelectedItem = formation.CueTo != "" && golems.Contains(formation.CueTo) && !names.Contains(formation.CueTo) ? formation.CueTo : Nobody;
-        if (formation.After != "") { KnowsFormations(new[] { formation.After }); AfterBox.SelectedItem = formation.After; }
-        AskBox.SelectedItem = formation.AskTo != "" && golems.Contains(formation.AskTo) && !names.Contains(formation.AskTo) ? formation.AskTo : Nobody;
+        ownName = formation.Name;
+        if (formation.CueTo != "" && !known.Contains(formation.CueTo)) known.Add(formation.CueTo);
+        if (formation.After != "" && !known.Contains(formation.After)) known.Add(formation.After);
+        KnowsFormations(known);
+        CueBox.SelectedItem = formation.CueTo != "" && formation.CueTo != formation.Name ? formation.CueTo : Nobody;
+        if (formation.After != "") AfterBox.SelectedItem = formation.After;
         if (formation.Every > 0) EveryBox.Text = formation.Every.ToString("0.##", CultureInfo.InvariantCulture);
+        OpenBox.IsChecked = formation.Open;
+        if (formation.UnionName != "") UnionBox.Text = formation.UnionName;
     }
 
     // the figure changes what the dialog asks: a side, a radius, or a propeller's radius with its hub and its blades
@@ -133,16 +139,24 @@ public partial class FormationDialog : Window
         }
         Policy = ByGameBox.IsChecked == true ? Policy.RockPaperScissors : ByDistanceBox.IsChecked == true ? Policy.Distance : Policy.Rank;
         string cue = CueBox.SelectedItem as string is { } picked && picked != Nobody ? picked.Trim().ToLowerInvariant() : "";
-        if (cue != "" && GolemsBox.SelectedItems.Contains(cue)) { Problem.Text = $"the cue goes to the next group: {cue} is of this fleet"; return; }
         CueTo = cue;
         string after = AfterBox.SelectedItem as string is { } pickedAfter && pickedAfter != None ? pickedAfter.Trim().ToLowerInvariant() : "";
-        string ask = AskBox.SelectedItem as string is { } pickedAsk && pickedAsk != Nobody ? pickedAsk.Trim().ToLowerInvariant() : "";
-        if ((after == "") != (ask == "")) { Problem.Text = "the pull needs both: the formation waited for, and the golem asked"; return; }
+        if (after != "" && cue == after) { Problem.Text = $"{after} is waited for: it cannot be cued by this formation too"; return; }
         if (!double.TryParse(EveryBox.Text.Trim().TrimEnd('s', 'S'), NumberStyles.Float, CultureInfo.InvariantCulture, out double every) || every <= 0) { Problem.Text = "every: seconds above zero, like 5"; return; }
-        After = after; AskTo = ask; Every = every;
+        After = after; Every = every;
         OnCue = OnCueBox.IsChecked == true || after != "";
         CenterX = cx; CenterY = cy; Measure = measure;
         Chosen = GolemsBox.SelectedItems.Cast<string>().ToList();
+        // the open formation (propuesta 123): a polygon shared by distance or rps, of a named union; every golem of the workspace is a candidate
+        Open = OpenBox.IsChecked == true;
+        if (Open)
+        {
+            if (Policy == Policy.Rank) { Problem.Text = "an open formation shares its places by distance or rps: by rank nobody chooses"; return; }
+            if (Figure is "circle" or "propeller") { Problem.Text = $"a {Figure} cannot open: an open formation is a polygon — its vertices are its places"; return; }
+            UnionName = UnionBox.Text.Trim().ToLowerInvariant();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(UnionName, @"^[A-Za-z_][A-Za-z0-9_-]*$")) { Problem.Text = "the union needs a name like show-1"; return; }
+            Chosen = golems.ToList();
+        }
         DialogResult = true;
     }
 }

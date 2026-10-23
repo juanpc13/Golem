@@ -45,17 +45,17 @@ public sealed class RememberLabTests
             fleet = Fleet(@names);
             formation = g.Choreography.Form(@formationName, @figure, center, measure, turn, fleet, @by, @stamp);
             period = Seconds(@everySeconds);
-            formation.Follows(@after, @askTo, period);
+            formation.Follows(@after, period);
             if (formation.IsAsker) {
                 remember (@firstAt, @everyTicks, @timesAtMost) {
                     asking = g.Choreography.Find(@formationName);
                     asking.Ask();
                     print asking.Name 'called', asking.Asked 'asked', @attempt 'attempt';
-                    expose asking.After call, asking.Stamp nonce, asking.AskTo to, asking.Asker who, asking.Asked asked;
+                    expose asking.After call, asking.Stamp nonce, asking.Asker who, asking.Asked asked;
                 }
                 while (g.Choreography.StillAsks(@formationName, @stamp));
             }
-            print formation.Name 'called', formation.After 'after', formation.AskTo 'askTo', formation.Asker 'asker', formation.EverySeconds 'every', formation.IsAsker 'asks';
+            print formation.Name 'called', formation.After 'after', formation.Asker 'asker', formation.EverySeconds 'every', formation.IsAsker 'asks';
         }
     ";
 
@@ -70,7 +70,7 @@ public sealed class RememberLabTests
         try
         {
             perf.Actor.Reactions.DefineReaction("echo-ask-lab").Cue().Company().WithSharedHydration()
-                .Seek("Asked").One().OnMatch("[_:Formation].Ask() expose $call call, $nonce nonce, $to to, $who who, $asked asked;")
+                .Seek("Asked").One().OnMatch("[_:Formation].Ask() expose $call call, $nonce nonce, $who who, $asked asked;")
                 .Program.Emit("{ print g.Name 'who'; }");
             findings.Add("A reaction on [_:Formation].Ask() with an expose: defined");
         }
@@ -93,7 +93,6 @@ public sealed class RememberLabTests
             p["stamp", typeof(string)] = stamp;
             p["everySeconds", typeof(double)] = everySeconds;
             p["after", typeof(string)] = "tri-left";
-            p["askTo", typeof(string)] = "red";
             p["firstAt", typeof(DateTime)] = DateTime.Now.AddSeconds(everySeconds);
             p["everyTicks", typeof(long)] = TimeSpan.FromSeconds(everySeconds).Ticks;
             p["timesAtMost", typeof(int)] = Math.Max(1, (int)Math.Ceiling(3600.0 / everySeconds));   // the engine takes a times count omitted as ONE (finding): the bound must be said

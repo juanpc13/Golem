@@ -1,0 +1,195 @@
+<Window x:Class="WardenCli.Views.UnionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="Union — the golems share themselves among these formations" SizeToContent="Height" Width="900" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13">
+    <Window.Resources>
+        <!-- the figure's drop-down in the grid, in the palette (22-oct-2026: the grid's own was grey on grey) -->
+        <Style x:Key="GridChoice" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Background" Value="{StaticResource Raised}"/>
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="Padding" Value="4,1"/>
+            <Setter Property="MinHeight" Value="22"/>
+        </Style>
+        <Style x:Key="GridEditor" TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource Raised}"/>
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Ink}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4,1"/>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- THE PROGRAMME DIALOG (22-oct-2026; Juan: "otra opción para programar coreografías… que sólo pregunte una lista de formaciones para preparar
+             los comandos en los tabs, para que los golems sepan qué van a coordinarse entre ellos… y cuántos van destinados a cada formación"): the
+             operator names no golem — every golem of the workspace is a candidate, the union's law shares them by distance or rps -->
+        <TextBlock Grid.Row="0" Text="union" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+        <DockPanel Grid.Row="0" Grid.Column="1" Margin="2,4">
+            <TextBox x:Name="NameBox" DockPanel.Dock="Left" Width="160" Text="show-1" ToolTip="the union's name: `union &lt;name&gt; &lt;formations…&gt;` goes on every tab, and `take &lt;name&gt;` is each golem's one word"/>
+            <TextBlock DockPanel.Dock="Left" Text="shared by" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="16,0,8,0"/>
+            <RadioButton x:Name="ByDistanceBox" Content="distance" IsChecked="True" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="each golem gets the free place nearest to where it stands, over every figure at once — a figure full sends the next one to the other"/>
+            <RadioButton x:Name="ByGameBox" Content="rock-paper-scissors" VerticalAlignment="Center" ToolTip="the same, and a place wanted by several is played"/>
+        </DockPanel>
+
+        <TextBlock Grid.Row="1" Text="formations, in order" VerticalAlignment="Top" Foreground="{StaticResource Dim}" Margin="0,8,8,0" TextWrapping="Wrap"/>
+        <DataGrid x:Name="RowsGrid" Grid.Row="1" Grid.Column="1" Margin="2,6" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="True" CanUserReorderColumns="False" CanUserSortColumns="False"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal" MinHeight="120" MaxHeight="260"
+                  CellEditEnding="RowsGrid_CellEditEnding"
+                  Background="{StaticResource Well}" Foreground="{StaticResource Ink}" RowBackground="{StaticResource Well}" AlternatingRowBackground="{StaticResource Panel}" BorderBrush="{StaticResource Line}"
+                  HorizontalGridLinesBrush="{StaticResource Line}" VerticalGridLinesBrush="{StaticResource Line}"
+                  ToolTip="one row per formation, danced in this order: the first at once, each next one after the one before it (a cue, or a question); 'golems' is how many of the candidates the figure takes — the law picks which">
+            <!-- the dark theme, always (Juan, 6-oct-2026; 22-oct: "esto se ve muy blanco"): the grid's headers, cells, the selected row and the editors in the palette, never WPF's white -->
+            <DataGrid.Resources>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2a3542"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#2a3542"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#e6e1cf"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#e6e1cf"/>
+            </DataGrid.Resources>
+            <DataGrid.ColumnHeaderStyle>
+                <Style TargetType="DataGridColumnHeader">
+                    <Setter Property="Background" Value="{StaticResource Raised}"/>
+                    <Setter Property="Foreground" Value="{StaticResource Dim}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+                    <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                    <Setter Property="Padding" Value="6,4"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </Style>
+            </DataGrid.ColumnHeaderStyle>
+            <DataGrid.RowHeaderStyle>
+                <Style TargetType="DataGridRowHeader">
+                    <Setter Property="Background" Value="{StaticResource Well}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+                </Style>
+            </DataGrid.RowHeaderStyle>
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Background" Value="{StaticResource Well}"/>
+                    <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource Hover}"/>
+                            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{StaticResource Raised}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.CellStyle>
+                <Style TargetType="DataGridCell">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Padding" Value="6,3"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="DataGridCell">
+                                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" BorderThickness="0">
+                                    <ContentPresenter VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource Hover}"/>
+                            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="Background" Value="{StaticResource Raised}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.CellStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="name" Binding="{Binding Name}" Width="100" EditingElementStyle="{StaticResource GridEditor}"/>
+                <DataGridComboBoxColumn Header="figure" SelectedItemBinding="{Binding Figure}" Width="96" ElementStyle="{StaticResource GridChoice}" EditingElementStyle="{StaticResource GridChoice}">
+                    <DataGridComboBoxColumn.ItemsSource>
+                        <x:Array Type="sys:String">
+                            <sys:String>triangle</sys:String>
+                            <sys:String>square</sys:String>
+                            <sys:String>pentagon</sys:String>
+                            <sys:String>circle</sys:String>
+                        </x:Array>
+                    </DataGridComboBoxColumn.ItemsSource>
+                </DataGridComboBoxColumn>
+                <DataGridTextColumn Header="centre x,y" Binding="{Binding Center}" Width="80" EditingElementStyle="{StaticResource GridEditor}"/>
+                <DataGridTextColumn Header="side | radius" Binding="{Binding Size}" Width="84" EditingElementStyle="{StaticResource GridEditor}"/>
+                <DataGridTextColumn Header="angle" Binding="{Binding Angle}" Width="52" EditingElementStyle="{StaticResource GridEditor}"/>
+                <DataGridTextColumn Header="golems" Binding="{Binding Golems}" Width="60" EditingElementStyle="{StaticResource GridEditor}"/>
+                <!-- THE STEPS (22-oct-2026; Juan: "¿habrá forma de especificar que tri-left tenga 2 giros en este mismo modal? y luego los otros giros de tri-right?…
+                     más bien debería ser como una lista de operaciones, no sólo una opción del dropdown"): the SEQUENCE the formation dances once placed, one
+                     glyph per step in order — ↻ appends a clockwise step, ↺ a counterclockwise one, ⌫ takes the last off — written as `rotate <name> <sense>`
+                     per step on every tab -->
+                <DataGridTemplateColumn Header="steps, in order" Width="210" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <DockPanel LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Right" Text="⌫" Foreground="{StaticResource Dim}" FontSize="13" VerticalAlignment="Center" Cursor="Hand" Padding="5,0"
+                                           ToolTip="take the last step off" MouseLeftButtonDown="StepBack_Click"/>
+                                <TextBlock DockPanel.Dock="Right" Text="↺" Foreground="{StaticResource Accent}" FontSize="15" VerticalAlignment="Center" Cursor="Hand" Padding="4,0"
+                                           ToolTip="one more step counterclockwise" MouseLeftButtonDown="StepCounterclockwise_Click"/>
+                                <TextBlock DockPanel.Dock="Right" Text="—" Foreground="{StaticResource Dim}" FontSize="15" VerticalAlignment="Center" Cursor="Hand" Padding="4,0"
+                                           ToolTip="a rest: on this beat the formation stays while the others step (written as - in the score)" MouseLeftButtonDown="StepRest_Click"/>
+                                <TextBlock DockPanel.Dock="Right" Text="↻" Foreground="{StaticResource Accent}" FontSize="15" VerticalAlignment="Center" Cursor="Hand" Padding="4,0"
+                                           ToolTip="one more step clockwise" MouseLeftButtonDown="StepClockwise_Click"/>
+                                <TextBlock Text="{Binding StepsText}" VerticalAlignment="Center" FontSize="15" TextTrimming="CharacterEllipsis" ToolTip="{Binding StepsTip}"/>
+                            </DockPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="" Width="44" CanUserResize="False" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <!-- a glyph, not a Button: the app's button chrome clipped it to a sliver inside the cell (22-oct-2026) -->
+                            <TextBlock Text="✕" Foreground="{StaticResource Red}" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" Cursor="Hand" Padding="8,0"
+                                       ToolTip="take this formation off the union" MouseLeftButtonDown="RemoveRow_Click"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- THE BEATS (propuesta 124, 22-oct-2026; Juan: "la seña se la hacen los golems, pero el sindicato sabe cómo resolverán entre los golems, si con push
+             o pull"): every formation is taken at once and the k-th step of each is the k-th beat of the union, danced together; how the golems agree each
+             beat is the union's link — by the cue (the words of line-up across the union) or by asking every so often (not built yet) -->
+        <!-- + add formation right under the grid, at its right (23-oct-2026; Juan: "muévelo acá") -->
+        <Button Grid.Row="2" Grid.Column="1" Content="+ add formation" Click="AddRow_Click" HorizontalAlignment="Right" Margin="2,0,2,6"
+                ToolTip="one more formation, after the last — a triangle named after it, to edit (22-oct-2026; Juan: 'un botón para agregar una row, no que se autogenere vacío'); ✕ on a row takes it off"/>
+        <TextBlock Grid.Row="3" Text="the beats, agreed" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+        <DockPanel Grid.Row="3" Grid.Column="1" Margin="2,4">
+            <RadioButton x:Name="PushBox" Content="by the cue (push)" IsChecked="True" VerticalAlignment="Center" Margin="0,0,14,0" ToolTip="--link cue: a beat sets out when the last mover of the whole union says it is lined up — every formation steps together"/>
+            <RadioButton x:Name="PullBox" Content="by asking (pull)" VerticalAlignment="Center" Margin="0,0,14,0" ToolTip="--link ask: the first of each formation asks the others, every so often, whether their beat is done (not built yet: the golem refuses it)"/>
+            <TextBlock DockPanel.Dock="Left" Text="every" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBox x:Name="EveryBox" DockPanel.Dock="Left" Width="40" Text="5" ToolTip="--every &lt;seconds&gt;: how often the askers ask (by asking)"/>
+            <TextBlock Text="s" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+        </DockPanel>
+
+        <TextBlock Grid.Row="4" Grid.Column="1" Margin="2,4" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
+                   Text="ONE line on EVERY tab — `program &lt;union&gt; --by … --link … --form … --score …`: the union with its link, every formation with its figure and count, and the score as a row per formation (the k-th glyph of every row is the k-th beat, danced together; a row with none left rests). The golem makes it all, the line is its word, the golems choose who dances where, each finishes at the end of its row, and the union is done when everybody finished. Nothing goes until SEND."/>
+
+        <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="380"/>
+            <Button Content="write on every tab" Click="Ok_Click" Style="{StaticResource GoGreen}" ToolTip="the union, the forms and the take go on every golem's tab; the golems share themselves"/>
+            <Button Content="cancel" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

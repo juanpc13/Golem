@@ -207,6 +207,49 @@ public class CommandConsoleTests
         StringAssert.DoesNotMatch((await red.ExecuteAsync("formations")).Text, new System.Text.RegularExpressions.Regex("sq-2"), "sq-2 gone from the list");
     }
 
+    // THE PROGRAMME (propuesta 123; Juan: "sin que uno elija a los golems como tal… ellos deciden dónde estar"): two open formations in the centre hall,
+    // told to red and blue with no fleet of their own; `take duo` is each one's single word, and with both words the law shares them — one each, by
+    // distance — and the routes open. An open formation is not taken by itself, nor told before its union.
+    [TestMethod]
+    public async Task AUnion_SharesTheCandidatesAmongItsOpenFormations_FromTheLine()
+    {
+        await using var world = new MockWorld();
+        await world.PlaceGolemAsync("red");
+        await world.PlaceGolemAsync("blue");
+        var red = new Commander(world.HostOf("red").Embodiment);
+        var blue = new Commander(world.HostOf("blue").Embodiment);
+
+        Assert.AreEqual("refused", (await red.ExecuteAsync("form west triangle --center 4.5,5.5 --side 1 --by distance --open")).Kind, "no union names it yet");
+        foreach (var golem in new[] { red, blue })
+        {
+            var told = await golem.ExecuteAsync("union duo west,east --by distance --fleet blue,red");
+            Assert.IsTrue(told.Ok, told.Text);
+            StringAssert.Contains(told.Text, "union duo: west, east for 2 candidate(s) by distance", told.Text);
+            Assert.IsTrue((await golem.ExecuteAsync("form west triangle --center 4.5,5.5 --side 1 --by distance --open")).Ok, "open: no --fleet, the union's candidates");
+            Assert.IsTrue((await golem.ExecuteAsync("form east triangle --center 6.5,5.5 --side 1 --by distance --open")).Ok);
+            Assert.AreEqual("refused", (await golem.ExecuteAsync("take west")).Kind, "an open formation is taken by its union");
+        }
+        Assert.AreEqual("syntax", (await red.ExecuteAsync("form north triangle --center 5.5,6.5 --side 1 --by distance --open --fleet blue,red")).Kind, "open takes no fleet");
+        var taken = await red.ExecuteAsync("take duo");
+        Assert.IsTrue(taken.Ok, taken.Text);
+        StringAssert.Contains(taken.Json, "\"stood\":1", "red spoke: one of two — " + taken.Json);
+        var blueTaken = await blue.ExecuteAsync("take duo");
+        Assert.IsTrue(blueTaken.Ok, blueTaken.Text);
+        string shows = await Until(red, "resolved", "unions");
+        StringAssert.Contains(shows, "resolved", "with both words the law shared them — " + shows);
+        var redShows = (await red.ExecuteAsync("unions")).Json; var blueShows = (await blue.ExecuteAsync("unions")).Json;
+        string Mine(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("shows")[0].GetProperty("mine").GetString() ?? "";
+        Assert.AreNotEqual("", Mine(redShows)); Assert.AreNotEqual("", Mine(blueShows));
+        Assert.AreNotEqual(Mine(redShows), Mine(blueShows), "one each: the nearest figure to each — " + redShows);
+        var listed = await red.ExecuteAsync("formations");
+        StringAssert.Contains(listed.Json, "\"open\":true", listed.Json);
+        StringAssert.Contains(listed.Json, "\"resolved\":true", listed.Json);
+        Assert.IsTrue((await red.ExecuteAsync("take duo")).Ok, "a second word is nothing: 'already spoke' answers without writing");
+        var dissolved = await red.ExecuteAsync("dissolve duo");
+        Assert.IsTrue(dissolved.Ok, dissolved.Text);
+        StringAssert.DoesNotMatch((await red.ExecuteAsync("formations")).Text, new System.Text.RegularExpressions.Regex("west"), "the union's formations went with it");
+    }
+
     // THE STEP (ajuste 77; Juan: "que la flota tome la posición del otro en el sentido de las agujas del reloj… se pueden encolar"): four
     // golems — blue, green, purple, yellow: no follower among them, unlike red → blue in this world — each put in the centre hall (the
     // world's walls are the warehouse's) a little OUTSIDE its corner of a square of side 2 around (5.5, 5.5), on the diagonal, so the join
@@ -414,12 +457,15 @@ public class CommandConsoleTests
     }
 
     // The newest route of a golem, read until it says what a tell should have made it do (a tell is delivered, not instant).
-    private static async Task<string> Until(Commander golem, string expected)
+    private static Task<string> Until(Commander golem, string expected) => Until(golem, expected, "route");
+
+    // Any read of a golem, read until it says what is expected.
+    private static async Task<string> Until(Commander golem, string expected, string read)
     {
         string text = "";
         for (int i = 0; i < 100; i++)
         {
-            text = (await golem.ExecuteAsync("route")).Text;
+            text = (await golem.ExecuteAsync(read)).Text;
             if (text.Contains(expected)) return text;
             await Task.Delay(200);
         }

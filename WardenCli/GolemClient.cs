@@ -27,7 +27,7 @@ public static class GolemClient
 {
     private static readonly HttpClient Wire = new() { Timeout = TimeSpan.FromSeconds(90) };
 
-    private static readonly HashSet<string> Reads = new(StringComparer.Ordinal) { "where", "state", "route", "scenarios", "obstacles", "formations", "disputes", "play", "plays", "explored" };
+    private static readonly HashSet<string> Reads = new(StringComparer.Ordinal) { "where", "state", "route", "scenarios", "obstacles", "formations", "unions", "disputes", "play", "plays", "explored" };
 
     /// <summary>THE ENDPOINT OF A LINE the console writes by itself — a read, or a lever of the environment, the map, the play or a tab —
     /// or null when the line is the language's (a tab's script goes by POST /command). Pure: tested as such.</summary>
@@ -238,6 +238,10 @@ public static class GolemClient
         var formations = await GetAsync(golem, "formations", ct);
         if (formations.Ok && formations.Json is { } fj)
             k = k with { Formations = FormationView.Parse(fj) };
+        // THE UNIONS (22-oct-2026; Juan: "un apartado o endpoint de las unionize que existen o a las que pertenece el golem"): the unions tab is this read
+        var unions = await GetAsync(golem, "unions", ct);
+        if (unions.Ok && unions.Json is { } uj)
+            k = k with { Unions = UnionView.Parse(uj) };
         // THE DISPUTES (14-oct-2026): the disputes tab is this read of the selected golem
         var disputes = await GetAsync(golem, "disputes", ct);
         if (disputes.Ok && disputes.Json is { } dj)
@@ -305,7 +309,34 @@ public static class GolemClient
                                           f.TryGetProperty("onCue", out var oc) && oc.ValueKind == JsonValueKind.True,
                                           !f.TryGetProperty("cued", out var cu) || cu.ValueKind != JsonValueKind.False,
                                           f.TryGetProperty("finishing", out var fi) && fi.ValueKind == JsonValueKind.True,
-                                          (int)(JsonWalk.Number(f, "finished") ?? 0));
+                                          (int)(JsonWalk.Number(f, "finished") ?? 0),
+                                          f.TryGetProperty("open", out var op) && op.ValueKind == JsonValueKind.True,
+                                          f.TryGetProperty("resolved", out var rs) && rs.ValueKind == JsonValueKind.True,
+                                          !f.TryGetProperty("member", out var mb) || mb.ValueKind != JsonValueKind.False);
+        return null;
+    }
+
+    /// <summary>Where this golem's copy of a PROGRAMME stands for the queue (propuesta 123): whether its round resolved, whether it could not, who spoke,
+    /// whether this golem dances in it and where — `unions`, the union of that name. Null when the golem does not answer or was told no such union.</summary>
+    public static async Task<UnionState?> UnionStateAsync(Golem golem, string name, CancellationToken ct = default)
+    {
+        var reply = await GetAsync(golem, "unions", ct);
+        if (!reply.Ok || reply.Json == null || JsonWalk.Find(reply.Json.Value, "shows") is not { ValueKind: JsonValueKind.Array } shows) return null;
+        foreach (var s in shows.EnumerateArray())
+            if (s.TryGetProperty("called", out var called) && string.Equals(called.GetString(), name, StringComparison.OrdinalIgnoreCase))
+                return new UnionState(s.TryGetProperty("resolved", out var r) && r.ValueKind == JsonValueKind.True,
+                                          s.TryGetProperty("stuck", out var st) && st.ValueKind == JsonValueKind.True,
+                                          JsonWalk.String(s, "why") ?? "",
+                                          (int)(JsonWalk.Number(s, "stood") ?? 0),
+                                          (JsonWalk.String(s, "candidates") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Length,
+                                          s.TryGetProperty("known", out var kn) && kn.ValueKind == JsonValueKind.True,
+                                          s.TryGetProperty("member", out var mb) && mb.ValueKind == JsonValueKind.True,
+                                          JsonWalk.String(s, "mine") ?? "",
+                                          JsonWalk.String(s, "leftOut") ?? "",
+                                          s.TryGetProperty("done", out var dn) && dn.ValueKind == JsonValueKind.True,
+                                          (int)(JsonWalk.Number(s, "beat") ?? 0),
+                                          s.TryGetProperty("stranded", out var sd) && sd.ValueKind == JsonValueKind.True,
+                                          JsonWalk.String(s, "strandedWhy") ?? "");
         return null;
     }
 
@@ -400,4 +431,9 @@ public static class JsonWalk
 /// wait in its queue, how many members stand on their places this round, and how many the fleet has.</summary>
 /// <summary>What the queue waits on for a formation (propuesta 117): routed, stranded, steps queued, placed of the crew, the round, whether it
 /// starts on cue and was cued, whether this golem's finish is queued and not counted yet, how many finished.</summary>
-public sealed record FormationState(bool Routed, bool Stranded, int Queued, int Placed, int Crew, int Round = 0, bool OnCue = false, bool Cued = true, bool Finishing = false, int Finished = 0);
+public sealed record FormationState(bool Routed, bool Stranded, int Queued, int Placed, int Crew, int Round = 0, bool OnCue = false, bool Cued = true, bool Finishing = false, int Finished = 0,
+                                    bool Open = false, bool Resolved = false, bool Member = true);
+
+/// <summary>A union as the queue waits on it (propuesta 123): resolved, or stuck and why; who spoke of how many; every figure told; whether this golem
+/// dances in it, in which formation, and who was left out.</summary>
+public sealed record UnionState(bool Resolved, bool Stuck, string Why, int Stood, int Candidates, bool Known, bool Member, string Mine, string LeftOut, bool Done = false, int Beat = 0, bool Stranded = false, string StrandedWhy = "");

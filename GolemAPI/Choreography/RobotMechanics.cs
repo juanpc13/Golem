@@ -65,6 +65,10 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-visit",  "[_:Golem].Visit(_, _)"),
             ("next-order-cover",  "[_:Golem].Cover(_, _)"),
             ("next-order-convene", "[_:Formation].Convene(_, _)"),
+            ("next-order-convene-union", "[_:Union].Convene(_, _)"),   // the union's word (propuesta 123): the round complete, the law shares, a route opens
+            ("next-order-stood-union", "[_:Union].Stood(_, _, _)"),    // …or a peer's word completes it
+            ("next-order-open", "[_:Choreographies].Open(_)"),                 // a formation opened after the words: the law may run here
+            ("next-order-dissolve-union", "[_:Choreographies].DissolveUnion(_)"),
             ("next-order-take-cue", "[_:Formation].TakeCue(_, _)"),          // the take by cue (propuesta 117): the same word, the round complete, its route opens           // the golem says where it stands in a formation: the round complete, its route opens (ajustes 73, 80, 81; propuesta 104)
             ("next-order-stood",   "[_:Formation].Stood(_, _)"),            // …and a peer's word may interrupt its route
             ("next-order-placed",  "[_:Formation].Placed(_)"),              // this golem stands on its place: the next step may open (ajuste 77)
@@ -79,7 +83,8 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-stall",  "[_:Golem].Stall(_, _)"),                // the body stalled: a touch on a probe (the way back), or the route failed
             ("next-order-over",   "[_:Play].Over(_)"),                    // the play ended here by the warden's line: the route abandoned, the body stops (fase 4)
             ("next-order-heard-over", "[_:Play].HeardOver(_)"),           // …or by a peer's word that it is over
-            ("next-order-retake", "[_:Formation].Retake(_)"),               // a failed route to a place opened again from where the body stands (propuesta 113)               // pacman's run opened: released, or at a decision cell (propuesta 108)      // a formation dissolved: a route of it let go, the body stops (propuesta 104)
+            ("next-order-retake", "[_:Formation].Retake(_)"),
+            ("next-order-take-again", "[_:Formation].TakeAgain(_)"),     // a stranded member taken again on the warden's word (22-oct-2026)               // a failed route to a place opened again from where the body stands (propuesta 113)               // pacman's run opened: released, or at a decision cell (propuesta 108)      // a formation dissolved: a route of it let go, the body stops (propuesta 104)
             ("next-order-follow", "[_:Golem].Follow(_)"),
             ("next-order-pause",  "[_:Golem].Pause(_)"),
             ("next-order-resume", "[_:Golem].Resume(_)"),   // a zero-argument pattern on the golem did not fire (17-sep lab): the pose rides along, and it is true

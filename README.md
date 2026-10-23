@@ -9,7 +9,7 @@ pattern travels to a domain of autonomous bodies that run missions, journal thei
 queries and talk to each other — and that what the golem *knows* (its map) can differ from what is
 *real* (the simulator), with the difference showing up in the journal.
 
-Team discussion lives in [PLAN-Golem.md](PLAN-Golem.md) (Spanish). Working rules for AI assistants
+Team discussion lives in [docs/PLAN-Golem.md](docs/PLAN-Golem.md) (Spanish). Working rules for AI assistants
 in [CLAUDE.md](CLAUDE.md).
 
 ## The picture
@@ -134,7 +134,7 @@ GOLEM_LAB_WORLD=gazebo dotnet test GolemTest --filter TestCategory=scenario
 | `GolemTest/` | `EndToEnd/`: the whole flows the API runs under the hood, exercised through the golem as the journal writes them, one file per module. `Integration/`: the engine's acceptance tests and labs, the golem assembled in process (`GolemHostTests`), and the scenarios over a world (`World/`: `MockWorld` in memory, `GazeboWorld` over the deployed fleet, chosen by `appsettings.json`). `dotnet test GolemTest` |
 | `GolemAPI/` | The generic golem program (ASP.NET). One image, N golems by environment. `Membrane/` (rosbridge, the tell wire), `Choreography/` (`GolemEmbodiment` — the golem given a body: the action methods with every journal script, what the body reports, the touch protocol, the clock, the operator's levers; `RobotMechanics` — the actor's output target: one reaction per act shape pushes the print here, parsed, switched on and sent to the body over the websocket as one of its base actions: advance, back, turnLeft, turnRight, stop, continue; `GolemSpeech` — the tell reactions and uptakes), `Panel/` (the page and the journal tap), `Controllers/` (`GolemController`: validates the JSON and calls the GolemEmbodiment's action methods, where EVERY journal script lives, each ending in the print of the next order — pushed to `RobotMechanics` by the engine's own reaction on the act; the robot reports on `/golem/<body>/result`, `/golem/<body>/result`, `/golem/<body>/result`). |
 | `journal/` | The golems' journals (FileSystem backend), one folder per golem. Git-ignored; disposable in this spike. |
-| `PLAN-Golem.md` | The team's plan and decision log (Spanish): what was tried, what was retired, what the engine taught us. |
+| `docs/PLAN-Golem.md` | The team's plan and decision log (Spanish): what was tried, what was retired, what the engine taught us. |
 
 ## The golem's surface
 

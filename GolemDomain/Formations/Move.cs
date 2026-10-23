@@ -26,6 +26,10 @@ internal sealed class Move
         Orbit = orbit;
     }
 
+    /// <summary>THE REST (propuesta 124): a beat on which the formation stays — a move of no shift; queued like a step, consumed by the beat, nobody moves.</summary>
+    internal static Move Rest => new("rest", 0);
+    internal bool IsRest => Shift == 0 && Orbit < 0;
+
     /// <summary>Whether a body in that orbit moves on this step.</summary>
     internal bool Moves(int orbit) => Orbit < 0 || Orbit == orbit;
 

@@ -45,7 +45,7 @@ public sealed class Commander
             return Reply.Refused($"this is {golem.Name}: '{command.Golem}' is commanded on its own console — write --with {command.Golem} to carry the command there too");
         // a formation is the warden's to tell to every golem of its fleet, one line on each tab (propuesta 112, 13-oct-2026; the words of the round
         // still cross between the members by tell); a play spreads by itself (propuesta 108) — never a line carried by --with
-        if (command.Verb is "form" or "take" or "rotate" or "dissolve" or "finish" or "play" && command.With.Count > 0)
+        if (command.Verb is "form" or "take" or "rotate" or "dissolve" or "finish" or "play" or "union" or "program" && command.With.Count > 0)
             return Reply.Syntax($"{command.Verb}: told to every golem involved on its own tab — never --with, which carries single orders (visit, reset, use, optimize, speed)");
         // place carries each golem to a mark of ITS OWN (ajuste 87): the names are on the line, never --with
         if (command.Verb == "place" && command.With.Count > 0)
@@ -97,6 +97,9 @@ public sealed class Commander
             "dissolve" => Choreographer(out var m, out var noMotors) ? Answered(m.Dissolve(command.Text), $"dissolved {command.Text} — every golem of its fleet is told") : noMotors,
             "finish" => Choreographer(out var fm, out var fnm) ? Answered(fm.Finish(command.Text), $"finish {command.Text} — counted when its part is done; the fleet is told") : fnm,
             "formations" => Formations(),
+            "union" => Union(command),
+            "program" => Program(command),
+            "unions" => Unions(),
             "disputes" => Disputes(),
             "play" => command.Text == "" ? PlayRead() : command.Text == "over" ? (Dynamics(out var po, out var por) ? Answered(po.Over(), "the play is over — the cast is told") : por) : Play(command),
             "plays" => PlaysRead(),
@@ -142,21 +145,23 @@ public sealed class Commander
         double? Metres(string key) => command.Values.TryGetValue(key, out var v) ? double.Parse(v, CultureInfo.InvariantCulture) : null;
         var request = new FormRequest(command.Text, command.Values["figure"], new PointRequest(command.Points[0].X, command.Points[0].Y),
                                       Metres("side"), Metres("radius"), Metres("inner-radius"), Metres("angle") ?? 0.0,
-                                      FleetOf(command).ToList(),
+                                      command.Values.ContainsKey("open") ? null : FleetOf(command).ToList(),   // open (propuesta 123): no fleet of its own — the union's candidates
                                       command.Values.TryGetValue("by", out var by) ? by : null,
                                       command.Values.TryGetValue("blades", out var blades) ? int.Parse(blades, CultureInfo.InvariantCulture) : null,
                                       command.Values.TryGetValue("cue", out var cue) ? cue : null,
                                       command.Values.ContainsKey("on-cue"),
                                       command.Values.TryGetValue("after", out var after) ? after : null,
-                                      command.Values.TryGetValue("ask", out var ask) ? ask : null,
-                                      Metres("every"));
+                                      Metres("every"),
+                                      command.Values.ContainsKey("open"),
+                                      command.Values.TryGetValue("places", out var openPlaces) ? int.Parse(openPlaces, CultureInfo.InvariantCulture) : null);
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
         if (!Choreographer(out var choreographer, out var refusal)) return refusal;
         var center = (request.Center.X.Value, request.Center.Y.Value);
+        var fleet = request.Fleet ?? FleetOf(command).ToList();   // an open formation is born with this golem and its peers; the union re-fleets it with its candidates
         var answer = request.IsPropeller
-            ? choreographer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem)
-            : choreographer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, request.Fleet, request.Policy, request.CuedGolem, request.OnCue, request.StartsAfter, request.AskedGolem);
+            ? choreographer.FormPropeller(request.Name, center, request.Radius.Value, request.Hub.Value, request.BladeCount, request.Angle ?? 0.0, fleet, request.Policy, request.CuesFormation, request.OnCue, request.StartsAfter, request.Every, request.Open, request.Places ?? 0)
+            : choreographer.Form(request.Name, request.Kind, center, request.Measure.Value, request.Angle ?? 0.0, fleet, request.Policy, request.CuesFormation, request.OnCue, request.StartsAfter, request.Every, request.Open, request.Places ?? 0);
         if (!answer.Ok) return Reply.Refused(answer.Refused);
         var holders = new List<string>();
         try
@@ -166,7 +171,7 @@ public sealed class Commander
                 foreach (var h in v.EnumerateArray()) holders.Add($"{Str(h, "who")} {Num(h, "x")},{Num(h, "y")}");
         }
         catch (JsonException) { }
-        return Reply.Done($"formed {request.Name} for {request.Fleet.Count} by {request.Policy} — every golem of the fleet is told" + (holders.Count > 0 ? $"; places: {string.Join(" · ", holders)}" : ""), answer.Print ?? "");
+        return Reply.Done($"formed {request.Name} for {fleet.Count} by {request.Policy} — every golem of the fleet is told" + (holders.Count > 0 ? $"; places: {string.Join(" · ", holders)}" : ""), answer.Print ?? "");
     }
 
     // the formation taken (propuesta 104): the same validation as POST /take; the route opens when the whole fleet said where it stands
@@ -203,6 +208,51 @@ public sealed class Commander
                 lines.Add($"{Str(d, "called")} · place {Int(d, "place")} at ({Num(d, "x")}, {Num(d, "y")}) · {(won ? "won it against" : "yielded it to")} {Str(d, "rival")}{(game == "" ? "" : " · " + game)} · {Num(d, "mine")} m from it, {Str(d, "rival")} {Num(d, "theirs")} m");
             }
         return Reply.Done(lines.Count == 0 ? "no disputes: nobody contended with this golem for a place, by distance or by the game" : string.Join(Environment.NewLine, lines), json);
+    }
+
+    // THE PROGRAM (propuesta 124): the same validation as POST /program — the definition the line composed, read by the domain
+    private Reply Program(Command command)
+    {
+        var request = new ProgramRequest(command.Text, command.Values["definition"], FleetOf(command).ToList(), command.Values.TryGetValue("by", out var by) ? by : null,
+                                         command.Values.TryGetValue("link", out var link) ? link : null,
+                                         command.Values.TryGetValue("every", out var every) ? double.Parse(every, CultureInfo.InvariantCulture) : null);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        var answer = choreographer.Program(request.Name, request.Definition, request.Fleet, request.Policy, request.LinkWord, request.Every);
+        if (!answer.Ok) return Reply.Refused(answer.Refused);
+        return Reply.Done($"program {request.Name}: {request.Definition} — for {request.Fleet.Count} candidate(s) by {request.Policy}, the beats by {request.LinkWord}; every candidate is told the same, and this is this golem's word", answer.Print ?? "");
+    }
+
+    // THE PROGRAMME (propuesta 123): the same validation as POST /union
+    private Reply Union(Command command)
+    {
+        var request = new UnionRequest(command.Text, command.Values["formations"].Split(',').ToList(), FleetOf(command).ToList(), command.Values.TryGetValue("by", out var by) ? by : null,
+                                       command.Values.TryGetValue("link", out var link) ? link : null,
+                                       command.Values.TryGetValue("every", out var every) ? double.Parse(every, CultureInfo.InvariantCulture) : null);
+        var problems = request.Problems().ToList();
+        if (problems.Count > 0) return Reply.Syntax(string.Join("; ", problems));
+        if (!Choreographer(out var choreographer, out var refusal)) return refusal;
+        var answer = choreographer.Union(request.Name, request.Bill, request.Fleet, request.Policy, request.LinkWord, request.Every);
+        if (!answer.Ok) return Reply.Refused(answer.Refused);
+        return Reply.Done($"union {request.Name}: {string.Join(", ", request.Bill)} for {request.Fleet.Count} candidate(s) by {request.Policy}, the beats by {request.LinkWord} — every candidate is told the same; take {request.Name} is each one's word", answer.Print ?? "");
+    }
+
+    private Reply Unions()
+    {
+        string json = Readings.Unions(golem.Actor);
+        var e = JsonDocument.Parse(json).RootElement;
+        var lines = new List<string>();
+        if (e.TryGetProperty("shows", out var shows) && shows.ValueKind == JsonValueKind.Array)
+            foreach (var s in shows.EnumerateArray())
+            {
+                var who = new List<string>();
+                if (s.TryGetProperty("shares", out var sh) && sh.ValueKind == JsonValueKind.Array)
+                    foreach (var h in sh.EnumerateArray()) who.Add($"{Str(h, "who")}→{Str(h, "in")}#{Int(h, "place")}");
+                bool resolved = s.TryGetProperty("resolved", out var r) && r.ValueKind == JsonValueKind.True;
+                lines.Add($"{Str(s, "called")} · {Str(s, "formations")} · candidates {Str(s, "candidates")} · by {PolicyWords.Word(Str(s, "policy"))} · {Int(s, "stood")} spoke" + (resolved ? $" · resolved: {string.Join(" · ", who)}{(Str(s, "leftOut") == "" ? "" : $" · left out {Str(s, "leftOut")}")}" : Str(s, "why") != "" ? $" · unresolved: {Str(s, "why")}" : " · waiting for the words"));
+            }
+        return Reply.Done(lines.Count == 0 ? "no union" : string.Join(Environment.NewLine, lines), json);
     }
 
     private Reply Formations()

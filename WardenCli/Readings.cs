@@ -9,8 +9,11 @@ public sealed record Readings(string Zone, string Scenario, string Navigation, d
                               int? RouteId, string RouteStatus, string RouteAction, string RoutePlan, string RouteWhy,
                               int Things, int Met, int Marks, IReadOnlyList<Obstacle> Obstacles, IReadOnlyList<string> Scenarios,
                               IReadOnlyList<FormationView> Formations, PlayView? Play = null, IReadOnlyList<DisputeView>? Disputes = null,
-                              IReadOnlyList<PlayView>? Plays = null, ExploredView? Explored = null, IReadOnlyList<ScenarioView>? Maps = null)
+                              IReadOnlyList<PlayView>? Plays = null, ExploredView? Explored = null, IReadOnlyList<ScenarioView>? Maps = null,
+                              IReadOnlyList<UnionView>? Unions = null)
 {
+    /// <summary>THE UNIONS the golem was told (22-oct-2026; Juan: "un apartado… para ver las formaciones que tiene encima esa unionize"): its `unions` read; none before it answered.</summary>
+    public IReadOnlyList<UnionView> UnionList => Unions ?? Array.Empty<UnionView>();
     /// <summary>THE GOLEM'S MAPS (propuesta 120): every scenario it knows, with what the `scenarios` read says of each; none before it answered.</summary>
     public IReadOnlyList<ScenarioView> MapList => Maps ?? Array.Empty<ScenarioView>();
     /// <summary>The disputes by distance (14-oct-2026), none before the golem answered.</summary>

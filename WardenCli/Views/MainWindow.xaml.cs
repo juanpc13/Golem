@@ -98,7 +98,7 @@ public partial class MainWindow : Window
         readings.Tick += async (_, _) => await RefreshCurrentAsync();
         // THE JOURNAL TAB ITSELF starts the feed (13-oct-2026; Juan: "falta la parte de poder ver el journal, así como se hacía antes en el panel"): clicking
         // the tab, not only View › Journal, follows the selected golem's journal from its first entry
-        JournalBox.IsVisibleChanged += (_, e) => { if (e.NewValue is true && Current is { } g && journalOf != g) FollowJournal(g); };
+        JournalList.IsVisibleChanged += (_, e) => { if (e.NewValue is true && Current is { } g && journalOf != g) FollowJournal(g); };
         DebuggerBody.SizeChanged += (_, _) => FitDebugger();
         ReadsBox.SizeChanged += (_, _) => FitDebugger();
         PreviewKeyDown += (_, e) =>
@@ -156,19 +156,37 @@ public partial class MainWindow : Window
         string centre = $"{Fmt(dialog.CenterX)},{Fmt(dialog.CenterY)}";
         string size = dialog.Figure == "propeller" ? $"--radius {Fmt(dialog.Measure)} --inner-radius {Fmt(dialog.InnerRadius)} --blades {dialog.Blades}"
                     : dialog.Figure == "circle" ? $"--radius {Fmt(dialog.Measure)}" : $"--side {Fmt(dialog.Measure)}";
-        string fleet = $"--fleet {string.Join(",", dialog.Chosen)}";
-        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)} {fleet} --by {Policies.Word(dialog.Policy)}{(dialog.CueTo != "" ? $" --cue {dialog.CueTo}" : "")}{(dialog.After != "" ? $" --after {dialog.After} --ask {dialog.AskTo} --every {Fmt(dialog.Every)}s" : dialog.OnCue ? " --on-cue" : "")}";
+        string fleet = dialog.Open ? "" : $" --fleet {string.Join(",", dialog.Chosen)}";   // open (propuesta 123): the union's candidates are its fleet
+        return $"form {name} {shape} --center {centre} {size} --angle {Fmt(angle)}{fleet} --by {Policies.Word(dialog.Policy)}{(dialog.Open ? " --open" : dialog.CueTo != "" ? $" --cue {dialog.CueTo}" : "")}{(dialog.Open ? "" : dialog.After != "" ? $" --after {dialog.After} --every {Fmt(dialog.Every)}s" : dialog.OnCue ? " --on-cue" : "")}";   // open (propuesta 124): the link is the union's
     }
 
     private static bool LineOf(string line, string name) =>
         System.Text.RegularExpressions.Regex.IsMatch(line, $@"^(form|take|rotate|finish)\s+{System.Text.RegularExpressions.Regex.Escape(name)}(\s|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-    // the formation a tab's line is about — form, take, rotate or finish <name> — or null for any other line (propuesta 117: the lines of one
-    // formation flow into the golem together; the queue waits only at the boundary)
-    private static string? FormationOf(string line)
+    // the formation a tab's line is about — form, take, rotate or finish <name>, union <name> — or null for any other line (propuesta 117: the lines
+    // of one formation flow into the golem together; the queue waits only at the boundary); a formation of a PROGRAMME said on the tab (propuesta 123)
+    // is the union's: all its lines are one unit, waited for as the union
+    private static string? FormationOf(string line, IReadOnlyDictionary<string, string>? unions = null)
     {
         var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return words.Length >= 2 && words[0].ToLowerInvariant() is "form" or "take" or "rotate" or "finish" ? words[1].ToLowerInvariant() : null;
+        if (words.Length < 2 || words[0].ToLowerInvariant() is not ("form" or "take" or "rotate" or "finish" or "union" or "program")) return null;
+        string name = words[1].ToLowerInvariant();
+        return unions != null && unions.TryGetValue(name, out var show) ? show : name;
+    }
+
+    // THE PROGRAMME ON EVERY TAB (propuesta 123): `union <name> <formations…> --by <policy>` written once per tab — the formation added to its bill when the
+    // line is there already — and `take <union>` moved to the end, after every form of it
+    private static void EnsureUnion(Golem member, string union, string formation, Policy policy)
+    {
+        string prefix = $"union {union} ";
+        var existing = member.Lines().FirstOrDefault(l => l.TrimStart().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        if (existing == null) member.Enqueue($"union {union} {formation} --by {Policies.Word(policy)}");
+        else
+        {
+            var words = existing.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+            var bill = words[2].Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (!bill.Contains(formation, StringComparer.OrdinalIgnoreCase)) { bill.Add(formation); words[2] = string.Join(",", bill); member.Replace(l => ReferenceEquals(l, existing) || l == existing, string.Join(" ", words)); }
+        }
     }
 
     // THE FINISH (propuesta 117; Juan: "cuando todos los elementos de la formación terminan su script, le dicen a los otros que terminaron"): `finish <name>`
@@ -207,8 +225,10 @@ public partial class MainWindow : Window
         int rewritten = 0, added = 0, dropped = 0;
         foreach (var member in members)
         {
+            if (dialog.Open) EnsureUnion(member, dialog.UnionName, name, dialog.Policy);   // the union (propuesta 123)
             if (member.Replace(l => l.StartsWith($"form {name} ", StringComparison.OrdinalIgnoreCase), line)) rewritten++; else added++;
-            if (dialog.OnCue) member.RemoveLines(l => l.Trim().StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase));   // on cue: no take (propuesta 117)
+            if (dialog.Open) { if (!member.Lines().Any(l => l.Trim().Equals($"take {dialog.UnionName}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {dialog.UnionName}"); }
+            else if (dialog.OnCue) member.RemoveLines(l => l.Trim().StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase));   // on cue: no take (propuesta 117)
             else if (!member.Lines().Any(l => l.Trim().StartsWith($"take {name}", StringComparison.OrdinalIgnoreCase))) member.Enqueue($"take {name}");
             // a cue chosen: every member's finish, after the take and the steps; none: no finish line
             if (dialog.CueTo == "") member.RemoveLines(l => l.Trim().Equals($"finish {name}", StringComparison.OrdinalIgnoreCase));
@@ -270,8 +290,47 @@ public partial class MainWindow : Window
         FormationsCount.Text = $" ({listed.Count})";
         if (selectedFormation != null && views.FirstOrDefault(v => v.Name == selectedFormation) is { } keep && FormationList.SelectedItem != keep) FormationList.SelectedItem = keep;
         NoFormation.Text = views.Count == 0 ? $"{g.Name} is in no formation — Console › Formation forms one" : "the golem's own: select one — its centre moves it, the square resizes it, the knob turns it (a draft until shot writes form + take on the tab); ↻ ↺ write a step on the tab, ✕ dissolves it now";
+        SyncUnions(g);
         Draw();
     }
+
+    // THE UNIONS TAB (22-oct-2026; Juan: "un apartado… para ver las formaciones que tiene encima esa unionize"): the selected golem's `unions` read, and the
+    // unions written on the tabs and not sent (unless the golem already has one by that name: then its read is the one shown)
+    private void SyncUnions(Golem g)
+    {
+        var all = new List<UnionView>(g.Knowledge.UnionList);
+        foreach (var pending in PendingFormations.Unions(golems))
+            if (all.All(u => u.Name != pending.Name)) all.Add(pending);
+        UnionList.ItemsSource = all;
+        UnionsCount.Text = $" ({all.Count})";
+        NoUnion.Text = all.Count == 0 ? $"{g.Name} is in no union — Console › Unionize writes one on every tab" : "the golem's copy of each union: the formations it administers in order, who its law sent to each, this golem's share; ✕ dissolves it now";
+    }
+
+    private async void DissolveUnion_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not UnionView union) return;
+        if (union.IsPending)
+        {
+            // a union to send: nothing in any golem yet — its line, its take and every line of its formations go off every tab, after asking
+            if (MessageBox.Show(this, $"take {union.Name} off the tabs? its union and take lines and the form, take, rotate and finish lines of {union.BillText} go ({union.PendingOn}); nothing was sent to any golem.", $"drop {union.Name}",
+                                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            int gone = 0;
+            foreach (var golem in golems)
+                gone += golem.RemoveLines(l => LineOf(l, union.Name) || UnionLineOf(l, union.Name) || union.Bill.Any(f => LineOf(l, f)));
+            Log($"{union.Name} › {gone} line(s) taken off the tabs");
+            if (Current is { } c) SyncFormations(c);
+            return;
+        }
+        if (Current is not { } g) return;
+        if (MessageBox.Show(this, $"dissolve {union.Name} on {g.Name}? the union and its formations ({union.BillText}) leave every golem of the fleet; the bodies stay where they are.", $"dissolve {union.Name}",
+                            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        await ActNowAsync(g, $"dissolve {union.Name}");
+        foreach (var other in golems.Where(x => x != g)) await GolemClient.RefreshReadingsAsync(other);
+        if (Current is { } current) SyncFormations(current);
+    }
+
+    private static bool UnionLineOf(string line, string name) =>
+        System.Text.RegularExpressions.Regex.IsMatch(line, $@"^(union|program)\s+{System.Text.RegularExpressions.Regex.Escape(name)}(\s|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     // the selected golem's formations, as it tells them
     private IReadOnlyList<FormationView> Views() => Current == null ? Array.Empty<FormationView>() : listed;
@@ -391,7 +450,7 @@ public partial class MainWindow : Window
     {
         Draw();
         _ = RefreshCurrentAsync();
-        if ((journalFollow != null || JournalBox.IsVisible) && GolemList.SelectedItem is Golem j && journalOf != j) FollowJournal(j);
+        if ((journalFollow != null || JournalList.IsVisible) && GolemList.SelectedItem is Golem j && journalOf != j) FollowJournal(j);
     }
 
     // ==================================================================
@@ -714,6 +773,7 @@ public partial class MainWindow : Window
         // until the formation underway is done — placed after its last step, nothing queued, nothing pending — or stranded
         string? underway = null;
         var underwaySince = DateTime.UtcNow;
+        var unions = PendingFormations.UnionsOf(golem.Script);   // the formations of a union on this tab are the union's lines (propuesta 123)
         try
         {
             while (!cts.IsCancellationRequested)
@@ -742,7 +802,7 @@ public partial class MainWindow : Window
                     continue;
                 }
                 string verbSent = line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-                string? ofFormation = FormationOf(line);
+                string? ofFormation = FormationOf(line, unions);
                 if (underway != null && ofFormation != underway)
                 {
                     // the boundary: whatever comes next waits for the formation underway
@@ -829,23 +889,49 @@ public partial class MainWindow : Window
             await Task.Delay(1000, ct);
             int? pending = await GolemClient.PendingAsync(golem, ct);
             if (pending == null) { golem.Status = "unreachable"; return Walk.Unreachable; }
-            var state = await GolemClient.FormationStateAsync(golem, name, ct);
-            if (state == null) { Log($"{golem.Name} › {name}: the golem has no such formation — nothing to wait for"); return Walk.NoRoute; }
             double secs = (DateTime.UtcNow - since).TotalSeconds;
-            if (state.Stranded) { Log($"{golem.Name} › ✗ {name} stranded after {secs:0.0} s — take it again, move it or dissolve it"); golem.Status = $"{name} stranded"; return Walk.Walked; }
+            // A PROGRAMME (propuesta 123): waited for until its round resolves — then this golem's own formation in it is what is waited for, or nothing when
+            // it was left out; a union that cannot resolve says why and the queue goes on
+            string target = name;
+            var show = await GolemClient.UnionStateAsync(golem, name, ct);
+            if (show != null)
+            {
+                if (show.Stuck) { Log($"{golem.Name} › ✗ {name} unresolved after {secs:0.0} s — {show.Why}"); golem.Status = $"{name} unresolved"; return Walk.Walked; }
+                if (!show.Resolved)
+                {
+                    golem.Status = $"waiting for the union's words in {name} ({show.Stood} of {show.Candidates} spoke{(show.Known ? "" : ", a formation not told yet")})";
+                    if ((DateTime.UtcNow - lastNotice).TotalMinutes >= 3) { lastNotice = DateTime.UtcNow; Log($"{golem.Name} › … still waiting for {name} after {secs / 60:0.0} min: {golem.Status} — STOP ends the wait"); }
+                    continue;
+                }
+                if (!show.Member) { Log($"{golem.Name} › ✓ {name} resolved in {secs:0.0} s — this golem was left out{(show.LeftOut == "" ? "" : $" ({show.LeftOut})")}: free"); golem.Status = $"left out of {name}"; return Walk.Walked; }
+                target = show.Mine;
+                // THE BEATS (propuesta 124): the union is one dance — the queue waits until every member of every formation finished, not until this golem's own
+                // formation did (it may have fewer steps and stay while the others go on); a formation of this golem stranded ends the wait, said
+                var own = await GolemClient.FormationStateAsync(golem, target, ct);
+                if (own != null && own.Stranded) { Log($"{golem.Name} › ✗ {target} stranded after {secs:0.0} s — take it again, move it or dissolve it"); golem.Status = $"{target} stranded"; return Walk.Walked; }
+                if (show.Done && pending == 0) { Log($"{golem.Name} › ✓ {name} done in {secs:0.0} s — {show.Beat} beat(s), everybody finished"); return Walk.Walked; }
+                golem.Status = pending > 0 ? $"dancing {name}: beat {show.Beat}, {pending} route(s) pending" : $"dancing {name}: beat {show.Beat}, waiting for the others";
+                if ((DateTime.UtcNow - lastNotice).TotalMinutes >= 3) { lastNotice = DateTime.UtcNow; Log($"{golem.Name} › … still waiting for {name} after {secs / 60:0.0} min: {golem.Status} — STOP ends the wait"); }
+                continue;
+            }
+            var state = await GolemClient.FormationStateAsync(golem, target, ct);
+            if (state == null) { Log($"{golem.Name} › {target}: the golem has no such formation — nothing to wait for"); return Walk.NoRoute; }
+            if (state.Open && state.Resolved && !state.Member) { Log($"{golem.Name} › ✓ {target}: not this golem's — the union placed it elsewhere"); return Walk.Walked; }
+            if (state.Stranded) { Log($"{golem.Name} › ✗ {target} stranded after {secs:0.0} s — take it again, move it or dissolve it"); golem.Status = $"{target} stranded"; return Walk.Walked; }
             if (state.Routed && state.Queued == 0 && pending == 0 && state.Placed >= state.Crew && !state.Finishing)
             {
-                Log($"{golem.Name} › ✓ {name} done in {secs:0.0} s — round {state.Round}, {state.Placed}/{state.Crew} placed{(state.Finished > 0 ? $", {state.Finished}/{state.Crew} finished" : "")}");
+                Log($"{golem.Name} › ✓ {target} done in {secs:0.0} s — round {state.Round}, {state.Placed}/{state.Crew} placed{(state.Finished > 0 ? $", {state.Finished}/{state.Crew} finished" : "")}");
                 return Walk.Walked;
             }
-            golem.Status = state.OnCue && !state.Cued ? $"waiting for the cue in {name}"
-                         : pending > 0 ? $"dancing {name}: round {state.Round}, {pending} route(s) pending"
-                         : !state.Routed ? $"waiting for the fleet's words in {name}"
-                         : $"dancing {name}: round {state.Round}, {state.Placed} of {state.Crew} placed, {state.Queued} step(s) queued";
+            golem.Status = state.Open && !state.Resolved ? $"waiting for the union's words in {target}"
+                         : state.OnCue && !state.Cued ? $"waiting for the cue in {target}"
+                         : pending > 0 ? $"dancing {target}: round {state.Round}, {pending} route(s) pending"
+                         : !state.Routed ? $"waiting for the fleet's words in {target}"
+                         : $"dancing {target}: round {state.Round}, {state.Placed} of {state.Crew} placed, {state.Queued} step(s) queued";
             if ((DateTime.UtcNow - lastNotice).TotalMinutes >= 3)
             {
                 lastNotice = DateTime.UtcNow;
-                Log($"{golem.Name} › … still waiting for {name} after {secs / 60:0.0} min: {golem.Status} — STOP ends the wait");
+                Log($"{golem.Name} › … still waiting for {target} after {secs / 60:0.0} min: {golem.Status} — STOP ends the wait");
             }
         }
         return Walk.Cancelled;
@@ -883,6 +969,7 @@ public partial class MainWindow : Window
     private Golem? journalOf;   // whose journal the pane follows now
     // every entry received, so the pane can be drawn again with other kinds shown; a box per kind of entry, made as the kind first appears
     private readonly List<(int Entry, string At, string Kind, string Text)> journalEntries = new();
+    private readonly System.Collections.ObjectModel.ObservableCollection<JournalCard> journalShown = new();   // the cards on the tab (23-oct-2026)
     private readonly Dictionary<string, CheckBox> journalKinds = new(StringComparer.Ordinal);
 
     private bool JournalShows(string kind) => !journalKinds.TryGetValue(kind, out var box) || box.IsChecked != false;
@@ -911,21 +998,51 @@ public partial class MainWindow : Window
         JournalKinds.Children.Add(box);
     }
 
-    private static string JournalBlock((int Entry, string At, string Kind, string Text) e)
+    // ONE CARD PER ENTRY (23-oct-2026; Juan: "que se vea la separación entre cada cosa del journal en el tab"): its number, its time, its kind as a
+    // chip in its colour, and the script (or the note) under them — a one-line text stays on the header line
+    private static JournalCard JournalBlock((int Entry, string At, string Kind, string Text) e)
     {
-        string body = e.Text.Contains('\n') ? Environment.NewLine + "    " + e.Text.Replace("\n", Environment.NewLine + "    ") : " " + e.Text;
         string label = JournalKindsKnown.FirstOrDefault(k => k.Kind == e.Kind).Label ?? e.Kind;
-        // one entry apart from the next: a blank line between them (13-oct-2026; Juan: "que se note la separación de un row con el otro")
-        return $"#{e.Entry} {e.At} {label}{body}{Environment.NewLine}{Environment.NewLine}";
+        bool multi = e.Text.Contains('\n');
+        return new JournalCard($"#{e.Entry}", e.At, label, e.Kind, multi ? "" : e.Text, multi ? e.Text.Replace("\n", Environment.NewLine) : "");
     }
 
     private void RenderJournal()
     {
-        var text = new System.Text.StringBuilder();
-        if (journalOf is { } g) text.Append($"— {g.Name}'s journal, live from its first entry (the definitions hidden) —{Environment.NewLine}");
-        foreach (var e in journalEntries) if (JournalShows(e.Kind)) text.Append(JournalBlock(e));
-        JournalBox.Text = text.ToString();
-        JournalBox.ScrollToEnd();
+        journalShown.Clear();
+        if (JournalList.ItemsSource == null) JournalList.ItemsSource = journalShown;
+        if (journalOf is { } g) journalShown.Add(new JournalCard("", "", "journal", "", $"{g.Name}'s journal, live from its first entry (the definitions hidden)", ""));
+        foreach (var e in journalEntries) if (JournalShows(e.Kind)) journalShown.Add(JournalBlock(e));
+        if (journalShown.Count > 0) JournalList.ScrollIntoView(journalShown[^1]);
+    }
+
+    // A LONG SCRIPT, WHOLE (23-oct-2026; Juan: "hay actions que son muy extensos… un modal para verlo mejor el script del action completo"): the card's
+    // ⤢ open shows the entry in a window of its own — the header as its title, the script in a big read-only box, Esc closes it
+    private void OpenJournalEntry_Click(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not JournalCard card) return;
+        e.Handled = true;
+        var box = new TextBox
+        {
+            Text = card.Body == "" ? card.Head : card.Body, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Consolas"), FontSize = 13,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, BorderThickness = new Thickness(0), Padding = new Thickness(10),
+            Background = (Brush)FindResource("Well"), Foreground = (Brush)FindResource("Ink"),
+        };
+        var window = new Window
+        {
+            Title = $"{(journalOf?.Name ?? "golem")}'s journal · {card.Number} {card.At} {card.Label}".Trim(),
+            Owner = this, Width = 900, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = (Brush)FindResource("Page"), Content = box,
+        };
+        window.KeyDown += (_, k) => { if (k.Key == Key.Escape) window.Close(); };
+        window.Show();
+    }
+
+    private void AppendJournal(JournalCard card)
+    {
+        if (JournalList.ItemsSource == null) JournalList.ItemsSource = journalShown;
+        journalShown.Add(card);
+        JournalList.ScrollIntoView(card);
     }
 
     /// <summary>A script of the journal with its line breaks back: the engine keeps the canonical form on one line — this puts a statement per
@@ -985,13 +1102,13 @@ public partial class MainWindow : Window
                     var entry = ((int)(JsonWalk.Number(e, "Entry") ?? 0), at, kind, script == "" ? note.Trim() : PrettyScript(script));
                     journalEntries.Add(entry);
                     JournalKindSeen(kind);
-                    if (JournalShows(kind)) { JournalBox.AppendText(JournalBlock(entry)); JournalBox.ScrollToEnd(); }
+                    if (JournalShows(kind)) AppendJournal(JournalBlock(entry));
                 }
                 catch (JsonException) { }
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) when (ex is HttpRequestException or IOException) { JournalBox.AppendText($"— the journal's feed ended: {ex.Message}{Environment.NewLine}"); if (journalOf == golem) journalOf = null; }
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { AppendJournal(new JournalCard("", "", "journal", "", $"the journal's feed ended: {ex.Message}", "")); if (journalOf == golem) journalOf = null; }
     }
 
     // ==================================================================
@@ -1145,13 +1262,44 @@ public partial class MainWindow : Window
         var members = Members(dialog.Chosen);
         foreach (var member in members)
         {
+            // THE UNION (propuesta 123): an open formation belongs to a union — `union <name> <bill>` on every tab before it, `take <union>` after every form of it
+            if (dialog.Open) { EnsureUnion(member, dialog.UnionName, name, dialog.Policy); member.RemoveLines(l => l.Trim().Equals($"take {dialog.UnionName}", StringComparison.OrdinalIgnoreCase)); }
             member.Enqueue(FormLineOf(dialog, name, 0.0));
-            if (!dialog.OnCue) member.Enqueue($"take {name}");   // on cue: its take is the word 'your turn' from the group before (propuesta 117)
+            if (dialog.Open) member.Enqueue($"take {dialog.UnionName}");
+            else if (!dialog.OnCue) member.Enqueue($"take {name}");   // on cue: its take is the word 'your turn' from the group before (propuesta 117)
             // a cue to give: every member's finish closes its part (19-oct-2026: without it the fleet never finished and the next group never formed); the steps go in before it
             if (dialog.CueTo != "") member.Enqueue($"finish {name}");
         }
         FormationsTab.IsSelected = true;
-        Log($"form {name}{(dialog.OnCue ? "" : $" and take {name}")} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))}{(dialog.CueTo != "" ? $" and finish {name}" : "")} — SEND to selected when ready");
+        Log($"form {name}{(dialog.Open ? $" --open of the union {dialog.UnionName} and take {dialog.UnionName}" : dialog.OnCue ? "" : $" and take {name}")} on {members.Count} tab(s): {string.Join(", ", members.Select(m => m.Name))}{(dialog.CueTo != "" ? $" and finish {name}" : "")} — SEND to selected when ready");
+    }
+
+    // THE PROGRAMME (22-oct-2026; Juan: "otra opción para programar coreografías… que sólo pregunte una lista de formaciones… y cuántos van destinados a cada
+    // una, y ellos lo terminan haciendo"): the dialog's list — no golem named — and on EVERY tab the union, each formation `--open --places n` linked to
+    // the one before it (a cue, or a question), `take <union>` and each formation's finish; the golems share themselves by the law (propuesta 123)
+    private void Union_Click(object sender, RoutedEventArgs e)
+    {
+        if (golems.Count == 0) { Log("add a golem first: a union is written on every tab"); return; }
+        var dialog = new UnionDialog(Views().Select(v => v.Name)) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        string union = dialog.UnionName;
+        string policy = Policies.Word(dialog.Policy);
+        var bill = dialog.Formations;
+        // ONE LINE, THE WHOLE DEFINITION (propuesta 124, 22-oct-2026, night; Juan: "yo quisiera un solo comando con toda la definición, viendo los tabs como un
+        // solo union… algo como program formations"): the program — the union with its link, every formation with its figure and count, and the score as
+        // a row per formation (cw, ccw, - a rest) — the same line on every tab; the domain makes everything and the line is each golem's word
+        string forms = string.Join(" ", bill.Select(f => $"--form {f.Name} {f.Figure} {Fmt(f.CenterX)},{Fmt(f.CenterY)} {(f.Figure == "circle" ? "radius" : "side")} {Fmt(f.Size)} angle {Fmt(f.Angle)} places {f.Golems}"));
+        int beats = bill.Count == 0 ? 0 : bill.Max(f => f.Steps.Count);
+        string score = beats == 0 ? "" : " --score " + string.Join(" ", bill.Select(f => $"{f.Name}=" + string.Join(",", Enumerable.Range(0, beats).Select(i => i < f.Steps.Count ? (f.Steps[i] == "counterclockwise" ? "ccw" : f.Steps[i] == "rest" ? "-" : "cw") : "-"))));
+        string line = $"program {union} --by {policy}{(dialog.Pull ? $" --link ask --every {Fmt(dialog.Every)}s" : " --link cue")} {forms}{score}";
+        foreach (var golem in golems)
+        {
+            golem.RemoveLines(l => UnionLineOf(l.Trim(), union) || l.Trim().Equals($"take {union}", StringComparison.OrdinalIgnoreCase)
+                                 || bill.Any(f => LineOf(l.Trim(), f.Name)));
+            golem.Enqueue(line);
+        }
+        UnionsTab.IsSelected = true;
+        Log($"union {union}: {string.Join(", ", bill.Select(f => $"{f.Name} ({f.Golems}{(f.Steps.Count > 0 ? $", {f.Steps.Count} step{(f.Steps.Count == 1 ? "" : "s")}" : "")})"))} by {policy}, taken at once, the beats {(dialog.Pull ? "by asking" : "by the cue")} — one program line on {golems.Count} tab(s); SEND to selected when ready");
     }
 
     // A STEP OF A FORMATION (propuesta 104; ajuste 77): the line `rotate <name> <sense> [--ring …]` WRITTEN on the selected golem's tab, sent
@@ -1956,4 +2104,18 @@ internal static class Fluent
 {
     /// <summary>Sets up an element inline and hands it back.</summary>
     public static T Also<T>(this T element, Action<T> setup) { setup(element); return element; }
+}
+
+/// <summary>A CARD OF THE JOURNAL TAB (23-oct-2026; Juan: "que se vea la separación entre cada cosa del journal"): the entry's number, time and kind,
+/// a one-line text on the header line (<see cref="Head"/>) or a script under it (<see cref="Body"/>); the chip's tint and the card's shade say the kind.</summary>
+public sealed record JournalCard(string Number, string At, string Label, string Kind, string Head, string Body)
+{
+    public System.Windows.Visibility BodyShown => Body == "" ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+    /// <summary>The chip's colour by kind: an act in the accent, a definition purple, a plain script orange, the engine's records blue, the host's notes dim.</summary>
+    public System.Windows.Media.Brush Tint => (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(Kind switch
+    {
+        "action" => "Accent", "define" => "Purple", "script" => "Orange", "record" => "Blue", "runtime" => "Green", _ => "Dim",
+    });
+    /// <summary>A faint shade on the acts, so the cards alternate with the rest at a glance.</summary>
+    public System.Windows.Media.Brush Shade => (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(Kind is "action" or "script" ? "Panel" : "Well");
 }

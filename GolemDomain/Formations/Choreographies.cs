@@ -1,5 +1,6 @@
 using GolemDomain.Geometry;
 using GolemDomain.Routes;
+using GolemDomain.Units;
 
 namespace GolemDomain.Formations;
 
@@ -19,8 +20,9 @@ internal sealed class Choreographies
     private static readonly string[] Known = { "square", "pentagon", "triangle", "circle", "propeller" };
     private readonly Golem golem;                        // the golem it was born with: it opens the route to a place (refused off the map or without room)
     private readonly List<Formation> formations = new();   // the formations the golem was told, by name, the dissolved ones among them (history)
+    private readonly List<Union> unions = new();   // THE PROGRAMMES (propuesta 123): each naming several open formations and sharing the golems among them
     private readonly Dictionary<string, Dictionary<string, (Position At, string Nonce)>> overheard = new();   // words of a round heard AHEAD of the formation they are about: name → who → where
-    private bool pendingCue;                                            // a cue to THIS golem heard before the formation it waits in was told (propuesta 117)
+    private readonly HashSet<string> pendingCues = new(StringComparer.Ordinal);   // cues heard before the formation they name was told here (propuesta 117; by the formation's name since propuesta 123)
     private readonly Queue<(string Call, string Who)> questions = new();   // THE PULL (propuesta 118): who asked whether which formation finished, to be answered on the tick
     private int answers;                                                // how many answers this golem gave: the once of each
 
@@ -145,50 +147,66 @@ internal sealed class Choreographies
         words[teller] = (new Position(at.X, at.Y), nonce ?? "");
     }
 
-    // ---- THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026): the word "continúas tú" names a golem; the named one knows which formation it waits in ----
+    // ---- THE CUE BETWEEN DANCERS (propuesta 117, 19-oct-2026): the word "continúas tú" named a golem, who relayed it to its team; SINCE PROPUESTA 123
+    // (21-oct-2026; Juan: "cómo solucionar el problema sin coordinador") IT NAMES A FORMATION, and every member of it takes the cue by itself ----
 
-    /// <summary>Whether THIS golem is the one named by a cue and has a formation that starts on cue, of its fleet, not taken yet — what the uptake of
-    /// <c>YourTurn</c> asks: <c>if (g.Choreography.AwaitsCue(@to)) { formation = g.Choreography.CuedFormation; formation.Cued(); formation.Convene(from, me); … }</c>.</summary>
-    internal bool AwaitsCue(string golemName)
+    /// <summary>Whether THIS golem waits in the formation named by a cue — told, starting on cue, not cued yet, of its fleet, not taken — what the uptake of
+    /// <c>YourTurn</c> asks: <c>if (g.Choreography.AwaitsCue(@to)) { formation = g.Choreography.Cued(@to); formation.TakeCue(from, me); … }</c>. Every
+    /// member of the formation named takes it, so the round completes with no relay.</summary>
+    internal bool AwaitsCue(string formationName)
     {
-        if (golemName == null) throw new GolemDomainException("Choreographies.AwaitsCue: 'golemName' was not given");
-        if (golem.Name == null || golem.Name != golemName.Trim().ToLowerInvariant()) return false;
-        return formations.Any(WaitsForTheCue);
+        if (formationName == null) throw new GolemDomainException("Choreographies.AwaitsCue: 'formationName' was not given");
+        string called = formationName.Trim().ToLowerInvariant();
+        return formations.Any(f => f.Name == called && WaitsForTheCue(f));
     }
 
-    private bool WaitsForTheCue(Formation f) => !f.Dissolved && f.OnCue && !f.IsCued && f.Fleet.Has(golem) && !f.Knows(f.Fleet.Member(golem));
+    // an open formation waits for no cue before its union resolved (lab 21-oct-2026: a cue kept from an earlier show, taken by a candidate that was no member, made the right dance at once)
+    private bool WaitsForTheCue(Formation f) => !f.Dissolved && f.OnCue && !f.IsCued && (!f.IsOpen || f.IsResolved) && f.Fleet.Has(golem) && !f.Knows(f.Fleet.Member(golem));
 
-    /// <summary>The formation this golem waits in for the cue — the latest told, when several do. Taking it ends a cue kept ahead. Refused when none waits.</summary>
-    internal Formation CuedFormation
+    /// <summary>The formation of that name this golem waits in for the cue — the latest told. Taking it ends a cue kept ahead for that name. Refused when none waits.</summary>
+    internal Formation Cued(string formationName)
     {
-        get
-        {
-            var formation = formations.LastOrDefault(WaitsForTheCue) ?? throw new GolemDomainException("this golem waits in no formation for a cue");
-            pendingCue = false;
-            return formation;
-        }
+        if (formationName == null) throw new GolemDomainException("Choreographies.Cued: 'formationName' was not given");
+        string called = formationName.Trim().ToLowerInvariant();
+        var formation = formations.LastOrDefault(f => f.Name == called && WaitsForTheCue(f)) ?? throw new GolemDomainException($"this golem waits in no formation named '{called}' for a cue");
+        pendingCues.Remove(called);
+        return formation;
     }
 
-    /// <summary>A CUE HEARD AHEAD (propuesta 117): the word named this golem and it waits in no formation yet (its `form … --on-cue` comes late, a slow
-    /// `use map` on its tab): kept, and the clock takes it once the formation is told (<c>TakeIfCued</c>). A cue to another golem is nobody's here.</summary>
-    internal void OverheardCue(string golemName)
+    /// <summary>A CUE HEARD AHEAD (propuesta 117): the word named a formation this golem was not told yet (its `form … --on-cue` comes late, a slow
+    /// `use map` on its tab): kept by the name, and the clock takes it once the formation is told (<c>TakeIfCued</c>, <see cref="CuedFormation"/>).</summary>
+    internal void OverheardCue(string formationName)
     {
-        if (golemName == null) throw new GolemDomainException("Choreographies.OverheardCue: 'golemName' was not given");
-        if (golem.Name != null && golem.Name == golemName.Trim().ToLowerInvariant()) pendingCue = true;
+        if (formationName == null) throw new GolemDomainException("Choreographies.OverheardCue: 'formationName' was not given");
+        pendingCues.Add(formationName.Trim().ToLowerInvariant());
     }
 
-    /// <summary>Whether a cue kept ahead has its formation now: the clock's question.</summary>
-    internal bool HasPendingCue => pendingCue && formations.Any(WaitsForTheCue);
+    /// <summary>Whether a cue kept ahead has its formation now — told, waiting, this golem of its fleet: the clock's question.</summary>
+    internal bool HasPendingCue => pendingCues.Any(AwaitsCue);
+
+    /// <summary>The formation a cue kept ahead is about, waiting now — the clock's take (<c>TakeIfCued</c>). Refused when none.</summary>
+    internal Formation CuedFormation => Cued(pendingCues.FirstOrDefault(AwaitsCue) ?? throw new GolemDomainException("no cue kept here waits for a formation"));
 
     // ---- THE PULL (propuesta 118, 20-oct-2026; Juan: "que yellow esté pendiente de consultarle a alguno si ya terminó"): a question and an answer, two
-    // tells; the asker's golem COMMITS ITSELF to ask every so often (propuesta 121: the inquiry in g.Commitments, kept by the attention when due),
-    // the asked one's clock answers from its own copy ----
+    // tells; the asker's golem COMMITS ITSELF to ask every so often (propuesta 122: the engine's own remember), and since propuesta 123 the question
+    // names the FORMATION asked, not a golem: the first by rank of that formation answers from its own copy, on its clock ----
 
-    /// <summary>Whether a word addressed to a golem by name is for THIS golem — the uptakes of the pull ask it first.</summary>
+    /// <summary>Whether a word addressed to a golem by name is for THIS golem — the uptake of an answer asks it first (the answer names the asker).</summary>
     internal bool AskedOf(string golemName)
     {
         if (golemName == null) throw new GolemDomainException("Choreographies.AskedOf: 'golemName' was not given");
         return golem.Name != null && golem.Name == golemName.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>Whether THIS golem answers for the formation named (propuesta 123): told it, in force, of its fleet, and ITS FIRST BY RANK — the
+    /// election by rank, zero words: every copy of that formation computes the same one. What the uptake of <c>DidYouFinish</c> asks:
+    /// <c>if (g.Choreography.Answers(@about)) { g.Choreography.AskedAbout(@about, @asker); }</c>.</summary>
+    internal bool Answers(string formationName)
+    {
+        if (formationName == null) throw new GolemDomainException("Choreographies.Answers: 'formationName' was not given");
+        string called = formationName.Trim().ToLowerInvariant();
+        var formation = formations.LastOrDefault(f => f.Name == called && InForce(f));
+        return formation != null && formation.Fleet.Has(golem) && formation.Asker == golem.Name;
     }
 
     /// <summary>A QUESTION HEARD (by tell, <c>DidYouFinish</c>): who asked whether which formation finished — kept until this golem's clock answers
@@ -224,7 +242,7 @@ internal sealed class Choreographies
         return AskedOf(golemName) && formations.Any(f => IsWaitingAfter(f, formationName));
     }
 
-    private bool IsWaitingAfter(Formation f, string formationName) => !f.Dissolved && f.After == formationName.Trim().ToLowerInvariant() && !f.IsCued && f.Fleet.Has(golem);
+    private bool IsWaitingAfter(Formation f, string formationName) => !f.Dissolved && f.After == formationName.Trim().ToLowerInvariant() && !f.IsCued && (!f.IsOpen || f.IsResolved) && f.Fleet.Has(golem);
 
     /// <summary>The formation of this golem that starts after the one named — the latest told. Refused when none waits.</summary>
     internal Formation FormationAfter(string formationName)
@@ -278,6 +296,139 @@ internal sealed class Choreographies
         return formations.Any(f => f.Name == called && f.Stamp == stamp && InForce(f) && f.StillAsks);
     }
 
+    // ---- THE PROGRAMME (propuesta 123, 21-oct-2026): several open formations in order, the golems shared among them by the law ----
+
+    /// <summary>THE PROGRAMME TOLD — <c>union = g.Choreography.Union(@unionName, @formationNames, fleet, @by, @stamp);</c>: its formations by
+    /// name, in order; its candidates (the fleet it was told to: this golem and its peers, unless the warden says); its policy — distance or rps.
+    /// Told again under the same name: made again, the old one dissolved with its formations. Words of its round heard ahead are taken in.</summary>
+    internal Union Union(string name, string formationNames, Fleet candidates, Policy by, string stamp) => Union(name, formationNames, candidates, by, Link.Cue, null, stamp);
+
+    /// <summary>The same, WITH ITS LINK (propuesta 124) — <c>union = g.Choreography.Union(@unionName, @formationNames, fleet, @by, @link, period, @stamp);</c>:
+    /// how its beats are agreed among the golems, by the cue or by asking every so often.</summary>
+    internal Union Union(string name, string formationNames, Fleet candidates, Policy by, Link link, Duration every, string stamp)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.Union: 'name' was not given");
+        if (formationNames == null) throw new GolemDomainException("Choreographies.Union: 'formationNames' was not given");
+        if (candidates == null) throw new GolemDomainException("Choreographies.Union: 'candidates' was not given");
+        string called = name.Trim().ToLowerInvariant();
+        if (called == "") throw new GolemDomainException("a union needs a name");
+        if (formations.Any(f => f.Name == called && InForce(f))) throw new GolemDomainException($"'{called}' names a formation already: a union needs a name of its own");
+        var union = new Union(called, formationNames, candidates, golem, this, by, link, every, stamp);
+        unions.FirstOrDefault(x => x.Name == called && !x.Dissolved)?.Dissolve();   // told again: the old one and its formations go
+        foreach (var billed in union.Names) pendingCues.Remove(billed);              // a cue kept for a name of a show told again is of the old show (lab 21-oct-2026)
+        unions.Add(union);
+        if (overheard.Remove(called, out var words))
+            foreach (var (who, word) in words)
+                if (who != golem.Name && candidates.Names.Contains(who)) union.Stood(candidates.Member(who), word.At, word.Nonce);
+        return union;
+    }
+
+    /// <summary>THE PROGRAM (propuesta 124, 22-oct-2026, night; Juan: "un solo comando con toda la definición… el dominio debería crear el objeto completo
+    /// del sindicato y el dominio entiende que debe terminar creando los dos objetos de las formaciones con todas sus instrucciones") —
+    /// <c>union = g.Choreography.Program(@programName, @definition, fleet, @by, @link, period, @stamp);</c>: the whole union from ONE definition
+    /// (<see cref="Score.Read"/>): the union itself, then every formation of it — made with its figure, OPENED into the union, its part of the score
+    /// queued step by step (a rest a <see cref="Move.Rest"/>) and its finish implied at the end of its part. The same text on every candidate's tab makes
+    /// the same copy everywhere; the golem's own word (its take) is the Convene that follows in the same act. Told again under its name: made again.</summary>
+    internal Union Program(string name, string definition, Fleet candidates, Policy by, Link link, Duration every, string stamp)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.Program: 'name' was not given");
+        if (definition == null) throw new GolemDomainException("Choreographies.Program: 'definition' was not given");
+        if (candidates == null) throw new GolemDomainException("Choreographies.Program: 'candidates' was not given");
+        if (string.IsNullOrWhiteSpace(stamp)) throw new GolemDomainException("a program needs its stamp: the once of its call");
+        var score = Score.Read(definition);
+        var union = Union(name, score.Bill, candidates, by, link, every, stamp);
+        foreach (var part in score.Parts)
+        {
+            var formation = Form(part.Name, part.Figure, part.Center, part.Measure, part.Turn, candidates, by, stamp);   // the union's stamp: one hand at the game in every copy
+            Open(formation, part.Places);
+            for (int i = 0; i < part.Steps.Count; i++)
+                formation.Queue(part.Steps[i] is Sense sense ? formation.Figure.Rotate(sense) : Move.Rest, $"{stamp}-{part.Name}-{i + 1}");
+            formation.FinishesAtTheEnd();
+        }
+        return union;
+    }
+
+    /// <summary>Whether a union of that name was told and is in force.</summary>
+    internal bool HasUnion(string name)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.HasUnion: 'name' was not given");
+        string called = name.Trim().ToLowerInvariant();
+        return unions.Any(x => x.Name == called && !x.Dissolved);
+    }
+
+    /// <summary>The union of that name, in force — <c>union = g.Choreography.FindUnion(@unionName);</c>. Refused when none.</summary>
+    internal Union FindUnion(string name)
+    {
+        if (name == null) throw new GolemDomainException("Choreographies.FindUnion: 'name' was not given");
+        string called = name.Trim().ToLowerInvariant();
+        return unions.LastOrDefault(x => x.Name == called && !x.Dissolved) ?? throw new GolemDomainException($"the golem was told no union named '{called}': say it first");
+    }
+
+    /// <summary>Whether a word about that formation is HEARD here (propuesta 124): this golem has a route in it, or it is a formation of a union this
+    /// golem dances in — every copy keeps the whole score of its union, the other formations' words included (<c>PlacedAt</c>, <c>AlignedAt</c>,
+    /// <c>FinishedAt</c>), so the beats step and start the same everywhere.</summary>
+    internal bool Hears(string formationName)
+    {
+        if (formationName == null) throw new GolemDomainException("Choreographies.Hears: 'formationName' was not given");
+        string called = formationName.Trim().ToLowerInvariant();
+        var formation = formations.LastOrDefault(f => f.Name == called && InForce(f));
+        if (formation == null) return false;
+        if (formation.Route != null) return true;
+        return formation.IsOpen && formation.Union != null && formation.Union.IsMember;
+    }
+
+    /// <summary>The unions in force, in the order they were told (the warden's read).</summary>
+    internal IReadOnlyList<Union> Unions() => unions.Where(x => !x.Dissolved).ToList();
+
+    /// <summary>The union in force that names that formation; null when none.</summary>
+    internal Union UnionNaming(string formationName)
+    {
+        if (formationName == null) throw new GolemDomainException("Choreographies.UnionNaming: 'formationName' was not given");
+        string called = formationName.Trim().ToLowerInvariant();
+        return unions.LastOrDefault(x => !x.Dissolved && x.Names.Contains(called));
+    }
+
+    /// <summary>The formation of that name told here, in force, OPEN and of that union; null when none — what the union asks to know whether
+    /// every figure of its is told (<see cref="Formations.Union.IsKnown"/>).</summary>
+    internal Formation OpenFormationOf(string formationName, string unionName)
+    {
+        if (formationName == null) throw new GolemDomainException("Choreographies.OpenFormationOf: 'formationName' was not given");
+        if (unionName == null) throw new GolemDomainException("Choreographies.OpenFormationOf: 'unionName' was not given");
+        string called = formationName.Trim().ToLowerInvariant(), show = unionName.Trim().ToLowerInvariant();
+        return formations.LastOrDefault(f => f.Name == called && InForce(f) && f.IsOpen && f.UnionName == show);
+    }
+
+    /// <summary>OPENED (propuesta 123) — <c>union = g.Choreography.Open(formation);</c>, the warden's <c>--open</c> right after the Form: the formation
+    /// belongs to the union that names it (said before it, on the same tab), its fleet is the union's candidates, and if with it the union's
+    /// round is complete (the words came first), the law runs now. Refused when no union in force names it.</summary>
+    internal Union Open(Formation formation) => Open(formation, 0);
+
+    /// <summary>The same, FOR HOW MANY golems the figure takes (22-oct-2026): <c>union = g.Choreography.Open(formation, @openPlaces);</c>.</summary>
+    internal Union Open(Formation formation, int places)
+    {
+        if (formation == null) throw new GolemDomainException("Choreographies.Open: 'formation' was not given");
+        if (!formations.Contains(formation)) throw new GolemDomainException($"the golem was told no formation named '{formation.Name}'");
+        var union = UnionNaming(formation.Name) ?? throw new GolemDomainException($"no union names {formation.Name}: say the union first — union <name> {formation.Name},…");
+        formation.Opens(union, places);
+        union.Told();
+        return union;
+    }
+
+    /// <summary>A PROGRAMME DISSOLVED — <c>g.Choreography.DissolveUnion(union);</c>: it and its formations leave the list; told to the fleet by the reaction on this act.</summary>
+    internal void DissolveUnion(Union union)
+    {
+        if (union == null) throw new GolemDomainException("Choreographies.DissolveUnion: 'union' was not given");
+        if (!unions.Contains(union)) throw new GolemDomainException($"the golem was told no union named '{union.Name}'");
+        union.Dissolve();
+        overheard.Remove(union.Name);
+        foreach (var name in union.Names) { overheard.Remove(name); pendingCues.Remove(name); }
+    }
+
+    /// <summary>THE RECURRENCE TO ARM (propuesta 123): whether some formation of this golem has its asker's recurrence due — this golem the asker, the
+    /// formation waiting for its answer, open ones enrolled — the clock's question (<c>ArmIfAsker</c>); and which.</summary>
+    internal bool ArmsInquiry => formations.Any(f => InForce(f) && f.InquiryDue);
+    internal Formation InquiryToArm => formations.FirstOrDefault(f => InForce(f) && f.InquiryDue) ?? throw new GolemDomainException("no recurrence of this golem is due to arm");
+
     /// <summary>Whether the golem was told a formation by that name, still in force — what a script asks before it finds it.</summary>
     internal bool HasFormation(string name)
     {
@@ -318,6 +469,7 @@ internal sealed class Choreographies
         if (!formations.Contains(formation)) throw new GolemDomainException($"the golem was told no formation named '{formation.Name}'");
         formation.Dissolve();
         overheard.Remove(formation.Name);   // words kept for a next telling of a name dissolved are words of nothing
+        pendingCues.Remove(formation.Name);  // a cue kept for it too
     }
 
     /// <summary>The FORMATION IN PLACE (ajuste 77): the one of the latest route this golem took a place by — what the arrival's word is
