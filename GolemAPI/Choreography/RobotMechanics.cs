@@ -77,6 +77,10 @@ public sealed class RobotMechanics : IOutputSink
             ("next-order-aligned", "[_:Formation].Aligned(_)"),             // this golem is lined up for the step: with the last word the fleet starts (propuesta 106)
             ("next-order-heard-aligned", "[_:Formation].HeardAligned(_, _)"), // a peer's word that it is lined up, with its round: the same (lab 9-oct: with one argument it never fired — the clock released the body up to 2 s late)
             ("next-order-dissolve", "[_:Choreographies].Dissolve(_)"),
+            ("next-order-drive",  "[_:Dynamics].Drive(_, _)"),              // a car's drive opened at the start of the traffic play (propuesta 125)
+            ("next-order-go",     "[_:Dynamics].Go(_)"),
+            ("next-order-advance", "[_:Dynamics].Advance(_, _)"),
+            ("next-order-set-out", "[_:Dynamics].SetOut(_)"),                 // the car behind sets out: the one ahead at its place (propuesta 125 §12)           // the queue moved (propuesta 125 §12): the car's route to its nearer place                    // the light's green opened the car's gate (propuesta 125): the advance through the crossing
             ("next-order-run",    "[_:Dynamics].Run(_, _)"),
             ("next-order-chase",  "[_:Dynamics].Chase(_, _)"),              // a ghost's chase opened: at pacman's word, or at its arrival (propuesta 108, fase 3)
             ("next-order-probe",  "[_:Explorations].Probe(_)"),            // a probe of the exploration opened (propuesta 120): the way laid, the first order

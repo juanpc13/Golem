@@ -290,6 +290,8 @@ public sealed class GolemEmbodiment
             Choreographer?.ArmIfAsker();         // the asker of a formation that starts after another (propuesta 123): its recurrence armed once, with the engine's remember
             Choreographer?.AnswerIfAsked();      // …and the one asked answers from its copy
             Dynamics?.AnnounceIfConcluded();     // the play ended here — a ghost and pacman met inside a word heard (fase 4): the clock announces it
+            Dynamics?.GrantIfFree();             // the light (propuesta 125): the crossing free and a car at its line — the permit, told to the cast
+            Dynamics?.SetOutIfAhead();           // a car behind lined up (propuesta 125 §12): the one ahead at its place — it sets out
             Explorer?.ProbeIfIdle();             // exploring and standing free (propuesta 120): the next probe — the first after `explore`, or after one refused
             Explorer?.FinishIfComplete();        // nothing unknown left next to what it knows: the mode ends by itself
             var now = AskOrder();
@@ -367,6 +369,8 @@ public sealed class GolemEmbodiment
         {
             return Answer.Of(Actor.Using(
                 @"
+                    Check(g.StandsFree) Error 'a route is pending: the golem enters a scenario when it stands free';
+                ", @"
                     {
                         scenario = g.Scenario(@into);
                         g.Enter(scenario);
@@ -374,7 +378,7 @@ public sealed class GolemEmbodiment
                     }
                 ")
                 .WithParameters(p => { p["into", typeof(string)] = into; })
-                .PerformCommand());
+                .PerformCheckThenCommand());
         }
         catch (Exception ex) { return Answer.Refusal($"enter {into}: " + Reason(ex)); }
     }

@@ -292,6 +292,33 @@ internal sealed class Golem
         return Entrust(from, stop, following: false, choosesOrder: false);
     }
 
+    /// <summary>A DRIVE of the traffic play (propuesta 125): ONE route through several stops, decided whole, with a GATE at one of them —
+    /// the body stands there until the play says go. Square, no facing, no berths; the stops on the map with room for the body.</summary>
+    internal Route DriveTo(Position from, IReadOnlyList<Position> stops, Position gate, string where)
+    {
+        if (from == null) throw new GolemDomainException("Golem.DriveTo: 'from' was not given");
+        if (stops == null) throw new GolemDomainException("Golem.DriveTo: 'stops' was not given");
+        if (gate == null) throw new GolemDomainException("Golem.DriveTo: 'gate' was not given");
+        if (stops.Count == 0) throw new GolemDomainException("Golem.DriveTo: the drive has no stop");
+        foreach (var stop in stops) CheckPlace(stop, where);
+        var route = Entrust(from, stops[0], following: false, choosesOrder: false);
+        foreach (var stop in stops.Skip(1)) route.Then(stop);
+        return route.Gate(gate);
+    }
+
+    /// <summary>THE WAY THROUGH (propuesta 125 §12): at the green, the car's route from its line through the crossing to its parking place —
+    /// decided when the green comes, so the place follows the order of the greens; several stops, no gate.</summary>
+    internal Route DriveThrough(Position from, IReadOnlyList<Position> stops, string where)
+    {
+        if (from == null) throw new GolemDomainException("Golem.DriveThrough: 'from' was not given");
+        if (stops == null) throw new GolemDomainException("Golem.DriveThrough: 'stops' was not given");
+        if (stops.Count == 0) throw new GolemDomainException("Golem.DriveThrough: the drive has no stop");
+        foreach (var stop in stops) CheckPlace(stop, where);
+        var route = Entrust(from, stops[0], following: false, choosesOrder: false);
+        foreach (var stop in stops.Skip(1)) route.Then(stop);
+        return route;
+    }
+
     /// <summary>A PROBE of the exploration (propuesta 120, fase B): the route the golem LAYS ITSELF — no planner — through the points its
     /// exploration module decided (the cells it knows, and one step into the unknown), from where the body stands; a touch ends it. The
     /// module asks it, never the journal.</summary>
@@ -569,6 +596,10 @@ internal sealed class Golem
     // ---- reads (total: never throw when nothing is there) — per-route questions are the ROUTE's own (g.Find(@id).StopsLeft) ----
 
     internal bool Knows(int id) => routes.Any(m => m.Id == id);
+    /// <summary>No route pending: the golem may enter another scenario, probe, be told a play (the host's Check before such acts, so a refusal
+    /// is never journaled — lab 23-oct-2026: a `use map` refused live for a route pending replayed as an error).</summary>
+    internal bool StandsFree => !HasPendingMission();
+
     internal bool HasPendingMission() => routes.Any(m => m.IsPending());
     /// <summary>Every route the golem was ever handed, as objects — <c>g.Routes().Count</c> is how many.</summary>
     internal IReadOnlyList<Route> Routes() => routes.ToList();

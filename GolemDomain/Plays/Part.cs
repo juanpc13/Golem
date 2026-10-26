@@ -6,6 +6,8 @@ internal enum Part
 {
     Pacman,
     Ghost,
+    Car,
+    Light,
 }
 
 /// <summary>A DIRECTION in the maze, the four a corridor can run: the way pacman is heading.</summary>

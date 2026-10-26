@@ -1,0 +1,36 @@
+{
+  "Kind": "golem workspace",
+  "Version": 3,
+  "Golems": [
+    {
+      "Name": "orange",
+      "Host": "localhost",
+      "Port": 8085,
+      "Script": "use map road\nplace 3.0,3.0\nplay road-1 traffic --light orange --cars blue:south:left,red:south:straight,green:north:right,yellow:north:straight --as light\nstart road-1"
+    },
+    {
+      "Name": "blue",
+      "Host": "localhost",
+      "Port": 8081,
+      "Script": "use map road\nplace 8.25,3.75\nplay road-1 traffic --light orange --cars blue:south:left,red:south:straight,green:north:right,yellow:north:straight --as car\nstart road-1"
+    },
+    {
+      "Name": "red",
+      "Host": "localhost",
+      "Port": 8082,
+      "Script": "use map road\nplace 8.25,2.75\nplay road-1 traffic --light orange --cars blue:south:left,red:south:straight,green:north:right,yellow:north:straight --as car\nstart road-1"
+    },
+    {
+      "Name": "green",
+      "Host": "localhost",
+      "Port": 8083,
+      "Script": "use map road\nplace 6.75,11.25\nplay road-1 traffic --light orange --cars blue:south:left,red:south:straight,green:north:right,yellow:north:straight --as car\nstart road-1"
+    },
+    {
+      "Name": "yellow",
+      "Host": "localhost",
+      "Port": 8084,
+      "Script": "use map road\nplace 6.75,12.25\nplay road-1 traffic --light orange --cars blue:south:left,red:south:straight,green:north:right,yellow:north:straight --as car\nstart road-1"
+    }
+  ]
+}

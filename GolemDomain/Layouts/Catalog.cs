@@ -12,11 +12,12 @@ internal static class Catalog
 {
     internal const string WarehouseName = "warehouse";
     internal const string CrossCorridorsName = "cross-corridors";
+    internal const string RoadName = "road";
     internal const string RingCorridorName = "ring-corridor";
     internal const string OpenFloorName = "open-floor";
     internal const string MazeName = "maze";
 
-    internal static string[] Names() => new[] { WarehouseName, CrossCorridorsName, RingCorridorName, OpenFloorName, MazeName };
+    internal static string[] Names() => new[] { WarehouseName, CrossCorridorsName, RingCorridorName, OpenFloorName, MazeName, RoadName };
 
     internal static MapLayout Named(string name)
     {
@@ -24,6 +25,7 @@ internal static class Catalog
         {
             case WarehouseName: return Warehouse();
             case CrossCorridorsName: return CrossCorridors();
+            case RoadName: return Road();
             case RingCorridorName: return RingCorridor();
             case OpenFloorName: return OpenFloor();
             case MazeName: return Maze();
@@ -189,6 +191,32 @@ internal static class Catalog
         southeast.DoorAt(eastCorridor, P(9.5, 3.5)).DoorAt(southCorridor, P(7.5, 1.5));
         westCorridor.OpenTo(northCorridor).OpenTo(southCorridor);
         eastCorridor.OpenTo(northCorridor).OpenTo(southCorridor);
+        return l;
+    }
+
+    /// <summary>THE ROAD of the traffic play (propuesta 125, §12, 23-oct-2026; Juan: "debería ser como una cola de carros queriendo pasar…
+    /// y de doble carril"): four ARMS of 3 m — two lanes of 1.5, a body of 0.5 in each with the planner's margins; not a narrow zone, so
+    /// straight runs go where they are asked — 6 m long (room for a queue), meeting in a crossing of 3 × 3, with a room at every corner
+    /// (where the light stands, out of the way) reached by a door from each of its two arms. 15 × 15 m.</summary>
+    internal static MapLayout Road()
+    {
+        var l = new MapLayout(RoadName);
+        // the names differ from cross-corridors' on purpose: a release's block locals come from them, and two upgrades sharing a local refuse the
+        // whole boot (the engine finding of `floor`, 20-oct-2026)
+        var nwCorner = l.Area("nw-corner").At(P(0, 9)).Size(6, 6);
+        var neCorner = l.Area("ne-corner").At(P(9, 9)).Size(6, 6);
+        var swCorner = l.Area("sw-corner").At(P(0, 0)).Size(6, 6);
+        var seCorner = l.Area("se-corner").At(P(9, 0)).Size(6, 6);
+        var northArm = l.Area("north-arm").At(P(6, 9)).Size(3, 6);
+        var southArm = l.Area("south-arm").At(P(6, 0)).Size(3, 6);
+        var westArm = l.Area("west-arm").At(P(0, 6)).Size(6, 3);
+        var eastArm = l.Area("east-arm").At(P(9, 6)).Size(6, 3);
+        var junction = l.Area("junction").At(P(6, 6)).Size(3, 3);
+        nwCorner.DoorAt(northArm, P(6, 12)).DoorAt(westArm, P(3, 9));
+        neCorner.DoorAt(northArm, P(9, 12)).DoorAt(eastArm, P(12, 9));
+        swCorner.DoorAt(southArm, P(6, 3)).DoorAt(westArm, P(3, 6));
+        seCorner.DoorAt(southArm, P(9, 3)).DoorAt(eastArm, P(12, 6));
+        junction.OpenTo(northArm).OpenTo(southArm).OpenTo(westArm).OpenTo(eastArm);
         return l;
     }
 

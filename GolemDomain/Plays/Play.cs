@@ -42,6 +42,11 @@ internal abstract class Play
     /// <summary>The route of the run underway, or of the last one (pacman's run, a ghost's chase).</summary>
     internal Route Route => route;
 
+    /// <summary>WHAT a golem is in this play: the cast says who leads and who follows; the play names it (pacman and ghosts; a light and cars —
+    /// propuesta 125).</summary>
+    internal virtual Part PartOf(Golem golem) => Cast.PartOf(golem);
+    internal virtual Part PartOf(string name) => Cast.PartOf(name);
+
     // ---- the law (fase 4, 15-oct-2026; Juan: "cuando un fantasma toque al golem principal, debe resolver por tell qué fue de la dinámica:
     // deben decir que un golem fantasma tocó al golem pacman y terminó el juego") ----
 
@@ -62,7 +67,7 @@ internal abstract class Play
         Catcher = who.Trim().ToLowerInvariant();
         State = PlayState.Over;
         concluded = true;
-        if (route != null && route.IsPending()) route.Abandon(Catcher == "warden" ? "the warden ended the play" : $"game over: {Catcher} caught {Cast.Pacman}");
+        Closing(Catcher == "warden" ? "the warden ended the play" : $"game over: {Catcher} caught {Cast.Pacman}");
     }
 
     /// <summary>THE WORD HEARD (fase 4): a peer announced the end — <c>play.HeardOver(@who)</c>; this copy closes the same way, nothing to
@@ -74,7 +79,13 @@ internal abstract class Play
         Catcher = who.Trim().ToLowerInvariant();
         State = PlayState.Over;
         announced = true;
-        if (route != null && route.IsPending()) route.Abandon(Catcher == "warden" ? "the warden ended the play" : $"game over: {Catcher} caught {Cast.Pacman}");
+        Closing(Catcher == "warden" ? "the warden ended the play" : $"game over: {Catcher} caught {Cast.Pacman}");
+    }
+
+    /// <summary>What the end does to the route underway: a chase or a run is abandoned (Pacman); a car finishes its journey (Traffic).</summary>
+    protected virtual void Closing(string why)
+    {
+        if (route != null && route.IsPending()) route.Abandon(why);
     }
 
     /// <summary>THE END ANNOUNCED — <c>play.Announce()</c>, the host's act the clock writes once this copy concluded; its expose carries the

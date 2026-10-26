@@ -47,12 +47,19 @@ public sealed record Choice(string Name, bool Current)
 /// `play` read, shown in the play tab. Pacman is autonomous (21-oct-2026): no keyboard, nothing of how it is driven.</summary>
 public sealed record PlayView(string Name, string Part, string State, string Heading, int Runs, string Pacman, string Ghosts,
                               bool Released = false, (double X, double Y)? Seen = null, int RunsSeen = 0, int Chases = 0, bool Caught = false, string Catcher = "",
-                              string Kind = "pacman")
+                              string Kind = "pacman",
+                              string Journeys = "", bool Free = true, string Holder = "", string Queue = "", string Blocked = "", string Cleared = "", bool Done = false,
+                              bool Driving = false, string Arm = "", bool Stopped = false, bool ClearedHere = false, int Slot = 0)
 {
+    /// <summary>The traffic play (propuesta 125, 23-oct-2026): the cast's lead is the LIGHT and the crew the CARS; the read carries the crossing.</summary>
+    public bool IsTraffic => Kind.Equals("traffic", StringComparison.OrdinalIgnoreCase);
+    public bool IsLight => Part.Equals("light", StringComparison.OrdinalIgnoreCase);
     /// <summary>The state as the list's chip says it: staged, running, or over with who ended it.</summary>
-    public string StateText => IsOver ? (Caught ? $"over — {Catcher} caught {Pacman}" : $"over — ended by the {Catcher}") : State.ToLowerInvariant();
+    public string StateText => IsOver ? (IsTraffic ? "over — every car cleared" : Caught ? $"over — {Catcher} caught {Pacman}" : $"over — ended by the {Catcher}") : State.ToLowerInvariant();
     /// <summary>A row of the `plays` list (16-oct-2026): the play's name, kind, state, cast and who ended it.</summary>
-    public string ListText => $"{Name} · {Kind} · {State.ToLowerInvariant()}{(IsOver ? (Caught ? $" — {Catcher} caught {Pacman}" : $" — ended by the {Catcher}") : "")} · pacman {Pacman}, ghosts {Ghosts}";
+    public string ListText => IsTraffic
+        ? $"{Name} · traffic · {State.ToLowerInvariant()}{(IsOver ? " — every car cleared" : "")} · the light {Pacman}, the cars {Ghosts}"
+        : $"{Name} · {Kind} · {State.ToLowerInvariant()}{(IsOver ? (Caught ? $" — {Catcher} caught {Pacman}" : $" — ended by the {Catcher}") : "")} · pacman {Pacman}, ghosts {Ghosts}";
 
     /// <summary>The `plays` read parsed: every play the golem was told, in the order told.</summary>
     public static IReadOnlyList<PlayView> ParseList(JsonElement json)
@@ -71,12 +78,19 @@ public sealed record PlayView(string Name, string Part, string State, string Hea
     public bool IsOver => State.Equals("over", StringComparison.OrdinalIgnoreCase);
     /// <summary>Pacman's line: its heading and runs; a ghost's (fase 3): whether it left the den, where pacman was last seen and on which run,
     /// its chases; over (fase 4): who caught pacman, or the warden.</summary>
-    public string Text => IsOver
+    public string Text => IsTraffic ? TrafficText : IsOver
         ? $"{Name} · {Part.ToLowerInvariant()} · over — {(Caught ? $"{Catcher} caught {Pacman}" : $"ended by the {Catcher}")}"
         : IsPacman
         ? $"{Name} · pacman · {State.ToLowerInvariant()} · heading {Heading.ToLowerInvariant()} · {Runs} run(s)"
         : $"{Name} · ghost · {State.ToLowerInvariant()} · {(Released ? "out of the den" : "in the den")}{(Seen is { } s ? $" · pacman seen at ({N(s.X)}, {N(s.Y)}) on run {RunsSeen}" : " · pacman not seen yet")} · {Chases} chase(s)";
-    public string CastText => $"pacman {Pacman} · ghosts {Ghosts}";
+    public string CastText => IsTraffic ? $"the light {Pacman} · the cars {Journeys}" : $"pacman {Pacman} · ghosts {Ghosts}";
+    /// <summary>The traffic play's line: the light's crossing (free or whose), its queue and who cleared; a car's arm and its words (stopped at its
+    /// line, holding the green, past the crossing).</summary>
+    private string TrafficText => IsOver
+        ? $"{Name} · {Part.ToLowerInvariant()} · over — every car cleared the crossing"
+        : IsLight
+        ? $"{Name} · light · {State.ToLowerInvariant()} · crossing {(Free ? "free" : Holder + "'s")} · queue [{Queue}]{(Blocked == "" ? "" : $" (blocked: {Blocked})")} · cleared [{Cleared}]"
+        : $"{Name} · car · {State.ToLowerInvariant()} · {(Driving ? $"from the {Arm} arm" + (ClearedHere ? ", past the crossing" : Stopped ? ", stopped at its line" : Slot > 0 ? $", the {Slot + 1}th of its queue" : ", driving") : "not driving yet")} · crossing {(Free ? "free" : Holder + "'s")}";
     private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
     public static PlayView? Parse(JsonElement json)
@@ -85,11 +99,18 @@ public sealed record PlayView(string Name, string Part, string State, string Hea
         bool seen = JsonWalk.Find(json, "seen") is { ValueKind: JsonValueKind.True };
         return new PlayView(JsonWalk.String(json, "play") ?? "", JsonWalk.String(json, "part") ?? "", JsonWalk.String(json, "state") ?? "",
                             JsonWalk.String(json, "heading") ?? "", (int)(JsonWalk.Number(json, "runs") ?? 0),
-                            JsonWalk.String(json, "pacman") ?? "", JsonWalk.String(json, "ghosts") ?? "",
+                            JsonWalk.String(json, "pacman") ?? JsonWalk.String(json, "light") ?? "", JsonWalk.String(json, "ghosts") ?? JsonWalk.String(json, "journeys") ?? "",
                             JsonWalk.Find(json, "released") is { ValueKind: JsonValueKind.True },
                             seen ? (JsonWalk.Number(json, "seenX") ?? 0, JsonWalk.Number(json, "seenY") ?? 0) : null,
                             (int)(JsonWalk.Number(json, "runsSeen") ?? 0), (int)(JsonWalk.Number(json, "chases") ?? 0),
-                            JsonWalk.Find(json, "caught") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "catcher") ?? "");
+                            JsonWalk.Find(json, "caught") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "catcher") ?? "",
+                            JsonWalk.String(json, "kind") ?? "pacman",
+                            JsonWalk.String(json, "journeys") ?? "", JsonWalk.Find(json, "free") is not { ValueKind: JsonValueKind.False },
+                            JsonWalk.String(json, "holder") ?? "", JsonWalk.String(json, "queue") ?? "", JsonWalk.String(json, "blocked") ?? "",
+                            JsonWalk.String(json, "cleared") ?? "", JsonWalk.Find(json, "done") is { ValueKind: JsonValueKind.True },
+                            JsonWalk.Find(json, "driving") is { ValueKind: JsonValueKind.True }, JsonWalk.String(json, "arm") ?? "",
+                            JsonWalk.Find(json, "stopped") is { ValueKind: JsonValueKind.True }, JsonWalk.Find(json, "clearedHere") is { ValueKind: JsonValueKind.True },
+                            (int)(JsonWalk.Number(json, "slot") ?? 0));
     }
 }
 

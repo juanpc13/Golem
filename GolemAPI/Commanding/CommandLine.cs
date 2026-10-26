@@ -49,7 +49,7 @@ public static class CommandLine
         new CommandHelp("finish", "finish <name>", "this golem finishes its part of the formation (propuesta 117): the last line of its script about it, queued like the steps — it counts when the last step is walked; the fleet is told, and the one that counts the fleet's last finish cues the golem the formation names (--cue); the formation stays (dissolve lets it go)", "finish tri-left"),
         new CommandHelp("disputes", "disputes", "the places this golem disputed with another by distance, formation by formation: whether it won the place or yielded it, to whom, and both distances (a golem disputes the place nearest to where it stood)", "disputes"),
         new CommandHelp("formations", "formations", "the formations this golem is in: each one's figure, centre, size, orientation, policy, fleet and who holds which place", "formations"),
-        new CommandHelp("play", "play <name> pacman --pacman <golem> --ghosts a,b [--as pacman|ghost] | play | play over", "a play staged on this golem by its name (its identity across the fleet, like a formation's) and its kind — pacman: who plays pacman and who the ghosts (left out, this golem and every peer but pacman); pacman is autonomous — the rule alone drives it (21-oct-2026); written on every member's tab by the warden, each line saying with --as what that golem plays (left out, what the cast says of its name), never --with; alone, play says the current play — its part, state, heading, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play game-1 pacman --pacman blue --ghosts red,green,yellow"),
+        new CommandHelp("play", "play <name> pacman --pacman <golem> --ghosts a,b [--as pacman|ghost] | play <name> traffic --light <golem> --cars a:south:straight,b:south:left,c:north:right [--as light|car] | play | play over", "a play staged on this golem by its name (its identity across the fleet, like a formation's) and its kind — pacman: who plays pacman and who the ghosts (left out, this golem and every peer but pacman); pacman is autonomous — the rule alone drives it (21-oct-2026); written on every member's tab by the warden, each line saying with --as what that golem plays (left out, what the cast says of its name), never --with; alone, play says the current play — its part, state, heading, runs, a ghost's chases, who ended it; play over ends it for the whole cast (a ghost touching pacman ends it by itself)", "play game-1 pacman --pacman blue --ghosts red,green,yellow"),
         new CommandHelp("plays", "plays", "every play this golem was told, the ended ones among them: name, kind, state, cast, who ended it", "plays"),
         new CommandHelp("start", "start <name>", "the start of a play on this golem, written on every member's tab (16-oct-2026): pacman sets out — its first run, straight down the corridor — and a ghost joins the hunt, chasing from then on as pacman's runs release it from the den", "start game-1"),
         new CommandHelp("then", "then x,y", "one more stop, told to the newest route while it is pending", "then 5.5,5.5"),
@@ -80,6 +80,8 @@ public static class CommandLine
     private static readonly Regex Point = new(@"^(?<x>-?\d+(?:\.\d+)?),(?<y>-?\d+(?:\.\d+)?)$", RegexOptions.Compiled);
     private static readonly Regex Name = new(@"^[A-Za-z_][A-Za-z0-9_-]*$", RegexOptions.Compiled);
     private static readonly Regex Names = new(@"^[A-Za-z_][A-Za-z0-9_-]*(,[A-Za-z_][A-Za-z0-9_-]*)*$", RegexOptions.Compiled);
+    /// <summary>The cars and their turns of a traffic play (propuesta 125): <c>red:straight,green:left,yellow:right</c>.</summary>
+    private static readonly Regex Journeys = new(@"^[a-z][a-z0-9-]*(:(north|south|east|west))?:(straight|left|right)(,[a-z][a-z0-9-]*(:(north|south|east|west))?:(straight|left|right))*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private const string WithUsage = "--with: expected the peers to carry the command to, like --with blue, --with blue,green or --with all";
 
     /// <summary>The line read. A line that is no command throws, saying what was expected and where.</summary>
@@ -388,17 +390,40 @@ public static class CommandLine
                     }
                     if (a == "--as")   // the part this golem plays, the warden's word on each tab (16-oct-2026)
                     {
-                        if (i + 1 >= args.Count || args[i + 1].ToLowerInvariant() is not ("pacman" or "ghost")) throw new CommandSyntaxException("play: --as needs pacman or ghost");
+                        if (i + 1 >= args.Count || args[i + 1].ToLowerInvariant() is not ("pacman" or "ghost" or "light" or "car")) throw new CommandSyntaxException("play: --as needs pacman or ghost (a pacman play), light or car (a traffic play)");
                         values["as"] = args[++i].ToLowerInvariant();
                         continue;
                     }
+                    if (a == "--light")   // the traffic play (propuesta 125): the light by name
+                    {
+                        if (i + 1 >= args.Count || !Name.IsMatch(args[i + 1])) throw new CommandSyntaxException("play: --light needs a golem's name");
+                        values["light"] = args[++i].ToLowerInvariant();
+                        continue;
+                    }
+                    if (a == "--cars")   // the cars and their turns, in a driver's words: red:straight,green:left,yellow:right
+                    {
+                        if (i + 1 >= args.Count || !Journeys.IsMatch(args[i + 1])) throw new CommandSyntaxException("play: --cars needs every car and its turn, like red:straight,green:left — or the arm it comes from too, like red:south:straight,blue:south:left (the queue, §12)");
+                        values["cars"] = args[++i].ToLowerInvariant();
+                        continue;
+                    }
                     if (a == "--steer") throw new CommandSyntaxException("play: --steer is gone (21-oct-2026) — pacman is autonomous, the rule alone drives it");
-                    if (a.StartsWith("--")) throw new CommandSyntaxException($"play: '{Head(a)}' is no option; the options are --pacman <golem>, --ghosts a,b and --as pacman|ghost");
+                    if (a.StartsWith("--")) throw new CommandSyntaxException($"play: '{Head(a)}' is no option; the options are --pacman <golem>, --ghosts a,b, --light <golem>, --cars a:straight,b:left and --as pacman|ghost|light|car");
                     rest.Add(args[i]);
                 }
                 // the play by NAME and KIND (16-oct-2026; Juan: "generar un id del juego"): play game-1 pacman …
-                if (rest.Count != 2 || !Name.IsMatch(rest[0]) || rest[1].ToLowerInvariant() != "pacman") throw new CommandSyntaxException("play: expected the play's name and its kind, like play game-1 pacman --pacman blue --ghosts red,green");
+                if (rest.Count != 2 || !Name.IsMatch(rest[0]) || rest[1].ToLowerInvariant() is not ("pacman" or "traffic")) throw new CommandSyntaxException("play: expected the play's name and its kind, like play game-1 pacman --pacman blue --ghosts red,green or play road-1 traffic --light orange --cars red:straight,green:left");
                 values["kind"] = rest[1].ToLowerInvariant();
+                if (values["kind"] == "traffic")
+                {
+                    if (!values.ContainsKey("light") || !values.ContainsKey("cars")) throw new CommandSyntaxException("play: a traffic play needs --light <golem> and --cars a:straight,b:left,c:right");
+                    if (values.ContainsKey("pacman") || values.ContainsKey("ghosts")) throw new CommandSyntaxException("play: --pacman and --ghosts are the pacman play's; a traffic play has --light and --cars");
+                    if (values.TryGetValue("as", out var trafficPart) && trafficPart is not ("light" or "car")) throw new CommandSyntaxException("play: in a traffic play --as is light or car");
+                }
+                else
+                {
+                    if (values.ContainsKey("light") || values.ContainsKey("cars")) throw new CommandSyntaxException("play: --light and --cars are the traffic play's; a pacman play has --pacman and --ghosts");
+                    if (values.TryGetValue("as", out var pacmanPart) && pacmanPart is not ("pacman" or "ghost")) throw new CommandSyntaxException("play: in a pacman play --as is pacman or ghost");
+                }
                 return new Command(named, with, verb, none, noOptions, rest[0].ToLowerInvariant(), values);
             }
             case "head":

@@ -31,7 +31,7 @@ services:
   # from the same image — only the environment differs. GOLEM is the identity (names the
   # journal); BODY is the model it drives in the world (sim/world/plan.json declares the
   # bodies); HOME_AT is the body's mark IN THE WORLD (the maps lie side by side since propuesta 109, 12-oct-2026: the open floor at
-  # x 0-11, the warehouse at 13-24, the maze at 26-54.5 (28.5 x 31.5 m, Pacman's scale); MAP_ORIGINS tells each golem where): a reborn golem puts its body there, and so does
+  # x 0-11, the warehouse at 13-24, the maze at 26-54.5 (28.5 x 31.5 m, Pacman's scale), the crossroads at 56-67 (propuesta 125, the traffic play's road); MAP_ORIGINS tells each golem where): a reborn golem puts its body there, and so does
   # "let go". Journals live in ./journal on the host — inspectable, they outlive containers.
   # RULE: one writer per journal — never point two processes at the same GOLEM.
   #
@@ -64,7 +64,7 @@ services:
       - BODY=blue
       - ROLES=displacer,bumper,choreographer,dynamics,explorer   # the capabilities of this body: the motors, the bumper, the formations, the plays and the exploration (propuesta 120)
       - HOME_AT=19.3,10.4   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
-      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
+      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5;cross-corridors=56,0,11,11;road=69,0,15,15   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - PANEL_PORT=8080
       # tells TO red go to red; acks for tells addressed to ME return to red (the teller);
       # the route to green carries no tells — it only lets "reset everything" reach green too
@@ -91,7 +91,7 @@ services:
       - BODY=red
       - ROLES=displacer,bumper,choreographer,dynamics,explorer   # the capabilities of this body: the motors, the bumper, the formations, the plays and the exploration (propuesta 120)
       - HOME_AT=15.5,2.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
-      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
+      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5;cross-corridors=56,0,11,11;road=69,0,15,15   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - PANEL_PORT=8080
       # tells TO blue go to blue; acks for tells addressed to ME return to blue;
       # the route to green carries no tells — it only lets "reset everything" reach green too
@@ -123,7 +123,7 @@ services:
       - BODY=green
       - ROLES=displacer,bumper,choreographer,dynamics,explorer   # the capabilities of this body: the motors, the bumper, the formations, the plays and the exploration (propuesta 120)
       - HOME_AT=23,10.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
-      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
+      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5;cross-corridors=56,0,11,11;road=69,0,15,15   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world   # for now (29-sep-2026); wheels = dead reckoning, anchored once, like a real robot
       - PANEL_PORT=8080
       - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-yellow=http://yellow-golem:8080,tell-orange=http://orange-golem:8080,tell-cyan=http://cyan-golem:8080
@@ -150,7 +150,7 @@ services:
       - BODY=yellow
       - ROLES=displacer,bumper,choreographer,dynamics,explorer
       - HOME_AT=22.5,1.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
-      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
+      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5;cross-corridors=56,0,11,11;road=69,0,15,15   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world
       - PANEL_PORT=8080
       - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-orange=http://orange-golem:8080,tell-cyan=http://cyan-golem:8080
@@ -178,7 +178,7 @@ services:
       - BODY=orange
       - ROLES=displacer,bumper,choreographer,dynamics,explorer
       - HOME_AT=14.5,9.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
-      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
+      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5;cross-corridors=56,0,11,11;road=69,0,15,15   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world
       - PANEL_PORT=8080
       - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-cyan=http://cyan-golem:8080
@@ -206,7 +206,7 @@ services:
       - BODY=cyan
       - ROLES=displacer,bumper,choreographer,dynamics,explorer
       - HOME_AT=18.5,1.5   # the mark IN THE WORLD: in the warehouse's region (propuesta 109)
-      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
+      - MAP_ORIGINS=open-floor=0,0,11,11;warehouse=13,0,11,11;maze=26,0,28.5,31.5;cross-corridors=56,0,11,11;road=69,0,15,15   # where each map lies in the world (propuesta 109): the golem reads its pose in its scenario's frame
       - POSE_SOURCE=world
       - PANEL_PORT=8080
       - TELL_ROUTES=tell-blue=http://blue-golem:8080,tell-red=http://red-golem:8080,tell-green=http://green-golem:8080,tell-yellow=http://yellow-golem:8080,tell-orange=http://orange-golem:8080

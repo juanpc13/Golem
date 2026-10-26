@@ -389,6 +389,7 @@ public sealed class ChoreographerRol
         // THE LINK (propuesta 124): how the beats are agreed — the member's name travels, the engine resolves it at the verb (ajuste 90)
         string agreed = (link ?? "cue").Trim().ToLowerInvariant() switch { "cue" => "Cue", "ask" => "Ask", _ => null };
         if (agreed == null) return Answer.Refusal($"the beats are agreed by cue or ask, not by '{link}'");
+        if (agreed == "Ask") return Answer.Refusal("the beats by asking are not built yet: --link cue");   // refused HERE, before the act: a verb that passes its Check and throws inside is journaled whole and replays as an error (lab 23-oct-2026, lab-enum-replay.txt)
         if (every.HasValue && every.Value <= 0) return Answer.Refusal("a union asks every so often: seconds above zero");
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a union needs candidates: at least this golem");
         if (formations == null || formations.Count == 0) return Answer.Refusal("a union names at least one formation");
@@ -429,6 +430,7 @@ public sealed class ChoreographerRol
         if (fleet == null || fleet.Count == 0) return Answer.Refusal("a program needs candidates: at least this golem");
         string agreed = (link ?? "cue").Trim().ToLowerInvariant() switch { "cue" => "Cue", "ask" => "Ask", _ => null };
         if (agreed == null) return Answer.Refusal($"the beats are agreed by cue or ask, not by '{link}'");
+        if (agreed == "Ask") return Answer.Refusal("the beats by asking are not built yet: --link cue");   // refused HERE, before the act: a verb that passes its Check and throws inside is journaled whole and replays as an error (lab 23-oct-2026, lab-enum-replay.txt)
         if (every.HasValue && every.Value <= 0) return Answer.Refusal("a union asks every so often: seconds above zero");
         string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         try

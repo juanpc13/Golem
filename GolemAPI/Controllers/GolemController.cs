@@ -201,6 +201,7 @@ public class GolemController : Controller
         var problems = request.Problems().ToList();
         if (problems.Count > 0) return BadRequest(string.Join("; ", problems));
         if (!Dynamics(out var player, out var refusal)) return refusal;
+        if (request.IsTraffic) return Answered(player.PlayTraffic(request.Name.Trim().ToLowerInvariant(), request.Light, request.Cars, request.As));   // propuesta 125
         string pacman = request.Pacman.Trim().ToLowerInvariant();
         var ghosts = request.Ghosts is { Count: > 0 } ? request.Ghosts.Select(n => n.Trim().ToLowerInvariant()).Distinct().ToList()
                                                       : new[] { golemEmbodiment.Name.ToLowerInvariant() }.Concat(golemEmbodiment.Peers.Select(p => p.ToLowerInvariant())).Where(n => n != pacman).Distinct().ToList();

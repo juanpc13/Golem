@@ -431,6 +431,14 @@ public sealed class Commander
     private Reply Play(Command command)
     {
         if (!Dynamics(out var player, out var refusal)) return refusal;
+        if (command.Values.TryGetValue("kind", out var what) && what == "traffic")   // the traffic play (propuesta 125): the light and the cars with their turns
+        {
+            string lightRole = command.Values.TryGetValue("as", out var lp) ? lp : null;
+            var staged = player.PlayTraffic(command.Text, command.Values["light"], command.Values["cars"], lightRole);
+            if (!staged.Ok) return Reply.Refused(staged.Refused);
+            var s = JsonDocument.Parse(staged.Print ?? "{}").RootElement;
+            return Reply.Done($"staged {Str(s, "play")} (traffic) — {golem.Name} plays {Str(s, "part").ToLowerInvariant()}; the light {Str(s, "light")}, the cars {Str(s, "journeys")}", staged.Print ?? "");
+        }
         string pacman = command.Values.TryGetValue("pacman", out var star) ? star.Trim().ToLowerInvariant() : golem.Name.ToLowerInvariant();
         var ghosts = command.Values.TryGetValue("ghosts", out var crew)
             ? crew.Split(',').Select(n => n.Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList()
@@ -453,7 +461,9 @@ public sealed class Commander
         foreach (var p in told.EnumerateArray())
         {
             string end = Str(p, "state") != "Over" ? "" : Bool(p, "caught") ? $" — {Str(p, "catcher")} caught {Str(p, "pacman")}" : $" — ended by the {Str(p, "catcher")}";
-            lines.Add($"{Str(p, "called")} · {Str(p, "kind")} · {Str(p, "state").ToLowerInvariant()}{end} · pacman {Str(p, "pacman")}, ghosts {Str(p, "ghosts")}");
+            string who = Str(p, "kind") == "traffic" ? $"the light {Str(p, "pacman")}, the cars {Str(p, "ghosts")}" : $"pacman {Str(p, "pacman")}, ghosts {Str(p, "ghosts")}";
+            if (Str(p, "kind") == "traffic" && Str(p, "state") == "Over") end = " — every car cleared";
+            lines.Add($"{Str(p, "called")} · {Str(p, "kind")} · {Str(p, "state").ToLowerInvariant()}{end} · {who}");
         }
         return Reply.Done(string.Join("\n", lines), json);
     }
@@ -463,6 +473,15 @@ public sealed class Commander
         string json = Readings.Play(golem.Actor);
         var e = JsonDocument.Parse(json).RootElement;
         if (!Bool(e, "playing")) return Reply.Done("in no play", json);
+        if (Str(e, "kind") == "traffic")   // the traffic play (propuesta 125): the light's queue and the crossing, or the car's arm and words
+        {
+            string road = $"the light {Str(e, "light")}, the cars {Str(e, "journeys")}";
+            if (Str(e, "state") == "Over") return Reply.Done($"{Str(e, "play")} · {Str(e, "part").ToLowerInvariant()} · over — every car cleared the crossing · {road}", json);
+            if (Str(e, "part") == "Light")
+                return Reply.Done($"{Str(e, "play")} · light · {Str(e, "state").ToLowerInvariant()} · crossing {(Bool(e, "free") ? "free" : Str(e, "holder") + "'s")} · queue [{Str(e, "queue")}]{(Str(e, "blocked") == "" ? "" : $" (blocked: {Str(e, "blocked")})")} · cleared [{Str(e, "cleared")}] · {road}", json);
+            string where = Bool(e, "driving") ? $"from the {Str(e, "arm")} arm" + (Bool(e, "clearedHere") ? ", past the crossing" : Bool(e, "stopped") ? ", stopped at its line" : Slot(e) > 0 ? $", the {Slot(e) + 1}th of its queue" : ", driving") : "not driving yet";
+            return Reply.Done($"{Str(e, "play")} · car · {Str(e, "state").ToLowerInvariant()} · {where} · crossing {(Bool(e, "free") ? "free" : Str(e, "holder") + "'s")} · {road}", json);
+        }
         string cast = $"pacman {Str(e, "pacman")}, ghosts {Str(e, "ghosts")}";
         if (Str(e, "state") == "Over")   // the end (fase 4): who caught pacman, or the warden
             return Reply.Done($"{Str(e, "play")} · {Str(e, "part").ToLowerInvariant()} · over — {(Bool(e, "caught") ? $"{Str(e, "catcher")} caught {Str(e, "pacman")}" : $"ended by the {Str(e, "catcher")}")} · {cast}", json);
@@ -473,6 +492,8 @@ public sealed class Commander
         }
         return Reply.Done($"{Str(e, "play")} · pacman · {Str(e, "state").ToLowerInvariant()} · heading {Str(e, "heading").ToLowerInvariant()} · {Num(e, "runs")} run(s) · {cast}", json);
     }
+
+    private static int Slot(JsonElement e) => e.TryGetProperty("slot", out var s) && s.ValueKind == JsonValueKind.Number ? (int)s.GetDouble() : 0;
 
     private static Reply Answered(Answer answer, string done) => answer.Ok ? Reply.Done(done, answer.Print ?? "") : Reply.Refused(answer.Refused);
 

@@ -1,0 +1,57 @@
+<Window x:Class="WardenCli.Views.TrafficDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Traffic — a light and its cars, written on every member's tab" SizeToContent="Height" Width="560" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="{StaticResource Page}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- THE CAST OF THE TRAFFIC PLAY (propuesta 125, 23-oct-2026; Juan: "3 robots como en una carretera y el semáforo les habla por tell para
+             poder pasar uno recto y otro girando a su izquierda o derecha"): one golem is the LIGHT (it stands in a room and gives the crossing
+             one car at a time), the checked ones the CARS, each with its turn at the crossing in a driver's words -->
+        <TextBlock Text="the light" VerticalAlignment="Center" Foreground="{StaticResource Dim}"/>
+        <ComboBox x:Name="LightBox" Grid.Column="1" Margin="2,4" SelectionChanged="Light_Selected" ToolTip="the golem that is the light: it does not move; its journal keeps the order the cars stopped in and it grants the crossing one at a time"/>
+
+        <TextBlock Grid.Row="1" Text="the cars" Foreground="{StaticResource Dim}" Margin="0,6,8,0" ToolTip="the golems that drive to the crossing, each with its turn: straight, left or right"/>
+        <ItemsControl x:Name="CarsBox" Grid.Row="1" Grid.Column="1" Margin="2,6">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel Margin="0,2">
+                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsCar, Mode=TwoWay}" Width="110" VerticalAlignment="Center"/>
+                        <TextBlock Text="from the" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="8,0,6,0"/>
+                        <ComboBox SelectedItem="{Binding Arm, Mode=TwoWay}" ItemsSource="{Binding Arms}" Width="80" IsEnabled="{Binding IsCar}" ToolTip="the arm the car comes from: several cars on one arm queue up, by name"/>
+                        <TextBlock Text="arm, turns" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="6,0,6,0"/>
+                        <ComboBox SelectedItem="{Binding Turn, Mode=TwoWay}" ItemsSource="{Binding Turns}" Width="100" IsEnabled="{Binding IsCar}"/>
+                    </DockPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- THE ROAD (§12, 23-oct-2026; Juan: "una cola de carros queriendo pasar… de doble carril"): four arms of 3 m, two lanes each, meeting in a
+             junction where one body fits at a time; the cars queued on the inbound lane of their arm, by name, the light in the south-west corner -->
+        <TextBlock Grid.Row="2" Text="the road" VerticalAlignment="Top" Foreground="{StaticResource Dim}" Margin="0,6,8,0"/>
+        <StackPanel Grid.Row="2" Grid.Column="1" Margin="2,6">
+            <CheckBox x:Name="LayBox" Content="lay the road: use map road, the cars queued on their arms' inbound lane, the light in a corner" IsChecked="True"
+                      ToolTip="written before the play on every member's tab: use map road and place …; the road has two lanes per arm and room for five cars queued on each"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"
+                   Text="the play and its start go on every member's tab, each line saying what that golem is (--as light|car): SEND to selected with every member checked — every car drives to its stop line and stands, the light gives the crossing to the first that stopped whose exit arm is free, one at a time; every car through, the play is over"/>
+
+        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <TextBlock x:Name="Problem" Foreground="{StaticResource Red}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="280"/>
+            <Button Content="write the tabs" Click="Ok_Click" Style="{StaticResource GoGreen}" ToolTip="the road and the play, written on every member's tab; nothing is sent until SEND"/>
+            <Button Content="cancel" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

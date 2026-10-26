@@ -615,6 +615,25 @@ public partial class MainWindow : Window
         Log($"pacman {dialog.Pacman}, ghosts {string.Join(", ", dialog.Ghosts)}: the lines on {members.Count} tab(s){(dialog.LayTheBoard ? ", the board laid" : "")} — SEND to selected with every member checked, then release");
     }
 
+    // THE TRAFFIC PLAY FROM THE RIBBON (propuesta 125, 23-oct-2026): the dialog picks the light and the cars with their turns, and the console
+    // writes each member's lines on its own tab — the road, the play with its part, the start; nothing goes until SEND
+    private void Traffic_Click(object sender, RoutedEventArgs e)
+    {
+        if (golems.Count < 2) { Log("a traffic play needs the light and at least one car: add golems first"); return; }
+        var known = golems.SelectMany(g => g.Knowledge.PlayList.Select(p => p.Name))
+                          .Concat(golems.SelectMany(g => g.Lines()).Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).Where(w => w.Length >= 3 && w[0].Equals("play", StringComparison.OrdinalIgnoreCase)).Select(w => w[1].ToLowerInvariant()))
+                          .ToHashSet(StringComparer.Ordinal);
+        int n = 1;
+        while (known.Contains($"road-{n}")) n++;
+        var dialog = new TrafficDialog(golems.Select(x => x.Name).ToList(), Current?.Name ?? "", $"road-{n}") { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        var members = Members(new[] { dialog.Light }.Concat(dialog.Cars.Select(c => c.Car)));
+        foreach (var member in members)
+            foreach (var line in dialog.LinesFor(member.Name)) member.Enqueue(line);
+        PlayTab.IsSelected = true;
+        Log($"the light {dialog.Light}, the cars {dialog.Journeys}: the lines on {members.Count} tab(s){(dialog.LayTheRoad ? ", the road laid" : "")} — SEND to selected with every member checked");
+    }
+
     // the anchor (13-oct-2026): the golem re-reads where its body really stands — the belief back on the truth, nothing moved
     private async void AnchorNow_Click(object sender, RoutedEventArgs e)
     {

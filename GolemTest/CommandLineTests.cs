@@ -100,6 +100,14 @@ public class CommandLineTests
         StringAssert.Contains(Refused("play game-1 pacman --pacman blue --as king"), "play: --as needs pacman or ghost");
         Assert.AreEqual("blue", staged.Values["pacman"]);
         Assert.AreEqual("red,green", staged.Values["ghosts"]);
+        // the traffic play (propuesta 125): the light and the cars with their turns, in a driver's words; --as light|car
+        var road = CommandLine.Parse("play road-1 traffic --light Orange --cars Red:straight,green:LEFT,yellow:right --as car");
+        Assert.AreEqual("road-1", road.Text); Assert.AreEqual("traffic", road.Values["kind"]); Assert.AreEqual("orange", road.Values["light"]);
+        Assert.AreEqual("red:straight,green:left,yellow:right", road.Values["cars"]); Assert.AreEqual("car", road.Values["as"]);
+        StringAssert.Contains(Refused("play road-1 traffic --light orange"), "needs --light <golem> and --cars");
+        StringAssert.Contains(Refused("play road-1 traffic --light orange --cars red:back"), "--cars needs every car and its turn");
+        StringAssert.Contains(Refused("play road-1 traffic --light orange --cars red:left --as ghost"), "in a traffic play --as is light or car");
+        StringAssert.Contains(Refused("play game-1 pacman --pacman blue --cars red:left"), "--light and --cars are the traffic play's");
         Assert.AreEqual("", CommandLine.Parse("play").Text, "alone: the read");
         StringAssert.Contains(Refused("play chess"), "play: expected the play's name and its kind");
         Assert.AreEqual("game-1", CommandLine.Parse("forget play game-1").Values["play"], "a play forgotten (16-oct-2026)");

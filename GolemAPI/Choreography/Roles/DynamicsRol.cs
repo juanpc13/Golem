@@ -66,6 +66,7 @@ public sealed class DynamicsRol
     public Answer Start(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return Answer.Refusal("start: a play's name is needed, like start game-1");
+        if (KindOf(name) == "traffic") return StartTraffic(name);   // the traffic play has its own start (propuesta 125)
         try
         {
             return Answer.Of(robot.Actor.Using(
@@ -289,6 +290,306 @@ public sealed class DynamicsRol
     // stamp — keeps it as where pacman was seen, and, a ghost released and idle, chases it from where it stands: its own route, pushed by
     // next-order-chase. Pacman's own copy never hears its own word; a golem outside the cast lets it pass. The cell enters as @cx @cy: x and y
     // are the print's labels.
+    // ==================================================================
+    // THE TRAFFIC PLAY (propuesta 125, 23-oct-2026; Juan: "3 robots como en una carretera y el semáforo les habla por tell para poder pasar uno
+    // recto y otro girando a su izquierda o derecha"): a light and the cars; the warden writes `play <name> traffic --light … --cars a:straight,…
+    // --as light|car` on EVERY member's tab; `start <name>` starts each copy — a car drives to its stop line, the light starts its law
+    // ==================================================================
+
+    /// <summary>A TRAFFIC PLAY STAGED on this golem: the cast is the light and the cars, the journeys say every car's turn; the part is the
+    /// warden's word (--as light|car; left out, what the cast says of this golem's name).</summary>
+    public Answer PlayTraffic(string name, string light, string journeys, string role = null)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return Answer.Refusal("a play needs a name: play road-1 traffic …");
+        if (string.IsNullOrWhiteSpace(light)) return Answer.Refusal("a traffic play needs its light: --light orange");
+        if (string.IsNullOrWhiteSpace(journeys)) return Answer.Refusal("a traffic play needs its cars and their turns: --cars red:straight,green:left");
+        var cars = journeys.Split(',').Select(j => j.Split(':')[0].Trim().ToLowerInvariant()).Where(n => n != "").Distinct().ToList();
+        string part = (role ?? "").Trim().ToLowerInvariant() switch { "" => light.Trim().ToLowerInvariant() == robot.Name.ToLowerInvariant() ? "Light" : "Car", "light" => "Light", "car" => "Car", _ => null };
+        if (part == null) return Answer.Refusal($"a golem plays the light or a car, not '{role}'");
+        string stamp = $"{robot.Name}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        try
+        {
+            return Answer.Of(robot.Actor.Using(@"
+                    {
+                        cast = Cast(@starName, @crewNames);
+                        journeys = Journeys(@journeyText);
+                        play = g.Dynamics.Stage(@playName, @kind, cast, journeys, @part, @stamp);
+                        print play.Name 'play', play.Kind 'kind', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', cast.Pacman 'light', cast.Roster 'cars', journeys.Text 'journeys';
+                    }
+                ")
+                .WithParameters(p => {
+                    p["playName", typeof(string)] = name.Trim().ToLowerInvariant();
+                    p["kind", typeof(string)] = "traffic";
+                    p["starName", typeof(string)] = light.Trim().ToLowerInvariant();
+                    p["crewNames", typeof(string)] = string.Join(",", cars);
+                    p["journeyText", typeof(string)] = journeys.Trim().ToLowerInvariant();
+                    p["stamp", typeof(string)] = stamp;
+                    p["part", typeof(string)] = part;   // the member's name: the engine resolves the enum at the verb (ajuste 90)
+                })
+                .PerformCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"play {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>The kind of the play of that name, as the journal has it — so `start <name>` picks the script of its kind.</summary>
+    private string KindOf(string name)
+    {
+        try
+        {
+            string json = robot.Actor.Using(@"{ print g.Dynamics.Find(@playName).Kind 'kind'; }")
+                .WithParameters(p => { p["playName", typeof(string)] = name.Trim().ToLowerInvariant(); })
+                .PerformQuery();
+            return System.Text.Json.JsonDocument.Parse(json).RootElement.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "";
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>THE START of a traffic play on this golem: a car's drive — one route to its stop line (the gate), through the crossing by
+    /// its turn, to the far end —; the light starts its law (the clock grants from now on).</summary>
+    private Answer StartTraffic(string name)
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.Knows) Error 'no play is staged: play <name> traffic --light … --cars … first';
+                ", @"
+                    {
+                        play = g.Dynamics.TrafficNamed(@playName);
+                        play.Start();
+                        if (g.Dynamics.PlaysCar) {
+                            from = g.Destination;
+                            route = g.Dynamics.Drive(from, play);
+                            print play.ArmName 'arm', play.Slot 'slot', play.Journeys.Text 'journeys';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                        } else {
+                            print play.Name 'play', play.Started 'started', play.QueueText 'queue', play.IsFree 'free';
+                        }
+                    }
+                ")
+                .WithParameters(p => { p["playName", typeof(string)] = name.Trim().ToLowerInvariant(); })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal($"start {name}: " + GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>THE CAR STOPPED AT ITS LINE (propuesta 125): the arrival that left the route waiting at its gate — the car's word, from where
+    /// the body stands, told to the cast (echo-stopped → StoppedAt); refused, nothing written, when the golem is no car standing at its line.</summary>
+    internal Answer Stopped(Pose here)
+    {
+        if (here == null) return Answer.Refusal("no telemetry from the body: the stop needs where it stands");
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.AtItsPlace) Error 'the golem is not a car standing at a place of its queue';
+                ", @"
+                    {
+                        play = g.Dynamics.Traffic;
+                        me = Pose(@px, @py, @ptheta);
+                        play = g.Dynamics.Stopped(me, play);
+                        print play.Name 'play', play.ArmName 'arm', play.Slot 'slot', play.QueueText 'queue', play.IsStopped 'stopped';
+                        expose play.Name title, play.Stamp nonce, g.Name who, play.ArmWord arm, play.Slot slot;
+                    }
+                ")
+                .WithParameters(p => {
+                    p["px", typeof(double)] = Resolution.Metres(here.X);
+                    p["py", typeof(double)] = Resolution.Metres(here.Y);
+                    p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
+
+    /// <summary>THE LIGHT GRANTS (propuesta 125): on every tick the clock asks whether the crossing is free and a car waits; the permit is the
+    /// light's own act, told to the cast (echo-green → GreenFor). The law runs on the light's journal alone: one at a time, the first that stopped.</summary>
+    public void GrantIfFree()
+    {
+        try
+        {
+            var granted = Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.MayGrant) Error 'the golem is not the light with the crossing free and a car waiting';
+                ", @"
+                    {
+                        play = g.Dynamics.Traffic;
+                        permit = g.Dynamics.Grant(play);
+                        print play.Name 'play', permit.To 'to', permit.Number 'number', play.QueueText 'queue';
+                        expose play.Name title, play.Stamp nonce, permit.To to, permit.Number number;
+                    }
+                ")
+                .PerformCheckThenCommand());
+            if (granted.Ok) robot.Report(granted, "the light gave the crossing — the cast is told");
+        }
+        catch { /* the clock asks again */ }
+    }
+
+    /// <summary>THE CAR CLEARED THE CROSSING (propuesta 125): asked at every arrival — refused, nothing written, until the car holds the green
+    /// and its exit point is behind; the car's word, told to the cast (echo-cleared → Cleared); its drive goes on to the far end.</summary>
+    internal Answer Cleared(Pose here)
+    {
+        if (here == null) return Answer.Refusal("no telemetry from the body: the clearing needs where it stands");
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.PastTheCrossing) Error 'the golem is not a car past the crossing with the green';
+                ", @"
+                    {
+                        play = g.Dynamics.Traffic;
+                        me = Pose(@px, @py, @ptheta);
+                        play = g.Dynamics.Cleared(me, play);
+                        print play.Name 'play', play.ClearedText 'cleared', play.IsFree 'free', play.IsDone 'done', play.State 'state';
+                        expose play.Name title, play.Stamp nonce, g.Name who;
+                    }
+                ")
+                .WithParameters(p => {
+                    p["px", typeof(double)] = Resolution.Metres(here.X);
+                    p["py", typeof(double)] = Resolution.Metres(here.Y);
+                    p["ptheta", typeof(double)] = Resolution.Radians(here.Theta);
+                })
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
+
+    // A CAR STOPPED AT ITS LINE (propuesta 125): a peer's word — in the light's copy it joins the queue, in the order heard here (the law); in a
+    // car's copy it is kept too (every copy reads the same state)
+    public const string UptakeStoppedAt = @"
+        {
+            if (g.Dynamics.Told(@title)) {
+                play = g.Dynamics.TrafficNamed(@title);
+                play.Queued(@who, @arm, @slot);
+                if (g.Dynamics.MaySetOut) {
+                    route = g.Dynamics.SetOut(play);
+                    print play.Name 'play', play.Slot 'slot';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                } else {
+                    print play.Name 'play', play.QueueText 'queue', play.IsFree 'free', g.Dynamics.MayGrant 'mayGrant';
+                }
+            }
+        }
+        ";
+
+    /// <summary>THE CAR BEHIND SETS OUT (§12): asked at the arrival that lined it up and from the clock — refused, nothing written, until the one
+    /// ahead said it stopped at its place (its word may have come before this car finished its turn).</summary>
+    internal Answer SetOutIfAhead()
+    {
+        try
+        {
+            return Answer.Of(robot.Actor.Using(
+                @"
+                    Check(g.Dynamics.MaySetOut) Error 'the golem is not a car lined up with the one ahead at its place';
+                ", @"
+                    {
+                        play = g.Dynamics.Traffic;
+                        route = g.Dynamics.SetOut(play);
+                        print play.Name 'play', play.Slot 'slot';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                    }
+                ")
+                .PerformCheckThenCommand());
+        }
+        catch (Exception ex) { return Answer.Refusal(GolemEmbodiment.Reason(ex)); }
+    }
+    // THE LIGHT GAVE THE CROSSING (propuesta 125): every copy keeps who holds it; the car named GOES — its gate opens and the route goes on
+    // through the crossing (next-order-go pushes the advance); any other car keeps standing
+    public const string UptakeGreenFor = @"
+        {
+            if (g.Dynamics.Told(@title)) {
+                play = g.Dynamics.TrafficNamed(@title);
+                play.Granted(@to);
+                if (g.Dynamics.HasGreen) {
+                    route = g.Dynamics.Go(play);
+                    print play.Name 'play', play.Holder 'holder';
+                        if (route.IsPending()) {
+                            print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                            if (route.IsWalkable) {
+                                print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                      route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                      route.Following 'following', route.StopsLeft 'stopsLeft';
+                            }
+                        } else {
+                            print route.Id 'route', route.Status 'ended';
+                            if (route.EndedShort) {
+                                print route.Why 'why';
+                            }
+                        }
+                } else {
+                    if (g.Dynamics.MayAdvance) {
+                        was = g.Underway();
+                        me = was.Standing;
+                        route = g.Dynamics.Advance(me, play);
+                        print play.Name 'play', play.Slot 'slot';
+                            if (route.IsPending()) {
+                                print route.Id 'route', route.Order 'action', route.Waiting 'waiting';
+                                if (route.IsWalkable) {
+                                    print route.Amount 'amount', route.NextLeg.Kind 'kind', route.NextLeg.Name 'name',
+                                          route.Target.X 'x', route.Target.Y 'y', route.Target.Heading 'heading',
+                                          route.Following 'following', route.StopsLeft 'stopsLeft';
+                                }
+                            } else {
+                                print route.Id 'route', route.Status 'ended';
+                                if (route.EndedShort) {
+                                    print route.Why 'why';
+                                }
+                            }
+                    } else {
+                        print play.Name 'play', play.Holder 'holder', play.QueueText 'queue';
+                    }
+                }
+            }
+        }
+        ";
+    // A CAR CLEARED THE CROSSING (propuesta 125): every copy frees it; the last one clears, the play is over in every copy (the clock announces
+    // it from the light's, like a catch)
+    public const string UptakeCleared = @"
+        {
+            if (g.Dynamics.Told(@title)) {
+                play = g.Dynamics.TrafficNamed(@title);
+                play.Freed(@who);
+                print play.Name 'play', play.ClearedText 'cleared', play.IsFree 'free', play.IsDone 'done', play.State 'state', g.Dynamics.MayGrant 'mayGrant';
+            }
+        }
+        ";
+
     public const string UptakeRanTo = @"
         {
             if (g.Dynamics.Told(@title)) {

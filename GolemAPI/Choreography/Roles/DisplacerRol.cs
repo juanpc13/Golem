@@ -352,7 +352,15 @@ public sealed class DisplacerRol
             // lined up — its own act, told to every peer; with the last mover's word every copy lets its route go
             var aligned = robot.Choreographer?.Aligned();
             if (aligned is { Ok: true } alignedNow) { robot.Report(alignedNow, $"route {was.Route}: lined up for the step — the fleet is told"); return alignedNow; }
+            // …or a car behind lined up whose predecessor is at its place already (propuesta 125 §12): it sets out now
+            var setOut = robot.Dynamics?.SetOutIfAhead();
+            if (setOut is { Ok: true } setOutNow) { robot.Report(setOutNow, $"route {was.Route}: the one ahead is at its place — setting out"); return setOutNow; }
+            // …or a car at its place (propuesta 125): the route waits at its gate and the car says so — the light counts the line's word
+            var stopped = robot.Dynamics?.Stopped(here);
+            if (stopped is { Ok: true } stoppedNow) { robot.Report(stoppedNow, $"route {was.Route}: at the stop line — the light is told"); return stoppedNow; }
         }
+        // a car past the crossing (propuesta 125): its exit point reached with the green — its word frees the crossing; the drive goes on
+        if (answer.Ok && robot.Dynamics?.Cleared(here) is { Ok: true } clearedNow) robot.Report(clearedNow, $"route {was.Route}: past the crossing — the light is told");
         if (robot.Choreographer?.Retaken(answer, was) is { } retaken) return retaken;   // the route ended short on this arrival (a correction with no road): the retake (propuesta 113)
         if (!answer.Ok || !stop) return answer;
         robot.ReportLocalization(was.Route);

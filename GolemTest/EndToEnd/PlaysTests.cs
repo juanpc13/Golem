@@ -46,7 +46,7 @@ public class PlaysTests
         var orange = new Golem(body, "orange");
         orange.Enter(new Scenario(Catalog.Maze(), new Collisions()));
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => orange.Dynamics.Stage("game-1", "pacman", cast, "call-1")).Message, "'orange' is not in the cast");
-        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Dynamics.Stage("game-2", "chess", cast, "call-2")).Message, "the only play known is pacman");
+        StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Dynamics.Stage("game-2", "chess", cast, "call-2")).Message, "the plays known are pacman and traffic");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => new Cast("blue", "red,blue")).Message, "cannot be pacman and a ghost at once");
         StringAssert.Contains(Assert.ThrowsException<GolemDomainException>(() => blue.Dynamics.Find("tetris")).Message, "no play named 'tetris'");
     }

@@ -160,7 +160,13 @@ public static class Readings
         actor.Using(@"
             {
                 print g.Dynamics.Knows 'playing';
-                if (g.Dynamics.Knows) {
+                if (g.Dynamics.IsTraffic) {
+                    traffic = g.Dynamics.Traffic;
+                    print traffic.Name 'play', traffic.Kind 'kind', traffic.Stamp 'nonce', g.Dynamics.Me 'part', traffic.State 'state', traffic.Light 'light', traffic.Journeys.Text 'journeys',
+                          traffic.Started 'started', traffic.IsFree 'free', traffic.Holder 'holder', traffic.QueueText 'queue', traffic.BlockedText 'blocked', traffic.ClearedText 'cleared', traffic.IsDone 'done',
+                          traffic.IsDriving 'driving', traffic.ArmName 'arm', traffic.Slot 'slot', traffic.IsStopped 'stopped', traffic.ClearedHere 'clearedHere', traffic.Catcher 'catcher';
+                }
+                if (g.Dynamics.IsPacman) {
                     play = g.Dynamics.Pacman;
                     print play.Name 'play', play.Kind 'kind', play.Stamp 'nonce', g.Dynamics.Me 'part', play.State 'state', play.Cast.Pacman 'pacman', play.Cast.Roster 'ghosts',
                           play.Heading 'heading', play.Runs 'runs',

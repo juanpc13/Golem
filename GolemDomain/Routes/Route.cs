@@ -59,6 +59,8 @@ internal sealed class Route
     /// the route asks nothing more (<see cref="Order"/> is stop, the body stands) until the formation lets it go (<see cref="Go"/>), when every
     /// mover said it is lined up. Still pending; the way untouched.</summary>
     internal bool Waiting { get; private set; }
+    private Position gate;            // a stop where the route WAITS once reached, until Go (propuesta 125: the stop line of the traffic play)
+    private bool atGate;              // standing at the gate: a boot keeps it waiting (the word that opens it replays, or comes)
 
     private RouteStatus status = RouteStatus.Pending;
     private Trajectory way = new(Array.Empty<Leg>());   // the plan: passages to cross, points to pass, stops to reach, in order
@@ -205,7 +207,7 @@ internal sealed class Route
     {
         if (me == null) throw new GolemDomainException("Route.Awake: 'me' was not given");
         MustBePending();
-        Waiting = false; started = true;   // awake, the route sets out by itself: the fleet's start it waited for is gone with the boot
+        if (!atGate) { Waiting = false; started = true; }   // awake, the route sets out by itself: the fleet's start it waited for is gone with the boot — a GATE keeps waiting (its word replays, or comes)
         if (probing) { standing = me; return this; }   // a probe keeps the way it was laid: the next order measured from where the body woke
         PlanAgainFrom(me);
         return this;
@@ -450,15 +452,35 @@ internal sealed class Route
         return this;
     }
 
-    /// <summary>THE FLEET'S START (propuesta 106): every mover is lined up — the route goes on with the advance it was holding.</summary>
+    /// <summary>THE FLEET'S START (propuesta 106): every mover is lined up — the route goes on with the advance it was holding. And THE GATE
+    /// OPENED (propuesta 125): the word the route waited for at its gate came — it goes on to the next leg.</summary>
     internal Route Go()
     {
         MustBePending();
-        if (!Waiting) throw new GolemDomainException($"route {Id} is not waiting for the fleet's start");
+        if (!Waiting) throw new GolemDomainException($"route {Id} is not waiting for {(gate != null ? "its gate to open" : "the fleet's start")}");
         Waiting = false;
         started = true;
+        if (atGate) { atGate = false; gate = null; }   // a gate opens once; a start together waited for (propuesta 125 §12: the car behind) keeps the gate ahead
         return this;
     }
+
+    /// <summary>Waiting to SET OUT (lined up for a start together), not at a gate on the way.</summary>
+    internal bool WaitsToSetOut => Waiting && !atGate;
+    /// <summary>Standing at a GATE of the way (propuesta 125), waiting for the word that opens it.</summary>
+    internal bool WaitsAtGate => Waiting && atGate;
+
+    /// <summary>A GATE on the way (propuesta 125): a stop of the route where the body STANDS once reached — <see cref="Waiting"/>, the order
+    /// <c>stop</c> — until <see cref="Go"/>. Said before any act, on a stop that is not the last.</summary>
+    internal Route Gate(Position at)
+    {
+        if (at == null) throw new GolemDomainException("Route.Gate: 'at' was not given");
+        if (!stops.Any(s => s.DistanceTo(at) <= WithinAHair)) throw new GolemDomainException($"route {Id} has no stop at ({Fmt(at.X)}, {Fmt(at.Y)}) to gate");
+        if (stops[^1].DistanceTo(at) <= WithinAHair) throw new GolemDomainException($"route {Id}: the gate cannot be the last stop");
+        gate = at;
+        return this;
+    }
+
+    internal bool HasGate => gate != null;
 
     // The body faces where the route told it to, on its place: the facing leg is behind, and with every stop reached the route is complete.
     private void Faced()
@@ -495,6 +517,7 @@ internal sealed class Route
         {
             reached++;
             if (reached == stops.Count && Following) PullOver(me);
+            if (gate != null && !atGate && leg.At.DistanceTo(gate) <= WithinAHair && nextLeg < way.Count) { atGate = true; Waiting = true; }   // the gate: the body stands here until Go (propuesta 125)
         }
         if (reached == stops.Count && nextLeg < way.Count && NextLeg.IsFacing && Math.Abs(TurnAhead) <= TurnTolerance) Faced();   // already facing the centre: nothing to turn
         if (reached == stops.Count && nextLeg >= way.Count) End(RouteStatus.Completed, "");
@@ -710,6 +733,7 @@ internal sealed class Route
     private void Correct(Pose me, Position touch, bool replan)
     {
         if (reached == stops.Count) { End(RouteStatus.Completed, ""); return; }   // touched while turning to face the centre, on its place: done (ajuste 79)
+        if (atGate) { atGate = false; reached--; }   // touched while standing at the GATE (propuesta 125): the gate's stop is ahead again — backed off, the way goes through it and waits there once more
         Waiting = false; started = true;   // touched while waiting for the fleet's start: the correction goes first, the start is not waited for again
         var back = RetreatFrom(me, touch);
         var legs = new List<Leg> { new(back, TouchedFromBehind(me, touch) ? Leg.Clearance : Leg.Retreat) };

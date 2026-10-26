@@ -107,6 +107,36 @@ public sealed class GolemSpeech
                 .Seek("Over").One()
                     .OnMatch("[_:Play].Announce() expose $title title, $nonce nonce, $who who;")
                 .Causation.Continue(over);
+            // THE TRAFFIC PLAY'S WORDS (propuesta 125, 23-oct-2026): facts, never orders (paper 04) — a car STOPPED at its line (the arrival's act,
+            // the light queues it), the light GRANTED the crossing to one (the clock's act, the car named goes), a car CLEARED it (the arrival's
+            // act, the crossing is free). Every one is a command of the host, never an uptake's, so its expose is read (ajuste 77).
+            string stoppedAt = string.Join("\n", peers.Select(p => $@"
+                tell StoppedAt with @title, @nonce, @who, @arm, @slot
+                    to {p}
+                    once 'stopped-' + @nonce + '-' + @who + '-' + @slot + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-stopped")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Stopped").One()
+                    .OnMatch("[_:Dynamics].Stopped(_, _) expose $title title, $nonce nonce, $who who, $arm arm, $slot slot;")
+                .Causation.Continue(stoppedAt);
+            string greenFor = string.Join("\n", peers.Select(p => $@"
+                tell GreenFor with @title, @nonce, @to, @number
+                    to {p}
+                    once 'green-' + @nonce + '-' + @number + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-green")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Granted").One()
+                    .OnMatch("[_:Dynamics].Grant(_) expose $title title, $nonce nonce, $to to, $number number;")
+                .Causation.Continue(greenFor);
+            string clearedAt = string.Join("\n", peers.Select(p => $@"
+                tell Cleared with @title, @nonce, @who
+                    to {p}
+                    once 'cleared-' + @nonce + '-' + @who + '-{p}';"));
+            golemActor.Reactions.DefineReaction("echo-cleared")
+                .Cue().Company().WithSharedHydration()
+                .Seek("Cleared").One()
+                    .OnMatch("[_:Dynamics].Cleared(_, _) expose $title title, $nonce nonce, $who who;")
+                .Causation.Continue(clearedAt);
             // THE TAKE (ajustes 73, 80, 81; propuesta 104): the golem said where it stands into the named formation — every peer is told the name,
             // the stamp, who and where, and convenes in its own copy
             string stood = string.Join("\n", peers.Select(p => $@"
@@ -249,6 +279,12 @@ public sealed class GolemSpeech
                 .Command(DynamicsRol.UptakeRanTo)
             .Told("GameOver").With<string>("title").With<string>("nonce").With<string>("who")
                 .Command(DynamicsRol.UptakeGameOver)
+            .Told("StoppedAt").With<string>("title").With<string>("nonce").With<string>("who").With<string>("arm").With<int>("slot")
+                .Command(DynamicsRol.UptakeStoppedAt)
+            .Told("GreenFor").With<string>("title").With<string>("nonce").With<string>("to").With<int>("number")
+                .Command(DynamicsRol.UptakeGreenFor)
+            .Told("Cleared").With<string>("title").With<string>("nonce").With<string>("who")
+                .Command(DynamicsRol.UptakeCleared)
             .Told("StoodFor").With<string>("call").With<string>("nonce").With<string>("teller").With<double>("px").With<double>("py")
                 .Command(ChoreographerRol.UptakeStoodFor)
             .Told("PlacedAt").With<string>("call").With<string>("who")

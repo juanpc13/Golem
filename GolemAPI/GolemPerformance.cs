@@ -12,6 +12,68 @@ internal sealed class GolemPerformance : PerformanceV2
 {
     /// <summary>THE MAZE'S RELEASE (propuesta 108): the text <c>Catalog.Maze().AsRelease(staged: true)</c> renders — kept here verbatim, like the
     /// other maps', and held equal to it by <c>MazeReleaseTests</c>. A journal keeps the map; the code keeps the recipe (the drawing).</summary>
+    /// <summary>THE CROSSROADS' RELEASE (propuesta 125, 23-oct-2026): <c>Catalog.CrossCorridors().AsRelease(staged: true)</c> verbatim, held equal
+    /// by <c>MazeReleaseTests</c>; the road of the traffic play — four aisles of 1.5 m meeting in a crossing where one body fits.</summary>
+    internal const string CrossCorridorsRelease = @"upgrade('cross-corridors_v1') {
+    crossCorridors = MapLayout('cross-corridors');
+    {
+        northwest = crossCorridors.Area('northwest').At(Position(0.0, 6.25)).Size(4.75, 4.75);
+        northeast = crossCorridors.Area('northeast').At(Position(6.25, 6.25)).Size(4.75, 4.75);
+        southwest = crossCorridors.Area('southwest').At(Position(0.0, 0.0)).Size(4.75, 4.75);
+        southeast = crossCorridors.Area('southeast').At(Position(6.25, 0.0)).Size(4.75, 4.75);
+        northAisle = crossCorridors.Area('north-aisle').At(Position(4.75, 6.25)).Size(1.5, 4.75);
+        southAisle = crossCorridors.Area('south-aisle').At(Position(4.75, 0.0)).Size(1.5, 4.75);
+        westAisle = crossCorridors.Area('west-aisle').At(Position(0.0, 4.75)).Size(4.75, 1.5);
+        eastAisle = crossCorridors.Area('east-aisle').At(Position(6.25, 4.75)).Size(4.75, 1.5);
+        crossing = crossCorridors.Area('crossing').At(Position(4.75, 4.75)).Size(1.5, 1.5);
+        northwest.DoorAt(northAisle, Position(4.75, 8.625));
+        northwest.DoorAt(westAisle, Position(2.375, 6.25));
+        northeast.DoorAt(northAisle, Position(6.25, 8.625));
+        northeast.DoorAt(eastAisle, Position(8.625, 6.25));
+        southwest.DoorAt(southAisle, Position(4.75, 2.375));
+        southwest.DoorAt(westAisle, Position(2.375, 4.75));
+        southeast.DoorAt(southAisle, Position(6.25, 2.375));
+        southeast.DoorAt(eastAisle, Position(8.625, 4.75));
+        crossing.OpenTo(northAisle);
+        crossing.OpenTo(southAisle);
+        crossing.OpenTo(westAisle);
+        crossing.OpenTo(eastAisle);
+    }
+    crossCorridorsScenario = g.Stage(crossCorridors);
+}
+";
+
+    /// <summary>THE ROAD'S RELEASE (propuesta 125 §12, 23-oct-2026): <c>Catalog.Road().AsRelease(staged: true)</c> verbatim, held equal by
+    /// <c>MazeReleaseTests</c> — four arms of 3 m, two lanes each, meeting in a junction; the traffic play's road with queues.</summary>
+    internal const string RoadRelease = @"upgrade('road_v1') {
+    road = MapLayout('road');
+    {
+        nwCorner = road.Area('nw-corner').At(Position(0.0, 9.0)).Size(6.0, 6.0);
+        neCorner = road.Area('ne-corner').At(Position(9.0, 9.0)).Size(6.0, 6.0);
+        swCorner = road.Area('sw-corner').At(Position(0.0, 0.0)).Size(6.0, 6.0);
+        seCorner = road.Area('se-corner').At(Position(9.0, 0.0)).Size(6.0, 6.0);
+        northArm = road.Area('north-arm').At(Position(6.0, 9.0)).Size(3.0, 6.0);
+        southArm = road.Area('south-arm').At(Position(6.0, 0.0)).Size(3.0, 6.0);
+        westArm = road.Area('west-arm').At(Position(0.0, 6.0)).Size(6.0, 3.0);
+        eastArm = road.Area('east-arm').At(Position(9.0, 6.0)).Size(6.0, 3.0);
+        junction = road.Area('junction').At(Position(6.0, 6.0)).Size(3.0, 3.0);
+        nwCorner.DoorAt(northArm, Position(6.0, 12.0));
+        nwCorner.DoorAt(westArm, Position(3.0, 9.0));
+        neCorner.DoorAt(northArm, Position(9.0, 12.0));
+        neCorner.DoorAt(eastArm, Position(12.0, 9.0));
+        swCorner.DoorAt(southArm, Position(6.0, 3.0));
+        swCorner.DoorAt(westArm, Position(3.0, 6.0));
+        seCorner.DoorAt(southArm, Position(9.0, 3.0));
+        seCorner.DoorAt(eastArm, Position(12.0, 6.0));
+        junction.OpenTo(northArm);
+        junction.OpenTo(southArm);
+        junction.OpenTo(westArm);
+        junction.OpenTo(eastArm);
+    }
+    roadScenario = g.Stage(road);
+}
+";
+
     internal const string MazeRelease = @"upgrade('maze_v1') {
     maze = MapLayout('maze');
     {
@@ -561,6 +623,8 @@ internal sealed class GolemPerformance : PerformanceV2
                 openFloorScenario = g.Stage(openFloor);
             }
         " + MazeRelease + @"
+        " + CrossCorridorsRelease + @"
+        " + RoadRelease + @"
         ")
         .WithParameters(p => { p["golemName", typeof(string)] = golemName; })   // the same release for every golem; only who it is changes
         .PerformCommand();

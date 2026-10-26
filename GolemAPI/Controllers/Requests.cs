@@ -52,16 +52,29 @@ public sealed record PointRequest(double? X, double? Y)
 /// <summary>A play staged (propuesta 108): its name, its kind, pacman and the ghosts, and the part this golem plays —
 /// <c>{"name": "game-1", "kind": "pacman", "pacman": "blue", "ghosts": ["red", "green"], "as": "ghost"}</c>. Pacman is autonomous (21-oct-2026):
 /// nothing says how it is driven.</summary>
-public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts, string Kind = null, string As = null)
+public sealed record PlayRequest(string Name, string Pacman, List<string> Ghosts, string Kind = null, string As = null, string Light = null, string Cars = null)
 {
     public const string Shape = "{\"name\": \"game-1\", \"kind\": \"pacman\", \"pacman\": \"blue\", \"ghosts\": [\"red\", \"green\"], \"as\": \"ghost\"}";
+    public const string TrafficShape = "{\"name\": \"road-1\", \"kind\": \"traffic\", \"light\": \"orange\", \"cars\": \"red:straight,green:left,yellow:right\", \"as\": \"car\"}";
+
+    public bool IsTraffic => (Kind ?? "").Trim().ToLowerInvariant() == "traffic";
 
     public IEnumerable<string> Problems()
     {
         if (string.IsNullOrWhiteSpace(Name)) yield return "the play needs a name, its identity across the fleet: " + Shape;
-        if (Kind != null && Kind.Trim().ToLowerInvariant() != "pacman") yield return "the only play known is pacman: " + Shape;
-        if (As != null && As.Trim().ToLowerInvariant() is not ("pacman" or "ghost")) yield return "as is pacman or ghost: " + Shape;
-        if (string.IsNullOrWhiteSpace(Pacman)) yield return "the play needs a pacman: " + Shape;
+        if (Kind != null && Kind.Trim().ToLowerInvariant() is not ("pacman" or "traffic")) yield return "the plays known are pacman and traffic: " + Shape + " or " + TrafficShape;
+        if (IsTraffic)
+        {
+            if (As != null && As.Trim().ToLowerInvariant() is not ("light" or "car")) yield return "as is light or car: " + TrafficShape;
+            if (string.IsNullOrWhiteSpace(Light)) yield return "a traffic play needs its light: " + TrafficShape;
+            if (string.IsNullOrWhiteSpace(Cars) || !System.Text.RegularExpressions.Regex.IsMatch(Cars.Trim(), "^[a-zA-Z][a-zA-Z0-9-]*(:(north|south|east|west))?:(straight|left|right)(,[a-zA-Z][a-zA-Z0-9-]*(:(north|south|east|west))?:(straight|left|right))*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                yield return "a traffic play needs its cars and their turns, like red:straight,green:left: " + TrafficShape;
+        }
+        else
+        {
+            if (As != null && As.Trim().ToLowerInvariant() is not ("pacman" or "ghost")) yield return "as is pacman or ghost: " + Shape;
+            if (string.IsNullOrWhiteSpace(Pacman)) yield return "the play needs a pacman: " + Shape;
+        }
     }
 }
 
